@@ -11,7 +11,7 @@ import { buildSpawnEnv } from './pty/spawnEnv';
 import { SessionHost } from './pty/sessionHost';
 import { SessionRegistry } from './sessions';
 
-const APP_BACKGROUND = '#16181d';
+const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 
 // Every on-screen terminal holds a WebGL context; Chromium's default limit (16) is too low.
 app.commandLine.appendSwitch('max-active-webgl-contexts', '64');

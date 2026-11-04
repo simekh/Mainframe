@@ -2,8 +2,22 @@ import { createMemo, createResource, For, onCleanup, onMount, Show } from 'solid
 import type { ProgramStatus } from '../../shared/types';
 import { close, markExited, newSession, select, sessionsStore, type SessionEntry } from './sessionsStore';
 import { getTerminal, redrawAllTerminals } from './terminal/registry';
+import { TERMINAL_FONT, TERMINAL_OPTIONS } from './terminal/terminalOptions';
 import TerminalView from './terminal/TerminalView';
+// Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/sora/600.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
+
+/** xterm measures its cells once, when it opens; a font that loads later would leave rows the wrong height. */
+function loadTerminalFont(): Promise<unknown> {
+  const font = `${TERMINAL_OPTIONS.fontSize}px '${TERMINAL_FONT}'`;
+  return Promise.all([document.fonts.load(font), document.fonts.load(`bold ${font}`)]);
+}
 
 function statusText(s: SessionEntry): string {
   if (s.exited) return 'exited';
@@ -34,8 +48,9 @@ function installE2eHooks(): void {
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 export default function App() {
+  // Terminals render only once the config is here, so waiting for the font here covers them all.
   const [config] = createResource(async () => {
-    const c = await window.thesource.getConfig();
+    const [c] = await Promise.all([window.thesource.getConfig(), loadTerminalFont()]);
     if (c.e2e) installE2eHooks();
     return c;
   });

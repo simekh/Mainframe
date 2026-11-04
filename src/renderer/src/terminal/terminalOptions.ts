@@ -1,16 +1,21 @@
+// Colours adapted from Parallel Code (MIT): src/lib/parallelCodeTerminalTheme.ts at 97c3558. See THIRD_PARTY_NOTICES.md.
 import type { ITerminalOptions } from '@xterm/xterm';
 
-/** Background of the owner's iTerm2 Default profile; the terminal pane uses it too. */
-export const TERMINAL_BACKGROUND = '#011627';
+/** Bundled with the app (App.tsx imports it); xterm measures it once, so it must load first. */
+export const TERMINAL_FONT = 'JetBrains Mono';
+
+/** Parallel Code's terminal panel colour (`--task-panel-bg`); app.css paints the pane with it too. */
+const TERMINAL_BACKGROUND = '#13191f';
 
 /**
- * Matches the owner's iTerm2 Default profile (Monaco 13, line height 1.05, steady cursor, its
- * colours). Option stays a normal key: the Swedish – Pro layout types @ $ | [ ] { } with it.
+ * Parallel Code's default look: JetBrains Mono 13 and its muted palette on the blue-black panel.
+ * The cursor stays steady. Option stays a normal key: the Swedish – Pro layout types @ $ | [ ] { }
+ * with it.
  */
 export const TERMINAL_OPTIONS: ITerminalOptions = {
-  fontFamily: 'Monaco, Menlo, monospace',
+  fontFamily: `'${TERMINAL_FONT}', monospace`,
   fontSize: 13,
-  lineHeight: 1.05,
+  lineHeight: 1,
   cursorBlink: false,
   macOptionIsMeta: false,
   macOptionClickForcesSelection: true,
@@ -18,26 +23,25 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
   scrollSensitivity: 2,
   theme: {
     background: TERMINAL_BACKGROUND,
-    foreground: '#d6deeb',
-    cursor: '#7e57c2',
-    cursorAccent: '#ffffff',
-    selectionBackground: '#5f7e97',
-    selectionForeground: '#dfe5ee',
-    black: '#011627',
-    red: '#ef5350',
-    green: '#22da6e',
-    yellow: '#addb67',
-    blue: '#82aaff',
-    magenta: '#c792ea',
-    cyan: '#21c7a8',
-    white: '#ffffff',
-    brightBlack: '#575656',
-    brightRed: '#ef5350',
-    brightGreen: '#22da6e',
-    brightYellow: '#ffeb95',
-    brightBlue: '#82aaff',
-    brightMagenta: '#c792ea',
-    brightCyan: '#7fdbca',
-    brightWhite: '#ffffff',
+    foreground: '#f0f4f7',
+    cursor: '#67d9ed',
+    cursorAccent: '#080c10',
+    selectionBackground: '#18343e',
+    black: '#29343d',
+    red: '#f08f8a',
+    green: '#98c9ae',
+    yellow: '#dfba83',
+    blue: '#8fbddd',
+    magenta: '#c1b0e8',
+    cyan: '#67d9ed',
+    white: '#c4d0d9',
+    brightBlack: '#8193a2',
+    brightRed: '#f5a8a4',
+    brightGreen: '#addcc1',
+    brightYellow: '#ead0a5',
+    brightBlue: '#a9cdea',
+    brightMagenta: '#d2c4f0',
+    brightCyan: '#91e5f3',
+    brightWhite: '#f0f4f7',
   },
 };

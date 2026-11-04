@@ -18,6 +18,12 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/terminal/outputFlow.ts` ← `src/components/TerminalView.tsx` (`enqueueOutput`, `flushOutputQueue`, `scheduleOutputFlush`)
 - `src/renderer/src/terminal/TerminalView.tsx` ← `src/components/TerminalView.tsx` (WebGL attach/detach and context loss, clipboard, drop, key handler)
 - `src/renderer/src/terminal/registry.ts` ← `src/lib/terminalFitManager.ts` (`redrawAllTerminals`)
+- `src/renderer/src/terminal/terminalOptions.ts` ← colours from `src/lib/parallelCodeTerminalTheme.ts`
+- `src/renderer/src/app.css` ← colours, fonts and scrollbar of the default look in `src/styles.css` (`html[data-look='parallel-code']`)
+
+## Fonts
+
+Inter, Sora and JetBrains Mono are bundled from the `@fontsource` packages under the SIL Open Font License 1.1; each package's `LICENSE` file holds its copyright notice.
 
 ## Parallel Code license
 

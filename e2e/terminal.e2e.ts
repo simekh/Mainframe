@@ -23,6 +23,26 @@ test('typed input reaches the shell and its output shows', async () => {
   await app.close();
 });
 
+test('the terminal is measured in the bundled JetBrains Mono, loaded before it opens', async () => {
+  const { app, page } = await launchApp();
+  const a = await newSession(page);
+  const rows = (await screen(page, a)).split('\n').length; // a fresh shell's buffer is exactly one screen
+  const { loaded, cellHeight, fontCellHeight } = await page.evaluate((r) => {
+    const loaded = [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'JetBrains Mono' && f.status === 'loaded');
+    const screenEl = document.querySelector<HTMLElement>('.xterm-screen')!;
+    // xterm's own measurement: font box height, rounded to device pixels.
+    const ctx = new OffscreenCanvas(10, 10).getContext('2d')!;
+    ctx.font = "13px 'JetBrains Mono', monospace";
+    const m = ctx.measureText('W');
+    const dpr = window.devicePixelRatio;
+    const fontCellHeight = Math.floor((m.fontBoundingBoxAscent + m.fontBoundingBoxDescent) * dpr) / dpr;
+    return { loaded, cellHeight: screenEl.getBoundingClientRect().height / r, fontCellHeight };
+  }, rows);
+  expect(loaded).toBe(true);
+  expect(cellHeight).toBeCloseTo(fontCellHeight, 1);
+  await app.close();
+});
+
 test('switching sessions keeps each one intact and shows only the selected one', async () => {
   const { app, page } = await launchApp();
   const a = await newSession(page);
