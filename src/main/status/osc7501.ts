@@ -35,6 +35,9 @@ export class Osc7501Scanner {
   /** In `oscEsc`: whether the interrupted OSC was a 7501 one being collected. */
   private escIn7501 = false;
 
+  /** @param onPayload sees every finished OSC 7501 payload as sent, before parsing (for logging). */
+  constructor(private readonly onPayload?: (payload: string) => void) {}
+
   feed(chunk: string): Osc7501Event[] {
     const events: Osc7501Event[] = [];
     let i = 0;
@@ -128,6 +131,7 @@ export class Osc7501Scanner {
     this.payload = '';
     this.state = 'ground';
     if (HEADER_BYTES + this.payloadBytes + terminatorBytes > MAX_SEQUENCE_BYTES) return;
+    this.onPayload?.(payload);
     if (payload.trim() === '?') {
       events.push({ type: 'query' });
       return;

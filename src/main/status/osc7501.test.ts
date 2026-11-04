@@ -90,3 +90,9 @@ describe('parseReportPayload', () => {
 it('the support reply names every state and kind', () => {
   expect(OSC7501_SUPPORT_REPLY).toBe('\x1b]7501;?:states=idle,working,done,blocked,error:kinds=permission,question,auth\x1b\\');
 });
+
+it('passes every finished OSC 7501 payload, raw, to onPayload', () => {
+  const payloads: string[] = [];
+  new Osc7501Scanner((p) => payloads.push(p)).feed(`\x1b]7501;?${ST}\x1b]7501;state=idle:future=x${BEL}\x1b]7501;bogus${ST}`);
+  expect(payloads).toEqual(['?', 'state=idle:future=x', 'bogus']);
+});

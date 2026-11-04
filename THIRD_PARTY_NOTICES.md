@@ -6,6 +6,9 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 
 <!-- one line per adapted file: TheSource path ← Parallel Code path -->
 
+- `scripts/fix-node-pty-spawn-helper.mjs` ← `scripts/fix-node-pty-spawn-helper.mjs`
+- `src/main/pty/outputBatcher.ts` ← `electron/ipc/pty.ts` (`attachPtyOutputHandlers`)
+
 ## Parallel Code license
 
 ```
