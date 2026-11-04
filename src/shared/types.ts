@@ -17,3 +17,35 @@ export interface ProgramStatus extends Omit<ProgramReport, 'state'> {
   state: ProgramState;
   updatedAt: number;
 }
+
+export interface SessionInfo {
+  id: string;
+  name: string;
+  cwd: string;
+}
+
+export type ClipboardPaste =
+  | { kind: 'file' | 'image'; path: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'empty' };
+
+export interface RendererConfig {
+  inputBatchMs: number;
+  e2e: boolean;
+}
+
+export interface PtyDataEvent {
+  sessionId: string;
+  data: Uint8Array;
+}
+
+export interface PtyExitEvent {
+  sessionId: string;
+  exitCode: number;
+  signal: number | null;
+}
+
+export interface StatusEvent {
+  sessionId: string;
+  status: ProgramStatus | null;
+}
