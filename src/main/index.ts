@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu } from 'electron';
 import * as pty from 'node-pty';
 import { loadConfig, type AppConfig } from './config';
 import { registerIpc } from './ipc';
+import { buildMenu } from './menu';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { SessionHost } from './pty/sessionHost';
 import { SessionRegistry } from './sessions';
@@ -61,6 +62,7 @@ function start(config: AppConfig): void {
     log: config.logOsc ? console.log : undefined,
   });
   const win = createWindow();
+  Menu.setApplicationMenu(buildMenu(win));
   registerIpc(win, registry, host, config, {
     clipboard,
     writeFile,

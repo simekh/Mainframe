@@ -1,0 +1,244 @@
+/* Shell for the feel test: graphite around one bright terminal well (Parallel Code's dark look). */
+:root {
+  --app: #16181d;
+  --column: #101217;
+  --line: #2a2e36;
+  --row-selected: #2b3445;
+  --text: #d6d9df;
+  --text-dim: #7d8590;
+  --accent: #4aa3ff;
+  --amber: #f0a030;
+  --red: #ef5350;
+  --terminal: #011627; /* the owner's iTerm2 profile; matches TERMINAL_BACKGROUND */
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--app);
+  color: var(--text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.app {
+  display: flex;
+  height: 100%;
+}
+
+/* --- Session list: plain; plan 2 replaces it with the board --- */
+
+.sessions {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--column);
+  border-right: 1px solid var(--line);
+  padding: 12px 8px;
+  gap: 10px;
+}
+
+.new-session {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #2f6fd6;
+  color: #fff;
+  font-weight: 500;
+  text-align: left;
+}
+
+.new-session:hover {
+  background: #3a7be0;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.session-row {
+  display: flex;
+  align-items: stretch;
+  border-radius: 6px;
+}
+
+.session-row:hover {
+  background: #1b1e25;
+}
+
+.session-row[data-selected='true'] {
+  background: var(--row-selected);
+}
+
+.session-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 4px 6px 10px;
+  text-align: left;
+}
+
+.session-name {
+  color: var(--text);
+}
+
+.session-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-row[data-tone='working'] .session-status {
+  color: var(--accent);
+}
+
+.session-row[data-tone='blocked'] .session-status {
+  color: var(--amber);
+}
+
+.session-row[data-tone='error'] .session-status {
+  color: var(--red);
+}
+
+.session-close {
+  width: 28px;
+  flex: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--text-dim);
+  font-size: 16px;
+  opacity: 0;
+}
+
+.session-row:hover .session-close,
+.session-row[data-selected='true'] .session-close,
+.session-close:focus-visible {
+  opacity: 1;
+}
+
+.session-close:hover {
+  color: var(--text);
+}
+
+/* --- Terminal pane: the one bold element --- */
+
+.pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px 12px;
+}
+
+.pane-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 2px 8px;
+  min-width: 0;
+}
+
+.pane-name {
+  font-weight: 600;
+  flex: none;
+}
+
+.pane-cwd {
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-empty {
+  margin: auto;
+  text-align: center;
+}
+
+.pane-empty p {
+  margin: 0;
+}
+
+.pane-empty-hint {
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* The well: a lit screen set into the graphite. Its top edge carries the session's state. */
+.well {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--terminal);
+  border-radius: 8px;
+  border-top: 2px solid transparent;
+  box-shadow: 0 0 0 1px #0a2236, 0 10px 30px -12px #000;
+  overflow: hidden;
+  user-select: text;
+}
+
+.well[hidden] {
+  display: none;
+}
+
+.well[data-tone='working'] {
+  border-top-color: var(--accent);
+}
+
+.well[data-tone='blocked'] {
+  border-top-color: var(--amber);
+}
+
+.well[data-tone='error'] {
+  border-top-color: var(--red);
+}
+
+.terminal {
+  position: absolute;
+  inset: 8px 4px 8px 12px;
+}
+
+/* Hidden, not unmounted or display:none: keeps its size, so its PTY is never resized. */
+.terminal--hidden {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .well {
+    transition: border-top-color 160ms ease-out;
+  }
+}

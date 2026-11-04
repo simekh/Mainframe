@@ -16,6 +16,8 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/terminal/keybindings.ts` ← key sequences from `src/lib/keybindings/defaults.ts`
 - `src/renderer/src/terminal/inputBatcher.ts` ← `src/components/TerminalView.tsx` (`enqueueInput`)
 - `src/renderer/src/terminal/outputFlow.ts` ← `src/components/TerminalView.tsx` (`enqueueOutput`, `flushOutputQueue`, `scheduleOutputFlush`)
+- `src/renderer/src/terminal/TerminalView.tsx` ← `src/components/TerminalView.tsx` (WebGL attach/detach and context loss, clipboard, drop, key handler)
+- `src/renderer/src/terminal/registry.ts` ← `src/lib/terminalFitManager.ts` (`redrawAllTerminals`)
 
 ## Parallel Code license
 
