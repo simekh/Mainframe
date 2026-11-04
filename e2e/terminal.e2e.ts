@@ -68,3 +68,58 @@ test('an exited session says so, and quitting leaves no session process behind',
   await app.close();
   await expect.poll(() => { try { process.kill(pid, 0); return 'alive'; } catch { return 'gone'; } }).toBe('gone');
 });
+
+const row = (page: Page, id: string) => page.locator(`[data-testid=session-row][data-session-id="${id}"]`);
+const alive = (pid: number) => { try { process.kill(pid, 0); return 'alive'; } catch { return 'gone'; } };
+async function shellPid(page: Page, id: string, tag: string): Promise<number> {
+  await run(page, `echo ${tag}-pid-$$`);
+  await expect.poll(() => screen(page, id)).toMatch(new RegExp(`${tag}-pid-\\d+`));
+  return Number((await screen(page, id)).match(new RegExp(`${tag}-pid-(\\d+)`))![1]);
+}
+
+test('closing sessions kills them, moves the selection, and leaves the others running', async () => {
+  const { app, page } = await launchApp();
+  const a = await newSession(page);
+  const aPid = await shellPid(page, a, 'a');
+  const b = await newSession(page);
+  const bPid = await shellPid(page, b, 'b');
+  const c = await newSession(page);
+  const cPid = await shellPid(page, c, 'c');
+
+  // The selected one: the selection moves to its neighbour.
+  await row(page, c).getByTestId('close-session').click();
+  expect(await ids(page)).toEqual([a, b]);
+  await expect(row(page, b)).toHaveAttribute('data-selected', 'true');
+  await expect.poll(() => alive(cPid)).toBe('gone');
+  // The others keep their screens and processes; nothing was respawned.
+  for (const id of [a, b]) expect(await screen(page, id)).not.toContain('Could not start');
+  expect(await screen(page, a)).toMatch(/a-pid-\d+/);
+  expect([alive(aPid), alive(bPid)]).toEqual(['alive', 'alive']);
+  await run(page, 'echo still-$((1+1))');
+  await expect.poll(() => screen(page, b)).toContain('still-2');
+
+  // An unselected one: the selection stays.
+  await row(page, a).getByTestId('close-session').click();
+  expect(await ids(page)).toEqual([b]);
+  await expect(row(page, b)).toHaveAttribute('data-selected', 'true');
+  await expect.poll(() => alive(aPid)).toBe('gone');
+
+  // The last one: the empty state, and a new session still works.
+  await row(page, b).getByTestId('close-session').click();
+  expect(await ids(page)).toEqual([]);
+  await expect.poll(() => alive(bPid)).toBe('gone');
+  const d = await newSession(page);
+  await run(page, 'echo fresh-$((4+1))');
+  await expect.poll(() => screen(page, d)).toContain('fresh-5');
+  await app.close();
+});
+
+test('an exited session shows exited and closes cleanly', async () => {
+  const { app, page } = await launchApp();
+  const a = await newSession(page);
+  await run(page, 'exit');
+  await expect(row(page, a).getByTestId('session-status')).toHaveText('exited');
+  await row(page, a).getByTestId('close-session').click();
+  expect(await ids(page)).toEqual([]);
+  await app.close();
+});
