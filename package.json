@@ -1,0 +1,27 @@
+{
+  "name": "thesource",
+  "version": "0.0.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "electron-vite build && playwright test"
+  },
+  "dependencies": {
+    "solid-js": "1.9.18"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "^24",
+    "electron": "44.10.2",
+    "electron-vite": "6.0.0",
+    "typescript": "~5.9.3",
+    "vite": "8.3.5",
+    "vite-plugin-solid": "2.11.15",
+    "vitest": "5.1.0"
+  }
+}
