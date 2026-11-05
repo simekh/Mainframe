@@ -9,6 +9,7 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `scripts/fix-node-pty-spawn-helper.mjs` ← `scripts/fix-node-pty-spawn-helper.mjs`
 - `src/main/pty/outputBatcher.ts` ← `electron/ipc/pty.ts` (`attachPtyOutputHandlers`)
 - `src/main/clipboard.ts` ← `electron/ipc/register.ts` (`ResolveClipboardPaste`), rewritten for Electron 44's async clipboard
+- `src/main/git.ts` ← `electron/ipc/git.ts` (`getChangedFiles`)
 - `src/renderer/src/terminal/osc52.ts` (+ test) ← `src/lib/terminalClipboard.ts` (+ test)
 - `src/renderer/src/terminal/copyText.ts` (+ test) ← `src/lib/copy-text.ts` (+ test)
 - `src/renderer/src/terminal/escapePath.ts` (+ test) ← `src/lib/terminalDrop.ts` (`escapePath` and its cases)

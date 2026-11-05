@@ -49,3 +49,20 @@ export interface StatusEvent {
   sessionId: string;
   status: ProgramStatus | null;
 }
+
+export interface StartCheck {
+  /** Commits on the main checkout's branch that origin/HEAD does not have. */
+  ahead: number;
+  /** The main checkout's current branch. */
+  branch: string;
+  /** What origin/HEAD points at, e.g. `origin/stage`. */
+  base: string;
+}
+
+export interface ChangedFile {
+  path: string;
+  status: 'A' | 'M' | 'D' | 'T' | 'U' | '?';
+  /** Null where git gives no count: untracked and binary files. */
+  added: number | null;
+  removed: number | null;
+}
