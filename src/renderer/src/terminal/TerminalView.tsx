@@ -117,10 +117,22 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       const wait = Math.max(0, RESIZE_INTERVAL_MS - (performance.now() - lastResizeAt));
       resizeTimer = setTimeout(sendResize, wait);
     });
-    const observer = new ResizeObserver(() => fit.fit());
+    // Re-fits only when the container's size changes. Its first report is the size the session is
+    // spawned at below: fitting again then could measure with the WebGL renderer the task's
+    // selection attached meanwhile (its cells are whole device pixels) and resize a session that
+    // has only just started.
+    let fitted = { width: container.clientWidth, height: container.clientHeight };
+    const observer = new ResizeObserver(() => {
+      const size = { width: container.clientWidth, height: container.clientHeight };
+      if (size.width === fitted.width && size.height === fitted.height) return;
+      fitted = size;
+      fit.fit();
+    });
     observer.observe(container);
 
-    api.spawn({ sessionId: id, cols: sent.cols, rows: sent.rows }).catch((err: unknown) => {
+    // An e2e run spawns through its test hooks, which record the size.
+    const spawn = window.__thesourceE2E?.spawn ?? api.spawn;
+    spawn({ sessionId: id, cols: sent.cols, rows: sent.rows }).catch((err: unknown) => {
       term.write(`\x1b[31mCould not start the session: ${errorMessage(err)}\x1b[0m\r\n`);
       finish();
     });

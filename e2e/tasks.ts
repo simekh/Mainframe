@@ -10,6 +10,10 @@ export const screen = (page: Page, taskId: string) =>
 export const termSize = (page: Page, taskId: string) =>
   page.evaluate((id) => window.__thesourceE2E.termSize(id), taskId);
 
+/** The size the task's session was first spawned at, and whether the side panel was out then. */
+export const firstSpawn = (page: Page, taskId: string) =>
+  page.evaluate((id) => window.__thesourceE2E.firstSpawn(id), taskId);
+
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** The task's card, found only inside the given lane of the board. */

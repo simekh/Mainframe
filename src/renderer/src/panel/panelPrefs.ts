@@ -29,6 +29,11 @@ export function loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs {
   }
 }
 
+/** A storage that refuses the write (full, or turned off) leaves the prefs for this run only. */
 export function savePanelPrefs(storage: Pick<Storage, 'setItem'>, prefs: PanelPrefs): void {
-  storage.setItem(KEY, JSON.stringify({ width: prefs.width, pinned: prefs.pinned }));
+  try {
+    storage.setItem(KEY, JSON.stringify({ width: prefs.width, pinned: prefs.pinned }));
+  } catch {
+    // Nothing to do: the panel keeps working with what it has.
+  }
 }

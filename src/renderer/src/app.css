@@ -603,6 +603,8 @@ button {
 
 /* Pinned, the board's flex sibling at the owner's width. */
 .side-panel {
+  /* What a row along the panel's top leaves its pin: 8 px in, 28 px wide, 6 px apart. */
+  --panel-pin-room: 42px;
   position: relative;
   flex: none;
   width: var(--panel-w);
@@ -631,6 +633,15 @@ button {
 .side-panel[data-pinned='false'][data-open='false'] {
   transform: translateX(calc(100% + 24px));
   visibility: hidden;
+}
+
+/* The top bar is a window drag region, and macOS hit-tests it natively whatever lies above it:
+   carve out the panel and the edge that overhangs it, so the drag region doesn't swallow their
+   clicks. Everything in the panel inherits it; a title bar in the panel can make itself a drag
+   region again. */
+.side-panel,
+.panel-resize {
+  -webkit-app-region: no-drag;
 }
 
 /* The edge facing the board: a drag or the arrow keys set the width. */
@@ -719,7 +730,7 @@ button {
 }
 
 /* Visible at once, so it can take the focus; it fades in once the panel has slid out. */
-.side-panel[data-pinned='false'][data-open='false'] ~ .panel-show {
+.side-panel[data-pinned='false'][data-open='false'] + .panel-show {
   visibility: visible;
   opacity: 1;
 }
@@ -793,7 +804,7 @@ button {
 }
 
 /* A fixed height, empty or not, so the terminal is the same size with or without a selection. Its
-   right end leaves the pin room: 8 px in, 28 px wide, 6 px apart. */
+   right end leaves the pin its room. */
 .panel-header {
   flex: none;
   display: flex;
@@ -801,7 +812,7 @@ button {
   gap: 8px;
   height: 46px;
   min-width: 0;
-  padding: 6px 42px 4px 16px;
+  padding: 6px var(--panel-pin-room) 4px 16px;
 }
 
 .panel-title {
@@ -1087,7 +1098,7 @@ button {
       visibility 0s linear 220ms;
   }
 
-  .side-panel[data-pinned='false'][data-open='false'] ~ .panel-show {
+  .side-panel[data-pinned='false'][data-open='false'] + .panel-show {
     transition: opacity 120ms var(--ease-out) 160ms;
   }
 

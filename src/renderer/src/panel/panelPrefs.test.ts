@@ -31,4 +31,13 @@ describe('panelPrefs', () => {
     expect(loadPanelPrefs(memoryStorage())).toEqual(DEFAULT_PANEL_PREFS);
     expect(DEFAULT_PANEL_PREFS).toEqual({ width: 640, pinned: true });
   });
+
+  it('a storage that refuses the write is ignored', () => {
+    const full = {
+      setItem: () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      },
+    };
+    expect(() => savePanelPrefs(full, { width: 700, pinned: true })).not.toThrow();
+  });
 });

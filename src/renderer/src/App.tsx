@@ -31,6 +31,7 @@ const terminalOfTask = (taskId: string) => {
 };
 
 function installE2eHooks(): void {
+  const firstSpawns = new Map<string, { cols: number; rows: number; panelShown: boolean }>();
   window.__thesourceE2E = {
     taskIds: () => tasksStore.tasks.map((t) => t.id),
     screenText: (taskId) => {
@@ -43,6 +44,17 @@ function installE2eHooks(): void {
     termSize: (taskId) => {
       const term = terminalOfTask(taskId);
       return term ? { cols: term.cols, rows: term.rows } : null;
+    },
+    firstSpawn: (taskId) => {
+      const sessionId = terminalOf(taskId);
+      return (sessionId && firstSpawns.get(sessionId)) || null;
+    },
+    spawn: (req) => {
+      if (!firstSpawns.has(req.sessionId)) {
+        const panelShown = document.querySelector('[data-testid=side-panel]')?.getAttribute('data-open') === 'true';
+        firstSpawns.set(req.sessionId, { cols: req.cols, rows: req.rows, panelShown });
+      }
+      return window.thesource.spawn(req);
     },
   };
 }
@@ -104,6 +116,7 @@ export default function App() {
       </section>
 
       <SidePanel
+        label="Selected session"
         prefs={panelPrefs()}
         onPrefsChange={keepPanelPrefs}
         open={tasksStore.panelOpen}
@@ -115,6 +128,7 @@ export default function App() {
             )}
           </Show>
         }
+        badgeLabel={selected() ? stateLabel(selected()!, sessionOf(selected()!)).text : undefined}
         empty={
           selected() ? undefined : (
             <>

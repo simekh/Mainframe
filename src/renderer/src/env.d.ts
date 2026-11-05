@@ -9,6 +9,10 @@ declare global {
       /** The task's terminal buffer, its running session's or the last one's. */
       screenText(taskId: string): string;
       termSize(taskId: string): { cols: number; rows: number } | null;
+      /** The size the task's session was first spawned at, and whether the side panel was out then. */
+      firstSpawn(taskId: string): { cols: number; rows: number; panelShown: boolean } | null;
+      /** The bridge's spawn, recording each session's first size; terminals spawn through it. */
+      spawn: TheSourceApi['spawn'];
     };
   }
 }

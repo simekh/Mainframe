@@ -1,4 +1,4 @@
-import { batch, createSignal, onCleanup, Show, type JSX } from 'solid-js';
+import { createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { clampWidth, type PanelPrefs } from './panelPrefs';
 
 /** How far one arrow key moves the panel's edge. */
@@ -13,6 +13,8 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
  * then turning invisible, never by changing size, so the terminals in it keep their size.
  */
 export default function SidePanel(props: {
+  /** What the panel holds, for screen readers. */
+  label: string;
   prefs: PanelPrefs;
   /** The owner set a width or the pin: keep it. */
   onPrefsChange: (prefs: PanelPrefs) => void;
@@ -21,6 +23,8 @@ export default function SidePanel(props: {
   onOpenChange: (open: boolean) => void;
   /** Above the chevron of the way back while the unpinned panel is hidden: the shown item's state. */
   badge?: JSX.Element;
+  /** The badge in words, for the way back's name. */
+  badgeLabel?: string;
   /** Shown in place of the content while there is nothing to show. */
   empty?: JSX.Element;
   children: JSX.Element;
@@ -53,10 +57,10 @@ export default function SidePanel(props: {
     const end = () => {
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('lostpointercapture', end);
-      batch(() => {
-        keepWidth(width());
-        setDragWidth(null);
-      });
+      // The drag is over before the width is kept, so a save that fails can't leave it running.
+      const w = width();
+      setDragWidth(null);
+      keepWidth(w);
     };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('lostpointercapture', end);
@@ -93,7 +97,7 @@ export default function SidePanel(props: {
         data-testid="side-panel"
         data-pinned={String(props.prefs.pinned)}
         data-open={String(shown())}
-        aria-label="Selected session"
+        aria-label={props.label}
         style={{ '--panel-w': `${width()}px` }}
       >
         <div
@@ -168,7 +172,7 @@ export default function SidePanel(props: {
         data-testid="panel-show"
         ref={showButton}
         title="Show panel"
-        aria-label="Show panel"
+        aria-label={props.badgeLabel ? `Show panel, ${props.badgeLabel}` : 'Show panel'}
         onClick={show}
       >
         {props.badge}
