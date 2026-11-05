@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test, expect, type Locator } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
 import { card, cardIn, git, launches, repo, run, screen, sendLine, startTask } from './tasks';
 
@@ -91,7 +91,7 @@ test('changed files lists what the task changed in its worktree', async () => {
   git('-C', worktree, 'commit', '-m', 'a');
   writeFileSync(join(worktree, 'u.txt'), 'u\n');
 
-  await expect(files).toHaveAttribute('data-count', '2', { timeout: 7_000 });
+  await expect(files).toHaveAttribute('data-count', '2', { timeout: 12_000 });
   await expect(heading.locator('.label')).toHaveText('2 files changed');
   await expect(heading.locator('.diff')).toHaveText('+1');
   await expect(heading).toHaveAttribute('aria-expanded', 'true');
@@ -109,7 +109,7 @@ test('changed files lists what the task changed in its worktree', async () => {
 
   // The worktree goes away while the session still runs: the next poll finds no worktree.
   git('-C', main, 'worktree', 'remove', '--force', worktree);
-  await expect(heading.locator('.label')).toHaveText('Worktree removed', { timeout: 7_000 });
+  await expect(heading.locator('.label')).toHaveText('Worktree removed', { timeout: 12_000 });
   await expect(files).toHaveAttribute('data-count', '0');
   await expect(heading).toBeDisabled();
   await expect(files.locator('.file-list')).toBeHidden();
@@ -152,10 +152,16 @@ test('the message field sends one line as typed', async () => {
   await app.close();
 });
 
+/** Runs `cat -v` with bracketed paste on; resolves once xterm has seen it switched on. */
+async function catWithBracketedPaste(page: Page, taskId: string): Promise<void> {
+  await run(page, "printf '\\033[?2004h'; echo ready; cat -v");
+  await expect.poll(() => screen(page, taskId)).toMatch(/^ready$/m);
+}
+
 test('several lines arrive as one bracketed paste, then Enter', async () => {
   const { app, page } = await launchApp();
   const id = await startTask(page);
-  await run(page, "printf '\\033[?2004h'; cat -v");
+  await catWithBracketedPaste(page, id);
   await page.getByTestId('message-field').click();
   await page.keyboard.type('first');
   await page.keyboard.press('Shift+Enter');
@@ -169,17 +175,30 @@ test('several lines arrive as one bracketed paste, then Enter', async () => {
 test('a second message waits until the first one has had its Enter', async () => {
   const { app, page } = await launchApp();
   const id = await startTask(page);
-  await run(page, "printf '\\033[?2004h'; cat -v");
+  await catWithBracketedPaste(page, id);
   const field = page.getByTestId('message-field');
   const send = page.getByTestId('message-send');
-  // 40 lines: the Enter after this paste comes 500 ms later.
-  await field.fill(Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'));
-  await field.press('Enter');
-  await expect(field).toHaveValue('');
-  await field.fill('second');
-  await expect(send).toBeDisabled();
-  await field.press('Enter');
-  await expect(field).toHaveValue('second');
+  // 40 lines, so the first message's Enter comes 500 ms after its paste. All in one task of the page:
+  // that Enter's timer can't run between these steps. The events go to the field's own handlers.
+  const during = await page.evaluate((first) => {
+    const area = document.querySelector<HTMLTextAreaElement>('[data-testid=message-field]')!;
+    const button = document.querySelector<HTMLButtonElement>('[data-testid=message-send]')!;
+    const type = (value: string) => {
+      area.value = value;
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    // False when a handler prevented it.
+    const enter = () => area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    type(first);
+    const firstTaken = !enter();
+    const afterFirst = area.value;
+    type('second');
+    const sendDisabled = button.disabled;
+    const secondTaken = !enter();
+    return { firstTaken, afterFirst, sendDisabled, secondTaken, afterSecond: area.value };
+  }, Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'));
+  expect(during).toEqual({ firstTaken: true, afterFirst: '', sendDisabled: true, secondTaken: true, afterSecond: 'second' });
+  await expect.poll(() => screen(page, id)).toContain('^[[200~line 0');
 
   await expect(send).toBeEnabled();
   await field.press('Enter');

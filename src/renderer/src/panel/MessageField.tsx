@@ -40,22 +40,23 @@ export default function MessageField(props: { task: TaskView | undefined }) {
     if (!id || !term || blank() || isSending()) return;
     // First: a focus-out from the terminal then reaches the program before the message's focus report.
     field.focus();
-    setSending((all) => new Set(all).add(id));
     const sent = () =>
       setSending((all) => {
         const rest = new Set(all);
         rest.delete(id);
         return rest;
       });
-    sendMessage(term, text(), (submit, ms) =>
+    // Called right after the paste, so a paste that throws leaves the task free to send again.
+    sendMessage(term, text(), (submit, ms) => {
+      setSending((all) => new Set(all).add(id));
       setTimeout(() => {
         try {
           submit();
         } finally {
           sent();
         }
-      }, ms),
-    );
+      }, ms);
+    });
     setText('');
   };
 
