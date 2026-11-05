@@ -53,13 +53,22 @@ test('Ctrl+Tab goes through the sessions that need you, from the terminal too', 
 test('with nothing waiting, Ctrl+Tab changes nothing and still stays out of the terminal, while a plain Tab reaches it', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Alpha');
+  const b = await startTask(page, 'Beta');
   await expect(cardIn(page, 'working', a)).toHaveCount(1);
+  await expect(cardIn(page, 'working', b)).toHaveCount(1);
+  // Beta is selected after its start: select Alpha, so a jump that did something would show.
+  await card(page, a).click();
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
   await page.keyboard.type('ech');
   await expect.poll(() => screen(page, a)).toMatch(/\$ ech *$/m);
 
+  // Checked after each, since two jumps through a queue of two would end where they began.
   await page.keyboard.press('Control+Tab');
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
+  await expect(card(page, b)).toHaveAttribute('data-selected', 'false');
   await page.getByTestId('jump-next').click();
   await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
+  await expect(card(page, b)).toHaveAttribute('data-selected', 'false');
   await page.keyboard.press('Enter');
   await expect.poll(() => screen(page, a)).toContain('ech: command not found');
 
@@ -96,6 +105,30 @@ test('with one session waiting and its message field focused, Ctrl+Tab puts the 
   await expect(page.getByTestId('message-field')).toBeFocused();
   expect(await terminalHasFocus(page)).toBe(false);
 
+  await page.keyboard.press('Control+Tab');
+  await expectJumpedTo(page, a);
+  await app.close();
+});
+
+test('behind the open New task dialog, Ctrl+Tab changes nothing and the dialog keeps the focus', async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page, 'Alpha');
+  await blocked(page);
+  await expect(cardIn(page, 'needs-you', a)).toHaveCount(1);
+  const b = await startTask(page, 'Beta');
+  await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
+
+  await page.getByTestId('new-task').click();
+  await expect(page.getByTestId('new-task-title')).toBeFocused();
+  await page.keyboard.press('Control+Tab');
+  await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
+  await expect(page.locator('dialog[open]')).toHaveCount(1);
+  expect(await page.evaluate(() => document.activeElement?.closest('dialog') != null)).toBe(true);
+
+  // The key waits only while the dialog is open.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
   await page.keyboard.press('Control+Tab');
   await expectJumpedTo(page, a);
   await app.close();

@@ -7,7 +7,15 @@ import StatusGlyph from './board/StatusGlyph';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import SessionPanel from './panel/SessionPanel';
 import SidePanel from './panel/SidePanel';
-import { jumpToNeedsYou, loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
+import {
+  focusTerminalOf,
+  jumpToNeedsYou,
+  loadTasks,
+  sessionOf,
+  setPanelOpen,
+  tasksStore,
+  terminalOf,
+} from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
@@ -83,8 +91,7 @@ export default function App() {
   const closeDialog = () => {
     setDialogOpen(false);
     // The dialog hands the focus back to where it was; the selected task's terminal is where typing goes.
-    const id = tasksStore.selectedId && terminalOf(tasksStore.selectedId);
-    if (id) getTerminal(id)?.focus();
+    if (tasksStore.selectedId) focusTerminalOf(tasksStore.selectedId);
   };
 
   return (

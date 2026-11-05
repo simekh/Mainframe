@@ -92,18 +92,23 @@ export function terminalOf(taskId: string): string | null {
   return store.terminals.find((t) => t.taskId === taskId)?.sessionId ?? null;
 }
 
+/** Puts the cursor in the task's terminal; nothing happens when the task has none in this run. */
+export function focusTerminalOf(taskId: string): void {
+  const sessionId = terminalOf(taskId);
+  if (sessionId) getTerminal(sessionId)?.focus();
+}
+
 /**
  * Selects the task `step` places from the selected one in the Needs you lane, in board order, and
- * puts the cursor in its terminal. Nothing happens while nothing needs the owner.
+ * puts the cursor in its terminal. Nothing happens while nothing needs the owner, or while a modal
+ * dialog is open: it blocks what lies behind it.
  */
 export function jumpToNeedsYou(step: 1 | -1): void {
+  if (document.querySelector('dialog:modal')) return;
   const queue = laneOrder(store.tasks, store.sessions)['needs-you'].map((t) => t.id);
   const id = nextNeedsYou(queue, store.selectedId, step);
   if (id === null) return;
   select(id);
   // Once Solid has put the panel and the terminal on show: a hidden element can't take the focus.
-  queueMicrotask(() => {
-    const sessionId = terminalOf(id);
-    if (sessionId) getTerminal(sessionId)?.focus();
-  });
+  queueMicrotask(() => focusTerminalOf(id));
 }
