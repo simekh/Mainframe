@@ -75,6 +75,7 @@ export interface SessionListener {
 interface Session {
   proc: PtyLike;
   batcher: OutputBatcher;
+  records: ProgramStatusRecords;
 }
 
 /** Owns the PTYs of running sessions: output batching, OSC 7501 answering and status. */
@@ -112,7 +113,7 @@ export class SessionHost {
     );
     const records = new ProgramStatusRecords();
     const batcher = createOutputBatcher({ intervalMs: this.opts.outputBatchMs, send: (d) => listener.onData(d) });
-    this.sessions.set(id, { proc, batcher });
+    this.sessions.set(id, { proc, batcher, records });
 
     proc.onData((chunk) => {
       for (const event of scanner.feed(chunk)) {
@@ -132,8 +133,10 @@ export class SessionHost {
       batcher.flush();
       batcher.dispose();
       records.onProcessExit();
-      listener.onStatus(records.current());
+      // The exit first, so the task has closed before its working state goes: the other way round,
+      // a running session with no state shows as starting for a moment.
       listener.onExit({ exitCode, signal: signal ?? null });
+      listener.onStatus(records.current());
       this.sessions.delete(id);
     });
   }
@@ -165,5 +168,10 @@ export class SessionHost {
 
   has(id: string): boolean {
     return this.sessions.has(id);
+  }
+
+  /** What the running session last reported; null before its first report and once it has ended. */
+  status(id: string): ProgramStatus | null {
+    return this.sessions.get(id)?.records.current() ?? null;
   }
 }

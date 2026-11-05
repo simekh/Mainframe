@@ -87,16 +87,28 @@ it('reports status from OSC 7501 reports', () => {
   expect(log).toContain('status:working');
 });
 
-it('on exit sends remaining output, drops working status, reports the exit and forgets the session', () => {
+// The exit first: a status of none for a session the renderer still shows as running reads as
+// "Starting…", and moves a card that needed the owner to Working on its way to Closed.
+it('on exit sends remaining output, reports the exit, then drops working status and forgets the session', () => {
   const { host, ptys, log, listener } = setup();
   host.spawn('s1', spec, listener);
   ptys[0].emit('\x1b]7501;state=working\x07');
   log.length = 0;
   ptys[0].exit(0);
-  expect(log).toEqual(['status:none', 'exit:0']);
+  expect(log).toEqual(['exit:0', 'status:none']);
   expect(host.has('s1')).toBe(false);
+  expect(host.status('s1')).toBeNull();
   host.write('s1', 'x');
-  expect(log).toEqual(['status:none', 'exit:0']);
+  expect(log).toEqual(['exit:0', 'status:none']);
+});
+
+it("status gives a running session's current status, for a window that attaches again", () => {
+  const { host, ptys, listener } = setup();
+  host.spawn('s1', spec, listener);
+  expect(host.status('s1')).toBeNull();
+  ptys[0].emit('\x1b]7501;state=blocked:kind=question\x07');
+  expect(host.status('s1')).toMatchObject({ state: 'blocked', kind: 'question' });
+  expect(host.status('nope')).toBeNull();
 });
 
 it('refuses a second session with the same id', () => {

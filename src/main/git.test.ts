@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -88,6 +88,15 @@ it('changedFiles gives binary files no line counts', async () => {
   git(main, 'worktree', 'add', '-b', 'worktree-x', worktree, 'origin/stage');
   commitFile(worktree, 'b.bin', Buffer.from([0x62, 0x00, 0x01, 0xff]));
   expect(await changedFiles(worktree)).toEqual([{ path: 'b.bin', status: 'A', added: null, removed: null }]);
+});
+
+it("changedFiles is null for a plain folder where the task's worktree goes, inside the main checkout", async () => {
+  const { main } = repo();
+  const folder = join(main, '.claude', 'worktrees', 'x');
+  mkdirSync(folder, { recursive: true });
+  // A change in the main checkout, which must not be read as the task's.
+  writeFileSync(join(main, 'README.md'), 'bye\n');
+  expect(await changedFiles(folder)).toBeNull();
 });
 
 it('changedFiles is null for a folder that is not a work tree', async () => {

@@ -3,7 +3,9 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, cardIn, firstSpawn, fitSize, git, ids, launches, repo, run, screen, startTask, termSize } from './tasks';
+import {
+  card, cardIn, firstSpawn, fitSize, git, ids, launches, repo, run, screen, sendLine, startTask, termSize,
+} from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -142,6 +144,41 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   await app.close();
 });
 
+test('Reopen of a task whose claude never started begins its conversation, and the next Reopen resumes it', async () => {
+  const main = repo();
+  const first = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_CLAUDE_BIN: '/nonexistent/claude' });
+  await first.page.getByTestId('new-task').click();
+  await first.page.getByTestId('new-task-title').fill('Fix login');
+  await first.page.getByTestId('new-task-no-questions').check();
+  await first.page.getByTestId('new-task-start').click();
+  await expect(first.page.getByTestId('task-card')).toHaveCount(1);
+  const [id] = await ids(first.page);
+  await expect(cardIn(first.page, 'closed', id)).toHaveCount(1);
+  await first.app.close();
+  const before = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks[0].claudeSessionId;
+
+  const { app, page, dataDir } = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: first.dataDir });
+  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  // On the content: fake-claude creates its file before it writes the arguments.
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('No questions on this task');
+  const [started, ...rest] = launches(dataDir);
+  expect(rest).toEqual([]);
+  expect(started.args.slice(0, 5)).toEqual(['-w', 'fix-login', '-n', 'main-fix-login', '--session-id']);
+  expect(started.args[5]).toMatch(UUID);
+  expect(started.args[5]).not.toBe(before);
+  expect(started.args.slice(6, 8)).toEqual(['--settings', settingsFile(dataDir, id)]);
+  expect(started.args[8].startsWith('This task is your brief')).toBe(true);
+  await expect.poll(() => screen(page, id)).toContain('$');
+
+  // That launch began the conversation, so the next Reopen continues it.
+  await page.getByTestId('close-session').click();
+  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  await expect
+    .poll(() => launches(dataDir)[1]?.args)
+    .toEqual(['--resume', started.args[5], '--settings', settingsFile(dataDir, id)]);
+  await app.close();
+});
+
 test('a start that fails shows why and keeps the dialog open', async () => {
   const dataDir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'thesource-e2e-')));
   // A file where the tasks folder goes: main can't make the new task's folder.
@@ -157,15 +194,18 @@ test('a start that fails shows why and keeps the dialog open', async () => {
   await app.close();
 });
 
-test('reloading the window keeps running tasks running', async () => {
+test('reloading the window keeps running tasks running, in the state they last reported', async () => {
   const { app, page, dataDir } = await launchApp();
   const id = await startTask(page);
+  await sendLine(page, id, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
+  await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
   await page.reload();
   await page.waitForFunction(() => window.__thesourceE2E !== undefined);
+  await expect(cardIn(page, 'needs-you', id).getByTestId('task-ask')).toHaveText('Needs input');
+  await expect(card(page, id).getByTestId('task-activity')).toHaveText('Asking you a question');
   await card(page, id).click();
   await run(page, 'echo still-$((2+2))');
   await expect.poll(() => screen(page, id)).toContain('still-4');
-  await expect(card(page, id)).toHaveAttribute('data-lane', 'working');
   expect(launches(dataDir)).toHaveLength(1);
   await app.close();
 });

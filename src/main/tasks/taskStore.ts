@@ -1,4 +1,5 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export interface TaskRecord {
   id: string;
@@ -15,6 +16,23 @@ export interface TaskRecord {
   closedAt: number | null;
   /** Whether the task should be running: set by start and reopen, cleared by close and by an exit. */
   open: boolean;
+  /** Whether the opening prompt waives questions. Records kept before it was saved lack it: false. */
+  noQuestions?: boolean;
+}
+
+/** The version of `state.json` this build writes and reads. */
+const VERSION = 1;
+
+/** A `state.json` from a newer TheSource: neither read nor touched, so that build still has it whole. */
+export class NewerStateError extends Error {
+  constructor(file: string, version: number) {
+    super(
+      `The data folder ${dirname(file)} was written by a newer TheSource (its state.json is version ${version}; ` +
+        `this one reads version ${VERSION}). It is left as it is. Open it with the newer TheSource, or set ` +
+        'THESOURCE_DATA_DIR to another folder.',
+    );
+    this.name = 'NewerStateError';
+  }
 }
 
 const STRING_FIELDS = [
@@ -28,16 +46,18 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     STRING_FIELDS.every((field) => typeof t[field] === 'string') &&
     typeof t.createdAt === 'number' &&
     (t.closedAt === null || typeof t.closedAt === 'number') &&
-    typeof t.open === 'boolean'
+    typeof t.open === 'boolean' &&
+    (t.noQuestions === undefined || typeof t.noQuestions === 'boolean')
   );
 }
 
 export function saveTasks(file: string, tasks: TaskRecord[]): void {
   const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ version: 1, tasks }, null, 2));
+  writeFileSync(tmp, JSON.stringify({ version: VERSION, tasks }, null, 2));
   renameSync(tmp, file);
 }
 
+/** Throws `NewerStateError` for a file a newer TheSource wrote; sets any other bad file aside. */
 export function loadTasks(file: string, now: number, warn: (msg: string) => void): TaskRecord[] {
   let text: string;
   try {
@@ -55,8 +75,9 @@ export function loadTasks(file: string, now: number, warn: (msg: string) => void
   }
 
   const { version, tasks } = (parsed ?? {}) as { version?: unknown; tasks?: unknown };
-  if (version !== 1 || !Array.isArray(tasks) || !tasks.every(isTaskRecord)) {
-    return keepAside(file, now, warn, 'does not hold version 1 task records');
+  if (typeof version === 'number' && version > VERSION) throw new NewerStateError(file, version);
+  if (version !== VERSION || !Array.isArray(tasks) || !tasks.every(isTaskRecord)) {
+    return keepAside(file, now, warn, `does not hold version ${VERSION} task records`);
   }
   return tasks;
 }

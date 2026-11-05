@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { cardIn, run, sendLine, startTask } from './tasks';
+import { cardIn, run, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -43,6 +43,67 @@ test('a card that changes lanes flies there once, and nothing flies with reduced
   await run(page, "printf '\\033]7501;state=working\\033\\\\'");
   await expect(cardIn(page, 'working', id)).toHaveCount(1);
   expect(await flies()).toBe(1);
+  await app.close();
+});
+
+type Watched = Window & { __cardSpots?: string[] };
+
+/**
+ * Records, from now on and in order, each `lane glyph` the task's card shows: a lane when a card
+ * for it is added to one, a glyph each time its glyph changes. Repeats are left out.
+ */
+async function watchCard(page: Page, taskId: string): Promise<() => Promise<string[]>> {
+  await page.evaluate((id) => {
+    const selector = `[data-testid=task-card][data-task-id="${id}"]`;
+    const spots: string[] = [];
+    (window as Watched).__cardSpots = spots;
+    const note = (card: Element, glyph: string | null | undefined) => {
+      const spot = `${card.getAttribute('data-lane')} ${glyph}`;
+      if (spots.at(-1) !== spot) spots.push(spot);
+    };
+    const glyphOf = (card: Element) => card.querySelector('[data-testid=task-glyph]')?.getAttribute('data-glyph');
+    note(document.querySelector(selector)!, glyphOf(document.querySelector(selector)!));
+    new MutationObserver((records) => {
+      records.forEach((record, i) => {
+        if (record.type === 'childList') {
+          for (const node of record.addedNodes) {
+            if (node instanceof Element && node.matches(selector)) note(node, glyphOf(node));
+          }
+          return;
+        }
+        const card = (record.target as Element).closest(selector);
+        if (!card) return;
+        // The value it changed to: the old value of its next change in this batch, or what it holds now.
+        const next = records.slice(i + 1).find((r) => r.type === 'attributes' && r.target === record.target);
+        note(card, next ? next.oldValue : (record.target as Element).getAttribute('data-glyph'));
+      });
+    }).observe(document.querySelector('.lanes')!, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-glyph'],
+      attributeOldValue: true,
+    });
+  }, taskId);
+  return () => page.evaluate(() => (window as Watched).__cardSpots ?? []);
+}
+
+test('a session that is closed goes straight to Closed, from Working and from Needs you', async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page, 'Alpha');
+  await sendLine(page, a, "printf '\\033]7501;state=working\\033\\\\'");
+  await expect(cardIn(page, 'working', a).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
+  const b = await startTask(page, 'Beta');
+  await sendLine(page, b, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
+  await expect(cardIn(page, 'needs-you', b)).toHaveCount(1);
+
+  for (const [id, from] of [[a, 'working spin'], [b, 'needs-you ask']]) {
+    const spots = await watchCard(page, id);
+    await page.evaluate((taskId) => window.thesource.closeTask(taskId), id);
+    await expect(cardIn(page, 'closed', id)).toHaveCount(1);
+    await expect.poll(() => screen(page, id)).toContain('[Process exited]');
+    expect(await spots()).toEqual([from, 'closed dot']);
+  }
   await app.close();
 });
 

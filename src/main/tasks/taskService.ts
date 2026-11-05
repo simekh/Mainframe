@@ -62,7 +62,10 @@ export class TaskService {
 
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
-    const taken = new Set([...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()]);
+    // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.
+    const taken = new Set(
+      [...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
+    );
     const slug = uniqueSlug(slugify(title), taken);
 
     const task: TaskRecord = {
@@ -78,22 +81,10 @@ export class TaskService {
       createdAt: this.now(),
       closedAt: null,
       open: true,
+      noQuestions: req.noQuestions,
     };
 
-    const taskDir = this.taskDir(task.id);
-    mkdirSync(taskDir, { recursive: true });
-    writeFileSync(join(taskDir, SETTINGS_FILE), hookSettings(taskDir));
-
-    const prompt = openingPrompt({ title, description: req.description, branch: task.branch, noQuestions: req.noQuestions });
-    const argv = startArgv({
-      claudeBin: this.deps.claudeBin,
-      slug,
-      name: task.name,
-      claudeSessionId: task.claudeSessionId,
-      settingsPath: join(taskDir, SETTINGS_FILE),
-      prompt,
-    });
-
+    const argv = this.startArgvOf(task, this.writeHookSettings(task.id));
     this.records.push(task);
     this.addSession({ taskId: task.id, argv, startedWithPrompt: true });
     this.commit();
@@ -107,17 +98,27 @@ export class TaskService {
     // Another reopen may have finished while git answered.
     if (this.sessionOf(task.id)) return this.view(task);
 
-    this.takeSessionStart(task);
-    const argv = reopenArgv({
-      claudeBin: this.deps.claudeBin,
-      slug: task.slug,
-      claudeSessionId: task.claudeSessionId,
-      settingsPath: join(this.taskDir(task.id), SETTINGS_FILE),
-      branchExists,
-    });
+    const settingsPath = this.writeHookSettings(task.id);
+    const recorded = this.recordedSession(task.id);
+    let argv: string[];
+    if (recorded) {
+      task.claudeSessionId = recorded;
+      argv = reopenArgv({
+        claudeBin: this.deps.claudeBin,
+        slug: task.slug,
+        claudeSessionId: task.claudeSessionId,
+        settingsPath,
+        branchExists,
+      });
+    } else {
+      // SessionStart never fired: claude was missing, or quit before the conversation began, so
+      // there is none to resume. This starts it as the first launch would have.
+      task.claudeSessionId = this.newId();
+      argv = this.startArgvOf(task, settingsPath);
+    }
     task.open = true;
     task.closedAt = null;
-    this.addSession({ taskId: task.id, argv, startedWithPrompt: false });
+    this.addSession({ taskId: task.id, argv, startedWithPrompt: !recorded });
     this.commit();
     return this.view(task);
   }
@@ -159,7 +160,7 @@ export class TaskService {
     this.sessions.delete(sessionId);
     const task = this.records.find((t) => t.id === session.taskId)!;
 
-    this.takeSessionStart(task);
+    task.claudeSessionId = this.recordedSession(task.id) ?? task.claudeSessionId;
     // While quitting, the SIGHUPs end sessions that should run again at the next start.
     if (!(this.quitting && task.open)) {
       task.open = false;
@@ -208,15 +209,42 @@ export class TaskService {
     }
   }
 
-  /** The conversation SessionStart last recorded for the task, which `/clear` and compaction change. */
-  private takeSessionStart(task: TaskRecord): void {
-    let text: string | null;
+  /** Writes the task's SessionStart hook into its folder, making the folder if it has gone; returns its path. */
+  private writeHookSettings(taskId: string): string {
+    const taskDir = this.taskDir(taskId);
+    mkdirSync(taskDir, { recursive: true });
+    const settingsPath = join(taskDir, SETTINGS_FILE);
+    writeFileSync(settingsPath, hookSettings(taskDir));
+    return settingsPath;
+  }
+
+  /** The launch that begins the task's conversation, under its `claudeSessionId`. */
+  private startArgvOf(task: TaskRecord, settingsPath: string): string[] {
+    return startArgv({
+      claudeBin: this.deps.claudeBin,
+      slug: task.slug,
+      name: task.name,
+      claudeSessionId: task.claudeSessionId,
+      settingsPath,
+      prompt: openingPrompt({
+        title: task.title,
+        description: task.description,
+        branch: task.branch,
+        noQuestions: task.noQuestions ?? false,
+      }),
+    });
+  }
+
+  /**
+   * The conversation SessionStart last recorded for the task, which `/clear` and compaction change;
+   * null while it has never fired.
+   */
+  private recordedSession(taskId: string): string | null {
     try {
-      text = readFileSync(join(this.taskDir(task.id), SESSION_START_FILE), 'utf8');
+      return readSessionStart(readFileSync(join(this.taskDir(taskId), SESSION_START_FILE), 'utf8'));
     } catch {
-      text = null;
+      return null;
     }
-    task.claudeSessionId = readSessionStart(text) ?? task.claudeSessionId;
   }
 
   private view(task: TaskRecord): TaskView {

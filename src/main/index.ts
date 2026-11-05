@@ -68,6 +68,7 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+/** Throws when TheSource can't start; nothing that can throw comes after the window opens. */
 function start(config: AppConfig): void {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'thesource-paste');
@@ -81,8 +82,9 @@ function start(config: AppConfig): void {
     files: localFiles,
     log: config.logOsc ? console.log : undefined,
   });
-  const win = createWindow();
-  Menu.setApplicationMenu(buildMenu());
+  // Before the window: a state.json it can't use stops the start here, with no window left
+  // waiting for handlers that never come.
+  let win: BrowserWindow | undefined;
   const service = new TaskService({
     projectDir: config.projectDir,
     dataDir: config.dataDir,
@@ -91,13 +93,22 @@ function start(config: AppConfig): void {
     kill: (sessionId) => host.kill(sessionId),
     // Exits keep arriving while the app quits, after the window has gone.
     onChange: (tasks) => {
-      if (!win.isDestroyed()) win.webContents.send(IPC.tasksChanged, tasks);
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.tasksChanged, tasks);
     },
   });
-  registerIpc(win, service, host, config, {
+  const shown = createWindow();
+  win = shown;
+  Menu.setApplicationMenu(buildMenu());
+  registerIpc(shown, service, host, config, {
     clipboard,
     writeFile,
     newImagePath: () => join(pasteDir, `${randomUUID()}.png`),
+  });
+  // TheSource was opened again on this data folder: that one has quit, and this one comes forward.
+  app.on('second-instance', () => {
+    if (shown.isDestroyed()) return;
+    if (shown.isMinimized()) shown.restore();
+    shown.focus();
   });
   // A list asked for before this finishes gets the tasks as they are; the changes follow.
   service.restore().catch((err: unknown) => console.error('[tasks] could not restore the tasks', err));
@@ -110,13 +121,21 @@ function start(config: AppConfig): void {
 
 const config = readConfig();
 
-app.on('window-all-closed', () => app.quit());
+// One TheSource per data folder: a second one would run every open task's session again, and two
+// would write one state.json. Electron keeps the lock in userData, which readConfig has just set.
+if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
+  // The one that holds it has been told, and shows its window.
+  app.quit();
+} else {
+  app.on('window-all-closed', () => app.quit());
 
-void app.whenReady().then(() => {
-  if (config instanceof Error) {
-    dialog.showErrorBox('TheSource', config.message);
-    app.quit();
-    return;
-  }
-  start(config);
-});
+  void app.whenReady().then(() => {
+    try {
+      if (config instanceof Error) throw config;
+      start(config);
+    } catch (err) {
+      dialog.showErrorBox('TheSource could not start', err instanceof Error ? err.message : String(err));
+      app.quit();
+    }
+  });
+}

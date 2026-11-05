@@ -56,10 +56,11 @@ export function registerIpc(
     const { sessionId, cols, rows } = req;
     // A reloaded window mounts the terminals of sessions that still run. Their PTY already sends
     // to this window; it takes the new terminal's size, and is resumed in case the old one had
-    // paused it.
+    // paused it. The new page knows nothing of their state yet: it gets the last one again.
     if (host.has(sessionId)) {
       host.resize(sessionId, cols, rows);
       host.resume(sessionId);
+      send(IPC.status, { sessionId, status: host.status(sessionId) });
       return;
     }
     try {

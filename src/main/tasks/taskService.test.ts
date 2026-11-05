@@ -52,8 +52,13 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
   const stateFile = join(dataDir, 'state.json');
   const readState = (): TaskRecord[] => JSON.parse(readFileSync(stateFile, 'utf8')).tasks;
   const taskDir = (taskId: string) => join(dataDir, 'tasks', taskId);
+  /** What the SessionStart hook leaves once claude has begun the task's conversation. */
+  const sessionStarted = (taskId: string, claudeSessionId: string) =>
+    writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
 
-  return { projectDir, dataDir, stateFile, make, service: make(), killed, changes, warnings, readState, taskDir };
+  return {
+    projectDir, dataDir, stateFile, make, service: make(), killed, changes, warnings, readState, taskDir, sessionStarted,
+  };
 }
 
 const NEW_TASK = { title: 'Fix login', description: 'Users get logged out', noQuestions: false };
@@ -80,6 +85,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
     name: 'damela-fix-login',
     worktreePath: view.worktreePath,
     branch: 'worktree-fix-login',
+    noQuestions: false,
     open: true,
     closedAt: null,
   });
@@ -103,9 +109,10 @@ it('start records the task, writes its hooks file and launches claude -w with th
 });
 
 it('start trims the title and passes noQuestions on to the opening prompt', async () => {
-  const { service } = setup();
+  const { service, readState } = setup();
   const view = await service.start({ title: '  Fix login  ', description: '', noQuestions: true });
   expect(view.title).toBe('Fix login');
+  expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
   expect(prompt).toBe(openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
 });
@@ -115,6 +122,15 @@ it('start picks a slug that no task, worktree branch or worktree folder has take
   expect((await service.start(NEW_TASK)).slug).toBe('fix-login');
   mkdirSync(join(projectDir, '.claude', 'worktrees', 'fix-login-3'), { recursive: true });
   expect((await service.start(NEW_TASK)).slug).toBe('fix-login-4');
+});
+
+it('start counts a leftover branch or folder that differs only in case as taken', async () => {
+  const branch = setup({ worktreeBranchNames: async () => ['Fix-Login'] });
+  expect((await branch.service.start(NEW_TASK)).slug).toBe('fix-login-2');
+
+  const folder = setup();
+  mkdirSync(join(folder.projectDir, '.claude', 'worktrees', 'Fix-Login'), { recursive: true });
+  expect((await folder.service.start(NEW_TASK)).slug).toBe('fix-login-2');
 });
 
 it('two starts at once get different slugs', async () => {
@@ -131,8 +147,9 @@ it('start refuses an empty title', async () => {
 });
 
 it('close kills the session; its exit then closes the task', async () => {
-  const { service, killed, readState } = setup();
+  const { service, killed, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
   const sessionId = view.session!.id;
 
   service.close(view.id);
@@ -178,8 +195,9 @@ it('a session that exits by itself closes its task', async () => {
 });
 
 it('exits during a quit leave tasks open, and restore reopens them', async () => {
-  const { service, make, projectDir, readState, taskDir } = setup();
+  const { service, make, projectDir, readState, taskDir, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
 
   service.beginQuit();
   service.onSessionExit(view.session!.id);
@@ -226,7 +244,12 @@ it("restore leaves closed tasks closed and other projects' tasks alone", async (
 });
 
 it('restore skips a task it cannot reopen, closes it, and reopens the rest', async () => {
-  const { projectDir, stateFile, make, warnings, readState } = setup();
+  const { projectDir, stateFile, make, warnings, readState, taskDir, sessionStarted } = setup({
+    branchExists: async (_dir, branch) => {
+      if (branch === 'worktree-broken') throw new Error('git broke');
+      return false;
+    },
+  });
   const record = (id: string, claudeSessionId: string): TaskRecord => ({
     id,
     projectDir,
@@ -241,8 +264,15 @@ it('restore skips a task it cannot reopen, closes it, and reopens the rest', asy
     closedAt: null,
     open: true,
   });
-  const seeded = [record('broken', 'not-a-uuid'), record('fine', '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10')];
+  const seeded = [
+    record('broken', '5d1f2c3a-8e4b-4c6d-9f0a-1b2c3d4e5f60'),
+    record('fine', '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10'),
+  ];
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: seeded }));
+  for (const task of seeded) {
+    mkdirSync(taskDir(task.id), { recursive: true });
+    sessionStarted(task.id, task.claudeSessionId);
+  }
 
   const service = make();
   await service.restore();
@@ -257,9 +287,10 @@ it('restore skips a task it cannot reopen, closes it, and reopens the rest', asy
 
 it('reopen resumes in the worktree while its branch exists, and in the main checkout once it is gone', async () => {
   let branchExists = true;
-  const { service, readState, taskDir } = setup({ branchExists: async () => branchExists });
+  const { service, readState, taskDir, sessionStarted } = setup({ branchExists: async () => branchExists });
   const view = await service.start(NEW_TASK);
   const { claudeSessionId } = readState()[0];
+  sessionStarted(view.id, claudeSessionId);
   const settingsPath = join(taskDir(view.id), 'settings.json');
 
   service.onSessionExit(view.session!.id);
@@ -318,6 +349,66 @@ it('reopen reads the id SessionStart recorded after the exit, too', async () => 
   const reopened = await service.reopen(view.id);
   expect(service.launchSpec(reopened.session!.id).argv).toContain(U2);
   expect(readState()[0].claudeSessionId).toBe(U2);
+});
+
+it('reopen of a task whose first launch never began a conversation starts one, with a fresh id and the same prompt', async () => {
+  const { service, readState, taskDir } = setup();
+  const view = await service.start({ ...NEW_TASK, noQuestions: true });
+  const first = readState()[0].claudeSessionId;
+  // claude was missing or quit at once: SessionStart never fired.
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(reopened).toMatchObject({ closedAt: null, session: { startedWithPrompt: true } });
+  const [record] = readState();
+  expect(record).toMatchObject({ open: true, closedAt: null });
+  expect(record.claudeSessionId).not.toBe(first);
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual(
+    startArgv({
+      claudeBin: 'claude',
+      slug: 'fix-login',
+      name: 'damela-fix-login',
+      claudeSessionId: record.claudeSessionId,
+      settingsPath: join(taskDir(view.id), 'settings.json'),
+      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+    }),
+  );
+});
+
+it('a task kept before its noQuestions was recorded reopens with the prompt that asks questions', async () => {
+  const { projectDir, stateFile, make, readState } = setup();
+  const old: TaskRecord = {
+    id: 'old',
+    projectDir,
+    title: 'Fix login',
+    description: '',
+    slug: 'fix-login',
+    name: 'damela-fix-login',
+    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
+    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
+    branch: 'worktree-fix-login',
+    createdAt: 5,
+    closedAt: 6,
+    open: false,
+  };
+  writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
+
+  const service = make();
+  const reopened = await service.reopen('old');
+  expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
+    openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
+  );
+  expect(readState()[0]).not.toHaveProperty('noQuestions');
+});
+
+it('reopen writes the hooks file again, and its folder, if they have gone', async () => {
+  const { service, taskDir } = setup();
+  const view = await service.start(NEW_TASK);
+  service.onSessionExit(view.session!.id);
+  rmSync(taskDir(view.id), { recursive: true });
+
+  await service.reopen(view.id);
+  expect(readFileSync(join(taskDir(view.id), 'settings.json'), 'utf8')).toBe(hookSettings(taskDir(view.id)));
 });
 
 it('reopen of a running task changes nothing', async () => {

@@ -1,5 +1,6 @@
 // Adapted from Parallel Code (MIT): electron/ipc/git.ts (getChangedFiles) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { execFile } from 'node:child_process';
+import { realpath } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { ChangedFile, StartCheck } from '../shared/types';
 
@@ -58,9 +59,12 @@ export async function worktreeBranchNames(projectDir: string): Promise<string[]>
 // which takes index.lock; a session committing in the same worktree would then fail.
 const NO_INDEX_REFRESH = ['-c', 'diff.autoRefreshIndex=false'];
 
+/** Null when the path is not a work tree's top: a missing folder, or a plain one inside the main checkout. */
 export async function changedFiles(worktreePath: string): Promise<ChangedFile[] | null> {
   try {
-    if ((await git(worktreePath, ['rev-parse', '--is-inside-work-tree'])).trim() !== 'true') return null;
+    // Real paths on both sides: macOS's temp folders sit behind the /var → /private/var link.
+    const top = (await git(worktreePath, ['rev-parse', '--show-toplevel'])).trim();
+    if ((await realpath(top)) !== (await realpath(worktreePath))) return null;
     const base = (await git(worktreePath, ['merge-base', 'HEAD', 'origin/HEAD']).catch(() => 'HEAD')).trim();
     const diff = ['diff', '--no-renames', '-z'];
     const [nameStatus, numstat, untracked] = await Promise.all([
