@@ -76,6 +76,16 @@ test('OSC 7501 status shows on the session row', async () => {
   await app.close();
 });
 
+test('a new status replaces the old one, so a resolved question leaves no kind behind', async () => {
+  const { app, page } = await launchApp();
+  await newSession(page);
+  await run(page, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
+  await expect(page.getByTestId('session-status').first()).toHaveText('blocked · question');
+  await run(page, "printf '\\033]7501;state=done\\033\\\\'");
+  await expect(page.getByTestId('session-status').first()).toHaveText('done');
+  await app.close();
+});
+
 test('a flood in a hidden session arrives in full', async () => {
   const { app, page } = await launchApp();
   const a = await newSession(page);

@@ -1,5 +1,5 @@
 import { batch } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import type { ProgramStatus, SessionInfo } from '../../shared/types';
 
 export type SessionEntry = SessionInfo & { status: ProgramStatus | null; exited: boolean };
@@ -11,8 +11,9 @@ const [store, setStore] = createStore<{ sessions: SessionEntry[]; selectedId: st
 
 export const sessionsStore = store;
 
+// reconcile replaces the status: a plain set would merge it into the old one and keep a stale kind.
 window.thesource.onStatus((e) => {
-  setStore('sessions', (s) => s.id === e.sessionId, 'status', e.status);
+  setStore('sessions', (s) => s.id === e.sessionId, 'status', reconcile(e.status));
 });
 
 export async function newSession(): Promise<void> {
