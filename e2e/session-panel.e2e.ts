@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, git, launches, repo, run, screen, sendLine, startTask } from './tasks';
+import { card, cardIn, fitSize, git, launches, repo, run, screen, sendLine, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -114,6 +114,81 @@ test('changed files lists what the task changed in its worktree', async () => {
   await expect(files).toHaveAttribute('data-count', '0');
   await expect(heading).toBeDisabled();
   await expect(files.locator('.file-list')).toBeHidden();
+  await app.close();
+});
+
+/** Two frames: a layout change has been measured and any fit it caused has run. */
+const settled = (page: Page) =>
+  page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+
+test('switching tasks resizes no terminal off screen, and none whose panel looks as it did', async () => {
+  const main = repo();
+  const { app, page } = await launchApp({ THESOURCE_PROJECT_DIR: main });
+  const files = page.getByTestId('changed-files');
+  const a = await startTask(page, 'Alpha');
+  // Three changed files in Alpha's worktree, as `claude -w alpha` and its edits would leave them.
+  const worktree = join(main, '.claude', 'worktrees', 'alpha');
+  git('-C', main, 'worktree', 'add', '-b', 'worktree-alpha', worktree, 'origin/stage');
+  for (const name of ['a.txt', 'b.txt', 'c.txt']) writeFileSync(join(worktree, name), `${name}\n`);
+  await expect(files).toHaveAttribute('data-count', '3', { timeout: 12_000 });
+  await settled(page);
+  // Its own list grew while it showed, so it fitted the smaller well: that is its shown size.
+  const shown = { [a]: (await termSize(page, a))! };
+
+  const b = await startTask(page, 'Beta');
+  await expect(files).toHaveAttribute('data-count', '0');
+  await settled(page);
+  shown[b] = (await termSize(page, b))!;
+  expect(shown[b].rows).toBeGreaterThan(shown[a].rows);
+  expect(await termSize(page, a)).toEqual(shown[a]);
+
+  for (const [show, hidden, count] of [[a, b, '3'], [b, a, '0'], [a, b, '3'], [b, a, '0']]) {
+    // Off screen long enough to have lost its WebGL renderer, which comes back as it shows.
+    await page.waitForTimeout(1_100);
+    await card(page, show).click();
+    await expect(card(page, show)).toHaveAttribute('data-selected', 'true');
+    await expect(files).toHaveAttribute('data-count', count);
+    await settled(page);
+    expect(await termSize(page, show)).toEqual(shown[show]);
+    expect(await termSize(page, hidden)).toEqual(shown[hidden]);
+  }
+
+  // Alpha's own list collapsing fits it at once. Collapsed, the list takes no room, so both panels
+  // have the same height from here: a switch alone leaves the well as it is.
+  await card(page, a).click();
+  await expect(files).toHaveAttribute('data-count', '3');
+  await files.locator('.pane-heading').click();
+  await expect(files.locator('.file-list')).toBeHidden();
+  await settled(page);
+  expect((await termSize(page, a))!.rows).toBeGreaterThan(shown[a].rows);
+  shown[a] = (await termSize(page, a))!;
+  expect(await termSize(page, b)).toEqual(shown[b]);
+
+  // A wider panel fits the terminal on screen at once, and the other one as soon as it shows,
+  // though the switch doesn't change the well.
+  await card(page, b).click();
+  await expect(files).toHaveAttribute('data-count', '0');
+  await settled(page);
+  expect(await termSize(page, b)).toEqual(shown[b]);
+  await page.getByTestId('panel-resize').focus();
+  await page.keyboard.press('ArrowLeft');
+  await settled(page);
+  expect((await termSize(page, b))!.cols).toBeGreaterThan(shown[b].cols);
+  shown[b] = (await termSize(page, b))!;
+  expect(await termSize(page, a)).toEqual(shown[a]);
+  await card(page, a).click();
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
+  await settled(page);
+  expect((await termSize(page, a))!.cols).toBeGreaterThan(shown[a].cols);
+  shown[a] = (await termSize(page, a))!;
+  expect(await fitSize(page, a)).toEqual(shown[a]);
+  expect(await termSize(page, b)).toEqual(shown[b]);
+
+  // The sessions have the sizes their terminals show, the one off screen too.
+  for (const id of [a, b]) {
+    await sendLine(page, id, 'stty size');
+    await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${shown[id].rows} ${shown[id].cols}$`, 'm'));
+  }
   await app.close();
 });
 

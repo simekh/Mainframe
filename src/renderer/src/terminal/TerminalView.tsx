@@ -57,6 +57,19 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     term.open(container);
     registerTerminal(id, { term, fit });
 
+    // --- Fit ---------------------------------------------------------------------------------
+    // Every terminal sits in the one well, whose height follows the selected task's files and
+    // draft. A terminal off screen keeps the size it last fitted at, so its session isn't resized
+    // on every switch; once on screen again it fits only if its container changed meanwhile.
+    let fitted = { width: 0, height: 0 };
+    const fitToContainer = () => {
+      fitted = { width: container.clientWidth, height: container.clientHeight };
+      fit.fit();
+    };
+    const fitIfResized = () => {
+      if (container.clientWidth !== fitted.width || container.clientHeight !== fitted.height) fitToContainer();
+    };
+
     // --- WebGL only while on screen ----------------------------------------------------------
     let webgl: WebglAddon | undefined;
     let reattachTimer: ReturnType<typeof setTimeout> | undefined;
@@ -87,7 +100,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       }
       // WebGL's cells are whole device pixels, so fewer columns can fit than the DOM renderer
       // measured: fit again, with the renderer the terminal now shows in.
-      fit.fit();
+      fitToContainer();
     };
 
     // No fit: the terminal is off screen by now, and a resize would only signal the session.
@@ -111,7 +124,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     // A terminal on screen from the start fits with WebGL before its session starts, so the session
     // starts at the size it shows. Any other fits with the DOM renderer.
     attachWebgl();
-    if (!webgl) fit.fit();
+    if (!webgl) fitToContainer();
 
     // --- Input -------------------------------------------------------------------------------
     let exited = false;
@@ -172,14 +185,10 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       const wait = Math.max(0, RESIZE_INTERVAL_MS - (performance.now() - lastResizeAt));
       resizeTimer = setTimeout(sendResize, wait);
     });
-    // Re-fits only when the container's size changes: its first report is the size the session
-    // spawns at below. A change of renderer fits in attachWebgl.
-    let fitted = { width: container.clientWidth, height: container.clientHeight };
+    // Re-fits on screen only when the container's size changes: its first report is the size the
+    // session spawns at below. A change of renderer fits in attachWebgl.
     const observer = new ResizeObserver(() => {
-      const size = { width: container.clientWidth, height: container.clientHeight };
-      if (size.width === fitted.width && size.height === fitted.height) return;
-      fitted = size;
-      fit.fit();
+      if (props.selected) fitIfResized();
     });
     observer.observe(container);
 
@@ -258,6 +267,9 @@ export default function TerminalView(props: { sessionId: string; selected: boole
             if (!webgl && reattachTimer === undefined) attachWebgl();
             // A WebGL surface throttled while hidden can come back with a corrupt glyph atlas.
             else if (webgl && wasSelected === false) redrawAllTerminals();
+            // The well as it is now, with this task's own panel laid out: the window or this
+            // task's files may have changed it while the terminal was off screen.
+            fitIfResized();
             term.focus();
           } else if (detachTimer === undefined) {
             detachTimer = setTimeout(() => {
