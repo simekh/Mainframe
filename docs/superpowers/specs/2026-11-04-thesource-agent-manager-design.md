@@ -123,7 +123,7 @@ The owner can also start a session from a plain description instead of a card ("
 
 Sources, in order of trust:
 1. **Hooks** from the app's `--settings` file (copied from Parallel Code, §6.2).
-2. **OSC 7501 status reports** that Claude Code sends to the terminal (working / waiting / done), when the terminal answers its support query. The app's terminal must answer that query and parse the reports (xterm.js `registerOscHandler`).
+2. **OSC 7501 status reports** that Claude Code sends to the terminal (working / waiting / done), when the terminal answers its support query. The app must answer that query and parse the reports. **(Builder's call, 2026-11-04 while planning:** done in the main process on the PTY output, not with xterm.js `registerOscHandler` in the window. The main process sees every session's output whether or not its view is mounted, and it answers before xterm's reply to the `CSI c` that Claude Code sends right after the query; a reply arriving after that one means "unsupported". The board reads status there too.)
 3. Whether the `claude` process is alive.
 
 `claude agents --json` also lists every live session with `status` busy/idle/waiting; useful for debugging and as a cross-check, not required.
@@ -215,6 +215,7 @@ Later: Jira source; notifications and how sessions light up.
 4. **Resume** from the app: which folder `claude --resume <id>` must run in for a `-w` session to find its transcript, including after the worktree has been removed by a merge.
 5. **Cleanup after merge**: Damela's CLAUDE.md has the worker remove its own worktree and branch after the squash merge, but a `-w` session runs inside that worktree. Find out how this behaves (Claude Code prompts about keeping or removing a named session's worktree on exit) and make sure a merged task ends with its worktree and branch gone and its transcript still reopenable from History. Close session never removes anything (§7.7).
 6. **MCP tool calls that wait** (for the merge turn): Claude Code's MCP timeouts, and whether a hook-delivered grant works better.
+7. **Merging from inside a worktree.** Claude Code blocks a worktree session's Bash commands whose working directory is the main checkout, and git commands pointed at it (`git -C`, `--git-dir`, `GIT_DIR`, a `cd` first); part of that check can't be turned off (worktrees doc, "How Claude Code enforces isolation"). The merge in §8 runs in the main checkout. Find out how a `-w` session can do it: for example leave the worktree with `ExitWorktree` (keeping it), merge, then clean up, and whether `ExitWorktree` is offered to a session started with `-w` and not only to one that called `EnterWorktree`. Fallback: as in item 1, launch the worker in the main checkout and let it enter its worktree itself. (Added 2026-11-04 while planning.)
 
 ## 12. Left to the builder
 
