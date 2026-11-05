@@ -66,7 +66,7 @@ In `auto` mode no permission prompt appeared for the file write in `<probe>/repo
 **Observed:**
 
 - `/exit` inside the worktree showed: "Exiting worktree session / This session was named "probe-resume". Keep the worktree to resume it later, or remove it to clean up. / 1. Keep worktree  Stays at <probe>/repo/.claude/worktrees/probe-resume / 2. Remove worktree  Clean up the worktree directory." After Keep it printed "Resume this session with: claude --worktree "probe-resume" --resume <uuid C>".
-- The worktree started at `fbe4c68` (`origin/stage`), not at local `stage` (`3639575`). Both §11.5 forms did the same: new worktrees start from the remote default branch.
+- The worktree started at `fbe4c68` (`origin/stage`), not at local `stage` (`3639575`). The later `-w` worktree in row (d) did the same. So did §11.5 form 2's EnterWorktree: its commit `b7f7c2b` has parent `fbe4c68`, while local `stage` was then at `4aedd91`. (Form 1 shows nothing here, because local `stage` and `origin/stage` were both `fbe4c68` when it started.) New worktrees start from the remote default branch.
 
 | Resume | Conversation | Continues in |
 |---|---|---|
@@ -76,12 +76,24 @@ In `auto` mode no permission prompt appeared for the file write in `<probe>/repo
 | (b′) `claude --resume <uuid C>` from `~/Developer` (trusted) | loaded | `~/Developer` ("which is not a git repository") |
 | (c) after `git worktree remove --force …/probe-resume`, `claude --resume <uuid C>` from `<probe>/repo` | loaded | `<probe>/repo`; no "worktree … no longer exists" notice was visible (the TUI redraws at start). The branch `worktree-probe-resume` survived the forced remove. |
 | (c′) then `claude --worktree probe-resume --resume <uuid C>` | loaded | a re-created worktree on the surviving branch, at `fbe4c68`, locked again |
+| (d) a new session, `claude -w probe-kill -n probe-kill --session-id <uuid D>`, "Say OK.", then TheSource quit with the session running (as Cmd+Q does; no `/exit`). Then `claude --resume <uuid D>` from `<probe>/repo` | loaded | the worktree (`pwd` → `…/.claude/worktrees/probe-kill`). The quit left the worktree and its branch in place, still marked `locked`. `/exit` → Remove in the resumed session then removed both. |
 
 Exiting (c′) with "Remove worktree" printed "Removing worktree… / Worktree removed." and deleted the branch too.
 
-**Answer:** `--resume <id>` finds the conversation from any trusted directory, but the session continues in the directory it was started from; it does not return to its worktree by itself. To continue inside the worktree, resume from the main checkout with `--worktree <name> --resume <id>`, which also re-creates the worktree from its branch if the directory was removed. This matches the worktrees doc: a session that ended inside a worktree "without exiting it" returns there on `--resume`. `/exit` → Keep counts as exiting, and the doc's way back is the printed `claude --worktree <name> --resume` command.
+**Answer:** `--resume <id>` finds the conversation from any trusted directory. Where it continues depends on how the session ended:
 
-**For plan 2:** reopen a session with `claude --worktree <name> --resume <id>` from the main checkout (the form Claude itself prints). Plain `--resume` from the main checkout would put the session in the main checkout, where its edits would land on `stage`. Removing a worktree via `/exit` → Remove also deletes its branch; `git worktree remove` alone leaves the branch.
+- **After `/exit` → Keep:** plain `--resume` continues in the directory it was launched from, not in the worktree. To continue inside the worktree, resume from the main checkout with `--worktree <name> --resume <id>`. That also re-creates the worktree from its branch if the directory was removed.
+- **A session killed inside its worktree** (row d): plain `--resume` from the main checkout goes back to the worktree.
+
+This matches the worktrees doc: "When you resume a session that ended inside a worktree without exiting it, Claude Code returns the session to that worktree." `/exit` → Keep counts as exiting.
+
+**For plan 2:**
+
+- **Reopen from the main checkout** with `claude --worktree <name> --resume <id>`, the form Claude itself prints after Keep.
+- **After an app quit,** plain `claude --resume <id>` also returns to the worktree (row d). `--worktree <name> --resume <id>` after a quit wasn't tried.
+- **Plain `--resume` after `/exit` → Keep** would put the session in the main checkout, where its edits would land on `stage`.
+- **Branches:** removing a worktree with `/exit` → Remove also deletes its branch. `git worktree remove` alone leaves the branch.
+- **Locks:** a quit leaves the worktree locked. Claude Code's own resume and removal handled the lock.
 
 ## §11.5 and §11.7 Can a `-w` session merge into the main checkout, and what happens to its worktree and transcript?
 
@@ -114,7 +126,7 @@ Afterwards: `git log --oneline -3` → `3639575 probe enter squash`, `4aedd91 pr
 
 ### Answer
 
-Yes, in both forms, but not from inside the worktree. While a session is in a worktree, the harness refuses any git command that points at the main checkout (`git -C <main>`), with the message quoted above. After `ExitWorktree` with `keep`, the same session runs in the main checkout and can squash-merge the worktree branch, commit, remove the worktree and delete the branch. The transcript survives all of it and resumes from the main checkout. The two forms behave the same; the only differences are the resume hint (form 2 names `--worktree "probe-enter"`, which no longer exists) and that `-w` creates the worktree before the first prompt.
+Yes, in both forms, but not from inside the worktree. While a session is in a worktree, the harness refuses any git command that points at the main checkout (`git -C <main>`), with the message quoted above. After `ExitWorktree` with `keep`, the same session runs in the main checkout and can squash-merge the worktree branch, commit, remove the worktree and delete the branch. The transcript survives all of it and resumes from the main checkout. The two forms behaved the same in every step that was recorded. Form 2's `/exit` printed a resume hint naming `--worktree "probe-enter"`, a worktree that no longer exists. Form 1's `/exit` text wasn't recorded, so it may do the same. `-w` also creates the worktree before the first prompt.
 
 **For plan 2:** the merge turn is: ExitWorktree keep → merge in the main checkout → remove worktree and branch, all in the same session. `/exit` asks keep or remove only while the session is still in its worktree. Resume from the main checkout. Either launch form works; `-w` needs no first instruction.
 
@@ -164,7 +176,7 @@ Times are UTC, from the app's OSC log.
 
 - **Limits:** with the defaults, nothing up to 630 s failed. The limits that can bite are the idle window (30 min for stdio, 5 min for HTTP) and, much later, the 28-hour wall clock.
 - **After two minutes:** the call moves to the background. The turn ends and the owner can use the session. When the call returns, Claude Code wakes the session, and it carries on with the result by itself.
-- **A hook-delivered grant would be worse.** Hooks run only while a turn runs. An idle session waiting for its turn would not see the grant until someone typed to it; spec §8 says the same of the branch-moved notices.
+- **A hook-delivered grant would be worse.** Hooks fire on the session's own events: a prompt, a tool call, the end of a turn, a notification. They don't fire when something outside the session happens, such as the app granting a turn. An idle session waiting for its turn would not see the grant until something started a turn in it, for example the owner typing. Spec §8 says the same of the branch-moved notices. (This comes from the hook events Claude Code has; it wasn't tested here.)
 
 **For plan 2:**
 
@@ -182,13 +194,13 @@ Times are UTC, from the app's OSC log.
    - The review gate loads in place (§11.1), and the worktree exists before the first prompt.
    - Claude offers ExitWorktree.
    - EnterWorktree behaves the same and stays the fallback.
-2. **Permission mode.** Damela's `bypassPermissions` is ignored (§11.1). Sessions run in the owner's user-level `auto` mode and will show `blocked · permission`. No-questions mode (spec §7.2) has to pass `--permission-mode` at launch. This wasn't tested here.
+2. **Permission mode.** Damela's `bypassPermissions` is ignored (§11.1). Sessions run in the owner's user-level `auto` mode and will show `blocked · permission`. No-questions mode (spec §7.2) is a prompt instruction (skip clarifying questions, merge without the menu), not a permission mode. If plan 2 also wants sessions without permission prompts, that has to come from `--permission-mode` at launch or from the owner's user settings. Neither was tested here.
 3. **Hooks.** The app's hooks, passed with `--settings`, run alongside the owner's and Damela's hooks. They don't appear in `/hooks`, so the app lists them itself (§11.2).
 4. **Resume.** Always run from the main checkout (§11.4).
    - **The worktree branch still exists:** use `claude --worktree <name> --resume <id>`. This re-creates the worktree if its directory was removed.
    - **The session was merged** (worktree and branch gone): use `claude --resume <id>`. It loads and continues in the main checkout.
    - **Build the resume command in the app.** Don't copy it from Claude's exit text: after EnterWorktree and then ExitWorktree, that text names a worktree that no longer exists.
-   - **Not tested: a session killed while inside its worktree.** By the docs, plain `--resume` should take it back to the worktree.
+   - **A session killed inside its worktree** (for example by an app quit): plain `claude --resume <id>` from the main checkout went back to the worktree (§11.4 row d). The quit left the worktree locked, and the resumed session's `/exit` → Remove still removed it.
 5. **Merging in step 1 (no turn yet).** All of it happens in the same session (§11.5, §11.7):
    1. ExitWorktree with keep.
    2. Squash-merge and commit in the main checkout.
@@ -210,7 +222,7 @@ Times are UTC, from the app's OSC log.
 
    Reports carry no `id`, so there is one status per terminal, and each report replaces the whole status.
 8. **Open decision: where new worktrees start.**
-   - **The finding.** `-w` and EnterWorktree both branched from `origin/stage` (`fbe4c68`), not from local `stage` (`3639575`). Claude Code's default `worktree.baseRef` is `"fresh"`: "branch from the repository's default branch on the remote" (worktrees doc), fetched if the last fetch is more than 24 hours old.
+   - **The finding.** Worktrees from `-w` (§11.4, twice) and from EnterWorktree (§11.5 form 2) all branched from `origin/stage` (`fbe4c68`), while local `stage` was ahead (at `3639575`; at `4aedd91` for form 2). Claude Code's default `worktree.baseRef` is `"fresh"`: "branch from the repository's default branch on the remote" (worktrees doc), fetched if the last fetch is more than 24 hours old.
    - **The consequence.** A merge into local `stage` that isn't pushed is missing from every session started after it.
 
    Plan 2 picks one of two:

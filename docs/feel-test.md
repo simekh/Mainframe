@@ -4,7 +4,7 @@ Spec §10 step 1: does the app's terminal feel as good as iTerm2 for real Claude
 
 ## Ground rules
 
-- Sessions run in Damela's main checkout without worktrees, in Damela's `bypassPermissions` mode. Give them **read-only prompts only**: no edits, commits, merges or pushes.
+- Sessions run in Damela's main checkout without worktrees. Give them **read-only prompts only**: no edits, commits, merges or pushes. (Damela's `bypassPermissions` setting doesn't apply: Claude Code 2.1.318 ignores bypass mode from local settings, so the sessions ran in the owner's user-level `auto` mode. See §11.1 of the step 1 findings.)
 - iTerm2 sits next to the app. Both run `claude` in `/Users/simonekholm/Developer/Simmesolo/Damela`.
 - The app wears Parallel Code's default look, terminal included (JetBrains Mono 13 and its colours), so its colours and font differ from iTerm2 on purpose. Compare how it feels and how cleanly it draws, not the palette.
 
