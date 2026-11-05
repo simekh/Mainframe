@@ -6,6 +6,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
+import { errorMessage } from '../bridgeError';
 import { subscribePty } from '../ptyEvents';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
@@ -120,8 +121,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     observer.observe(container);
 
     api.spawn({ sessionId: id, cols: sent.cols, rows: sent.rows }).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      term.write(`\x1b[31mCould not start the session: ${message}\x1b[0m\r\n`);
+      term.write(`\x1b[31mCould not start the session: ${errorMessage(err)}\x1b[0m\r\n`);
       finish();
     });
 

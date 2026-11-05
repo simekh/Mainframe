@@ -42,24 +42,37 @@ export function registerIpc(
     }
   });
 
+  // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
+  const sessionEnded = (sessionId: string) => {
+    try {
+      service.onSessionExit(sessionId);
+    } catch (err) {
+      console.error(`[tasks] could not record the end of session ${sessionId}`, err);
+    }
+  };
+
   ipcMain.handle(IPC.spawn, (_e, req: { sessionId: string; cols: number; rows: number }) => {
     const { sessionId, cols, rows } = req;
+    // A reloaded window mounts the terminals of sessions that still run. Their PTY already sends
+    // to this window; it takes the new terminal's size, and is resumed in case the old one had
+    // paused it.
+    if (host.has(sessionId)) {
+      host.resize(sessionId, cols, rows);
+      host.resume(sessionId);
+      return;
+    }
     try {
       host.spawn(sessionId, { ...service.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
         onStatus: (status) => send(IPC.status, { sessionId, status }),
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });
-          try {
-            service.onSessionExit(sessionId);
-          } catch (err) {
-            console.error(`[tasks] could not record the exit of session ${sessionId}`, err);
-          }
+          sessionEnded(sessionId);
         },
       });
     } catch (err) {
       // The terminal shows the error; the task closes rather than wait for an exit that never comes.
-      service.onSessionExit(sessionId);
+      sessionEnded(sessionId);
       throw err;
     }
   });

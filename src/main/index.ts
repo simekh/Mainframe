@@ -10,7 +10,7 @@ import { gitQueries } from './git';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
 import { buildSpawnEnv } from './pty/spawnEnv';
-import { SessionHost } from './pty/sessionHost';
+import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
@@ -78,6 +78,7 @@ function start(config: AppConfig): void {
     spawnPty: pty.spawn,
     outputBatchMs: config.outputBatchMs,
     env: buildSpawnEnv(process.env),
+    files: localFiles,
     log: config.logOsc ? console.log : undefined,
   });
   const win = createWindow();

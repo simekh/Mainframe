@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { realpathSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
@@ -45,11 +46,11 @@ test('New task launches claude -w in the main checkout with a fresh session id, 
   await page.getByTestId('new-task-title').fill('Tidy up');
   await page.getByTestId('new-task-no-questions').check();
   await page.getByTestId('new-task-start').click();
-  await expect.poll(() => launches(dataDir).length).toBe(2);
+  // On the content: fake-claude creates its file before it writes the arguments.
+  await expect.poll(() => launches(dataDir)[1]?.args.at(-1)).toContain('No questions on this task');
   const second = launches(dataDir)[1];
   expect(second.args.slice(0, 2)).toEqual(['-w', 'tidy-up']);
   expect(sessionIdOf(second.args)).not.toBe(first.args[5]);
-  expect(second.args.at(-1)).toContain('No questions on this task');
   await app.close();
 });
 
@@ -69,7 +70,7 @@ test("the dialog warns when the main checkout has commits that new worktrees won
   const second = await launchApp({ THESOURCE_PROJECT_DIR: repo() });
   await second.page.getByTestId('new-task').click();
   // The check has answered once the dialog names the base.
-  await expect(second.page.locator('.nt-sub')).toContainText('origin/stage');
+  await expect(second.page.getByTestId('new-task-base')).toHaveText('origin/stage');
   await expect(second.page.getByTestId('start-check-warning')).toHaveCount(0);
   await expect(second.page.getByTestId('new-task-start')).toHaveText('Start');
   await second.app.close();
@@ -128,10 +129,43 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   await expect(first.page.getByTestId('task-card')).toHaveCount(1);
   const [id] = await ids(first.page);
   await expect(card(first.page, id).getByTestId('task-status')).toHaveText('closed');
+  // The terminal says why, without the bridge's wrapping.
+  await expect.poll(() => screen(first.page, id)).toContain('/nonexistent/claude');
+  expect(await screen(first.page, id)).not.toContain('invoking remote method');
   await first.app.close();
+  const saved = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks;
+  expect(saved).toEqual([expect.objectContaining({ id, open: false })]);
 
   const { app, page, dataDir } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
   await expect(card(page, id).getByTestId('task-status')).toHaveText('closed');
   expect(launches(dataDir)).toEqual([]);
+  await app.close();
+});
+
+test('a start that fails shows why and keeps the dialog open', async () => {
+  const dataDir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'thesource-e2e-')));
+  // A file where the tasks folder goes: main can't make the new task's folder.
+  writeFileSync(join(dataDir, 'tasks'), '');
+  const { app, page } = await launchApp({ THESOURCE_DATA_DIR: dataDir });
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('new-task-title').fill('Fix login');
+  await page.getByTestId('new-task-start').click();
+  await expect(page.getByRole('alert')).toHaveText(/^ENOTDIR: not a directory, mkdir /);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByTestId('new-task-start')).toBeEnabled();
+  expect(await ids(page)).toEqual([]);
+  await app.close();
+});
+
+test('reloading the window keeps running tasks running', async () => {
+  const { app, page, dataDir } = await launchApp();
+  const id = await startTask(page);
+  await page.reload();
+  await page.waitForFunction(() => window.__thesourceE2E !== undefined);
+  await card(page, id).click();
+  await run(page, 'echo still-$((2+2))');
+  await expect.poll(() => screen(page, id)).toContain('still-4');
+  await expect(card(page, id).getByTestId('task-status')).not.toHaveText('closed');
+  expect(launches(dataDir)).toHaveLength(1);
   await app.close();
 });

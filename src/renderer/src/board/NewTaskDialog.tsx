@@ -1,12 +1,9 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import type { StartCheck } from '../../../shared/types';
+import { errorMessage } from '../bridgeError';
 import { startTask } from '../tasksStore';
 
 const commitsThatArent = (n: number) => (n === 1 ? "1 commit that isn't" : `${n} commits that aren't`);
-
-// invoke wraps an error from main as "Error invoking remote method '<channel>': Error: <message>".
-const messageOf = (err: unknown) =>
-  (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { projectName: string; onClose: () => void }) {
@@ -29,6 +26,11 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
     window.thesource.startCheck().then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
   });
 
+  // Esc waits for a start under way, so a failure still has the dialog to show in.
+  const holdWhileStarting = (e: Event) => {
+    if (starting()) e.preventDefault();
+  };
+
   async function start(): Promise<void> {
     if (!title().trim() || starting()) return;
     setStarting(true);
@@ -37,13 +39,19 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
       await startTask({ title: title(), description: description(), noQuestions: noQuestions() });
       dialog.close();
     } catch (err) {
-      setError(messageOf(err));
+      setError(errorMessage(err));
       setStarting(false);
     }
   }
 
   return (
-    <dialog ref={dialog} class="nt-dialog" aria-labelledby="nt-heading" onClose={() => props.onClose()}>
+    <dialog
+      ref={dialog}
+      class="nt-dialog"
+      aria-labelledby="nt-heading"
+      onCancel={holdWhileStarting}
+      onClose={() => props.onClose()}
+    >
       <form
         class="nt"
         onSubmit={(e) => {
@@ -57,7 +65,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
           <Show when={check()}>
             {(c) => (
               <>
-                , branched from <code>{c().base}</code>
+                , branched from <code data-testid="new-task-base">{c().base}</code>
               </>
             )}
           </Show>
@@ -70,7 +78,6 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
             id="nt-title"
             type="text"
             autocomplete="off"
-            placeholder="Name check: refuse offensive words"
             data-testid="new-task-title"
             value={title()}
             onInput={(e) => setTitle(e.currentTarget.value)}
@@ -94,20 +101,21 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
             }}
           />
         </div>
-        <label class="check" for="nt-noq">
+        <div class="check">
           <input
             id="nt-noq"
             type="checkbox"
+            aria-describedby="nt-noq-hint"
             data-testid="new-task-no-questions"
             checked={noQuestions()}
             onChange={(e) => setNoQuestions(e.currentTarget.checked)}
           />
-          <span>Don't ask me questions</span>
-          <span class="hint">
+          <label for="nt-noq">Don't ask me questions</label>
+          <span id="nt-noq-hint" class="hint">
             The session skips clarifying questions, and when the work is done and reviewed it merges without the merge
             menu.
           </span>
-        </label>
+        </div>
         <Show when={ahead()}>
           {(c) => (
             <div class="nt-warn" data-testid="start-check-warning">
@@ -128,7 +136,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
         </Show>
         <div class="nt-actions">
           <span class="nt-shortcut">Cmd+Enter starts it</span>
-          <button class="btn" type="button" onClick={() => dialog.close()}>
+          <button class="btn" type="button" disabled={starting()} onClick={() => dialog.close()}>
             Cancel
           </button>
           <button class="btn primary" type="submit" data-testid="new-task-start" disabled={!title().trim() || starting()}>

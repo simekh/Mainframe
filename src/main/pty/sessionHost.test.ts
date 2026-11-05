@@ -1,8 +1,11 @@
 import { it, expect } from 'vitest';
-import { SessionHost, type PtyLike, type SpawnPty } from './sessionHost';
+import { SessionHost, type LaunchFiles, type PtyLike, type SpawnPty } from './sessionHost';
 import { OSC7501_SUPPORT_REPLY } from '../status/osc7501';
 
-function setup() {
+function setup(
+  env: Record<string, string> = { PATH: '/usr/bin' },
+  existing: { executables: string[]; folders: string[] } = { executables: ['/usr/bin/claude'], folders: ['/repo'] },
+) {
   const log: string[] = [];
   const calls: Parameters<SpawnPty>[] = [];
   const ptys: Array<PtyLike & { emit(d: string): void; exit(code: number): void; killed: boolean }> = [];
@@ -23,7 +26,11 @@ function setup() {
     ptys.push(p);
     return p;
   };
-  const host = new SessionHost({ spawnPty, outputBatchMs: 0, env: { PATH: '/usr/bin' } });
+  const files: LaunchFiles = {
+    isExecutableFile: (path) => existing.executables.includes(path),
+    isDirectory: (path) => existing.folders.includes(path),
+  };
+  const host = new SessionHost({ spawnPty, outputBatchMs: 0, env, files });
   const listener = {
     onData: (d: Uint8Array) => log.push(`data:${Buffer.from(d).toString()}`),
     onStatus: (s: { state: string } | null) => log.push(`status:${s ? s.state : 'none'}`),
@@ -38,6 +45,32 @@ it('spawns argv[0] with the rest as args, in cwd, with size and env', () => {
   const { host, calls, listener } = setup();
   host.spawn('s1', spec, listener);
   expect(calls[0]).toEqual(['claude', ['--x'], { name: 'xterm-256color', cwd: '/repo', env: { PATH: '/usr/bin' }, cols: 100, rows: 30 }]);
+});
+
+it("looks the binary up on the PTY's PATH, not the app's", () => {
+  const { host, calls, listener } = setup({ PATH: '/nowhere:/pty/bin' }, { executables: ['/pty/bin/claude'], folders: ['/repo'] });
+  host.spawn('s1', spec, listener);
+  expect(calls).toHaveLength(1);
+});
+
+it('refuses a binary that is not on PATH, naming it and the PATH, and spawns nothing', () => {
+  const { host, calls, listener } = setup({ PATH: '/usr/bin:/bin' }, { executables: [], folders: ['/repo'] });
+  expect(() => host.spawn('s1', spec, listener)).toThrow('claude was not found on PATH (/usr/bin:/bin)');
+  expect(calls).toEqual([]);
+  expect(host.has('s1')).toBe(false);
+});
+
+it('refuses a binary given by a path that is missing or not executable', () => {
+  const { host, calls, listener } = setup();
+  const missing = { ...spec, argv: ['/nonexistent/claude'] };
+  expect(() => host.spawn('s1', missing, listener)).toThrow('/nonexistent/claude was not found, or is not an executable file');
+  expect(calls).toEqual([]);
+});
+
+it('refuses a working folder that is not a folder', () => {
+  const { host, calls, listener } = setup();
+  expect(() => host.spawn('s1', { ...spec, cwd: '/gone' }, listener)).toThrow('/gone is not a folder');
+  expect(calls).toEqual([]);
 });
 
 it('answers an OSC 7501 query before forwarding the output that carried it', () => {

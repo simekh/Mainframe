@@ -1,3 +1,5 @@
+import { accessSync, constants, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ProgramStatus } from '../../shared/types';
 import { OSC7501_SUPPORT_REPLY, Osc7501Scanner } from '../status/osc7501';
 import { ProgramStatusRecords } from '../status/programStatus';
@@ -19,6 +21,51 @@ export type SpawnPty = (
   opts: { name: string; cwd: string; env: Record<string, string>; cols: number; rows: number },
 ) => PtyLike;
 
+/** What the launch check asks of the file system. */
+export interface LaunchFiles {
+  isExecutableFile(path: string): boolean;
+  isDirectory(path: string): boolean;
+}
+
+export const localFiles: LaunchFiles = {
+  isExecutableFile: (path) => {
+    try {
+      accessSync(path, constants.X_OK);
+      return statSync(path).isFile();
+    } catch {
+      return false;
+    }
+  },
+  isDirectory: (path) => {
+    try {
+      return statSync(path).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+};
+
+// What execvp searches when PATH is unset (macOS's _PATH_DEFPATH).
+const DEFAULT_PATH = '/usr/bin:/bin';
+
+/**
+ * node-pty's helper ends without a word when it can't run the binary or enter the folder, so
+ * check both first and say which one is wrong. The binary is looked up as the helper's execvp
+ * will: on the PTY's own PATH, from the session's folder.
+ */
+function checkLaunch(file: string, cwd: string, env: Record<string, string>, files: LaunchFiles): void {
+  if (file.includes('/')) {
+    if (!files.isExecutableFile(resolve(cwd, file))) {
+      throw new Error(`${file} was not found, or is not an executable file`);
+    }
+  } else {
+    const path = env.PATH ?? DEFAULT_PATH;
+    const found = path.split(':').some((dir) => files.isExecutableFile(resolve(cwd, dir || '.', file)));
+    if (!found) throw new Error(`${file} was not found on PATH (${path})`);
+  }
+  if (!files.isDirectory(cwd)) throw new Error(`${cwd} is not a folder`);
+}
+
 export interface SessionListener {
   onData(data: Uint8Array): void;
   onStatus(status: ProgramStatus | null): void;
@@ -39,6 +86,7 @@ export class SessionHost {
       spawnPty: SpawnPty;
       outputBatchMs: number;
       env: Record<string, string>;
+      files: LaunchFiles;
       log?: (line: string) => void;
     },
   ) {}
@@ -51,6 +99,7 @@ export class SessionHost {
     if (this.sessions.has(id)) throw new Error(`Session ${id} is already running`);
     const { log } = this.opts;
     const [file, ...args] = spec.argv;
+    checkLaunch(file, spec.cwd, this.opts.env, this.opts.files);
     const proc = this.opts.spawnPty(file, args, {
       name: 'xterm-256color',
       cwd: spec.cwd,

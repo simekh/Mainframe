@@ -332,7 +332,7 @@ button {
   border-color: var(--accent-hover);
 }
 
-.btn.primary:disabled {
+.btn:disabled {
   opacity: 0.4;
 }
 
@@ -519,7 +519,7 @@ button {
   accent-color: var(--accent);
 }
 
-.check span:first-of-type {
+.check label {
   font-weight: 500;
 }
 
