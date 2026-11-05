@@ -18,12 +18,6 @@ export interface ProgramStatus extends Omit<ProgramReport, 'state'> {
   updatedAt: number;
 }
 
-export interface SessionInfo {
-  id: string;
-  name: string;
-  cwd: string;
-}
-
 export type ClipboardPaste =
   | { kind: 'file' | 'image'; path: string }
   | { kind: 'text'; text: string }
@@ -32,6 +26,8 @@ export type ClipboardPaste =
 export interface RendererConfig {
   inputBatchMs: number;
   e2e: boolean;
+  /** The basename of the project folder. */
+  projectName: string;
 }
 
 export interface PtyDataEvent {

@@ -1,0 +1,45 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, type Page } from '@playwright/test';
+
+export const ids = (page: Page) => page.evaluate(() => window.__thesourceE2E.taskIds());
+
+export const screen = (page: Page, taskId: string) =>
+  page.evaluate((id) => window.__thesourceE2E.screenText(id), taskId);
+
+export const termSize = (page: Page, taskId: string) =>
+  page.evaluate((id) => window.__thesourceE2E.termSize(id), taskId);
+
+export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
+
+export async function run(page: Page, line: string): Promise<void> {
+  await page.keyboard.type(line);
+  await page.keyboard.press('Enter');
+}
+
+/** Starts a task through the New task dialog; resolves with its id once its shell prompt shows. */
+export async function startTask(page: Page, title = 'Task', description = ''): Promise<string> {
+  const before = await ids(page);
+  await page.getByTestId('new-task').click();
+  await page.getByTestId('new-task-title').fill(title);
+  if (description) await page.getByTestId('new-task-description').fill(description);
+  await page.getByTestId('new-task-start').click();
+  const added = async () => (await ids(page)).filter((id) => !before.includes(id));
+  await expect.poll(added).toHaveLength(1);
+  const [id] = await added();
+  await expect.poll(() => screen(page, id)).toContain('$');
+  return id;
+}
+
+/** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */
+export function launches(dataDir: string): Array<{ cwd: string; args: string[] }> {
+  const dir = join(dataDir, 'fake-claude');
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.argv'))
+    .map((name) => join(dir, name))
+    .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs)
+    .map((file) => {
+      const [cwd, ...args] = readFileSync(file, 'utf8').split('\0').slice(0, -1);
+      return { cwd, args };
+    });
+}

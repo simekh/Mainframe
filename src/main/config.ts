@@ -1,6 +1,9 @@
+import { resolve } from 'node:path';
+
 export interface AppConfig {
   projectDir: string;
-  sessionArgv: string[];
+  claudeBin: string;
+  dataDir: string;
   inputBatchMs: number;
   outputBatchMs: number;
   logOsc: boolean;
@@ -9,19 +12,11 @@ export interface AppConfig {
 
 const DEFAULT_PROJECT_DIR = '/Users/simonekholm/Developer/Simmesolo/Damela';
 
-function readArgv(env: NodeJS.ProcessEnv): string[] {
-  const raw = env.THESOURCE_SESSION_ARGV;
-  if (raw === undefined) return ['claude'];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = undefined;
-  }
-  if (!Array.isArray(parsed) || parsed.length === 0 || !parsed.every((a) => typeof a === 'string')) {
-    throw new Error(`THESOURCE_SESSION_ARGV must be a JSON array of at least one string, got ${raw}`);
-  }
-  return parsed;
+function readClaudeBin(env: NodeJS.ProcessEnv): string {
+  const raw = env.THESOURCE_CLAUDE_BIN;
+  if (raw === undefined) return 'claude';
+  if (raw === '') throw new Error('THESOURCE_CLAUDE_BIN must name the claude binary, got an empty value');
+  return raw;
 }
 
 function readBatchMs(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
@@ -33,14 +28,20 @@ function readBatchMs(env: NodeJS.ProcessEnv, key: string, fallback: number): num
   return Number(raw);
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv, isDirectory: (path: string) => boolean): AppConfig {
-  const projectDir = env.THESOURCE_PROJECT_DIR ?? DEFAULT_PROJECT_DIR;
+/** The project and data folders come back absolute: the session hooks and `--settings` need them so. */
+export function loadConfig(
+  env: NodeJS.ProcessEnv,
+  isDirectory: (path: string) => boolean,
+  defaultDataDir: string,
+): AppConfig {
+  const projectDir = resolve(env.THESOURCE_PROJECT_DIR ?? DEFAULT_PROJECT_DIR);
   if (!isDirectory(projectDir)) {
     throw new Error(`THESOURCE_PROJECT_DIR is not a directory: ${projectDir}`);
   }
   return {
     projectDir,
-    sessionArgv: readArgv(env),
+    claudeBin: readClaudeBin(env),
+    dataDir: resolve(env.THESOURCE_DATA_DIR ?? defaultDataDir),
     inputBatchMs: readBatchMs(env, 'THESOURCE_INPUT_BATCH_MS', 0),
     outputBatchMs: readBatchMs(env, 'THESOURCE_OUTPUT_BATCH_MS', 8),
     logOsc: env.THESOURCE_LOG_OSC === '1',

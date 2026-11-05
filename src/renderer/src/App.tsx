@@ -1,7 +1,8 @@
-import { createMemo, createResource, For, onCleanup, onMount, Show } from 'solid-js';
-import type { ProgramStatus } from '../../shared/types';
-import { close, markExited, newSession, select, sessionsStore, type SessionEntry } from './sessionsStore';
-import { getTerminal, redrawAllTerminals } from './terminal/registry';
+import { createMemo, createResource, createSignal, For, onMount, Show } from 'solid-js';
+import type { ProgramStatus, TaskView } from '../../shared/types';
+import NewTaskDialog from './board/NewTaskDialog';
+import { closeTask, loadTasks, select, tasksStore, terminalOf } from './tasksStore';
+import { getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 import TerminalView from './terminal/TerminalView';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
@@ -13,32 +14,44 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
 
-function statusText(s: SessionEntry): string {
-  if (s.exited) return 'exited';
-  if (!s.status) return '—';
-  return s.status.kind ? `${s.status.state} · ${s.status.kind}` : s.status.state;
+const sessionOf = (task: TaskView) => (task.session ? tasksStore.sessions[task.session.id] : undefined);
+
+function statusText(task: TaskView): string {
+  if (!task.session) return 'closed';
+  const status = sessionOf(task)?.status;
+  if (!status) return '—';
+  return status.kind ? `${status.state} · ${status.kind}` : status.state;
 }
 
-/** Drives the colour of a row's status and of the terminal's top edge. */
-function tone(s: SessionEntry): ProgramStatus['state'] | 'exited' | 'none' {
-  if (s.exited) return 'exited';
-  return s.status?.state ?? 'none';
+/** Drives the colour of a card's status and of the terminal's top edge. */
+function tone(task: TaskView): ProgramStatus['state'] | 'closed' | 'none' {
+  if (!task.session) return 'closed';
+  return sessionOf(task)?.status?.state ?? 'none';
 }
+
+const terminalOfTask = (taskId: string) => {
+  const sessionId = terminalOf(taskId);
+  return sessionId ? getTerminal(sessionId) : undefined;
+};
 
 function installE2eHooks(): void {
   window.__thesourceE2E = {
-    sessionIds: () => sessionsStore.sessions.map((s) => s.id),
-    screenText: (id) => {
-      const buffer = getTerminal(id)?.buffer.active;
+    taskIds: () => tasksStore.tasks.map((t) => t.id),
+    screenText: (taskId) => {
+      const buffer = terminalOfTask(taskId)?.buffer.active;
       if (!buffer) return '';
       const lines: string[] = [];
       for (let i = 0; i < buffer.length; i++) lines.push(buffer.getLine(i)?.translateToString(true) ?? '');
       return lines.join('\n');
     },
+    termSize: (taskId) => {
+      const term = terminalOfTask(taskId);
+      return term ? { cols: term.cols, rows: term.rows } : null;
+    },
   };
 }
 
-// Rows and buttons in the list don't take focus on click, so typing stays in the terminal.
+// Cards and buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 export default function App() {
@@ -48,84 +61,108 @@ export default function App() {
     if (c.e2e) installE2eHooks();
     return c;
   });
-  const selected = createMemo(() => sessionsStore.sessions.find((s) => s.id === sessionsStore.selectedId));
+  const selected = createMemo(() => tasksStore.tasks.find((t) => t.id === tasksStore.selectedId));
+  const selectedTerminal = createMemo(() => (tasksStore.selectedId ? terminalOf(tasksStore.selectedId) : null));
+  const [dialogOpen, setDialogOpen] = createSignal(false);
 
-  onMount(() => onCleanup(window.thesource.onRedrawTerminals(redrawAllTerminals)));
+  onMount(() => void loadTasks());
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    // The dialog hands the focus back to where it was; the selected task's terminal is where typing goes.
+    const id = selectedTerminal();
+    if (id) getTerminal(id)?.focus();
+  };
 
   return (
     <div class="app">
-      <aside class="sessions">
-        <button class="new-session" data-testid="new-session" onMouseDown={keepFocus} onClick={() => void newSession()}>
-          New session
-        </button>
-        <ul class="session-list">
-          <For each={sessionsStore.sessions}>
-            {(s) => (
+      <section class="left" aria-label="Tasks">
+        <header class="topbar">
+          <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" />
+            </svg>
+            New task
+          </button>
+          <Show when={config()}>
+            {(c) => (
+              <span class="tb-project" title={c().projectName}>
+                <i aria-hidden="true" />
+                <span>{c().projectName}</span>
+              </span>
+            )}
+          </Show>
+        </header>
+        <ul class="cards">
+          <For each={tasksStore.tasks}>
+            {(task) => (
               <li
-                class="session-row"
-                data-testid="session-row"
-                data-session-id={s.id}
-                data-selected={String(s.id === sessionsStore.selectedId)}
-                data-tone={tone(s)}
+                class="card"
+                data-testid="task-card"
+                data-task-id={task.id}
+                data-selected={String(task.id === tasksStore.selectedId)}
+                data-tone={tone(task)}
               >
-                <button class="session-select" onMouseDown={keepFocus} onClick={() => select(s.id)}>
-                  <span class="session-name">{s.name}</span>
-                  <span class="session-status" data-testid="session-status">
-                    {statusText(s)}
-                  </span>
+                <button class="card-title" onMouseDown={keepFocus} onClick={() => select(task.id)}>
+                  <span class="card-name">{task.title}</span>
                 </button>
-                <button
-                  class="session-close"
-                  data-testid="close-session"
-                  aria-label={`Close ${s.name}`}
-                  title={`Close ${s.name}`}
-                  onMouseDown={keepFocus}
-                  onClick={() => close(s.id)}
-                >
-                  ×
-                </button>
+                <span class="card-status" data-testid="task-status">
+                  {statusText(task)}
+                </span>
               </li>
             )}
           </For>
         </ul>
-      </aside>
+      </section>
 
       <main class="pane">
-        <Show
-          when={selected()}
-          fallback={
-            <div class="pane-empty">
-              <p>No sessions yet.</p>
-              <p class="pane-empty-hint">New session starts Claude Code in the project folder.</p>
-            </div>
-          }
-        >
-          {(s) => (
-            <header class="pane-header">
-              <span class="pane-name">{s().name}</span>
-              <span class="pane-cwd" title={s().cwd}>
-                {s().cwd}
-              </span>
-            </header>
-          )}
-        </Show>
+        {/* Always laid out at one height, so the terminal below has the same size with or without a selection. */}
+        <header class="pane-header">
+          <Show when={selected()}>
+            {(task) => (
+              <>
+                <h2 class="pane-title" title={task().title}>
+                  {task().title}
+                </h2>
+                <Show when={task().session}>
+                  <button
+                    class="btn"
+                    data-testid="close-session"
+                    onMouseDown={keepFocus}
+                    onClick={() => closeTask(task().id)}
+                  >
+                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <rect x="3" y="3" width="8" height="8" rx="1.5" />
+                    </svg>
+                    Close session
+                  </button>
+                </Show>
+              </>
+            )}
+          </Show>
+        </header>
         <div class="well" data-tone={selected() ? tone(selected()!) : 'none'} hidden={!selected()}>
           <Show when={config()}>
             {(c) => (
-              <For each={sessionsStore.sessions}>
-                {(s) => (
-                  <TerminalView
-                    sessionId={s.id}
-                    selected={s.id === sessionsStore.selectedId}
-                    config={c()}
-                    onExit={() => markExited(s.id)}
-                  />
+              <For each={tasksStore.terminals}>
+                {(entry) => (
+                  <TerminalView sessionId={entry.sessionId} selected={entry.sessionId === selectedTerminal()} config={c()} />
                 )}
               </For>
             )}
           </Show>
         </div>
+        <Show when={!selected()}>
+          <div class="pane-empty">
+            <p>{tasksStore.tasks.length ? 'Select a task' : 'No tasks yet'}</p>
+            <p class="pane-empty-hint">New task starts Claude Code in a worktree of its own.</p>
+          </div>
+        </Show>
       </main>
+
+      <Show when={dialogOpen() && config()}>
+        {(c) => <NewTaskDialog projectName={c().projectName} onClose={closeDialog} />}
+      </Show>
     </div>
   );
 }

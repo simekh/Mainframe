@@ -40,12 +40,7 @@ function scheduleFrame(flush: () => void): () => void {
   return cancel;
 }
 
-export default function TerminalView(props: {
-  sessionId: string;
-  selected: boolean;
-  config: RendererConfig;
-  onExit: () => void;
-}) {
+export default function TerminalView(props: { sessionId: string; selected: boolean; config: RendererConfig }) {
   let container!: HTMLDivElement;
   const api = window.thesource;
 
@@ -95,7 +90,6 @@ export default function TerminalView(props: {
       if (exited) return;
       exited = true;
       input.dispose();
-      props.onExit();
     };
     // Subscribed before spawning, so no output is missed.
     const unsubscribe = subscribePty(id, {

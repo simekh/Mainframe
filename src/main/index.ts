@@ -4,12 +4,14 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu } from 'electron';
 import * as pty from 'node-pty';
+import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
+import { gitQueries } from './git';
 import { registerIpc } from './ipc';
 import { buildMenu } from './menu';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { SessionHost } from './pty/sessionHost';
-import { SessionRegistry } from './sessions';
+import { TaskService } from './tasks/taskService';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 
@@ -24,12 +26,30 @@ function isDirectory(path: string): boolean {
   }
 }
 
+/**
+ * Read before `ready`: the data folder becomes `userData`, so Chromium's storage lives there too.
+ * An error is shown once the app is ready.
+ */
+function readConfig(): AppConfig | Error {
+  try {
+    const config = loadConfig(process.env, isDirectory, app.getPath('userData'));
+    // setPath refuses a folder that doesn't exist.
+    mkdirSync(config.dataDir, { recursive: true });
+    app.setPath('userData', config.dataDir);
+    return config;
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     title: 'TheSource',
     width: 1400,
     height: 900,
     backgroundColor: APP_BACKGROUND,
+    // The window buttons sit in the board's top bar, and the panel runs to the top edge.
+    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -54,7 +74,6 @@ function start(config: AppConfig): void {
   rmSync(pasteDir, { recursive: true, force: true });
   mkdirSync(pasteDir, { recursive: true });
 
-  const registry = new SessionRegistry({ projectDir: config.projectDir, sessionArgv: config.sessionArgv });
   const host = new SessionHost({
     spawnPty: pty.spawn,
     outputBatchMs: config.outputBatchMs,
@@ -62,23 +81,39 @@ function start(config: AppConfig): void {
     log: config.logOsc ? console.log : undefined,
   });
   const win = createWindow();
-  Menu.setApplicationMenu(buildMenu(win));
-  registerIpc(win, registry, host, config, {
+  Menu.setApplicationMenu(buildMenu());
+  const service = new TaskService({
+    projectDir: config.projectDir,
+    dataDir: config.dataDir,
+    claudeBin: config.claudeBin,
+    git: gitQueries,
+    kill: (sessionId) => host.kill(sessionId),
+    // Exits keep arriving while the app quits, after the window has gone.
+    onChange: (tasks) => {
+      if (!win.isDestroyed()) win.webContents.send(IPC.tasksChanged, tasks);
+    },
+  });
+  registerIpc(win, service, host, config, {
     clipboard,
     writeFile,
     newImagePath: () => join(pasteDir, `${randomUUID()}.png`),
   });
-  app.on('before-quit', () => host.killAll());
+  // A list asked for before this finishes gets the tasks as they are; the changes follow.
+  service.restore().catch((err: unknown) => console.error('[tasks] could not restore the tasks', err));
+  // beginQuit can't be undone, so it runs here only, once quitting is under way.
+  app.on('before-quit', () => {
+    service.beginQuit();
+    host.killAll();
+  });
 }
+
+const config = readConfig();
 
 app.on('window-all-closed', () => app.quit());
 
 void app.whenReady().then(() => {
-  let config: AppConfig;
-  try {
-    config = loadConfig(process.env, isDirectory);
-  } catch (err) {
-    dialog.showErrorBox('TheSource', err instanceof Error ? err.message : String(err));
+  if (config instanceof Error) {
+    dialog.showErrorBox('TheSource', config.message);
     app.quit();
     return;
   }
