@@ -22,7 +22,7 @@ function git(dir: string, ...args: string[]): void {
   execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
 }
 
-function commitFile(dir: string, name: string, content: string): void {
+function commitFile(dir: string, name: string, content: string | Buffer): void {
   writeFileSync(join(dir, name), content);
   git(dir, 'add', name);
   git(dir, 'commit', '-m', `add ${name}`);
@@ -61,6 +61,13 @@ it('worktreeBranchNames lists worktree branches without the prefix', async () =>
   expect(await worktreeBranchNames(main)).toEqual(['a', 'b']);
 });
 
+it('worktreeBranchNames ignores a tag of the same name', async () => {
+  const { main } = repo();
+  git(main, 'branch', 'worktree-x');
+  git(main, 'tag', 'worktree-x');
+  expect(await worktreeBranchNames(main)).toEqual(['x']);
+});
+
 it('changedFiles lists committed, uncommitted and untracked changes since the branch left origin/HEAD', async () => {
   const { main } = repo();
   const worktree = join(main, '.claude', 'worktrees', 'x');
@@ -73,6 +80,14 @@ it('changedFiles lists committed, uncommitted and untracked changes since the br
     { path: 'a.txt', status: 'A', added: 1, removed: 0 },
     { path: 'u.txt', status: '?', added: null, removed: null },
   ]);
+});
+
+it('changedFiles gives binary files no line counts', async () => {
+  const { main } = repo();
+  const worktree = join(main, '.claude', 'worktrees', 'x');
+  git(main, 'worktree', 'add', '-b', 'worktree-x', worktree, 'origin/stage');
+  commitFile(worktree, 'b.bin', Buffer.from([0x62, 0x00, 0x01, 0xff]));
+  expect(await changedFiles(worktree)).toEqual([{ path: 'b.bin', status: 'A', added: null, removed: null }]);
 });
 
 it('changedFiles is null for a folder that is not a work tree', async () => {

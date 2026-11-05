@@ -19,6 +19,7 @@ export function makeRepo(): { origin: string; main: string } {
   git('clone', origin, main);
   git('-C', main, 'config', 'user.name', 'Test');
   git('-C', main, 'config', 'user.email', 'test@example.com');
+  git('-C', main, 'config', 'commit.gpgsign', 'false');
   writeFileSync(join(main, 'README.md'), 'hi\n');
   git('-C', main, 'add', 'README.md');
   git('-C', main, 'commit', '-m', 'initial');

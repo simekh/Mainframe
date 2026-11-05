@@ -42,7 +42,7 @@ export async function worktreeBranchNames(projectDir: string): Promise<string[]>
   try {
     const out = await git(projectDir, [
       'for-each-ref',
-      '--format=%(refname:short)',
+      '--format=%(refname:lstrip=2)',
       `refs/heads/${WORKTREE_PREFIX}*`,
     ]);
     return out
@@ -64,8 +64,8 @@ export async function changedFiles(worktreePath: string): Promise<ChangedFile[] 
     const base = (await git(worktreePath, ['merge-base', 'HEAD', 'origin/HEAD']).catch(() => 'HEAD')).trim();
     const diff = ['diff', '--no-renames', '-z'];
     const [nameStatus, numstat, untracked] = await Promise.all([
-      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--name-status', base]),
-      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--numstat', base]),
+      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--name-status', base, '--']),
+      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--numstat', base, '--']),
       git(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z']),
     ]);
 
