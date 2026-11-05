@@ -193,13 +193,17 @@ test('cards move between lanes as the session reports, and Reopen brings a close
   // A second task takes the selection, so Answer has something to change.
   await startTask(page, 'Beta');
   await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
+  await expect(card(page, a).locator('.card-title')).not.toHaveAttribute('aria-current');
+  await expect(needs.getByTestId('answer')).toHaveAttribute('aria-label', 'Answer Alpha');
   await needs.getByTestId('answer').click();
   await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
+  await expect(card(page, a).locator('.card-title')).toHaveAttribute('aria-current', 'true');
 
   await page.getByTestId('close-session').click();
   const closed = cardIn(page, 'closed', a);
   await expect(closed.getByTestId('task-ask')).toHaveText('Closed');
   await expect(closed.getByTestId('task-age')).toHaveText('just now');
+  await expect(closed.getByTestId('reopen')).toHaveAttribute('aria-label', 'Reopen Alpha');
 
   await closed.getByTestId('reopen').click();
   await expect(cardIn(page, 'working', a)).toBeVisible();

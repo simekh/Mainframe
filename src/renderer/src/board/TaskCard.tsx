@@ -1,8 +1,10 @@
-import { Show } from 'solid-js';
+// Adapted from Parallel Code (MIT): src/components/TaskBoardCard.tsx at 97c3558. See THIRD_PARTY_NOTICES.md.
+import { onCleanup, Show } from 'solid-js';
 import type { TaskView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import type { SessionState } from '../taskModel';
 import { reopenTask, select, tasksStore } from '../tasksStore';
+import { focusCardWhenShown } from './cardMoves';
 import { cardActivity, cardAge, glyphOf, stateLabel, type Lane } from './lanes';
 import StatusGlyph from './StatusGlyph';
 
@@ -21,20 +23,36 @@ export default function TaskCard(props: {
   const glyph = () => glyphOf(props.task, props.session);
   const label = () => stateLabel(props.task, props.session);
   const activity = () => cardActivity(props.task, props.session);
+  const selected = () => props.task.id === tasksStore.selectedId;
   const reopen = () =>
     reopenTask(props.task.id).catch((err: unknown) =>
       console.error(`[tasks] could not reopen task ${props.task.id}: ${errorMessage(err)}`),
     );
 
+  let cardEl!: HTMLLIElement;
+  // A card that changes lanes is rebuilt in its new one, and the focus on the old card falls to
+  // the body: hand it to the new card once that is in place.
+  onCleanup(() => {
+    if (!cardEl.contains(document.activeElement)) return;
+    const taskId = props.task.id;
+    queueMicrotask(() => focusCardWhenShown(taskId));
+  });
+
   return (
     <li
+      ref={cardEl}
       class={glyph() === 'error' ? 'card state-error' : 'card'}
       data-testid="task-card"
       data-task-id={props.task.id}
       data-lane={props.lane}
-      data-selected={String(props.task.id === tasksStore.selectedId)}
+      data-selected={String(selected())}
     >
-      <button class="card-title" onMouseDown={keepFocus} onClick={() => select(props.task.id)}>
+      <button
+        class="card-title"
+        aria-current={selected() ? 'true' : undefined}
+        onMouseDown={keepFocus}
+        onClick={() => select(props.task.id)}
+      >
         <StatusGlyph glyph={glyph()} label={label().text} />
         <span class="card-name">{props.task.title}</span>
       </button>
@@ -58,12 +76,24 @@ export default function TaskCard(props: {
           <Show
             when={props.lane === 'closed'}
             fallback={
-              <button class="card-act" data-testid="answer" onMouseDown={keepFocus} onClick={() => select(props.task.id)}>
+              <button
+                class="card-act"
+                data-testid="answer"
+                aria-label={`Answer ${props.task.title}`}
+                onMouseDown={keepFocus}
+                onClick={() => select(props.task.id)}
+              >
                 Answer
               </button>
             }
           >
-            <button class="card-act" data-testid="reopen" onMouseDown={keepFocus} onClick={reopen}>
+            <button
+              class="card-act"
+              data-testid="reopen"
+              aria-label={`Reopen ${props.task.title}`}
+              onMouseDown={keepFocus}
+              onClick={reopen}
+            >
               Reopen
             </button>
           </Show>

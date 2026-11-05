@@ -1,3 +1,5 @@
+// Adapted from Parallel Code (MIT): src/components/task-board-motion.ts at 97c3558. See THIRD_PARTY_NOTICES.md.
+
 /** Where a card is on screen, and the lane it is in. */
 export interface CardSpot {
   left: number;
@@ -29,6 +31,8 @@ const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
 const flights = new Map<string, { copy: HTMLElement; land: () => void }>();
 /** A card's slide or entrance, cancelled before the card is measured where it now lies. */
 const moving = new WeakMap<HTMLElement, Animation>();
+/** The task whose card takes the focus once it shows. */
+let focusWanted: string | null = null;
 
 const cardsIn = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-testid=task-card]')];
 
@@ -70,6 +74,31 @@ export function playCardMoves(root: HTMLElement, before: Map<string, CardSpot>, 
       fly(el, prev!, rect);
     }
   }
+  // A flight cut short by this change may have left a card waiting for the focus.
+  focusWantedCard();
+}
+
+/**
+ * Hands the focus to the task's card: now, or once it lands while its copy flies, since a hidden
+ * card can't take it. Only while the focus is on nothing, so a move the owner made meanwhile stands.
+ */
+export function focusCardWhenShown(taskId: string): void {
+  focusWanted = taskId;
+  focusWantedCard();
+}
+
+function focusWantedCard(): void {
+  if (focusWanted === null) return;
+  if (document.activeElement !== document.body) {
+    focusWanted = null;
+    return;
+  }
+  const card = document.querySelector<HTMLElement>(
+    `[data-testid=task-card][data-task-id="${CSS.escape(focusWanted)}"]`,
+  );
+  if (card?.style.visibility === 'hidden') return;
+  focusWanted = null;
+  card?.querySelector<HTMLElement>('.card-title')?.focus();
 }
 
 /** A ring shown once, from the moment the card lands. */
@@ -119,6 +148,9 @@ function fly(el: HTMLElement, from: CardSpot, to: DOMRect): void {
     copy.remove();
     el.style.visibility = '';
   };
-  animation.onfinish = land;
+  animation.onfinish = () => {
+    land();
+    focusWantedCard();
+  };
   flights.set(id, { copy, land });
 }

@@ -23,6 +23,8 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/app.css` ← colours, fonts and scrollbar of the default look in `src/styles.css` (`html[data-look='parallel-code']`)
 - `src/renderer/src/app.css` (board, lanes and cards) ← `src/components/task-board.css`
 - `src/renderer/src/board/StatusGlyph.tsx` and its `app.css` rules ← `src/components/StatusDot.tsx` (with `StatusCheckIcon` from `src/components/icons.tsx` and the `.status-glyph` rules of `src/styles.css`)
+- `src/renderer/src/board/cardMoves.ts` ← `src/components/task-board-motion.ts` (`planCardMotion`'s sub-pixel rule, `useCardMotion`'s cancel-before-measure and ghost hiding)
+- `src/renderer/src/board/TaskCard.tsx` ← `src/components/TaskBoardCard.tsx` (handing the focus to a card rebuilt in its new lane)
 
 ## Fonts
 

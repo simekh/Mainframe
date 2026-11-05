@@ -92,7 +92,10 @@ test('a new status replaces the old one, so a resolved question leaves no kind b
   await expect(card(page, a).getByTestId('task-activity')).toHaveText('Asking you a question');
   await run(page, "printf '\\033]7501;state=done\\033\\\\'");
   await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Finished its turn');
-  await expect(card(page, a).getByTestId('task-activity')).not.toHaveText('Asking you a question');
+  // Blocked again without a kind: a question kind left over from the first report would show here.
+  await run(page, "printf '\\033]7501;state=blocked\\033\\\\'");
+  await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Needs input');
+  await expect(card(page, a).getByTestId('task-activity')).toHaveText('Blocked');
   await app.close();
 });
 

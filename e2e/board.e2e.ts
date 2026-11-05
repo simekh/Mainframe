@@ -45,3 +45,37 @@ test('a card that changes lanes flies there once, and nothing flies with reduced
   expect(await flies()).toBe(1);
   await app.close();
 });
+
+/** Sends a line to the task's session through the bridge, so the focus can stay where it is. */
+async function sendLine(page: Page, taskId: string, line: string): Promise<void> {
+  await page.evaluate(
+    async ([id, data]) => {
+      const task = (await window.thesource.listTasks()).find((t) => t.id === id);
+      window.thesource.write(task!.session!.id, data);
+    },
+    [taskId, `${line}\r`],
+  );
+}
+
+const focusIsIn = (page: Page, taskId: string) =>
+  page.evaluate(
+    (id) => document.activeElement?.closest('[data-testid=task-card]')?.getAttribute('data-task-id') === id,
+    taskId,
+  );
+
+test('a focused card keeps the focus when it changes lanes', async () => {
+  const { app, page } = await launchApp();
+  const id = await startTask(page);
+  await cardIn(page, 'working', id).locator('.card-title').focus();
+
+  // It flies, so it can take the focus only once it has landed.
+  await sendLine(page, id, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
+  await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
+  await expect.poll(() => focusIsIn(page, id)).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await sendLine(page, id, "printf '\\033]7501;state=working\\033\\\\'");
+  await expect(cardIn(page, 'working', id)).toHaveCount(1);
+  await expect.poll(() => focusIsIn(page, id)).toBe(true);
+  await app.close();
+});
