@@ -167,6 +167,41 @@ button {
   text-overflow: ellipsis;
 }
 
+/* The keys as caps. */
+kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  font: 500 11px/1 var(--font-ui);
+  text-align: center;
+}
+
+/* Quiet: no border, so it reads as a hint beside the chip, not a second action. */
+.tb-jump {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+.tb-jump:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.tb-jump span {
+  margin-left: 4px;
+}
+
 /* Under the top bar; a press on it outside any card puts the unpinned panel away. */
 .board {
   flex: 1;

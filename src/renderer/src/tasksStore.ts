@@ -2,7 +2,9 @@ import { batch } from 'solid-js';
 import { createStore, reconcile, unwrap } from 'solid-js/store';
 import type { TheSourceApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
+import { laneOrder, nextNeedsYou } from './board/lanes';
 import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
+import { getTerminal } from './terminal/registry';
 
 const [store, setStore] = createStore<{
   tasks: TaskView[];
@@ -88,4 +90,20 @@ export function sessionOf(task: TaskView): SessionState | undefined {
 /** The session id of the task's terminal: its running session, or the last one it had. */
 export function terminalOf(taskId: string): string | null {
   return store.terminals.find((t) => t.taskId === taskId)?.sessionId ?? null;
+}
+
+/**
+ * Selects the task `step` places from the selected one in the Needs you lane, in board order, and
+ * puts the cursor in its terminal. Nothing happens while nothing needs the owner.
+ */
+export function jumpToNeedsYou(step: 1 | -1): void {
+  const queue = laneOrder(store.tasks, store.sessions)['needs-you'].map((t) => t.id);
+  const id = nextNeedsYou(queue, store.selectedId, step);
+  if (id === null) return;
+  select(id);
+  // Once Solid has put the panel and the terminal on show: a hidden element can't take the focus.
+  queueMicrotask(() => {
+    const sessionId = terminalOf(id);
+    if (sessionId) getTerminal(sessionId)?.focus();
+  });
 }

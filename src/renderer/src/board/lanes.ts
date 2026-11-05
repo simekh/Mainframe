@@ -1,3 +1,4 @@
+// Adapted from Parallel Code (MIT): src/components/next-attention-task.ts (stepInQueue) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import type { ProgramKind, TaskView } from '../../../shared/types';
 import type { SessionState } from '../taskModel';
 
@@ -75,4 +76,16 @@ export function laneOrder(tasks: TaskView[], sessions: Record<string, SessionSta
   lanes.working.sort((a, b) => a.createdAt - b.createdAt);
   lanes.closed.sort((a, b) => b.createdAt - a.createdAt);
   return lanes;
+}
+
+/**
+ * The queue entry `step` places from `current`, wrapping around. When `current` is not in the queue
+ * (nothing selected, or a task that doesn't need the owner), it starts at the first entry going
+ * forward and the last going back. A queue of one gives that one again.
+ */
+export function nextNeedsYou(queue: string[], current: string | null, step: 1 | -1): string | null {
+  if (queue.length === 0) return null;
+  const at = current === null ? -1 : queue.indexOf(current);
+  if (at === -1) return queue[step === 1 ? 0 : queue.length - 1];
+  return queue[(at + step + queue.length) % queue.length];
 }

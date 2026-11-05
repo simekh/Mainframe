@@ -1,12 +1,13 @@
-import { createMemo, createResource, createSignal, onMount, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import Board from './board/Board';
 import { glyphOf, stateLabel } from './board/lanes';
 import NewTaskDialog from './board/NewTaskDialog';
+import { installBoardShortcuts } from './board/shortcuts';
 import StatusGlyph from './board/StatusGlyph';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import SessionPanel from './panel/SessionPanel';
 import SidePanel from './panel/SidePanel';
-import { loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
+import { jumpToNeedsYou, loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
@@ -77,6 +78,7 @@ export default function App() {
   };
 
   onMount(() => void loadTasks());
+  onCleanup(installBoardShortcuts(window, jumpToNeedsYou));
 
   const closeDialog = () => {
     setDialogOpen(false);
@@ -97,10 +99,23 @@ export default function App() {
           </button>
           <Show when={config()}>
             {(c) => (
-              <span class="tb-project" title={c().projectName}>
-                <i aria-hidden="true" />
-                <span>{c().projectName}</span>
-              </span>
+              <>
+                <span class="tb-project" title={c().projectName}>
+                  <i aria-hidden="true" />
+                  <span>{c().projectName}</span>
+                </span>
+                <button
+                  class="tb-jump"
+                  data-testid="jump-next"
+                  title="Next session that needs you"
+                  onMouseDown={keepFocus}
+                  onClick={() => jumpToNeedsYou(1)}
+                >
+                  <kbd>Ctrl</kbd>
+                  <kbd>Tab</kbd>
+                  <span>Next that needs you</span>
+                </button>
+              </>
             )}
           </Show>
         </header>

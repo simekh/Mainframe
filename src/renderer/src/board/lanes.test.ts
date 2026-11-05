@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ProgramStatus, TaskView } from '../../../shared/types';
 import type { SessionState } from '../taskModel';
-import { cardActivity, cardAge, glyphOf, laneOf, laneOrder, stateLabel } from './lanes';
+import { cardActivity, cardAge, glyphOf, laneOf, laneOrder, nextNeedsYou, stateLabel } from './lanes';
 
 const task = (over: Partial<TaskView> = {}): TaskView => ({
   id: 'a',
@@ -156,5 +156,19 @@ describe('laneOrder', () => {
     expect(ids('needs-you')).toEqual(['n1', 'n2']);
     expect(ids('working')).toEqual(['w1', 'w2']);
     expect(ids('closed')).toEqual(['c2', 'c1']);
+  });
+});
+
+describe('nextNeedsYou', () => {
+  it('nextNeedsYou cycles the queue and starts at its end when nothing in it is selected', () => {
+    const queue = ['a', 'b', 'c'];
+    expect(nextNeedsYou(queue, 'a', 1)).toBe('b');
+    expect(nextNeedsYou(queue, 'c', 1)).toBe('a');
+    expect(nextNeedsYou(queue, 'a', -1)).toBe('c');
+    expect(nextNeedsYou(queue, null, 1)).toBe('a');
+    expect(nextNeedsYou(queue, 'x', 1)).toBe('a');
+    expect(nextNeedsYou(queue, null, -1)).toBe('c');
+    expect(nextNeedsYou(['a'], 'a', 1)).toBe('a');
+    expect(nextNeedsYou([], null, 1)).toBeNull();
   });
 });
