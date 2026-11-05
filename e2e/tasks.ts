@@ -12,6 +12,10 @@ export const termSize = (page: Page, taskId: string) =>
 
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 
+/** The task's card, found only inside the given lane of the board. */
+export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'closed', taskId: string) =>
+  page.locator(`[data-testid=lane][data-lane=${lane}] [data-testid=task-card][data-task-id="${taskId}"]`);
+
 export async function run(page: Page, line: string): Promise<void> {
   await page.keyboard.type(line);
   await page.keyboard.press('Enter');

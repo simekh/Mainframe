@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, ids, launches, run, screen, startTask, termSize } from './tasks';
+import { card, cardIn, ids, launches, run, screen, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -96,7 +96,7 @@ test('quitting with tasks running reopens them at the next start, in their workt
   const { app, page, dataDir } = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: first.dataDir });
   await expect.poll(() => ids(page)).toEqual([alpha, beta]);
   for (const id of [alpha, beta]) {
-    await expect(card(page, id).getByTestId('task-status')).toHaveText('—');
+    await expect(cardIn(page, 'working', id).getByTestId('task-activity')).toHaveText('Starting…');
     await expect.poll(() => screen(page, id)).toContain('$');
   }
 
@@ -136,7 +136,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   await first.page.getByTestId('new-task-start').click();
   await expect(first.page.getByTestId('task-card')).toHaveCount(1);
   const [id] = await ids(first.page);
-  await expect(card(first.page, id).getByTestId('task-status')).toHaveText('closed');
+  await expect(cardIn(first.page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
   // The terminal says why, without the bridge's wrapping.
   await expect.poll(() => screen(first.page, id)).toContain('/nonexistent/claude');
   expect(await screen(first.page, id)).not.toContain('invoking remote method');
@@ -145,7 +145,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   expect(saved).toEqual([expect.objectContaining({ id, open: false })]);
 
   const { app, page, dataDir } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
-  await expect(card(page, id).getByTestId('task-status')).toHaveText('closed');
+  await expect(cardIn(page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
   expect(launches(dataDir)).toEqual([]);
   await app.close();
 });
@@ -173,7 +173,36 @@ test('reloading the window keeps running tasks running', async () => {
   await card(page, id).click();
   await run(page, 'echo still-$((2+2))');
   await expect.poll(() => screen(page, id)).toContain('still-4');
-  await expect(card(page, id).getByTestId('task-status')).not.toHaveText('closed');
+  await expect(card(page, id)).toHaveAttribute('data-lane', 'working');
   expect(launches(dataDir)).toHaveLength(1);
+  await app.close();
+});
+
+test('cards move between lanes as the session reports, and Reopen brings a closed one back', async () => {
+  const { app, page, dataDir } = await launchApp();
+  const a = await startTask(page, 'Alpha');
+  await expect(cardIn(page, 'working', a)).toBeVisible();
+
+  await run(page, "printf '\\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBscw==\\033\\\\'");
+  const needs = cardIn(page, 'needs-you', a);
+  await expect(needs).toBeVisible();
+  await expect(needs.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
+  await expect(needs.getByTestId('task-activity')).toHaveText('approve Bash: ls');
+  await expect(needs.getByTestId('task-ask')).toHaveText('Needs input');
+
+  // A second task takes the selection, so Answer has something to change.
+  await startTask(page, 'Beta');
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
+  await needs.getByTestId('answer').click();
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
+
+  await page.getByTestId('close-session').click();
+  const closed = cardIn(page, 'closed', a);
+  await expect(closed.getByTestId('task-ask')).toHaveText('Closed');
+  await expect(closed.getByTestId('task-age')).toHaveText('just now');
+
+  await closed.getByTestId('reopen').click();
+  await expect(cardIn(page, 'working', a)).toBeVisible();
+  await expect.poll(() => launches(dataDir).filter((l) => l.args.includes('--resume')).length).toBe(1);
   await app.close();
 });

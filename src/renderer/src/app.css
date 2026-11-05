@@ -89,11 +89,11 @@ button {
   opacity: 0.7;
 }
 
-/* --- Left column: the top bar over a plain list of task cards ----------------------------- */
+/* --- Left column: the top bar over the board ----------------------------------------------- */
 
 .left {
-  flex: none;
-  width: 360px;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -166,19 +166,94 @@ button {
   text-overflow: ellipsis;
 }
 
+/* --- Board: lanes without boxes, cards with faint fills ----------------------------------------
+   Adapted from Parallel Code (MIT): src/components/task-board.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
+
+/* A row of lanes; plan 2b's TODO lane joins at its start. */
+.lanes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 20px;
+  padding: 12px 20px 16px;
+  overflow-x: auto;
+}
+
+/* Equal widths, capped so lanes on wide screens stay scannable. */
+.lane {
+  flex: 1 1 240px;
+  min-width: 212px;
+  max-width: 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lane-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.lane-count {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty lanes step back, so the ones with work read first. */
+.lane[data-empty='true'] .lane-title {
+  color: var(--fg-muted);
+}
+
+/* The one lane allowed colour: it holds only work waiting on the owner, and only while it does. */
+.lane[data-lane='needs-you'] .lane-title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+}
+
+.lane[data-lane='needs-you'][data-empty='false'] .lane-title::before {
+  background: var(--warning);
+}
+
+.lane[data-lane='needs-you'][data-empty='false'] .lane-count {
+  color: var(--warning);
+}
+
+/* The full lane height, so cards sliding or entering stay inside it and no scrollbar flashes in;
+   1 px of room round the cards keeps their focus and arrival rings whole. */
 .cards {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 0;
-  padding: 12px 20px 16px;
+  margin: -1px -1px 0;
+  padding: 1px 1px 4px;
   list-style: none;
   overflow-y: auto;
 }
 
-/* No border: a faint fill. The title button stretches over the card, so a click anywhere selects it. */
+.lanes,
+.cards {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.lane-empty {
+  padding: 2px;
+  color: var(--fg-subtle);
+}
+
+/* No border: a faint fill. The title button stretches over the card, so a click anywhere selects it;
+   the card's own button sits above. */
 .card {
   position: relative;
   flex: none;
@@ -195,7 +270,7 @@ button {
   background: color-mix(in srgb, var(--fg) 7%, transparent);
 }
 
-/* The task shown beside the list. */
+/* The task shown beside the board. */
 .card[data-selected='true'] {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -208,8 +283,14 @@ button {
   box-shadow: 0 0 0 1px var(--border-focus);
 }
 
+.card.state-error {
+  background: color-mix(in srgb, var(--error) 9%, transparent);
+}
+
 .card-title {
   display: flex;
+  align-items: flex-start;
+  gap: 5px;
   min-width: 0;
   color: var(--fg);
   font-weight: 500;
@@ -235,30 +316,282 @@ button {
   overflow-wrap: anywhere;
 }
 
-.card-status {
+/* Centres the 12 px glyph lane on the title's first 18 px line. */
+.card-title > .glyph {
+  margin-top: 3px;
+}
+
+/* The glyph's 12 px and the title's 5 px gap: the rows start under the name. */
+.card-meta,
+.card-activity,
+.card-ask {
+  margin: 0;
+  padding-left: 17px;
+  min-width: 0;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+.card-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--fg-muted);
+}
+
+.card-project span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A bar, not a dot: the glyph beside the title is the session's state. */
+.card-project i {
+  flex: none;
+  width: 3px;
+  height: 11px;
+  border-radius: 1.5px;
+  background: var(--project);
+}
+
+.card-age {
+  flex: none;
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 
-.card[data-tone='working'] .card-status {
-  color: var(--accent);
+/* One line tall even when empty, so cards never grow or shrink as Claude reports. */
+.card-activity {
+  height: 16px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 12px/16px var(--font-mono);
+  color: var(--fg-muted);
 }
 
-.card[data-tone='blocked'] .card-status {
+.card-activity.branch {
+  color: var(--fg-subtle);
+}
+
+/* A state, not output: the interface font. */
+.card-activity.busy {
+  font-family: var(--font-ui);
+}
+
+.card-ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 13px;
+}
+
+.card-ask-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.tone-warn {
   color: var(--warning);
 }
 
-.card[data-tone='error'] .card-status {
+.tone-error {
   color: var(--error);
+}
+
+.tone-strong {
+  color: var(--fg);
+}
+
+.tone-muted {
+  color: var(--fg-muted);
+}
+
+.tone-subtle {
+  color: var(--fg-subtle);
+}
+
+.tone-accent {
+  color: var(--accent);
+}
+
+/* Primary by full-strength text, not colour. */
+.card-act {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  margin-left: auto;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.card-act:hover {
+  background: color-mix(in srgb, var(--fg) 11%, transparent);
+}
+
+/* A card changing lanes flies as a copy above the board: each lane's list clips what leaves it.
+   Its fill is opaque, since card fills are see-through and the copy passes over other cards. */
+.card-fly {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.card.card-fly {
+  background: color-mix(in srgb, var(--fg) 7%, var(--bg));
+}
+
+.card.card-fly[data-selected='true'] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+}
+
+.card.card-fly.state-error {
+  background: color-mix(in srgb, var(--error) 9%, var(--bg));
+}
+
+/* --- Status glyphs: shape carries the state, colour only backs it up ----------------------------
+   Adapted from Parallel Code (MIT): src/components/StatusDot.tsx and the .status-glyph rules of
+   src/styles.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
+
+/* A fixed lane, so titles line up whatever glyph sits in front of them. */
+.glyph {
+  --lane: 12px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--lane);
+  height: var(--lane);
+}
+
+.glyph.md {
+  --lane: 16px;
+}
+
+.glyph[data-glyph='ask'] {
+  color: var(--warning);
+}
+
+.glyph[data-glyph='error'] {
+  color: var(--error);
+}
+
+.glyph[data-glyph='spin'] {
+  color: var(--accent);
+}
+
+.glyph[data-glyph='start'] {
+  color: var(--fg-muted);
+}
+
+.glyph[data-glyph='ready'] {
+  color: var(--success);
+}
+
+.glyph[data-glyph='wait'],
+.glyph[data-glyph='dot'] {
+  color: var(--fg-subtle);
+}
+
+/* Motion means working. */
+.g-spin {
+  width: 10px;
+  height: 10px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: glyph-spin 0.9s linear infinite;
+}
+
+/* A filled badge needs the owner. */
+.g-badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent);
+  text-align: center;
+}
+
+.g-badge b {
+  display: block;
+  color: var(--bg);
+  font: 700 8px/10px var(--font-ui);
+}
+
+/* An outline is at rest. */
+.g-ring {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+
+.g-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.g-check {
+  width: 10px;
+  height: 10px;
+}
+
+.glyph.md .g-spin,
+.glyph.md .g-badge,
+.glyph.md .g-check {
+  width: 13px;
+  height: 13px;
+}
+
+.glyph.md .g-badge b {
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.glyph.md .g-ring {
+  width: 9px;
+  height: 9px;
+}
+
+.glyph.md .g-dot {
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes glyph-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* --- The selected task's panel: title bar over the terminal -------------------------------- */
 
+/* The mockup's panel width; the board takes the rest of the window. */
 .pane {
   position: relative;
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  width: 640px;
   display: flex;
   flex-direction: column;
   margin: 8px 8px 8px 0;
@@ -573,11 +906,19 @@ button {
   }
 
   .card,
+  .card-act,
   .btn,
   .tb-btn {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
       color var(--motion-fast) var(--ease-out);
+  }
+}
+
+/* Without motion the ring's bright quarter still sets it apart from the resting glyphs. */
+@media (prefers-reduced-motion: reduce) {
+  .g-spin {
+    animation: none;
   }
 }

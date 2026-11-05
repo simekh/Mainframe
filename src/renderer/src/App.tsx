@@ -1,7 +1,8 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from 'solid-js';
 import type { ProgramStatus, TaskView } from '../../shared/types';
+import Board from './board/Board';
 import NewTaskDialog from './board/NewTaskDialog';
-import { closeTask, loadTasks, select, tasksStore, terminalOf } from './tasksStore';
+import { closeTask, loadTasks, sessionOf, tasksStore, terminalOf } from './tasksStore';
 import { getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 import TerminalView from './terminal/TerminalView';
@@ -14,16 +15,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
 
-const sessionOf = (task: TaskView) => (task.session ? tasksStore.sessions[task.session.id] : undefined);
-
-function statusText(task: TaskView): string {
-  if (!task.session) return 'closed';
-  const status = sessionOf(task)?.status;
-  if (!status) return '—';
-  return status.kind ? `${status.state} · ${status.kind}` : status.state;
-}
-
-/** Drives the colour of a card's status and of the terminal's top edge. */
+/** Drives the colour of the terminal's top edge. */
 function tone(task: TaskView): ProgramStatus['state'] | 'closed' | 'none' {
   if (!task.session) return 'closed';
   return sessionOf(task)?.status?.state ?? 'none';
@@ -51,7 +43,7 @@ function installE2eHooks(): void {
   };
 }
 
-// Cards and buttons don't take focus on click, so typing stays in the terminal.
+// Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 export default function App() {
@@ -93,26 +85,7 @@ export default function App() {
             )}
           </Show>
         </header>
-        <ul class="cards">
-          <For each={tasksStore.tasks}>
-            {(task) => (
-              <li
-                class="card"
-                data-testid="task-card"
-                data-task-id={task.id}
-                data-selected={String(task.id === tasksStore.selectedId)}
-                data-tone={tone(task)}
-              >
-                <button class="card-title" onMouseDown={keepFocus} onClick={() => select(task.id)}>
-                  <span class="card-name">{task.title}</span>
-                </button>
-                <span class="card-status" data-testid="task-status">
-                  {statusText(task)}
-                </span>
-              </li>
-            )}
-          </For>
-        </ul>
+        <Show when={config()}>{(c) => <Board projectName={c().projectName} />}</Show>
       </section>
 
       <main class="pane">

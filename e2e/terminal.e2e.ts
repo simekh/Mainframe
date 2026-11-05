@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, ids, run, screen, startTask } from './tasks';
+import { card, cardIn, ids, run, screen, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -79,7 +79,8 @@ test('OSC 7501 status shows on the task card', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
   await run(page, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
-  await expect(card(page, a).getByTestId('task-status')).toHaveText('blocked · question');
+  await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Needs input');
+  await expect(card(page, a).getByTestId('task-activity')).toHaveText('Asking you a question');
   await app.close();
 });
 
@@ -87,9 +88,11 @@ test('a new status replaces the old one, so a resolved question leaves no kind b
   const { app, page } = await launchApp();
   const a = await startTask(page);
   await run(page, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
-  await expect(card(page, a).getByTestId('task-status')).toHaveText('blocked · question');
+  await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Needs input');
+  await expect(card(page, a).getByTestId('task-activity')).toHaveText('Asking you a question');
   await run(page, "printf '\\033]7501;state=done\\033\\\\'");
-  await expect(card(page, a).getByTestId('task-status')).toHaveText('done');
+  await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Finished its turn');
+  await expect(card(page, a).getByTestId('task-activity')).not.toHaveText('Asking you a question');
   await app.close();
 });
 
@@ -127,7 +130,7 @@ test('Close session ends the process and keeps the task, and the other tasks kee
   await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
   await page.getByTestId('close-session').click();
 
-  await expect(card(page, b).getByTestId('task-status')).toHaveText('closed');
+  await expect(cardIn(page, 'closed', b).getByTestId('task-ask')).toHaveText('Closed');
   await expect.poll(() => screen(page, b)).toContain('[Process exited]');
   await expect.poll(() => alive(bPid)).toBe('gone');
   expect(await ids(page)).toEqual([a, b, c]);
@@ -137,7 +140,8 @@ test('Close session ends the process and keeps the task, and the other tasks kee
   // The others keep their screens and processes, and still take input.
   expect([alive(aPid), alive(cPid)]).toEqual(['alive', 'alive']);
   for (const [id, tag] of [[a, 'a'], [c, 'c']]) {
-    await expect(card(page, id).getByTestId('task-status')).toHaveText('—');
+    await expect(cardIn(page, 'working', id).getByTestId('task-activity')).toHaveText('Starting…');
+    await expect(card(page, id).getByTestId('task-ask')).toHaveCount(0);
     await card(page, id).click();
     await run(page, `echo still-${tag}-$((1+1))`);
     await expect.poll(() => screen(page, id)).toContain(`still-${tag}-2`);

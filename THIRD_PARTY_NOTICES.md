@@ -21,6 +21,8 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/terminal/registry.ts` ← `src/lib/terminalFitManager.ts` (`redrawAllTerminals`)
 - `src/renderer/src/terminal/terminalOptions.ts` ← colours from `src/lib/parallelCodeTerminalTheme.ts`
 - `src/renderer/src/app.css` ← colours, fonts and scrollbar of the default look in `src/styles.css` (`html[data-look='parallel-code']`)
+- `src/renderer/src/app.css` (board, lanes and cards) ← `src/components/task-board.css`
+- `src/renderer/src/board/StatusGlyph.tsx` and its `app.css` rules ← `src/components/StatusDot.tsx` (with `StatusCheckIcon` from `src/components/icons.tsx` and the `.status-glyph` rules of `src/styles.css`)
 
 ## Fonts
 

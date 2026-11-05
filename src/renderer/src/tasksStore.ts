@@ -59,6 +59,11 @@ export function select(id: string | null): void {
   setStore('selectedId', id);
 }
 
+/** What the task's running session has reported; nothing while it is closed. */
+export function sessionOf(task: TaskView): SessionState | undefined {
+  return task.session ? store.sessions[task.session.id] : undefined;
+}
+
 /** The session id of the task's terminal: its running session, or the last one it had. */
 export function terminalOf(taskId: string): string | null {
   return store.terminals.find((t) => t.taskId === taskId)?.sessionId ?? null;
