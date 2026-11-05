@@ -19,17 +19,21 @@ export function submitDelayMs(text: string): number {
 
 /**
  * Sends the text to the terminal's program as a paste, then presses Enter. Everything goes through
- * xterm, so it reaches the PTY the way typed input does.
+ * xterm, so it reaches the PTY the way typed input does. `canSubmit` is asked when the Enter is
+ * due, and no Enter goes while it says no.
  */
 export function sendMessage(
   term: Terminal,
   text: string,
   schedule: (fn: () => void, ms: number) => void = (fn, ms) => void setTimeout(fn, ms),
+  canSubmit: () => boolean = () => true,
 ): void {
   const cleaned = cleanMessageText(text);
   // The message field holds the focus, so xterm told a program that tracks it that it lost it.
   if (term.modes.sendFocusMode) term.input('\x1b[I');
   // Adds bracketed-paste markers when the program asked for them, and turns each LF into CR.
   term.paste(cleaned);
-  schedule(() => term.input('\r'), submitDelayMs(cleaned));
+  schedule(() => {
+    if (canSubmit()) term.input('\r');
+  }, submitDelayMs(cleaned));
 }

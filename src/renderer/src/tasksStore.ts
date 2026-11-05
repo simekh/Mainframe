@@ -39,9 +39,8 @@ window.thesource.onTasks((tasks) => {
   setTasks(tasks);
 });
 
-// reconcile replaces the status: a plain set would merge it into the old one and keep a stale kind.
 window.thesource.onStatus((e) => {
-  setStore('sessions', e.sessionId, reconcile(nextSessionState(store.sessions[e.sessionId], e.status, Date.now())));
+  setStore('sessions', e.sessionId, nextSessionState(store.sessions[e.sessionId], e.status, Date.now()));
 });
 
 export async function loadTasks(): Promise<void> {

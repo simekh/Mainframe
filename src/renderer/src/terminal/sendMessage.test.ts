@@ -52,6 +52,21 @@ describe('sendMessage', () => {
     expect(calls.at(-1)).toBe('input "\\r"');
   });
 
+  it('asks canSubmit when the Enter is due, and presses none while it says no', () => {
+    const { term, calls, scheduled, schedule } = fakeTerminal(false);
+    let free = true;
+    sendMessage(term, 'one', schedule, () => free);
+    // A menu opened in the terminal after the paste: the Enter would answer it.
+    free = false;
+    scheduled[0].fn();
+    expect(calls).toEqual(['paste "one"']);
+
+    sendMessage(term, 'two', schedule, () => free);
+    free = true;
+    scheduled[1].fn();
+    expect(calls).toEqual(['paste "one"', 'paste "two"', 'input "\\r"']);
+  });
+
   it("sends no focus report to a program that didn't ask for them", () => {
     const { term, calls, scheduled, schedule } = fakeTerminal(false);
     sendMessage(term, 'hello', schedule);

@@ -8,6 +8,7 @@ test.afterEach(cleanUp);
 
 const CLOSED_NOTE = 'Closed. Reopen continues this chat.';
 const HINT = 'Enter sends it to the session. Shift+Enter adds a line.';
+const BLOCKED_HINT = 'Answer Claude in the terminal first. Your message stays here.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
 const blocked = "printf '\\033]7501;state=blocked:kind=question\\033\\\\'";
@@ -226,6 +227,36 @@ test('the message field tells when Claude waits in the terminal, and is off whil
   await expect(field).toHaveAttribute('placeholder', 'Reopen the session to send it a message');
   await expect(page.getByText(HINT)).toBeHidden();
   await expect(page.getByTestId('message-send')).toBeDisabled();
+  await app.close();
+});
+
+test('while Claude waits in the terminal, the message field keeps its draft and sends nothing', async () => {
+  const { app, page } = await launchApp();
+  const id = await startTask(page);
+  const field = page.getByTestId('message-field');
+  const send = page.getByTestId('message-send');
+  await sendLine(page, id, blocked);
+  await expect(field).toHaveAttribute('placeholder', 'Claude is waiting for your answer in the terminal');
+  await expect(page.getByText(BLOCKED_HINT, { exact: true })).toBeVisible();
+
+  await field.click();
+  await page.keyboard.type('echo held-$((6*7))');
+  await expect(send).toBeDisabled();
+  await page.keyboard.press('Enter');
+  await expect(field).toHaveValue('echo held-$((6*7))');
+  await expect(send).toBeDisabled();
+  // Nothing reached the shell: a line written after the Enter runs on its own, and nothing ran before it.
+  await sendLine(page, id, 'echo probe-$((1+1))');
+  await expect.poll(() => screen(page, id)).toMatch(/^probe-2$/m);
+  expect(await screen(page, id)).not.toContain('held');
+
+  await sendLine(page, id, working);
+  await expect(field).toHaveAttribute('placeholder', 'Message this session');
+  await expect(page.getByText(HINT, { exact: true })).toBeVisible();
+  await expect(send).toBeEnabled();
+  await field.press('Enter');
+  await expect.poll(() => screen(page, id)).toMatch(/^held-42$/m);
+  await expect(field).toHaveValue('');
   await app.close();
 });
 
