@@ -1,5 +1,6 @@
-import { createComputed, createEffect, createMemo, createSignal, For, on, onCleanup } from 'solid-js';
+import { createComputed, createEffect, createMemo, For, on } from 'solid-js';
 import { sessionOf, tasksStore } from '../tasksStore';
+import { now } from './ageClock';
 import { playCardMoves, snapshotCards, type CardSpot } from './cardMoves';
 import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
@@ -10,8 +11,6 @@ const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
   { lane: 'working', name: 'Working', empty: 'Nothing running' },
   { lane: 'closed', name: 'Closed', empty: 'No closed tasks' },
 ];
-
-const AGE_REFRESH_MS = 30_000;
 
 /** The lanes of task cards. Cards that change place move there rather than jump. */
 export default function Board(props: { projectName: string }) {
@@ -40,11 +39,6 @@ export default function Board(props: { projectName: string }) {
       { defer: true },
     ),
   );
-
-  // One clock for every card's age: each tick rewrites only the age texts.
-  const [now, setNow] = createSignal(Date.now());
-  const clock = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS);
-  onCleanup(() => clearInterval(clock));
 
   return (
     <div class="lanes" ref={root}>

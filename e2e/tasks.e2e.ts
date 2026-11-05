@@ -1,25 +1,13 @@
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
-import { makeRepo } from '../src/main/testing/makeRepo';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, cardIn, firstSpawn, fitSize, ids, launches, run, screen, startTask, termSize } from './tasks';
+import { card, cardIn, firstSpawn, fitSize, git, ids, launches, repo, run, screen, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-function repo(): string {
-  const { main } = makeRepo();
-  removeAfterTest(dirname(main));
-  return main;
-}
-
-function git(...args: string[]): void {
-  execFileSync('git', args, { stdio: 'pipe' });
-}
 
 const settingsFile = (dataDir: string, taskId: string) => join(dataDir, 'tasks', taskId, 'settings.json');
 const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];

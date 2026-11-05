@@ -4,15 +4,15 @@ import { cleanMessageText, sendMessage, submitDelayMs } from './sendMessage';
 
 describe('cleanMessageText', () => {
   it('keeps text, newlines and tabs and drops what holds a paste', () => {
-    // ​ is the zero-width space between d and e.
-    expect(cleanMessageText('a\r\nb\rc\td​e\x1b[31mf\x7f')).toBe('a\nb\nc\tde[31mf');
+    expect(cleanMessageText('a\r\nb\rc\td\u200be\x1b[31mf\x7f')).toBe('a\nb\nc\tde[31mf');
   });
 
   it('drops C1 controls and the invisible ranges, and keeps the characters around them', () => {
-    const invisible = ['\x80', '\x9f', '‏', '‪', '‮', '⁠', '⁤', '﻿'];
-    expect(cleanMessageText(`x${invisible.join('')}y`)).toBe('xy');
+    const invisible = '\x80\x9f\u200b\u200d\u200f\u202a\u202e\u2060\u2064\u2066\u2069\ufeff';
+    expect(cleanMessageText(`x${invisible}y`)).toBe('xy');
     // Just outside each range.
-    expect(cleanMessageText('\xa0‐⁥﻾')).toBe('\xa0‐⁥﻾');
+    const kept = '\xa0\u200a\u2010\u2029\u202f\u205f\u2065\u206a\ufefe';
+    expect(cleanMessageText(kept)).toBe(kept);
   });
 
   it('keeps emoji, other astral characters and letters outside ASCII', () => {
@@ -45,7 +45,7 @@ describe('sendMessage', () => {
 
   it('reports the focus back when the program asked, pastes the cleaned text, then presses Enter after the delay', () => {
     const { term, calls, scheduled, schedule } = fakeTerminal(true);
-    sendMessage(term, 'one\r\ntwo​', schedule);
+    sendMessage(term, 'one\r\ntwo\u200b', schedule);
     expect(calls).toEqual(['input "\\u001b[I"', 'paste "one\\ntwo"']);
     expect(scheduled.map((s) => s.ms)).toEqual([50]);
     scheduled[0].fn();

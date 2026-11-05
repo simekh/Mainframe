@@ -819,9 +819,10 @@ button {
   visibility: hidden;
 }
 
-/* The panel's title bar, its empty space a window drag region like the top bar's. It ends where the
-   shell's pin begins: the pin comes first in the panel, and a drag box over it would take its
-   clicks. Its buttons sit just left of the pin, in one row with it. */
+/* The panel's title bar, its empty space a window drag region like the top bar's. It starts past the
+   3px the resize handle reaches into the panel and ends where the shell's pin begins: both come
+   first in the panel, and a drag box over them would take their drags and clicks. The title still
+   sits 16px in. Its buttons sit just left of the pin, in one row with it. */
 .p-title-bar {
   flex: none;
   display: flex;
@@ -829,8 +830,8 @@ button {
   gap: 8px;
   height: 46px;
   min-width: 0;
-  margin-right: var(--panel-pin-room);
-  padding: 6px 0 4px 16px;
+  margin: 0 var(--panel-pin-room) 0 3px;
+  padding: 6px 0 4px 13px;
   -webkit-app-region: drag;
 }
 

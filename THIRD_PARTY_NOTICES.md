@@ -28,6 +28,7 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/app.css` (the side panel's hide pill) ← `src/components/task-board.css` (`.board-side-panel-close`)
 - `src/renderer/src/terminal/sendMessage.ts` ← `src/store/tasks.ts` (`sendPrompt`, `pasteDelayMs`) and `src/lib/paste-text.ts` (`cleanPasteText`)
 - `src/renderer/src/panel/ChangedFiles.tsx` ← `src/components/ChangedFilesList.tsx` (polling every 5 s while the window shows, with a cancel flag and an in-flight guard)
+- `src/renderer/src/panel/MessageField.tsx` ← `src/components/PromptInput.tsx` (the `sending()` guard: no second send until the first one's Enter has gone)
 - `src/renderer/src/app.css` (the changed files' pane heading and line counts) ← `.task-pane-heading` in `src/styles.css` and `.task-board-diff` in `src/components/task-board.css`
 
 ## Fonts

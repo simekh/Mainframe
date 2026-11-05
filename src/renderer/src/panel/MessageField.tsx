@@ -1,3 +1,4 @@
+// Adapted from Parallel Code (MIT): src/components/PromptInput.tsx (its sending() guard) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { createSignal } from 'solid-js';
 import type { TaskView } from '../../../shared/types';
 import { sessionOf, terminalOf } from '../tasksStore';
@@ -22,6 +23,9 @@ export default function MessageField(props: { task: TaskView | undefined }) {
   const target = () => (props.task?.session ? terminalOf(props.task.id) : null);
   const off = () => target() === null;
   const blank = () => !cleanMessageText(text()).trim();
+  // Tasks whose last message still waits for its Enter: a message sent before it would join that paste.
+  const [sending, setSending] = createSignal<ReadonlySet<string>>(new Set());
+  const isSending = () => !!props.task && sending().has(props.task.id);
   const placeholder = () => {
     if (off()) return 'Reopen the session to send it a message';
     return sessionOf(props.task!)?.status?.state === 'blocked'
@@ -30,12 +34,29 @@ export default function MessageField(props: { task: TaskView | undefined }) {
   };
 
   const send = () => {
+    const id = props.task?.id;
     const sessionId = target();
     const term = sessionId ? getTerminal(sessionId) : undefined;
-    if (!term || blank()) return;
-    sendMessage(term, text());
-    setText('');
+    if (!id || !term || blank() || isSending()) return;
+    // First: a focus-out from the terminal then reaches the program before the message's focus report.
     field.focus();
+    setSending((all) => new Set(all).add(id));
+    const sent = () =>
+      setSending((all) => {
+        const rest = new Set(all);
+        rest.delete(id);
+        return rest;
+      });
+    sendMessage(term, text(), (submit, ms) =>
+      setTimeout(() => {
+        try {
+          submit();
+        } finally {
+          sent();
+        }
+      }, ms),
+    );
+    setText('');
   };
 
   // Enter sends; Shift+Enter keeps the textarea's own new line.
@@ -67,7 +88,7 @@ export default function MessageField(props: { task: TaskView | undefined }) {
           data-testid="message-send"
           aria-label="Send"
           title="Send"
-          disabled={off() || blank()}
+          disabled={off() || blank() || isSending()}
           onMouseDown={keepFocus}
           onClick={send}
         >

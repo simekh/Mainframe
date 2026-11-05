@@ -1,5 +1,6 @@
-import { createSignal, For, onCleanup, Show } from 'solid-js';
+import { For, Show } from 'solid-js';
 import type { RendererConfig, TaskView } from '../../../shared/types';
+import { now } from '../board/ageClock';
 import { cardAge, glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
 import { errorMessage } from '../bridgeError';
@@ -7,8 +8,6 @@ import { closeTask, reopenTask, sessionOf, tasksStore, terminalOf } from '../tas
 import TerminalView from '../terminal/TerminalView';
 import ChangedFiles from './ChangedFiles';
 import MessageField from './MessageField';
-
-const AGE_REFRESH_MS = 30_000;
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -21,11 +20,6 @@ const labelOf = (task: TaskView) => stateLabel(task, sessionOf(task));
  */
 export default function SessionPanel(props: { task: TaskView | undefined; config: RendererConfig | undefined }) {
   const shownTerminal = () => (props.task ? terminalOf(props.task.id) : null);
-  // The age of the task's state, as on its card.
-  const [now, setNow] = createSignal(Date.now());
-  const clock = setInterval(() => setNow(Date.now()), AGE_REFRESH_MS);
-  onCleanup(() => clearInterval(clock));
-
   const reopen = (id: string) =>
     reopenTask(id).catch((err: unknown) => console.error(`[tasks] could not reopen task ${id}: ${errorMessage(err)}`));
 
@@ -123,7 +117,7 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
         </div>
       </header>
 
-      <ChangedFiles taskId={props.task?.id ?? null} />
+      <ChangedFiles taskId={props.task?.id ?? null} running={!!props.task?.session} />
 
       <div class="well">
         <Show when={props.config}>

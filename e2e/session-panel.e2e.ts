@@ -1,22 +1,10 @@
-import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { test, expect, type Locator } from '@playwright/test';
-import { makeRepo } from '../src/main/testing/makeRepo';
-import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, cardIn, launches, run, screen, sendLine, startTask } from './tasks';
+import { cleanUp, launchApp } from './launch';
+import { card, cardIn, git, launches, repo, run, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
-
-function repo(): string {
-  const { main } = makeRepo();
-  removeAfterTest(dirname(main));
-  return main;
-}
-
-function git(...args: string[]): void {
-  execFileSync('git', args, { stdio: 'pipe' });
-}
 
 const CLOSED_NOTE = 'Closed. Reopen continues this chat.';
 const HINT = 'Enter sends it to the session. Shift+Enter adds a line.';
@@ -90,8 +78,9 @@ test('changed files lists what the task changed in its worktree', async () => {
   await startTask(page, 'Fix login');
   const files = page.getByTestId('changed-files');
   const heading = files.locator('.pane-heading');
-  // fake-claude makes no worktree: git finds none.
-  await expect(heading.locator('.label')).toHaveText('Worktree removed');
+  // fake-claude makes no worktree: git finds none yet while the session runs.
+  await expect(files).toHaveAttribute('data-count', '0');
+  await expect(heading.locator('.label')).toHaveText('No changes yet');
   await expect(heading).toBeDisabled();
 
   // What `claude -w fix-login` would do, then a commit and an untracked file.
@@ -117,6 +106,13 @@ test('changed files lists what the task changed in its worktree', async () => {
   await expect(files.locator('.file-list')).toBeHidden();
   await heading.click();
   await expect(files.locator('.file-list')).toBeVisible();
+
+  // The worktree goes away while the session still runs: the next poll finds no worktree.
+  git('-C', main, 'worktree', 'remove', '--force', worktree);
+  await expect(heading.locator('.label')).toHaveText('Worktree removed', { timeout: 7_000 });
+  await expect(files).toHaveAttribute('data-count', '0');
+  await expect(heading).toBeDisabled();
+  await expect(files.locator('.file-list')).toBeHidden();
   await app.close();
 });
 
@@ -167,6 +163,29 @@ test('several lines arrive as one bracketed paste, then Enter', async () => {
   await page.keyboard.press('Enter');
   await expect.poll(() => screen(page, id)).toContain('^[[200~first');
   await expect.poll(() => screen(page, id)).toContain('second^[[201~');
+  await app.close();
+});
+
+test('a second message waits until the first one has had its Enter', async () => {
+  const { app, page } = await launchApp();
+  const id = await startTask(page);
+  await run(page, "printf '\\033[?2004h'; cat -v");
+  const field = page.getByTestId('message-field');
+  const send = page.getByTestId('message-send');
+  // 40 lines: the Enter after this paste comes 500 ms later.
+  await field.fill(Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'));
+  await field.press('Enter');
+  await expect(field).toHaveValue('');
+  await field.fill('second');
+  await expect(send).toBeDisabled();
+  await field.press('Enter');
+  await expect(field).toHaveValue('second');
+
+  await expect(send).toBeEnabled();
+  await field.press('Enter');
+  await expect(field).toHaveValue('');
+  // Its own paste on its own line: the first message's Enter came before it.
+  await expect.poll(() => screen(page, id)).toMatch(/^\^\[\[200~second\^\[\[201~$/m);
   await app.close();
 });
 
@@ -252,11 +271,16 @@ test('the title bar drags the window, and its title, buttons and the pin take cl
   await close.click();
   expect(await appRegion(page.getByTestId('panel-reopen'))).toBe('no-drag');
 
-  // The pin comes first in the panel, so a drag box over it would take its clicks.
+  // The pin and the resize handle come first in the panel, so a drag box over them would take their clicks.
   const b = await box(bar);
   const p = await box(pin);
-  const overlaps = b.x < p.x + p.width && p.x < b.x + b.width && b.y < p.y + p.height && p.y < b.y + b.height;
-  expect(overlaps).toBe(false);
+  const overlaps = (o: { x: number; y: number; width: number; height: number }) =>
+    b.x < o.x + o.width && o.x < b.x + b.width && b.y < o.y + o.height && o.y < b.y + b.height;
+  expect(overlaps(p)).toBe(false);
+  expect(overlaps(await box(page.getByTestId('panel-resize')))).toBe(false);
+  // The title row still lines up with the project and branch row under it, 16px in.
+  const glyph = await box(page.getByTestId('side-panel').getByTestId('task-glyph'));
+  expect(Math.round(glyph.x)).toBe(Math.round((await box(page.getByTestId('panel-project'))).x));
   // The actions sit just left of the pin, in one row with it.
   const r = await box(page.getByTestId('panel-reopen'));
   expect(Math.round(p.x - (r.x + r.width))).toBe(6);

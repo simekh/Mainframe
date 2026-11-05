@@ -1,6 +1,20 @@
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
+import { makeRepo } from '../src/main/testing/makeRepo';
+import { removeAfterTest } from './launch';
+
+/** A repo from `makeRepo()` that is removed after the test; returns its main checkout. */
+export function repo(): string {
+  const { main } = makeRepo();
+  removeAfterTest(dirname(main));
+  return main;
+}
+
+export function git(...args: string[]): void {
+  execFileSync('git', args, { stdio: 'pipe' });
+}
 
 export const ids = (page: Page) => page.evaluate(() => window.__thesourceE2E.taskIds());
 

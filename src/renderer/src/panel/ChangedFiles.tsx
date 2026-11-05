@@ -21,9 +21,12 @@ function Diff(props: { added: number | null; removed: number | null }) {
 }
 
 /** What the selected task changed in its worktree, refreshed while it stays selected. */
-export default function ChangedFiles(props: { taskId: string | null }) {
+export default function ChangedFiles(props: { taskId: string | null; running: boolean }) {
   // By task: a task selected again shows its last list at once rather than an empty pane.
   const [known, setKnown] = createSignal<Record<string, ChangedFile[] | null>>({});
+  // Tasks git has found a worktree for during this run. No worktree before that, while the session
+  // runs, means claude hasn't made it yet; after it, that the worktree went away.
+  const [seen, setSeen] = createSignal<ReadonlySet<string>>(new Set());
   // One for the panel, open at first; not kept across starts.
   const [open, setOpen] = createSignal(true);
 
@@ -41,7 +44,9 @@ export default function ChangedFiles(props: { taskId: string | null }) {
           window.thesource
             .changedFiles(taskId)
             .then((files) => {
-              if (!cancelled) setKnown((all) => ({ ...all, [taskId]: files }));
+              if (cancelled) return;
+              setKnown((all) => ({ ...all, [taskId]: files }));
+              if (files !== null && !seen().has(taskId)) setSeen((all) => new Set(all).add(taskId));
             })
             .catch((err: unknown) => console.warn(`[files] could not list the changes of task ${taskId}`, err))
             .finally(() => {
@@ -66,12 +71,13 @@ export default function ChangedFiles(props: { taskId: string | null }) {
 
   /** Undefined until git has answered for the task; null when it found no worktree. */
   const files = () => (props.taskId ? known()[props.taskId] : undefined);
+  const notMadeYet = () => props.running && !seen().has(props.taskId!);
   const count = () => files()?.length ?? 0;
   const total = (key: 'added' | 'removed') => (files() ?? []).reduce((sum, f) => sum + (f[key] ?? 0), 0);
   const label = () => {
     const list = files();
     if (list === undefined) return '';
-    if (list === null) return 'Worktree removed';
+    if (list === null) return notMadeYet() ? 'No changes yet' : 'Worktree removed';
     if (list.length === 0) return 'No changes yet';
     return `${list.length} ${list.length === 1 ? 'file' : 'files'} changed`;
   };
@@ -100,7 +106,7 @@ export default function ChangedFiles(props: { taskId: string | null }) {
         <span class="label">{label()}</span>
         <Diff added={total('added')} removed={total('removed')} />
       </button>
-      <ul class="file-list" id="changed-file-list" hidden={!open() || count() === 0}>
+      <ul class="file-list" id="changed-file-list" aria-label="Changed files" hidden={!open() || count() === 0}>
         <Index each={files() ?? []}>
           {(file) => (
             <li data-testid="changed-file" data-status={file().status}>

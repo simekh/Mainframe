@@ -2,10 +2,10 @@
 import type { Terminal } from '@xterm/xterm';
 
 /**
- * C0 controls but tab and newline, DEL, C1 controls, and invisible characters. Claude Code holds a
- * paste that contains them for review ("Removed N invisible characters") instead of submitting it.
+ * C0 controls but tab and newline, DEL, C1 controls, and invisible and bidi characters. Claude Code
+ * holds a paste that contains them for review ("Removed N invisible characters") instead of submitting it.
  */
-const HELD_BACK = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/g;
+const HELD_BACK = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
 
 export function cleanMessageText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(HELD_BACK, '');
