@@ -31,9 +31,12 @@ function shQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
+/** The file the SessionStart hook writes, in each task's folder. */
+export const SESSION_START_FILE = 'session-start.json';
+
 export function hookSettings(taskDir: string): string {
-  const target = shQuote(`${taskDir}/session-start.json`);
-  const tmp = shQuote(`${taskDir}/session-start.json.tmp`);
+  const target = shQuote(`${taskDir}/${SESSION_START_FILE}`);
+  const tmp = shQuote(`${taskDir}/${SESSION_START_FILE}.tmp`);
   const command = `cat > ${tmp} && mv ${tmp} ${target}`;
   return JSON.stringify({
     hooks: {

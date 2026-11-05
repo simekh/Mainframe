@@ -59,6 +59,22 @@ export interface StartCheck {
   base: string;
 }
 
+export interface TaskView {
+  id: string;
+  title: string;
+  description: string;
+  slug: string;
+  /** `worktree-<slug>`. */
+  branch: string;
+  /** `<projectDir>/.claude/worktrees/<slug>`. */
+  worktreePath: string;
+  createdAt: number;
+  /** When its last session ended; null while one runs. Closed cards show their age from it. */
+  closedAt: number | null;
+  /** The running `claude` process; null when the task is closed. */
+  session: { id: string; startedWithPrompt: boolean } | null;
+}
+
 export interface ChangedFile {
   path: string;
   status: 'A' | 'M' | 'D' | 'T' | 'U' | '?';
