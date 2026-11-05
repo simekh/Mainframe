@@ -98,6 +98,7 @@ Agreed with the owner from a mockup based on Parallel Code's board view:
   4. **Ready to merge**: waiting for the merge turn, or holding it.
   5. **Merged today**.
 - **Right panel**: the selected session. Header with the task's title, project, branch, a link to the card, and Close session; the files the session changed; the **real Claude Code terminal**; and a **message field** below it that sends text into that terminal as if typed (multi-line via bracketed paste, then Enter). With nothing selected, the panel shows the manager session.
+  - **(Owner, 2026-11-05):** the session panel and the manager's panel are both full height, with a width the owner drags, and a pin/unpin button. Pinned, the panel sits beside the board. Unpinned, it slides over the board when a session is selected and hides when the owner clicks the board.
 - **Ctrl+Tab** jumps to the next session that needs the owner (as in Parallel Code).
 - **History**: every session the project has had, including merged and closed ones, with **Reopen**.
 
@@ -112,6 +113,10 @@ How sessions "light up" beyond the board (notifications, sounds, Dock badge) is 
    - `<slug>`: a short slug of the card title, unique within the project (Damela's own convention for worktree names).
    - Claude Code creates `.claude/worktrees/<slug>` on branch `worktree-<slug>`, branched from the remote default branch (`worktree.baseRef` default `"fresh"`; for Damela `origin/stage`). The app does not create worktrees itself.
    - Repo-specific setup (Damela's `node_modules` symlinks) is done by the session itself, following the repo's CLAUDE.md, as today. The opening prompt tells the session it is already in its card's worktree, so it doesn't call EnterWorktree again.
+   - **(Owner, 2026-11-05, from the step 1 findings):**
+     - No `--permission-mode` flag. Sessions run in the owner's user-level mode, as in iTerm2.
+     - New worktrees start from `origin/<integration branch>` (`worktree.baseRef` stays `"fresh"`), so every merge is followed by a push. Before a Start, the app warns when the main checkout has commits that aren't on `origin/HEAD`.
+     - `--mcp-config` is added in step 2, when the app has MCP tools.
 3. The **opening prompt** contains the card's link, number, title, description, labels and checklists, and says: this card is your brief; read it, plan, start; follow this repo's CLAUDE.md; ask the owner when you need them. It also explains the app's merge-turn tools (§8), which are the app's own protocol, not a project rule.
    - **No-questions mode:** when the owner starts a task with "don't ask me questions" / "just fix it" (a checkbox next to Start, or said to the manager), the prompt says so: skip clarifying questions, and when the work is done and reviewed, merge without asking (skip the merge menu). This is the owner's instruction for that one task, passed through; it is the only case in which a session merges without asking.
 4. The app moves the card to the source's "in progress" list (Trello: In Progress) **(designer's call)**.
@@ -127,6 +132,8 @@ Sources, in order of trust:
 3. Whether the `claude` process is alive.
 
 `claude agents --json` also lists every live session with `status` busy/idle/waiting; useful for debugging and as a cross-check, not required.
+
+**(Builder's call, 2026-11-05, plan 2a):** in step 1, lanes come from OSC 7501 alone. The step 1 findings (§11.3) show it carries every state the lanes need, with the exact question or command, so hook events would duplicate it. The app's hooks file then holds a single SessionStart hook. It records the session's current id, which changes on `/clear` and on `/resume` inside the session, so that Reopen continues the conversation the owner last saw. Hooks for state come back if a later step needs something OSC 7501 doesn't report.
 
 States and lanes:
 - **Working**: a prompt was submitted or tools are running.
@@ -201,6 +208,9 @@ Each step is usable on its own. Damela is the test project throughout.
    - Needs you and Working lanes from §7.3; right panel with terminal, changed files and message field; Ctrl+Tab.
    - Closed sessions shown with Reopen; sessions reopened after an app restart.
    - Merging works as today (the worker follows CLAUDE.md, no turn yet).
+   - **(2026-11-05):** the rest of step 1 is split into two plans:
+     - **Plan 2a:** sessions on the board, started with New task (a title and a description, brought forward from step 4).
+     - **Plan 2b:** the Trello TODO lane, Start and Start next card.
 2. **Merge turn**: §8 in full; Ready to merge and Merged today lanes; card moved to Dev; branch-moved notices.
 3. **Manager**: §7.6; Start next card moves to the manager's judgement.
 4. **All projects**: project rail with counts, several windows, Word², SmasHit and Tele2; History with Reopen; New task from a plain description.
