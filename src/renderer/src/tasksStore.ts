@@ -10,7 +10,9 @@ const [store, setStore] = createStore<{
   sessions: Record<string, SessionState>;
   terminals: TerminalEntry[];
   selectedId: string | null;
-}>({ tasks: [], sessions: {}, terminals: [], selectedId: null });
+  /** Whether the unpinned panel is out; the pinned one always is. */
+  panelOpen: boolean;
+}>({ tasks: [], sessions: {}, terminals: [], selectedId: null, panelOpen: true });
 
 export const tasksStore = store;
 
@@ -55,8 +57,13 @@ export function closeTask(id: string): void {
   window.thesource.closeTask(id);
 }
 
+/** Whatever selects a task (a card, Answer, Reopen, New task) also brings the panel out to show it. */
 export function select(id: string | null): void {
-  setStore('selectedId', id);
+  setStore(id === null ? { selectedId: id } : { selectedId: id, panelOpen: true });
+}
+
+export function setPanelOpen(open: boolean): void {
+  setStore('panelOpen', open);
 }
 
 /** What the task's running session has reported; nothing while it is closed. */

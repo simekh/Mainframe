@@ -1,8 +1,12 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from 'solid-js';
 import type { ProgramStatus, TaskView } from '../../shared/types';
 import Board from './board/Board';
+import { glyphOf, stateLabel } from './board/lanes';
 import NewTaskDialog from './board/NewTaskDialog';
-import { closeTask, loadTasks, sessionOf, tasksStore, terminalOf } from './tasksStore';
+import StatusGlyph from './board/StatusGlyph';
+import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
+import SidePanel from './panel/SidePanel';
+import { closeTask, loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
 import { getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 import TerminalView from './terminal/TerminalView';
@@ -56,6 +60,15 @@ export default function App() {
   const selected = createMemo(() => tasksStore.tasks.find((t) => t.id === tasksStore.selectedId));
   const selectedTerminal = createMemo(() => (tasksStore.selectedId ? terminalOf(tasksStore.selectedId) : null));
   const [dialogOpen, setDialogOpen] = createSignal(false);
+  const [panelPrefs, setPanelPrefs] = createSignal(loadPanelPrefs(localStorage));
+  const keepPanelPrefs = (prefs: PanelPrefs) => {
+    setPanelPrefs(prefs);
+    savePanelPrefs(localStorage, prefs);
+  };
+  // Unpinned, a press on the board outside any card puts the panel away.
+  const hideUnpinnedPanel = (e: MouseEvent) => {
+    if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(false);
+  };
 
   onMount(() => void loadTasks());
 
@@ -85,16 +98,38 @@ export default function App() {
             )}
           </Show>
         </header>
-        <Show when={config()}>{(c) => <Board projectName={c().projectName} />}</Show>
+        <div class="board" data-testid="board" onMouseDown={hideUnpinnedPanel}>
+          <Show when={config()}>{(c) => <Board projectName={c().projectName} />}</Show>
+        </div>
       </section>
 
-      <main class="pane">
+      <SidePanel
+        prefs={panelPrefs()}
+        onPrefsChange={keepPanelPrefs}
+        open={tasksStore.panelOpen}
+        onOpenChange={setPanelOpen}
+        badge={
+          <Show when={selected()}>
+            {(task) => (
+              <StatusGlyph glyph={glyphOf(task(), sessionOf(task()))} label={stateLabel(task(), sessionOf(task())).text} />
+            )}
+          </Show>
+        }
+        empty={
+          selected() ? undefined : (
+            <>
+              <strong>Select a session on the board</strong>
+              New task starts Claude Code in a worktree of its own.
+            </>
+          )
+        }
+      >
         {/* Always laid out at one height, so the terminal below has the same size with or without a selection. */}
-        <header class="pane-header">
+        <header class="panel-header">
           <Show when={selected()}>
             {(task) => (
               <>
-                <h2 class="pane-title" title={task().title}>
+                <h2 class="panel-title" title={task().title}>
                   {task().title}
                 </h2>
                 <Show when={task().session}>
@@ -125,13 +160,7 @@ export default function App() {
             )}
           </Show>
         </div>
-        <Show when={!selected()}>
-          <div class="pane-empty">
-            <p>{tasksStore.tasks.length ? 'Select a task' : 'No tasks yet'}</p>
-            <p class="pane-empty-hint">New task starts Claude Code in a worktree of its own.</p>
-          </div>
-        </Show>
-      </main>
+      </SidePanel>
 
       <Show when={dialogOpen() && config()}>
         {(c) => <NewTaskDialog projectName={c().projectName} onClose={closeDialog} />}

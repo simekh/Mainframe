@@ -25,6 +25,7 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/board/StatusGlyph.tsx` and its `app.css` rules ← `src/components/StatusDot.tsx` (with `StatusCheckIcon` from `src/components/icons.tsx` and the `.status-glyph` rules of `src/styles.css`)
 - `src/renderer/src/board/cardMoves.ts` ← `src/components/task-board-motion.ts` (`planCardMotion`'s sub-pixel rule, `useCardMotion`'s cancel-before-measure and ghost hiding)
 - `src/renderer/src/board/TaskCard.tsx` ← `src/components/TaskBoardCard.tsx` (handing the focus to a card rebuilt in its new lane)
+- `src/renderer/src/app.css` (the side panel's hide pill) ← `src/components/task-board.css` (`.board-side-panel-close`)
 
 ## Fonts
 

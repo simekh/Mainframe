@@ -21,6 +21,17 @@ export async function run(page: Page, line: string): Promise<void> {
   await page.keyboard.press('Enter');
 }
 
+/** Sends a line to the task's session through the bridge, so the focus can stay where it is. */
+export async function sendLine(page: Page, taskId: string, line: string): Promise<void> {
+  await page.evaluate(
+    async ([id, data]) => {
+      const task = (await window.thesource.listTasks()).find((t) => t.id === id);
+      window.thesource.write(task!.session!.id, data);
+    },
+    [taskId, `${line}\r`],
+  );
+}
+
 /** Starts a task through the New task dialog; resolves with its id once its shell prompt shows. */
 export async function startTask(page: Page, title = 'Task', description = ''): Promise<string> {
   const before = await ids(page);

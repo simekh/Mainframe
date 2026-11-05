@@ -1,0 +1,34 @@
+/** The side panel's width and pin, as the owner left them. */
+export interface PanelPrefs {
+  width: number;
+  pinned: boolean;
+}
+
+export const DEFAULT_PANEL_PREFS: PanelPrefs = { width: 640, pinned: true };
+
+const KEY = 'thesource.panel';
+const MIN_WIDTH = 420;
+/** What the window keeps beside the panel: room for the board when pinned, a strip of it when not. */
+const BOARD_ROOM = { pinned: 360, unpinned: 80 };
+
+/** The width the panel can take in this window. The minimum wins when the window is too narrow. */
+export function clampWidth(width: number, windowWidth: number, pinned: boolean): number {
+  const max = windowWidth - (pinned ? BOARD_ROOM.pinned : BOARD_ROOM.unpinned);
+  return Math.round(Math.max(MIN_WIDTH, Math.min(width, max)));
+}
+
+export function loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs {
+  try {
+    const saved: unknown = JSON.parse(storage.getItem(KEY) ?? 'null');
+    if (typeof saved !== 'object' || saved === null) return DEFAULT_PANEL_PREFS;
+    const { width, pinned } = saved as Record<string, unknown>;
+    if (typeof width !== 'number' || !Number.isFinite(width) || typeof pinned !== 'boolean') return DEFAULT_PANEL_PREFS;
+    return { width, pinned };
+  } catch {
+    return DEFAULT_PANEL_PREFS;
+  }
+}
+
+export function savePanelPrefs(storage: Pick<Storage, 'setItem'>, prefs: PanelPrefs): void {
+  storage.setItem(KEY, JSON.stringify({ width: prefs.width, pinned: prefs.pinned }));
+}

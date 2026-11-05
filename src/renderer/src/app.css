@@ -7,7 +7,7 @@
   --bg-input: #0c1218;
   --island: #10161c;
   --island-border: #29343d;
-  --column: #0e141a;
+  --task-container-bg: #0e141a;
   --terminal: #13191f; /* matches TERMINAL_BACKGROUND in terminalOptions.ts */
   --border: #394752;
   --border-subtle: #2b3741;
@@ -91,6 +91,7 @@ button {
 
 /* --- Left column: the top bar over the board ----------------------------------------------- */
 
+/* The rest of the window beside the pinned panel; all of it while the panel floats. */
 .left {
   flex: 1;
   min-width: 0;
@@ -166,6 +167,14 @@ button {
   text-overflow: ellipsis;
 }
 
+/* Under the top bar; a press on it outside any card puts the unpinned panel away. */
+.board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* --- Board: lanes without boxes, cards with faint fills ----------------------------------------
    Adapted from Parallel Code (MIT): src/components/task-board.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
 
@@ -239,6 +248,11 @@ button {
   padding: 1px 1px 4px;
   list-style: none;
   overflow-y: auto;
+}
+
+/* Beside the pinned panel, lanes it cuts off fade out rather than end at a hard edge. */
+.app:has(> .side-panel[data-pinned='true']) .lanes {
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
 .lanes,
@@ -585,39 +599,212 @@ button {
   }
 }
 
-/* --- The selected task's panel: title bar over the terminal -------------------------------- */
+/* --- The side panel: the selected session, the window's full height ------------------------- */
 
-/* The mockup's panel width; the board takes the rest of the window. */
-.pane {
+/* Pinned, the board's flex sibling at the owner's width. */
+.side-panel {
   position: relative;
   flex: none;
-  width: 640px;
+  width: var(--panel-w);
+  min-height: 0;
+  margin: 8px 8px 8px 0;
   display: flex;
   flex-direction: column;
-  margin: 8px 8px 8px 0;
-  padding: 0 8px 8px;
-  background: var(--column);
-  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: var(--task-container-bg);
+  border: 1px solid var(--island-border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
-.pane:has(.pane-empty) {
-  box-shadow: none;
+/* Unpinned, it floats over the board's right edge and slides away while it isn't open. It hides by
+   moving and then turning invisible, never by changing size, so the terminals keep theirs. */
+.side-panel[data-pinned='false'] {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  margin: 0;
+  z-index: 5;
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* A fixed height, empty or not, so the terminal is the same size with or without a selection. */
-.pane-header {
+/* Past the window's edge, with the hide pill that overhangs the panel. */
+.side-panel[data-pinned='false'][data-open='false'] {
+  transform: translateX(calc(100% + 24px));
+  visibility: hidden;
+}
+
+/* The edge facing the board: a drag or the arrow keys set the width. */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  z-index: 4;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resize::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+}
+
+.panel-resize:hover::after,
+.panel-resize:focus-visible::after,
+.panel-resize[data-dragging='true']::after {
+  opacity: 0.8;
+}
+
+/* The line is its focus ring. */
+.panel-resize:focus-visible {
+  outline: none;
+}
+
+/* A pill straddling the left edge, centred on it: puts the unpinned panel away.
+   Adapted from Parallel Code (MIT): .board-side-panel-close in src/components/task-board.css at
+   97c3558. See THIRD_PARTY_NOTICES.md. */
+.panel-hide {
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  z-index: 6;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 44px;
+  translate: 0 -50%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  color: var(--fg-muted);
+}
+
+.side-panel[data-pinned='false'] .panel-hide {
+  display: inline-flex;
+}
+
+/* The hidden panel's way back: a half pill on the window's right edge, where the panel went. It
+   carries the shown session's state, so one that needs the owner shows from there. */
+.panel-show {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 22px;
+  padding: 10px 0 10px 2px;
+  translate: 0 -50%;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+  color: var(--fg-muted);
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* Visible at once, so it can take the focus; it fades in once the panel has slid out. */
+.side-panel[data-pinned='false'][data-open='false'] ~ .panel-show {
+  visibility: visible;
+  opacity: 1;
+}
+
+.panel-hide:hover,
+.panel-show:hover {
+  border-color: var(--fg-muted);
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.panel-hide svg,
+.panel-show svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* At the panel's top right, whatever it holds: a title bar lays out its row beside it. */
+.panel-pin {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.panel-pin:hover {
+  background: var(--hover);
+  border-color: var(--border-subtle);
+  color: var(--fg);
+}
+
+.panel-pin[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.panel-pin svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Over the content, which stays laid out for the terminals in it. */
+.panel-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--fg-subtle);
+  pointer-events: none;
+}
+
+.panel-empty p {
+  max-width: 36ch;
+  margin: 0;
+}
+
+.panel-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* A fixed height, empty or not, so the terminal is the same size with or without a selection. Its
+   right end leaves the pin room: 8 px in, 28 px wide, 6 px apart. */
+.panel-header {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 46px;
   min-width: 0;
-  padding: 6px 0 4px 8px;
+  padding: 6px 42px 4px 16px;
 }
 
-.pane-title {
+.panel-title {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -669,30 +856,12 @@ button {
   opacity: 0.4;
 }
 
-.pane-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.pane-empty p {
-  margin: 0;
-}
-
-.pane-empty-hint {
-  color: var(--fg-subtle);
-  margin-top: 4px;
-}
-
 /* The terminal panel. Its top edge carries the session's state. */
 .well {
   position: relative;
   flex: 1;
   min-height: 0;
+  margin: 0 8px 8px;
   background: var(--terminal);
   border: 1px solid var(--island-border);
   border-top: 2px solid var(--island-border);
@@ -905,10 +1074,28 @@ button {
     transition: border-top-color 160ms ease-out;
   }
 
+  /* Out at once; hidden only once it has slid away. */
+  .side-panel[data-pinned='false'] {
+    transition:
+      transform 220ms var(--ease-out),
+      visibility 0s linear 0s;
+  }
+
+  .side-panel[data-pinned='false'][data-open='false'] {
+    transition:
+      transform 220ms var(--ease-out),
+      visibility 0s linear 220ms;
+  }
+
+  .side-panel[data-pinned='false'][data-open='false'] ~ .panel-show {
+    transition: opacity 120ms var(--ease-out) 160ms;
+  }
+
   .card,
   .card-act,
   .btn,
-  .tb-btn {
+  .tb-btn,
+  .panel-pin {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),

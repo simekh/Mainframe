@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { cardIn, run, startTask } from './tasks';
+import { cardIn, run, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -45,17 +45,6 @@ test('a card that changes lanes flies there once, and nothing flies with reduced
   expect(await flies()).toBe(1);
   await app.close();
 });
-
-/** Sends a line to the task's session through the bridge, so the focus can stay where it is. */
-async function sendLine(page: Page, taskId: string, line: string): Promise<void> {
-  await page.evaluate(
-    async ([id, data]) => {
-      const task = (await window.thesource.listTasks()).find((t) => t.id === id);
-      window.thesource.write(task!.session!.id, data);
-    },
-    [taskId, `${line}\r`],
-  );
-}
 
 const focusIsIn = (page: Page, taskId: string) =>
   page.evaluate(
