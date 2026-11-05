@@ -62,9 +62,17 @@ test("the dialog warns when the main checkout has commits that new worktrees won
   const first = await launchApp({ THESOURCE_PROJECT_DIR: ahead });
   await first.page.getByTestId('new-task').click();
   await expect(first.page.getByTestId('start-check-warning')).toHaveText(
-    "stage has 1 commit that isn't on origin/stage. New worktrees start from origin/stage, so this task won't have them. Push stage first, or start anyway.",
+    "stage has 1 commit that isn't on origin/stage. New worktrees start from origin/stage, so this task won't have it. Push stage first, or start anyway.",
   );
   await expect(first.page.getByTestId('new-task-start')).toHaveText('Start anyway');
+  await first.page.keyboard.press('Escape');
+  writeFileSync(join(ahead, 'local2.txt'), 'local\n');
+  git('-C', ahead, 'add', 'local2.txt');
+  git('-C', ahead, 'commit', '-m', 'local 2');
+  await first.page.getByTestId('new-task').click();
+  await expect(first.page.getByTestId('start-check-warning')).toHaveText(
+    "stage has 2 commits that aren't on origin/stage. New worktrees start from origin/stage, so this task won't have them. Push stage first, or start anyway.",
+  );
   await first.app.close();
 
   const second = await launchApp({ THESOURCE_PROJECT_DIR: repo() });

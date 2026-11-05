@@ -122,7 +122,8 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
               <strong>
                 <code>{c().branch}</code> has {commitsThatArent(c().ahead)} on <code>{c().base}</code>.
               </strong>{' '}
-              New worktrees start from <code>{c().base}</code>, so this task won't have them. Push{' '}
+              New worktrees start from <code>{c().base}</code>, so this task won't have {c().ahead === 1 ? 'it' : 'them'}.
+              Push{' '}
               <code>{c().branch}</code> first, or start anyway.
             </div>
           )}
