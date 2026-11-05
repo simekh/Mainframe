@@ -1,0 +1,10 @@
+{
+  "name": "mcp-wait",
+  "private": true,
+  "type": "module",
+  "description": "Spike for spec §11.6: an MCP tool call that waits",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
+  }
+}
