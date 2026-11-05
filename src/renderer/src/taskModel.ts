@@ -39,3 +39,9 @@ export function updateTerminals(current: TerminalEntry[], tasks: TaskView[]): Te
   }
   return next;
 }
+
+/** The task a start added: the one new to the list. None if there are more, as before the first load. */
+export function addedTask(before: readonly TaskView[], after: readonly TaskView[]): string | null {
+  const added = after.filter((task) => !before.some((old) => old.id === task.id));
+  return added.length === 1 ? added[0].id : null;
+}

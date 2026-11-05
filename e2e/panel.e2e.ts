@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, firstSpawn, screen, sendLine, startTask, termSize } from './tasks';
+import { card, firstSpawn, fitSize, screen, sendLine, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -97,18 +97,22 @@ test('unpinned, the panel hides when the board is clicked and comes back when a 
 // state), so a hidden start is a task started while the owner has put the panel away.
 test('a task started while the unpinned panel is hidden starts at the size its terminal shows', async () => {
   const { app, page } = await launchApp();
-  // A task selected first, so only the panel is hidden, not the terminal well inside it.
-  await startTask(page, 'Alpha');
+  // Pinned first: a new task's session starts at the size its terminal shows, and that fills the
+  // well. A task selected also means hiding hides only the panel, not the well inside it.
+  const alpha = await startTask(page, 'Alpha');
+  const shown = (await termSize(page, alpha))!;
+  expect(await firstSpawn(page, alpha)).toEqual(shown);
+  expect(await fitSize(page, alpha)).toEqual(shown);
+
   await page.getByTestId('panel-pin').click();
   await page.getByTestId('panel-hide').click();
   await expect(page.getByTestId('side-panel')).toBeHidden();
 
   const id = await startTask(page, 'Beta');
   await expect(page.getByTestId('side-panel')).toHaveAttribute('data-open', 'true');
-  const spawned = (await firstSpawn(page, id))!;
-  expect(spawned.panelShown).toBe(false);
   const size = (await termSize(page, id))!;
-  expect({ cols: spawned.cols, rows: spawned.rows }).toEqual(size);
+  expect(await firstSpawn(page, id)).toEqual(size);
+  expect(await fitSize(page, id)).toEqual(size);
   await sendLine(page, id, 'stty size');
   await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
   expect(await termSize(page, id)).toEqual(size);

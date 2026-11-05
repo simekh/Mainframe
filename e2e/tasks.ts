@@ -10,9 +10,13 @@ export const screen = (page: Page, taskId: string) =>
 export const termSize = (page: Page, taskId: string) =>
   page.evaluate((id) => window.__thesourceE2E.termSize(id), taskId);
 
-/** The size the task's session was first spawned at, and whether the side panel was out then. */
+/** The size the task's session was first spawned at. */
 export const firstSpawn = (page: Page, taskId: string) =>
   page.evaluate((id) => window.__thesourceE2E.firstSpawn(id), taskId);
+
+/** The size a fit of the task's terminal would give now: what fills its well with the renderer it has. */
+export const fitSize = (page: Page, taskId: string) =>
+  page.evaluate((id) => window.__thesourceE2E.fitSize(id), taskId);
 
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 

@@ -56,7 +56,62 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     term.unicode.activeVersion = '11';
     term.open(container);
     registerTerminal(id, { term, fit });
-    fit.fit();
+
+    // --- WebGL only while on screen ----------------------------------------------------------
+    let webgl: WebglAddon | undefined;
+    let reattachTimer: ReturnType<typeof setTimeout> | undefined;
+    let detachTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const attachWebgl = () => {
+      if (webgl || !props.selected) return;
+      try {
+        const addon = new WebglAddon();
+        addon.onContextLoss(() => {
+          // A loss reported by an addon already detached is our own loseContext() below.
+          if (webgl !== addon) return;
+          addon.dispose();
+          webgl = undefined;
+          if (recordSharedWebglContextLoss()) {
+            reattachTimer = setTimeout(() => {
+              reattachTimer = undefined;
+              attachWebgl();
+            }, WEBGL_REATTACH_DELAY_MS);
+          }
+        });
+        // loadAddon repaints this terminal in full; no redraw needed (it would garble the others).
+        term.loadAddon(addon);
+        webgl = addon;
+      } catch {
+        // No WebGL2: xterm keeps the DOM renderer.
+        return;
+      }
+      // WebGL's cells are whole device pixels, so fewer columns can fit than the DOM renderer
+      // measured: fit again, with the renderer the terminal now shows in.
+      fit.fit();
+    };
+
+    // No fit: the terminal is off screen by now, and a resize would only signal the session.
+    const detachWebgl = () => {
+      if (reattachTimer !== undefined) clearTimeout(reattachTimer);
+      reattachTimer = undefined;
+      const addon = webgl;
+      if (!addon) return;
+      webgl = undefined;
+      const canvas = term.element?.querySelector('canvas');
+      addon.dispose();
+      // dispose() drops the canvas, but Chromium keeps the context until it is garbage collected.
+      // Lose it now to free its slot.
+      try {
+        canvas?.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+      } catch {
+        // Context already gone.
+      }
+    };
+
+    // A terminal on screen from the start fits with WebGL before its session starts, so the session
+    // starts at the size it shows. Any other fits with the DOM renderer.
+    attachWebgl();
+    if (!webgl) fit.fit();
 
     // --- Input -------------------------------------------------------------------------------
     let exited = false;
@@ -117,10 +172,8 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       const wait = Math.max(0, RESIZE_INTERVAL_MS - (performance.now() - lastResizeAt));
       resizeTimer = setTimeout(sendResize, wait);
     });
-    // Re-fits only when the container's size changes. Its first report is the size the session is
-    // spawned at below: fitting again then could measure with the WebGL renderer the task's
-    // selection attached meanwhile (its cells are whole device pixels) and resize a session that
-    // has only just started.
+    // Re-fits only when the container's size changes: its first report is the size the session
+    // spawns at below. A change of renderer fits in attachWebgl.
     let fitted = { width: container.clientWidth, height: container.clientHeight };
     const observer = new ResizeObserver(() => {
       const size = { width: container.clientWidth, height: container.clientHeight };
@@ -194,52 +247,6 @@ export default function TerminalView(props: { sessionId: string; selected: boole
         navigator.clipboard.writeText(text).catch((err: unknown) => console.warn('[terminal] OSC 52 copy failed', err));
       },
     });
-
-    // --- WebGL only while on screen ----------------------------------------------------------
-    let webgl: WebglAddon | undefined;
-    let reattachTimer: ReturnType<typeof setTimeout> | undefined;
-    let detachTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const attachWebgl = () => {
-      if (webgl || !props.selected) return;
-      try {
-        const addon = new WebglAddon();
-        addon.onContextLoss(() => {
-          // A loss reported by an addon already detached is our own loseContext() below.
-          if (webgl !== addon) return;
-          addon.dispose();
-          webgl = undefined;
-          if (recordSharedWebglContextLoss()) {
-            reattachTimer = setTimeout(() => {
-              reattachTimer = undefined;
-              attachWebgl();
-            }, WEBGL_REATTACH_DELAY_MS);
-          }
-        });
-        // loadAddon repaints this terminal in full; no redraw needed (it would garble the others).
-        term.loadAddon(addon);
-        webgl = addon;
-      } catch {
-        // No WebGL2: xterm keeps the DOM renderer.
-      }
-    };
-
-    const detachWebgl = () => {
-      if (reattachTimer !== undefined) clearTimeout(reattachTimer);
-      reattachTimer = undefined;
-      const addon = webgl;
-      if (!addon) return;
-      webgl = undefined;
-      const canvas = term.element?.querySelector('canvas');
-      addon.dispose();
-      // dispose() drops the canvas, but Chromium keeps the context until it is garbage collected.
-      // Lose it now to free its slot.
-      try {
-        canvas?.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
-      } catch {
-        // Context already gone.
-      }
-    };
 
     createEffect(
       on(

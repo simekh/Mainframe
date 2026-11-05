@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ProgramStatus, TaskView } from '../../shared/types';
-import { nextSessionState, updateTerminals } from './taskModel';
+import { addedTask, nextSessionState, updateTerminals } from './taskModel';
 
 const status = (state: ProgramStatus['state'], msg?: string): ProgramStatus => ({ state, id: '', msg, updatedAt: 0 });
 
@@ -49,5 +49,16 @@ describe('updateTerminals', () => {
     const reopened = updateTerminals(closed, [task('a', 's3'), task('b', 's2')]);
     expect(reopened).toEqual([{ sessionId: 's3', taskId: 'a' }, { sessionId: 's2', taskId: 'b' }]);
     expect(reopened[1]).toBe(two[1]);
+  });
+});
+
+describe('addedTask', () => {
+  it('is the one task new to the list, and none while that is not clear', () => {
+    const before = [task('a', 's1'), task('b', null)];
+    expect(addedTask(before, [...before, task('c', 's3')])).toBe('c');
+    // A list with nothing new: a status change, a close, or the restore at startup.
+    expect(addedTask(before, [task('a', null), task('b', 's2')])).toBeNull();
+    // More than one new task (the list not loaded yet): the start's reply picks it.
+    expect(addedTask([], [...before, task('c', 's3')])).toBeNull();
   });
 });

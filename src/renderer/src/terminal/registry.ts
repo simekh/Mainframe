@@ -21,6 +21,10 @@ export function getTerminal(id: string): Terminal | undefined {
   return entries.get(id)?.term;
 }
 
+export function getFit(id: string): FitAddon | undefined {
+  return entries.get(id)?.fit;
+}
+
 function redraw(term: Terminal): void {
   try {
     term.clearTextureAtlas();

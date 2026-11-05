@@ -7,7 +7,7 @@ import StatusGlyph from './board/StatusGlyph';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import SidePanel from './panel/SidePanel';
 import { closeTask, loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
-import { getTerminal } from './terminal/registry';
+import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 import TerminalView from './terminal/TerminalView';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
@@ -31,7 +31,7 @@ const terminalOfTask = (taskId: string) => {
 };
 
 function installE2eHooks(): void {
-  const firstSpawns = new Map<string, { cols: number; rows: number; panelShown: boolean }>();
+  const firstSpawns = new Map<string, { cols: number; rows: number }>();
   window.__thesourceE2E = {
     taskIds: () => tasksStore.tasks.map((t) => t.id),
     screenText: (taskId) => {
@@ -45,15 +45,17 @@ function installE2eHooks(): void {
       const term = terminalOfTask(taskId);
       return term ? { cols: term.cols, rows: term.rows } : null;
     },
+    fitSize: (taskId) => {
+      const sessionId = terminalOf(taskId);
+      const dims = sessionId ? getFit(sessionId)?.proposeDimensions() : undefined;
+      return dims ? { cols: dims.cols, rows: dims.rows } : null;
+    },
     firstSpawn: (taskId) => {
       const sessionId = terminalOf(taskId);
       return (sessionId && firstSpawns.get(sessionId)) || null;
     },
     spawn: (req) => {
-      if (!firstSpawns.has(req.sessionId)) {
-        const panelShown = document.querySelector('[data-testid=side-panel]')?.getAttribute('data-open') === 'true';
-        firstSpawns.set(req.sessionId, { cols: req.cols, rows: req.rows, panelShown });
-      }
+      if (!firstSpawns.has(req.sessionId)) firstSpawns.set(req.sessionId, { cols: req.cols, rows: req.rows });
       return window.thesource.spawn(req);
     },
   };

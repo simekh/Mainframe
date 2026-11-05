@@ -2,7 +2,7 @@ import { batch } from 'solid-js';
 import { createStore, reconcile, unwrap } from 'solid-js/store';
 import type { TheSourceApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
-import { nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
+import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
 
 const [store, setStore] = createStore<{
   tasks: TaskView[];
@@ -17,12 +17,18 @@ const [store, setStore] = createStore<{
 export const tasksStore = store;
 
 let changed = false;
+/** Whether a New task start is under way. The dialog allows one at a time. */
+let startPending = false;
 
 function setTasks(tasks: TaskView[]): void {
   batch(() => {
+    // The list that brings a started task selects it in the batch that adds its terminal, so the
+    // terminal mounts on screen and its session starts at the size it shows.
+    const started = startPending ? addedTask(unwrap(store.tasks), tasks) : null;
     // Keyed, so cards and terminals stay mounted across changes.
     setStore('tasks', reconcile(tasks, { key: 'id' }));
     setStore('terminals', updateTerminals(unwrap(store.terminals), tasks));
+    if (started) select(started);
   });
 }
 
@@ -44,13 +50,21 @@ export async function loadTasks(): Promise<void> {
 
 /** Rejects with the reason the task couldn't start. */
 export async function startTask(req: Parameters<TheSourceApi['startTask']>[0]): Promise<void> {
-  const task = await window.thesource.startTask(req);
-  select(task.id);
+  startPending = true;
+  try {
+    const task = await window.thesource.startTask(req);
+    // Selected already, unless the reply came before the list.
+    select(task.id);
+  } finally {
+    startPending = false;
+  }
 }
 
 export async function reopenTask(id: string): Promise<void> {
-  await window.thesource.reopenTask(id);
+  // Selected first, so the new session's terminal mounts on screen. A reopen that fails leaves
+  // the closed task selected, where the owner just asked for it.
   select(id);
+  await window.thesource.reopenTask(id);
 }
 
 export function closeTask(id: string): void {

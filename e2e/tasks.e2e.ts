@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, cardIn, ids, launches, run, screen, startTask, termSize } from './tasks';
+import { card, cardIn, firstSpawn, fitSize, ids, launches, run, screen, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -121,8 +121,12 @@ test('tasks reopened at startup start at the size their terminal shows', async (
   const { app, page } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
   await expect.poll(() => screen(page, id)).toContain('$');
   await expect(card(page, id)).toHaveAttribute('data-selected', 'false');
-  const size = (await termSize(page, id))!;
+  expect(await firstSpawn(page, id)).toEqual(await termSize(page, id));
+  // Its first time on screen puts it in WebGL, which can fit fewer columns: it fits again, so it
+  // fills the well, and its session takes that size.
   await card(page, id).click();
+  const size = (await termSize(page, id))!;
+  expect(await fitSize(page, id)).toEqual(size);
   await run(page, 'stty size');
   await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
   expect(await termSize(page, id)).toEqual(size);
@@ -191,7 +195,7 @@ test('cards move between lanes as the session reports, and Reopen brings a close
   await expect(needs.getByTestId('task-ask')).toHaveText('Needs input');
 
   // A second task takes the selection, so Answer has something to change.
-  await startTask(page, 'Beta');
+  const b = await startTask(page, 'Beta');
   await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
   await expect(card(page, a).locator('.card-title')).not.toHaveAttribute('aria-current');
   await expect(needs.getByTestId('answer')).toHaveAttribute('aria-label', 'Answer Alpha');
@@ -205,8 +209,16 @@ test('cards move between lanes as the session reports, and Reopen brings a close
   await expect(closed.getByTestId('task-age')).toHaveText('just now');
   await expect(closed.getByTestId('reopen')).toHaveAttribute('aria-label', 'Reopen Alpha');
 
+  // Reopened while another task is selected: the reopen selects it, and its new terminal mounts
+  // on screen, so the session starts at the size that fills the well.
+  await card(page, b).click();
   await closed.getByTestId('reopen').click();
   await expect(cardIn(page, 'working', a)).toBeVisible();
+  await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
   await expect.poll(() => launches(dataDir).filter((l) => l.args.includes('--resume')).length).toBe(1);
+  await expect.poll(() => screen(page, a)).toContain('$');
+  const size = (await termSize(page, a))!;
+  expect(await firstSpawn(page, a)).toEqual(size);
+  expect(await fitSize(page, a)).toEqual(size);
   await app.close();
 });
