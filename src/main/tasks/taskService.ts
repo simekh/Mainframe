@@ -33,6 +33,7 @@ interface Session {
 export class TaskService {
   private readonly newId: () => string;
   private readonly now: () => number;
+  private readonly warn: (msg: string) => void;
   private readonly stateFile: string;
   /** Every project's tasks: the other projects' records are written back as they were read. */
   private readonly records: TaskRecord[];
@@ -42,8 +43,9 @@ export class TaskService {
   constructor(private readonly deps: TaskServiceDeps) {
     this.newId = deps.newId ?? randomUUID;
     this.now = deps.now ?? Date.now;
+    this.warn = deps.warn ?? console.warn;
     this.stateFile = join(deps.dataDir, 'state.json');
-    this.records = loadTasks(this.stateFile, this.now(), deps.warn ?? console.warn);
+    this.records = loadTasks(this.stateFile, this.now(), this.warn);
   }
 
   list(): TaskView[] {
@@ -121,7 +123,19 @@ export class TaskService {
   }
 
   async restore(): Promise<void> {
-    for (const task of this.mine().filter((t) => t.open)) await this.reopen(task.id);
+    for (const task of this.mine().filter((t) => t.open)) {
+      try {
+        await this.reopen(task.id);
+      } catch (err) {
+        this.warn(`Could not reopen task ${task.id} (${task.slug}): ${err instanceof Error ? err.message : String(err)}`);
+        // Left open it would be retried, and fail, at every start.
+        if (!this.sessionOf(task.id)) {
+          task.open = false;
+          task.closedAt = this.now();
+          this.commit();
+        }
+      }
+    }
   }
 
   close(taskId: string): void {

@@ -151,6 +151,18 @@ it('close kills the session; its exit then closes the task', async () => {
   expect(readState()[0]).toMatchObject({ open: true, closedAt: null });
 });
 
+it('a task closed before the quit still closes when its exit arrives', async () => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+
+  service.close(view.id);
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  expect(readState()[0]).toMatchObject({ open: false, closedAt: 1000 });
+  expect(service.list()[0]).toMatchObject({ session: null, closedAt: 1000 });
+});
+
 it('a session that exits by itself closes its task', async () => {
   const { service, killed, readState, changes } = setup();
   const view = await service.start(NEW_TASK);
@@ -211,6 +223,36 @@ it("restore leaves closed tasks closed and other projects' tasks alone", async (
     [closed.id, false],
   ]);
   expect(readState().find((t) => t.id === 'other')).toEqual(other);
+});
+
+it('restore skips a task it cannot reopen, closes it, and reopens the rest', async () => {
+  const { projectDir, stateFile, make, warnings, readState } = setup();
+  const record = (id: string, claudeSessionId: string): TaskRecord => ({
+    id,
+    projectDir,
+    title: id,
+    description: '',
+    slug: id,
+    name: `damela-${id}`,
+    claudeSessionId,
+    worktreePath: join(projectDir, '.claude', 'worktrees', id),
+    branch: `worktree-${id}`,
+    createdAt: 5,
+    closedAt: null,
+    open: true,
+  });
+  const seeded = [record('broken', 'not-a-uuid'), record('fine', '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10')];
+  writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: seeded }));
+
+  const service = make();
+  await service.restore();
+
+  const [broken, fine] = service.list();
+  expect(broken).toMatchObject({ id: 'broken', session: null, closedAt: 1000 });
+  expect(fine).toMatchObject({ id: 'fine', closedAt: null, session: { startedWithPrompt: false } });
+  expect(readState().map((t) => [t.id, t.open])).toEqual([['broken', false], ['fine', true]]);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain('broken');
 });
 
 it('reopen resumes in the worktree while its branch exists, and in the main checkout once it is gone', async () => {
