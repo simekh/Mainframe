@@ -14,6 +14,7 @@ const api: TheSourceApi = {
   startTask: (req) => ipcRenderer.invoke(IPC.startTask, req),
   reopenTask: (taskId) => ipcRenderer.invoke(IPC.reopenTask, taskId),
   closeTask: (taskId) => ipcRenderer.send(IPC.closeTask, taskId),
+  changedFiles: (taskId) => ipcRenderer.invoke(IPC.changedFiles, taskId),
   onTasks: (cb) => listen(IPC.tasksChanged, cb),
   spawn: (req) => ipcRenderer.invoke(IPC.spawn, req),
   write: (sessionId, data) => ipcRenderer.send(IPC.write, sessionId, data),

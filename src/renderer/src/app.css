@@ -367,7 +367,8 @@ button {
 }
 
 /* A bar, not a dot: the glyph beside the title is the session's state. */
-.card-project i {
+.card-project i,
+.p-project i {
   flex: none;
   width: 3px;
   height: 11px;
@@ -803,20 +804,45 @@ button {
   font-weight: 600;
 }
 
-/* A fixed height, empty or not, so the terminal is the same size with or without a selection. Its
-   right end leaves the pin its room. */
-.panel-header {
+/* --- The session panel: the selected task's header, changed files, terminal and message field --- */
+
+/* Laid out at one size with a selection or without, so the terminals in the well keep theirs; with
+   nothing selected it is hidden but still laid out. */
+.session {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.session[hidden] {
+  visibility: hidden;
+}
+
+/* The panel's title bar, its empty space a window drag region like the top bar's. It ends where the
+   shell's pin begins: the pin comes first in the panel, and a drag box over it would take its
+   clicks. Its buttons sit just left of the pin, in one row with it. */
+.p-title-bar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 46px;
   min-width: 0;
-  padding: 6px var(--panel-pin-room) 4px 16px;
+  margin-right: var(--panel-pin-room);
+  padding: 6px 0 4px 16px;
+  -webkit-app-region: drag;
 }
 
-.panel-title {
-  flex: 1;
+/* A drag region takes no pointer events: the glyph and the title keep their tooltips, the buttons
+   their clicks. */
+.p-title-bar > * {
+  -webkit-app-region: no-drag;
+}
+
+/* As wide as the title, so the bar keeps empty space to drag by. */
+.p-title {
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -824,6 +850,201 @@ button {
   text-overflow: ellipsis;
   font: 600 17px/1.3 var(--font-display);
   letter-spacing: -0.025em;
+}
+
+.p-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Project, branch and state in one row under the title, over the header's one divider. */
+.p-branch-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 16px 9px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.p-project,
+.p-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.p-project span,
+.p-branch span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.p-branch {
+  color: var(--fg-subtle);
+  font: 12px var(--font-mono);
+}
+
+.p-branch svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.p-state {
+  flex: none;
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+  font-weight: 500;
+}
+
+/* Quiet states read at regular weight, as in the mockup. */
+.p-state .tone-muted,
+.p-state .tone-subtle {
+  font-weight: 400;
+}
+
+.p-state .age {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* No age yet: the label keeps the row's right edge. */
+.p-state .age:empty {
+  display: none;
+}
+
+/* Changed files: a pane heading over the list, as in Parallel Code's file pane.
+   Adapted from Parallel Code (MIT): .task-pane-heading in src/styles.css and .task-board-diff in
+   src/components/task-board.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
+.p-files {
+  flex: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pane-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 4px 16px 4px 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.pane-heading:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+/* Nothing to list: no chevron, and it doesn't toggle. */
+.pane-heading:disabled {
+  color: var(--fg-subtle);
+  font-weight: 400;
+}
+
+.pane-heading svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+}
+
+.pane-heading[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.pane-heading:disabled svg {
+  visibility: hidden;
+}
+
+.pane-heading .diff {
+  margin-left: auto;
+}
+
+.p-files .diff {
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.p-files .add {
+  color: color-mix(in srgb, var(--success) 75%, var(--fg-muted));
+}
+
+.p-files .rem {
+  color: color-mix(in srgb, var(--error) 65%, var(--fg-muted));
+}
+
+/* Open at first; it scrolls past 128 px. */
+.file-list {
+  max-height: 128px;
+  margin: 0;
+  padding: 0 16px 8px 28px;
+  overflow-y: auto;
+  list-style: none;
+  font: 12px/22px var(--font-mono);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.file-list li {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.file-list .st {
+  flex: none;
+  width: 10px;
+  font-weight: 700;
+}
+
+.file-list .st[data-st='A'] {
+  color: var(--success);
+}
+
+.file-list .st[data-st='M'] {
+  color: var(--warning);
+}
+
+.file-list .st[data-st='D'] {
+  color: var(--error);
+}
+
+.file-list .st[data-st='?'] {
+  color: var(--fg-subtle);
+}
+
+/* Long paths are cut from the start, where the folders are: the line runs right to left, and the
+   path in it left to right, so leading and trailing dots stay where they are. */
+.file-list .path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-muted);
+}
+
+.file-list .path > span {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .btn {
@@ -867,37 +1088,32 @@ button {
   opacity: 0.4;
 }
 
-/* The terminal panel. Its top edge carries the session's state. */
+/* The terminal panel; it takes the height the rest leaves. */
 .well {
   position: relative;
   flex: 1;
   min-height: 0;
-  margin: 0 8px 8px;
+  margin: 8px 8px 0;
   background: var(--terminal);
   border: 1px solid var(--island-border);
-  border-top: 2px solid var(--island-border);
   border-radius: var(--radius-md);
   overflow: hidden;
   user-select: text;
 }
 
-/* Hidden but laid out: terminals that mount with nothing selected measure their real size before
-   they spawn. */
-.well[hidden] {
-  display: block;
-  visibility: hidden;
+/* While the terminal has the focus: xterm's textarea is inside. */
+.well:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
 }
 
-.well[data-tone='working'] {
-  border-top-color: var(--accent);
-}
-
-.well[data-tone='blocked'] {
-  border-top-color: var(--warning);
-}
-
-.well[data-tone='error'] {
-  border-top-color: var(--error);
+.closed-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--fg-subtle);
 }
 
 .terminal {
@@ -933,6 +1149,90 @@ button {
 
 .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {
   background: color-mix(in srgb, var(--fg) 45%, transparent) !important;
+}
+
+/* The message field under the terminal. */
+.prompt {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.prompt:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* One line, growing with its text to eight. */
+.prompt textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: calc(8lh + 15px);
+  margin: 0;
+  padding: 11px 14px 4px;
+  field-sizing: content;
+  resize: none;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--fg);
+  font: 14px/1.55 var(--font-ui);
+}
+
+.prompt textarea::placeholder {
+  color: var(--fg-subtle);
+}
+
+.prompt textarea:disabled {
+  cursor: not-allowed;
+}
+
+.prompt-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 8px 14px;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+/* One line on the narrowest panel too, so the terminal above keeps its height. */
+.prompt-hint {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+}
+
+.send:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.send:disabled {
+  opacity: 0.4;
+}
+
+.send svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* --- New task dialog ------------------------------------------------------------------------ */
@@ -1081,10 +1381,6 @@ button {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .well {
-    transition: border-top-color 160ms ease-out;
-  }
-
   /* Out at once; hidden only once it has slid away. */
   .side-panel[data-pinned='false'] {
     transition:
@@ -1106,11 +1402,17 @@ button {
   .card-act,
   .btn,
   .tb-btn,
-  .panel-pin {
+  .panel-pin,
+  .pane-heading,
+  .send {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
       color var(--motion-fast) var(--ease-out);
+  }
+
+  .pane-heading svg {
+    transition: transform 140ms var(--ease-out);
   }
 }
 

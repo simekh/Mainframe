@@ -1,15 +1,14 @@
-import { createMemo, createResource, createSignal, For, onMount, Show } from 'solid-js';
-import type { ProgramStatus, TaskView } from '../../shared/types';
+import { createMemo, createResource, createSignal, onMount, Show } from 'solid-js';
 import Board from './board/Board';
 import { glyphOf, stateLabel } from './board/lanes';
 import NewTaskDialog from './board/NewTaskDialog';
 import StatusGlyph from './board/StatusGlyph';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
+import SessionPanel from './panel/SessionPanel';
 import SidePanel from './panel/SidePanel';
-import { closeTask, loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
+import { loadTasks, sessionOf, setPanelOpen, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
-import TerminalView from './terminal/TerminalView';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -18,12 +17,6 @@ import '@fontsource/sora/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
-
-/** Drives the colour of the terminal's top edge. */
-function tone(task: TaskView): ProgramStatus['state'] | 'closed' | 'none' {
-  if (!task.session) return 'closed';
-  return sessionOf(task)?.status?.state ?? 'none';
-}
 
 const terminalOfTask = (taskId: string) => {
   const sessionId = terminalOf(taskId);
@@ -72,7 +65,6 @@ export default function App() {
     return c;
   });
   const selected = createMemo(() => tasksStore.tasks.find((t) => t.id === tasksStore.selectedId));
-  const selectedTerminal = createMemo(() => (tasksStore.selectedId ? terminalOf(tasksStore.selectedId) : null));
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const [panelPrefs, setPanelPrefs] = createSignal(loadPanelPrefs(localStorage));
   const keepPanelPrefs = (prefs: PanelPrefs) => {
@@ -89,7 +81,7 @@ export default function App() {
   const closeDialog = () => {
     setDialogOpen(false);
     // The dialog hands the focus back to where it was; the selected task's terminal is where typing goes.
-    const id = selectedTerminal();
+    const id = tasksStore.selectedId && terminalOf(tasksStore.selectedId);
     if (id) getTerminal(id)?.focus();
   };
 
@@ -140,42 +132,7 @@ export default function App() {
           )
         }
       >
-        {/* Always laid out at one height, so the terminal below has the same size with or without a selection. */}
-        <header class="panel-header">
-          <Show when={selected()}>
-            {(task) => (
-              <>
-                <h2 class="panel-title" title={task().title}>
-                  {task().title}
-                </h2>
-                <Show when={task().session}>
-                  <button
-                    class="btn"
-                    data-testid="close-session"
-                    onMouseDown={keepFocus}
-                    onClick={() => closeTask(task().id)}
-                  >
-                    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                      <rect x="3" y="3" width="8" height="8" rx="1.5" />
-                    </svg>
-                    Close session
-                  </button>
-                </Show>
-              </>
-            )}
-          </Show>
-        </header>
-        <div class="well" data-tone={selected() ? tone(selected()!) : 'none'} hidden={!selected()}>
-          <Show when={config()}>
-            {(c) => (
-              <For each={tasksStore.terminals}>
-                {(entry) => (
-                  <TerminalView sessionId={entry.sessionId} selected={entry.sessionId === selectedTerminal()} config={c()} />
-                )}
-              </For>
-            )}
-          </Show>
-        </div>
+        <SessionPanel task={selected()} config={config()} />
       </SidePanel>
 
       <Show when={dialogOpen() && config()}>

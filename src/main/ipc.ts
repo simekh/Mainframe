@@ -34,6 +34,7 @@ export function registerIpc(
   ipcMain.handle(IPC.startCheck, () => service.startCheck());
   ipcMain.handle(IPC.startTask, (_e, req: Parameters<TaskService['start']>[0]) => service.start(req));
   ipcMain.handle(IPC.reopenTask, (_e, taskId: string) => service.reopen(taskId));
+  ipcMain.handle(IPC.changedFiles, (_e, taskId: string) => service.changedFiles(taskId));
   ipcMain.on(IPC.closeTask, (_e, taskId: string) => {
     try {
       service.close(taskId);

@@ -1,4 +1,5 @@
 import type {
+  ChangedFile,
   ClipboardPaste,
   PtyDataEvent,
   PtyExitEvent,
@@ -15,6 +16,7 @@ export const IPC = {
   startTask: 'tasks:start',
   reopenTask: 'tasks:reopen',
   closeTask: 'tasks:close',
+  changedFiles: 'tasks:changed-files',
   tasksChanged: 'tasks:changed',
   spawn: 'pty:spawn',
   write: 'pty:write',
@@ -35,6 +37,8 @@ export interface TheSourceApi {
   startTask(req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
   reopenTask(taskId: string): Promise<TaskView>;
   closeTask(taskId: string): void;
+  /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
+  changedFiles(taskId: string): Promise<ChangedFile[] | null>;
   /** Every change to the tasks, with the whole list. */
   onTasks(cb: (tasks: TaskView[]) => void): () => void;
   /** The PTY calls and events below take a task's `session.id`. */
