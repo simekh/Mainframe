@@ -17,6 +17,8 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
   fontSize: 13,
   lineHeight: 1,
   cursorBlink: false,
+  // term.unicode, which the Unicode 11 width addon needs, is still a proposed API.
+  allowProposedApi: true,
   macOptionIsMeta: false,
   macOptionClickForcesSelection: true,
   scrollback: 10_000,

@@ -4,7 +4,7 @@ import { TERMINAL_FONT, TERMINAL_OPTIONS } from './terminalOptions';
 it("uses Parallel Code's terminal look and leaves Option to the Swedish layout", () => {
   expect(TERMINAL_FONT).toBe('JetBrains Mono');
   expect(TERMINAL_OPTIONS).toMatchObject({
-    fontFamily: "'JetBrains Mono', monospace", fontSize: 13, lineHeight: 1, cursorBlink: false,
+    fontFamily: "'JetBrains Mono', monospace", fontSize: 13, lineHeight: 1, cursorBlink: false, allowProposedApi: true,
     macOptionIsMeta: false, macOptionClickForcesSelection: true, scrollback: 10_000, scrollSensitivity: 2,
     theme: {
       background: '#13191f', foreground: '#f0f4f7', cursor: '#67d9ed', selectionBackground: '#18343e',

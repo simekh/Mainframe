@@ -43,6 +43,17 @@ test('the terminal is measured in the bundled JetBrains Mono, loaded before it o
   await app.close();
 });
 
+test('an emoji takes two columns, as Claude Code counts it, so its tables line up', async () => {
+  const { app, page } = await launchApp();
+  const a = await newSession(page);
+  // 🍎, one column back, then #: on a two-column emoji the # lands on its second half (blanking
+  // the first); on a one-column emoji it replaces the emoji.
+  await run(page, "printf 'w-\\360\\237\\215\\216\\033[D#\\n'");
+  await expect.poll(() => screen(page, a)).toMatch(/^w-.?#$/m);
+  expect(await screen(page, a)).toMatch(/^w- #$/m);
+  await app.close();
+});
+
 test('switching sessions keeps each one intact and shows only the selected one', async () => {
   const { app, page } = await launchApp();
   const a = await newSession(page);

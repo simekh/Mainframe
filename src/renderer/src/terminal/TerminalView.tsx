@@ -1,5 +1,6 @@
 // Adapted from Parallel Code (MIT): src/components/TerminalView.tsx at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { FitAddon } from '@xterm/addon-fit';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -53,6 +54,10 @@ export default function TerminalView(props: {
     const term = new Terminal({ ...TERMINAL_OPTIONS });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    // Emoji are two columns wide, as Claude Code counts them; xterm's default (Unicode 6) makes
+    // many of them one, which pushes table borders out of line.
+    term.loadAddon(new Unicode11Addon());
+    term.unicode.activeVersion = '11';
     term.open(container);
     registerTerminal(id, { term, fit });
     fit.fit();
