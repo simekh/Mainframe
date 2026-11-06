@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, ids, run, screen, startTask } from './tasks';
+import { card, cardIn, ids, run, screen, startTask, styleOf } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -55,6 +55,25 @@ test('an emoji takes two columns, as Claude Code counts it, so its tables line u
   await run(page, "printf 'w-\\360\\237\\215\\216\\033[D#\\n'");
   await expect.poll(() => screen(page, a)).toMatch(/^w-.?#$/m);
   expect(await screen(page, a)).toMatch(/^w- #$/m);
+  await app.close();
+});
+
+test("bold text and links take the owner's colours", async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  // The words are built by the shell and the https kept in a variable, so the echoed command line
+  // holds none of them.
+  await run(
+    page,
+    "u=https; printf '\\033[1m%s\\033[22m %s \\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\ %s\\n' " +
+      'bold-$((40+2)) plain-$((40+2)) "${u}://example.com/" link-$((40+2)) after-$((40+2))',
+  );
+  await expect.poll(() => screen(page, a)).toContain('after-42');
+  expect(await styleOf(page, a, 'bold-42')).toEqual([{ fg: '#addb67', bold: true, underline: false }]);
+  expect(await styleOf(page, a, 'plain-42')).toEqual([{ fg: 'default', bold: false, underline: false }]);
+  // The underline is xterm's own, under every OSC 8 link.
+  expect(await styleOf(page, a, 'link-42')).toEqual([{ fg: '#82aaff', bold: false, underline: true }]);
+  expect(await styleOf(page, a, 'after-42')).toEqual([{ fg: 'default', bold: false, underline: false }]);
   await app.close();
 });
 

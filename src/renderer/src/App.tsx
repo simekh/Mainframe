@@ -47,6 +47,16 @@ function installE2eHooks(): void {
       const term = terminalOfTask(taskId);
       return term ? { cols: term.cols, rows: term.rows } : null;
     },
+    cell: (taskId, row, col) => {
+      const cell = terminalOfTask(taskId)?.buffer.active.getLine(row)?.getCell(col);
+      if (!cell) return null;
+      const fg = cell.isFgRGB()
+        ? `#${cell.getFgColor().toString(16).padStart(6, '0')}`
+        : cell.isFgDefault()
+          ? 'default'
+          : `palette ${cell.getFgColor()}`;
+      return { chars: cell.getChars(), fg, bold: !!cell.isBold(), underline: !!cell.isUnderline() };
+    },
     fitSize: (taskId) => {
       const sessionId = terminalOf(taskId);
       const dims = sessionId ? getFit(sessionId)?.proposeDimensions() : undefined;

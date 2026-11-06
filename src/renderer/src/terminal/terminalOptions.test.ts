@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { TERMINAL_FONT, TERMINAL_OPTIONS } from './terminalOptions';
+import { BOLD_AND_LINK_COLORS, TERMINAL_FONT, TERMINAL_OPTIONS } from './terminalOptions';
 
 it("uses Parallel Code's terminal look and leaves Option to the Swedish layout", () => {
   expect(TERMINAL_FONT).toBe('JetBrains Mono');
@@ -13,4 +13,10 @@ it("uses Parallel Code's terminal look and leaves Option to the Swedish layout",
       brightBlack: '#8193a2', brightWhite: '#f0f4f7',
     },
   });
+});
+
+it("takes the bold and link colours from the owner's iTerm2 profile (Night Owl), drawn as they are", () => {
+  expect(BOLD_AND_LINK_COLORS).toEqual({ bold: '#addb67', link: '#82aaff' });
+  // xterm's default minimum contrast ratio, 1, leaves every colour as it is.
+  expect(TERMINAL_OPTIONS.minimumContrastRatio).toBeUndefined();
 });

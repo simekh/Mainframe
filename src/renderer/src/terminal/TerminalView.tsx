@@ -17,7 +17,8 @@ import { handleOsc52Writes, trackRecentGesture } from './osc52';
 import { OutputFlow } from './outputFlow';
 import { redrawAllTerminals, registerTerminal, unregisterTerminal } from './registry';
 import { createTerminalHttpLinkHandler } from './terminalLinks';
-import { TERMINAL_OPTIONS } from './terminalOptions';
+import { BOLD_AND_LINK_COLORS, TERMINAL_OPTIONS } from './terminalOptions';
+import { createTermStyler } from './termStyle';
 import { recordSharedWebglContextLoss, WEBGL_REATTACH_DELAY_MS } from './webglLoss';
 
 const EXIT_BANNER = '\r\n\x1b[90m[Process exited]\x1b[0m\r\n';
@@ -172,8 +173,11 @@ export default function TerminalView(props: { sessionId: string; selected: boole
 
     // --- Output, with flow control -----------------------------------------------------------
     let cancelFlush: (() => void) | undefined;
+    // One styler per terminal: it follows the output across writes. The flow still counts the
+    // PTY's own bytes, the payload it hands over here.
+    const style = createTermStyler(BOLD_AND_LINK_COLORS);
     const flow = new OutputFlow({
-      write: (data, done) => term.write(data, done),
+      write: (data, done) => term.write(style(data), done),
       pause: () => api.pause(id),
       resume: () => api.resume(id),
       schedule: (flush) => (cancelFlush = scheduleFrame(flush)),

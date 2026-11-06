@@ -8,6 +8,12 @@ export const TERMINAL_FONT = 'JetBrains Mono';
 const TERMINAL_BACKGROUND = '#13191f';
 
 /**
+ * The bold and link colours of the owner's iTerm2 profile (Night Owl). xterm has no option for
+ * either, so termStyle.ts colours that text in the output before xterm reads it.
+ */
+export const BOLD_AND_LINK_COLORS = { bold: '#addb67', link: '#82aaff' };
+
+/**
  * Parallel Code's default look: JetBrains Mono 13 and its muted palette on the blue-black panel.
  * The cursor stays steady. Option stays a normal key: the Swedish – Pro layout types @ $ | [ ] { }
  * with it.

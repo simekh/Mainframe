@@ -33,6 +33,28 @@ export const firstSpawn = (page: Page, taskId: string) =>
 export const fitSize = (page: Page, taskId: string) =>
   page.evaluate((id) => window.__thesourceE2E.fitSize(id), taskId);
 
+/**
+ * The look of each cell of the first place `text` shows on the task's screen, each distinct look
+ * once: one entry when the text is styled alike throughout.
+ */
+export const styleOf = (page: Page, taskId: string, text: string) =>
+  page.evaluate(
+    ([id, wanted]) => {
+      const hooks = window.__thesourceE2E;
+      const lines = hooks.screenText(id).split('\n');
+      const row = lines.findIndex((line) => line.includes(wanted));
+      if (row < 0) throw new Error(`"${wanted}" is not on the screen`);
+      const col = lines[row].indexOf(wanted);
+      const looks = new Set<string>();
+      for (let i = 0; i < wanted.length; i++) {
+        const { fg, bold, underline } = hooks.cell(id, row, col + i)!;
+        looks.add(JSON.stringify({ fg, bold, underline }));
+      }
+      return [...looks].map((look) => JSON.parse(look) as { fg: string; bold: boolean; underline: boolean });
+    },
+    [taskId, text] as const,
+  );
+
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** The task's card, found only inside the given lane of the board. */
