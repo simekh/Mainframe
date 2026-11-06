@@ -10,11 +10,13 @@ const [store, setStore] = createStore<{
   tasks: TaskView[];
   /** By session id. */
   sessions: Record<string, SessionState>;
+  /** The sessions whose screen shows a Claude Code suggestion, by session id; read off the screen, so never a lane's input. */
+  suggesting: Record<string, boolean>;
   terminals: TerminalEntry[];
   selectedId: string | null;
   /** Whether the unpinned panel is out; the pinned one always is. */
   panelOpen: boolean;
-}>({ tasks: [], sessions: {}, terminals: [], selectedId: null, panelOpen: true });
+}>({ tasks: [], sessions: {}, suggesting: {}, terminals: [], selectedId: null, panelOpen: true });
 
 export const tasksStore = store;
 
@@ -84,6 +86,16 @@ export function setPanelOpen(open: boolean): void {
 /** What the task's running session has reported; nothing while it is closed. */
 export function sessionOf(task: TaskView): SessionState | undefined {
   return task.session ? store.sessions[task.session.id] : undefined;
+}
+
+/** Written only when it changes, so a scan that finds the same thing wakes nothing. */
+export function setSuggesting(sessionId: string, on: boolean): void {
+  if (!!store.suggesting[sessionId] !== on) setStore('suggesting', sessionId, on);
+}
+
+/** Whether the task's running session shows a suggestion; never while it is closed. */
+export function isSuggesting(task: TaskView): boolean {
+  return task.session ? !!store.suggesting[task.session.id] : false;
 }
 
 /** The session id of the task's terminal: its running session, or the last one it had. */

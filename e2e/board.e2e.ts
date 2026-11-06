@@ -129,3 +129,54 @@ test('a focused card keeps the focus when it changes lanes', async () => {
   await expect.poll(() => focusIsIn(page, id)).toBe(true);
   await app.close();
 });
+
+// The block Claude Code shows for a suggestion, as a shell prints it. Octal escapes, so the shell's
+// locale doesn't matter: \342\234\246 is the star, \302\267 the middle dot.
+const SUGGESTION_BLOCK =
+  "printf '\\342\\234\\246 You should know \\302\\267 Damela has a splash screen too.\\n" +
+  "1: Learn more   2: Knew this already   0: Dismiss\\n'";
+
+test('a suggestion puts a ring on its card, and answering it takes the ring away', async () => {
+  const { app, page } = await launchApp();
+  const id = await startTask(page);
+  await sendLine(page, id, "printf '\\033]7501;state=working\\033\\\\'");
+  const working = cardIn(page, 'working', id);
+  await expect(working.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
+  await expect(working).not.toHaveAttribute('data-suggestion', 'true');
+
+  // At the bottom of the screen, where Claude Code draws it: the lines before it fill the screen.
+  await sendLine(page, id, `seq 100; ${SUGGESTION_BLOCK}`);
+  await expect(working).toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
+  await expect(working.locator('.card-title')).toHaveAccessibleDescription('Claude Code has a suggestion for you');
+  // The ring is no state: the lane and the glyph stay as the session reported them.
+  await expect(working.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
+
+  // Scrolling the view back doesn't move the screen: the block is still on it.
+  await page.keyboard.press('Meta+Shift+PageUp');
+  await sendLine(page, id, 'echo scrolled-back');
+  await expect.poll(() => screen(page, id)).toContain('scrolled-back');
+  await page.waitForTimeout(500);
+  await expect(working).toHaveAttribute('data-suggestion', 'true');
+
+  // Answered: the screen is cleared.
+  await sendLine(page, id, 'clear');
+  await expect(working).not.toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
+  await expect(working.locator('.card-title')).toHaveAccessibleDescription('');
+
+  // Shown again, then answered: later output scrolls it off the bottom of the screen.
+  await sendLine(page, id, `seq 100; ${SUGGESTION_BLOCK}`);
+  await expect(working).toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
+  await sendLine(page, id, 'seq 100');
+  await expect(working).not.toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
+
+  // A session that ends with the suggestion up leaves no ring on its closed card, though the block
+  // is still on its screen.
+  await sendLine(page, id, `seq 100; ${SUGGESTION_BLOCK}`);
+  await expect(working).toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
+  await page.evaluate((taskId) => window.thesource.closeTask(taskId), id);
+  await expect(cardIn(page, 'closed', id)).toHaveCount(1);
+  await expect.poll(() => screen(page, id)).toContain('[Process exited]');
+  await page.waitForTimeout(500);
+  await expect(cardIn(page, 'closed', id)).not.toHaveAttribute('data-suggestion', 'true');
+  await app.close();
+});

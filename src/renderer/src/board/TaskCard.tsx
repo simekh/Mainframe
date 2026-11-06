@@ -3,7 +3,7 @@ import { onCleanup, Show } from 'solid-js';
 import type { TaskView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import type { SessionState } from '../taskModel';
-import { reopenTask, select, tasksStore } from '../tasksStore';
+import { isSuggesting, reopenTask, select, tasksStore } from '../tasksStore';
 import { focusCardWhenShown } from './cardMoves';
 import { cardActivity, cardAge, glyphOf, stateLabel, type Lane } from './lanes';
 import StatusGlyph from './StatusGlyph';
@@ -24,6 +24,8 @@ export default function TaskCard(props: {
   const label = () => stateLabel(props.task, props.session);
   const activity = () => cardActivity(props.task, props.session);
   const selected = () => props.task.id === tasksStore.selectedId;
+  const suggesting = () => isSuggesting(props.task);
+  const suggestionId = `suggestion-${props.task.id}`;
   const reopen = () =>
     reopenTask(props.task.id).catch((err: unknown) =>
       console.error(`[tasks] could not reopen task ${props.task.id}: ${errorMessage(err)}`),
@@ -46,16 +48,23 @@ export default function TaskCard(props: {
       data-task-id={props.task.id}
       data-lane={props.lane}
       data-selected={String(selected())}
+      data-suggestion={suggesting() ? 'true' : undefined}
     >
       <button
         class="card-title"
         aria-current={selected() ? 'true' : undefined}
+        aria-describedby={suggesting() ? suggestionId : undefined}
         onMouseDown={keepFocus}
         onClick={() => select(props.task.id)}
       >
         <StatusGlyph glyph={glyph()} label={label().text} />
         <span class="card-name">{props.task.title}</span>
       </button>
+      <Show when={suggesting()}>
+        <span id={suggestionId} class="visually-hidden">
+          Claude Code has a suggestion for you
+        </span>
+      </Show>
       <p class="card-meta">
         <span class="card-project">
           <i aria-hidden="true" />

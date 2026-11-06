@@ -9,6 +9,7 @@ import { createEffect, on, onCleanup, onMount } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { subscribePty } from '../ptyEvents';
+import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
 import { InputBatcher } from './inputBatcher';
@@ -16,6 +17,7 @@ import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
 import { OutputFlow } from './outputFlow';
 import { redrawAllTerminals, registerTerminal, unregisterTerminal } from './registry';
+import { hasSuggestion } from './suggestion';
 import { createTerminalHttpLinkHandler } from './terminalLinks';
 import { BOLD_AND_LINK_COLORS, TERMINAL_OPTIONS } from './terminalOptions';
 import { createTermStyler } from './termStyle';
@@ -25,6 +27,8 @@ const EXIT_BANNER = '\r\n\x1b[90m[Process exited]\x1b[0m\r\n';
 const RESIZE_INTERVAL_MS = 33;
 const OUTPUT_FLUSH_FALLBACK_MS = 50;
 const WEBGL_DETACH_DELAY_MS = 1000;
+const SUGGESTION_SCAN_INTERVAL_MS = 250;
+const SUGGESTION_SCAN_ROWS = 24;
 
 /** The earlier of the next animation frame and a fallback timer: frames can stop in a background window. */
 function scheduleFrame(flush: () => void): () => void {
@@ -171,6 +175,34 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       return false;
     });
 
+    // --- Suggestion ring ---------------------------------------------------------------------
+    // The one place the app reads the screen: whether Claude Code shows a suggestion, for a ring on
+    // the card. Never for a lane. It reads the bottom of the live screen, not the part in view, so
+    // scrolling back changes nothing; a terminal off screen is read too.
+    let scanTimer: ReturnType<typeof setTimeout> | undefined;
+    let scannedAt = Number.NEGATIVE_INFINITY;
+    const scan = () => {
+      scanTimer = undefined;
+      scannedAt = performance.now();
+      const buffer = term.buffer.active;
+      const end = buffer.baseY + term.rows;
+      const lines: string[] = [];
+      for (let y = end - Math.min(term.rows, SUGGESTION_SCAN_ROWS); y < end; y++) {
+        lines.push(buffer.getLine(y)?.translateToString(true) ?? '');
+      }
+      setSuggesting(id, hasSuggestion(lines));
+    };
+    // At most one scan per interval, the last one after the last output.
+    term.onWriteParsed(() => {
+      if (exited || scanTimer !== undefined) return;
+      scanTimer = setTimeout(scan, Math.max(0, SUGGESTION_SCAN_INTERVAL_MS - (performance.now() - scannedAt)));
+    });
+    const stopScanning = () => {
+      if (scanTimer !== undefined) clearTimeout(scanTimer);
+      scanTimer = undefined;
+      setSuggesting(id, false);
+    };
+
     // --- Output, with flow control -----------------------------------------------------------
     let cancelFlush: (() => void) | undefined;
     // One styler per terminal: it follows the output across writes. The flow still counts the
@@ -186,6 +218,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       if (exited) return;
       exited = true;
       input.dispose();
+      stopScanning();
     };
     // Subscribed before spawning, so no output is missed.
     const unsubscribe = subscribePty(id, {
@@ -314,6 +347,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       observer.disconnect();
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
+      stopScanning();
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);
       container.removeEventListener('copy', onCopy, true);

@@ -272,15 +272,15 @@ kbd {
 }
 
 /* The full lane height, so cards sliding or entering stay inside it and no scrollbar flashes in;
-   1 px of room round the cards keeps their focus and arrival rings whole. */
+   2 px of room round the cards keeps their focus and suggestion rings whole. */
 .cards {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: -1px -1px 0;
-  padding: 1px 1px 4px;
+  margin: -2px -2px 0;
+  padding: 2px 2px 4px;
   list-style: none;
   overflow-y: auto;
 }
@@ -334,6 +334,53 @@ kbd {
 
 .card.state-error {
   background: color-mix(in srgb, var(--error) 9%, transparent);
+}
+
+/* Claude Code is showing a suggestion: a light ring that flashes once, then breathes. Drawn on
+   pseudo-elements, so the card's fill, focus ring and text stay as they are, and white, so it is
+   no state: orange belongs to Needs input.
+   Adapted from Parallel Code (MIT): `kanban-flash` in src/components/kanban.css and `statusPulse` in
+   src/styles.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
+.card[data-suggestion='true'] {
+  --suggestion-ring: color-mix(in srgb, white 55%, transparent);
+}
+
+.card[data-suggestion='true']::before,
+.card[data-suggestion='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* The resting ring; it starts to breathe once the flash is over. */
+.card[data-suggestion='true']::before {
+  box-shadow: 0 0 0 1px var(--suggestion-ring);
+  animation: suggestion-breathe 1.9s ease-in-out 1.6s infinite;
+}
+
+.card[data-suggestion='true']::after {
+  animation: suggestion-flash 1.6s ease-out;
+}
+
+@keyframes suggestion-flash {
+  from {
+    box-shadow: 0 0 0 2px var(--suggestion-ring);
+  }
+  to {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@keyframes suggestion-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .card-title {
@@ -474,6 +521,17 @@ kbd {
 
 .tone-accent {
   color: var(--accent);
+}
+
+/* Read by a screen reader, never shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Primary by full-strength text, not colour. */
@@ -1368,9 +1426,12 @@ kbd {
   }
 }
 
-/* Without motion the ring's bright quarter still sets it apart from the resting glyphs. */
+/* Without motion the ring's bright quarter still sets it apart from the resting glyphs, and the
+   suggestion ring stays as it rests. */
 @media (prefers-reduced-motion: reduce) {
-  .g-spin {
+  .g-spin,
+  .card[data-suggestion='true']::before,
+  .card[data-suggestion='true']::after {
     animation: none;
   }
 }
