@@ -80,14 +80,16 @@ export default function SidePanel(props: {
   };
 
   // Each hands the focus to the other, so the keyboard never ends up in a hidden panel. The way
-  // back turns visible at once and only fades in, so it can take the focus straight away.
+  // back turns visible at once and only fades in, so it can take the focus straight away. Neither
+  // scrolls: the panel starts its slide from past the window's edge, and a focus that scrolls would
+  // bring its pill into view by moving the whole window sideways until the panel is in.
   const hide = () => {
     props.onOpenChange(false);
-    showButton.focus();
+    showButton.focus({ preventScroll: true });
   };
   const show = () => {
     props.onOpenChange(true);
-    hideButton.focus();
+    hideButton.focus({ preventScroll: true });
   };
 
   return (

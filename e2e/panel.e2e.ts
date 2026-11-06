@@ -93,6 +93,65 @@ test('unpinned, the panel hides when the board is clicked and comes back when a 
   await app.close();
 });
 
+// The pill that shows the panel focuses the hide pill inside it. Left to scroll, the browser brings
+// that pill into view while the panel is still out past the window's edge, and the whole window
+// slides sideways until the panel is in. Every measurement is taken inside the page, on each frame.
+test('showing the hidden panel with its button moves nothing sideways', async () => {
+  const { app, page } = await launchApp();
+  const id = await startTask(page);
+  const size = (await termSize(page, id))!;
+  const panel = page.getByTestId('side-panel');
+  // With reduced motion the panel jumps in and nothing is left to scroll: the slide must be there.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  await page.getByTestId('panel-pin').click();
+  await page.getByTestId('panel-hide').click();
+  // Hidden means the slide out is over: shown too early, the panel is still near its place.
+  await expect(panel).toBeHidden();
+  await expect(page.getByTestId('panel-show')).toBeFocused();
+
+  // The panel and everything above it, and the page's own scroller.
+  const sampler = await page.evaluateHandle((testId) => {
+    const panelEl = document.querySelector(`[data-testid=${testId}]`)!;
+    const scrollers = new Set<Element>();
+    for (let el: Element | null = panelEl; el; el = el.parentElement) scrollers.add(el);
+    if (document.scrollingElement) scrollers.add(document.scrollingElement);
+    const nameOf = (el: Element) => el.getAttribute('data-testid') || el.className || el.tagName.toLowerCase();
+
+    /** The furthest each scroller went sideways. */
+    const sideways: Record<string, number> = {};
+    let sampling = true;
+    const sample = () => {
+      for (const el of scrollers) {
+        if (el.scrollLeft > 0) sideways[nameOf(el)] = Math.max(sideways[nameOf(el)] ?? 0, el.scrollLeft);
+      }
+      if (sampling) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+
+    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    return {
+      /** Samples on until the slide has ended, then reports what moved. */
+      async finish() {
+        await nextFrame();
+        await nextFrame();
+        await Promise.all(panelEl.getAnimations().map((animation) => animation.finished));
+        await nextFrame();
+        sampling = false;
+        return sideways;
+      },
+    };
+  }, 'side-panel');
+
+  await page.getByTestId('panel-show').click();
+  await expect(panel).toHaveAttribute('data-open', 'true');
+  expect(await sampler.evaluate((s) => s.finish())).toEqual({});
+
+  await expect(page.getByTestId('panel-hide')).toBeFocused();
+  expect(await termSize(page, id)).toEqual(size);
+  await app.close();
+});
+
 // Review Focus 3. At a start, the unpinned panel is out (with nothing selected it shows the empty
 // state), so a hidden start is a task started while the owner has put the panel away.
 test('a task started while the unpinned panel is hidden starts at the size its terminal shows', async () => {
