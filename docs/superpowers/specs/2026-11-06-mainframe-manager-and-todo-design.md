@@ -131,7 +131,16 @@ The manager's tools, with names and exact shapes left to the builder:
   - Copy each card's text word for word.
   - Call Set the Todo list.
   - Only read from the to-do source, never change it.
-- **No one can answer a permission prompt in a background run.** So the run can use MCP tools only: no shell and no file edits. It may use them without asking. The exact flags are to be verified while planning **(designer's call)**. The cost if wrong: a confused run could write to Trello. Its prompt says read only.
+- **The run may call only the to-do source's read tools and Set the Todo list. Every other tool is denied** **(designer's call, after review)**.
+  - That covers the shell, file edits, Trello's write tools and every other connector (Google Drive, Notion, Dropbox and so on), including tools the owner's own settings allow.
+  - **Why:** no one watches the run, so no one can answer a prompt, and it reads card text that anyone on the board can write.
+  - **How Mainframe knows the read tools:** the first sync reads nothing. The run reports which connector holds the to-do list and which of its tools only read, by name (for example `mcp__trello__trelloReadList`). The panel shows those names, and the owner confirms them once. Mainframe keeps them for the project, and later syncs allow exactly those tools.
+  - The flags that enforce this are to be verified while planning part 2. Candidates:
+    - `--tools ""`, which removes the built-in tools;
+    - `--permission-mode dontAsk`, which denies anything not allowed;
+    - `--allowedTools` with the confirmed names;
+    - a way to keep the owner's own allow rules out of the run, such as `--setting-sources`.
+  - **The cost if this isn't enforced:** a card's text could lead the run to change things in the owner's other services.
 - **The panel while syncing:**
   - Sync shows "Syncing…", and a second press does nothing while one runs.
   - Success updates the list and the "synced … ago" line.
