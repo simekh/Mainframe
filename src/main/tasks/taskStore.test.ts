@@ -81,14 +81,11 @@ it('a task kept before noQuestions was recorded loads without it', () => {
   expect(loadTasks(file, 1000, () => {})).toEqual([TASK, { ...TASK, id: 't2', noQuestions: true }]);
 });
 
-it('a task kept before midTurn or askAgain was recorded loads without them', () => {
+it('midTurn and askAgain load as saved, and a task kept before them loads without them', () => {
   const file = join(folder(), 'state.json');
-  saveTasks(file, [TASK, { ...TASK, id: 't2', midTurn: true }, { ...TASK, id: 't3', midTurn: true, askAgain: true }]);
-  expect(loadTasks(file, 1000, () => {})).toEqual([
-    TASK,
-    { ...TASK, id: 't2', midTurn: true },
-    { ...TASK, id: 't3', midTurn: true, askAgain: true },
-  ]);
+  const tasks = [TASK, { ...TASK, id: 't2', midTurn: true }, { ...TASK, id: 't3', midTurn: false }, { ...TASK, id: 't4', midTurn: true, askAgain: true }];
+  saveTasks(file, tasks);
+  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
 
 it.each([

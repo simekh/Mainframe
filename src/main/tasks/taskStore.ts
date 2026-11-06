@@ -19,8 +19,9 @@ export interface TaskRecord {
   /** Whether the opening prompt waives questions. Records kept before it was saved lack it: false. */
   noQuestions?: boolean;
   /**
-   * Whether the last session ended in the middle of a turn, working or blocked. Reopen then tells
-   * Claude to carry on, which it never does by itself. Records kept before it was saved lack it: false.
+   * Whether the last session ended in the middle of a turn, working or blocked. Reopen then sends a
+   * prompt with the resume (see askAgain), as Claude starts no turn by itself. Records kept before it
+   * was saved lack it: false.
    */
   midTurn?: boolean;
   /**

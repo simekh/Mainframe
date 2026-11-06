@@ -114,8 +114,8 @@ export class TaskService {
 
     const settingsPath = this.writeHookSettings(task.id);
     const recorded = this.recordedSession(task.id);
-    const prompt = recorded !== null && task.midTurn === true ? (task.askAgain ? ASK_AGAIN_PROMPT : RESUME_PROMPT) : undefined;
-    const carryOn = prompt !== undefined;
+    const carryOn = recorded !== null && task.midTurn === true;
+    const prompt = carryOn ? (task.askAgain ? ASK_AGAIN_PROMPT : RESUME_PROMPT) : undefined;
     let argv: string[];
     if (recorded) {
       task.claudeSessionId = recorded;
@@ -135,7 +135,8 @@ export class TaskService {
     }
     task.open = true;
     task.closedAt = null;
-    // Cleared here; a session whose resume prompt never takes sets it again as it ends.
+    // Cleared here; a session whose resume prompt never takes sets it again as it ends. askAgain is
+    // kept, so the prompt owed again is the same one.
     task.midTurn = false;
     this.addSession({ taskId: task.id, argv, startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
     this.commit();

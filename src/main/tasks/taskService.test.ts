@@ -416,6 +416,32 @@ it.each(END_STATES)('a resumed session that worked and then ended %s leaves midT
   expect(next.session!.startedWithPrompt).toBe(midTurn);
 });
 
+it('an ask-again from an earlier turn does not outlive it: a resumed session that worked gets Continue next', async () => {
+  const t = setup();
+  const view = await closedAfter(t, 'blocked');
+  const resumed = await t.service.reopen(view.id);
+  t.service.noteStatus(resumed.session!.id, 'working');
+  t.service.close(view.id);
+  t.service.onSessionExit(resumed.session!.id);
+
+  const next = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(next.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+});
+
+it('quitting while Claude waits for the owner restores with the ask-again prompt', async () => {
+  const { service, make, sessionStarted, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'blocked');
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const second = make();
+  await second.restore();
+  const [restored] = second.list();
+  expect(second.launchSpec(restored.session!.id).argv.at(-1)).toBe(ASK_AGAIN_PROMPT);
+});
+
 it('a quit before a restored session has reported anything keeps the turn owed, for the next restore', async () => {
   const { service, make, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
