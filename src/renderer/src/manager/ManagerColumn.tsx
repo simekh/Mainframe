@@ -4,6 +4,7 @@ import { glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
 import { errorMessage } from '../bridgeError';
 import ResizeEdge from '../panel/ResizeEdge';
+import ResumeIcon from '../panel/ResumeIcon';
 import { sessionOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
 import { windowWidth } from '../windowWidth';
@@ -75,18 +76,7 @@ export default function ManagerColumn(props: {
         <div class="manager-stopped">
           <p>The manager stopped. Restart continues its chat.</p>
           <button class="btn" data-testid="manager-restart" onMouseDown={keepFocus} onClick={restart}>
-            <svg
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M2.5 7a4.5 4.5 0 1 0 1.4-3.3" />
-              <path d="M3.5 1.5v2.6h2.6" />
-            </svg>
+            <ResumeIcon />
             Restart
           </button>
           <Show when={restartError()}>

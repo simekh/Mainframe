@@ -1,14 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, run, screen, startTask } from './tasks';
+import { card, cardIn, run, screen, startTask, terminalHasFocus } from './tasks';
 
 test.afterEach(cleanUp);
 
 const blocked = (page: Page) => run(page, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
-
-/** Whether the focus is in the terminal on show, where typing goes. */
-const terminalHasFocus = (page: Page) =>
-  page.evaluate(() => document.activeElement?.closest('.well > .terminal:not(.terminal--hidden)') != null);
 
 async function expectJumpedTo(page: Page, taskId: string): Promise<void> {
   await expect(card(page, taskId)).toHaveAttribute('data-selected', 'true');

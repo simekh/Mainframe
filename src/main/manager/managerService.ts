@@ -1,14 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { inTurn, resumePromptFor, turnAtEnd } from '../tasks/carryOn';
-import { hookSettings, managerArgv, readRecordedSession } from '../tasks/launch';
+import { managerArgv, readRecordedSession, writeHookSettings } from '../tasks/launch';
 import { sessionName, slugify } from '../tasks/naming';
 import { ROLE_PROMPT } from './rolePrompt';
 
 const MANAGER_FILE = 'manager.json';
-const SETTINGS_FILE = 'settings.json';
 const MCP_FILE = 'mcp.json';
 
 /** What the manager may call without asking: every tool of the one server, as an allow rule must name it. */
@@ -81,13 +80,11 @@ export class ManagerService {
     const prior = loadRecord(this.recordFile, this.warn);
 
     // Every launch: the port and the token change with each run of the app.
-    mkdirSync(this.dir, { recursive: true });
-    const settingsPath = join(this.dir, SETTINGS_FILE);
-    writeFileSync(settingsPath, hookSettings(this.dir, ALLOWED_TOOLS));
+    const settingsPath = writeHookSettings(this.dir, ALLOWED_TOOLS);
     const mcpConfigPath = join(this.dir, MCP_FILE);
+    // Made anew, as the mode is only for a file that is made here; one that was there would keep its own.
+    rmSync(mcpConfigPath, { force: true });
     writeFileSync(mcpConfigPath, this.deps.mcpConfig, { mode: 0o600 });
-    // The mode above is only for a file that is made here; one that was there keeps the one it had.
-    chmodSync(mcpConfigPath, 0o600);
 
     const recorded = readRecordedSession(this.dir);
     const prompt = recorded === null ? undefined : resumePromptFor(prior);
@@ -165,7 +162,7 @@ function loadRecord(file: string, warn: (msg: string) => void): Partial<ManagerR
     return {};
   }
 
-  const record = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>;
+  const record = (parsed ?? {}) as Record<string, unknown>;
   if (typeof record.version === 'number' && record.version > VERSION) {
     throw new Error(
       `The manager's record ${file} was written by a newer Mainframe (it is version ${record.version}; ` +

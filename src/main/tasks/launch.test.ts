@@ -55,12 +55,6 @@ it('refuses to resume the manager on an id that is not a UUID', () => {
   expect(() => managerArgv({ ...M, resume: true, claudeSessionId: 'not-a-uuid' })).toThrow('not-a-uuid');
 });
 
-it('registers one SessionStart command hook', () => {
-  const hooks = JSON.parse(hookSettings('/d/t1')).hooks;
-  expect(Object.keys(hooks)).toEqual(['SessionStart']);
-  expect(hooks.SessionStart).toEqual([{ hooks: [{ type: 'command', command: expect.any(String), timeout: 10 }] }]);
-});
-
 it('gives a task the hooks file it has always had, byte for byte', () => {
   const command = "cat > '/d/t1/session-start.json.tmp' && mv '/d/t1/session-start.json.tmp' '/d/t1/session-start.json'";
   const expected = JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command, timeout: 10 }] }] } });

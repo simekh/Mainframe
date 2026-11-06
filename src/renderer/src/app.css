@@ -94,31 +94,16 @@ button {
 
 /* --- The manager's column, at the window's left, its full height ---------------------------- */
 
-/* An island like the side panel, at the owner's width; its header has the session panel's heights,
-   so the two headers' dividers line up across the window. */
+/* An island like the side panel, whose rule it shares, at the owner's width; its header has the
+   session panel's heights, so the two headers' dividers line up across the window. */
 .manager-column {
-  position: relative;
-  flex: none;
-  min-height: 0;
   margin: 8px 0 8px 8px;
-  display: flex;
-  flex-direction: column;
-  background: var(--task-container-bg);
-  border: 1px solid var(--island-border);
-  border-radius: var(--radius-lg);
 }
 
-/* The window's title bar, a drag region throughout: the window buttons sit in its first 90 px,
-   the glyph and the title after them. */
+/* The window's title bar, laid out as the panel's is, and a drag region throughout: the window
+   buttons sit in its first 90 px, the glyph and the title after them. */
 .manager-title-bar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 46px;
-  min-width: 0;
   padding: 6px 16px 4px 90px;
-  -webkit-app-region: drag;
 }
 
 /* While the manager is stopped, under its last output: the note, Restart, and why a Restart failed. */
@@ -742,20 +727,25 @@ kbd {
 
 /* --- The side panel: the selected session, the window's full height ------------------------- */
 
-/* Pinned, the board's flex sibling at the owner's width. */
-.side-panel {
-  /* What a row along the panel's top leaves its pin: 8 px in, 28 px wide, 6 px apart. */
-  --panel-pin-room: 42px;
+/* An island: the side panel, and the manager's column on the board's other side. */
+.side-panel,
+.manager-column {
   position: relative;
   flex: none;
-  width: var(--panel-w);
   min-height: 0;
-  margin: 8px 8px 8px 0;
   display: flex;
   flex-direction: column;
   background: var(--task-container-bg);
   border: 1px solid var(--island-border);
   border-radius: var(--radius-lg);
+}
+
+/* Pinned, the board's flex sibling at the owner's width. */
+.side-panel {
+  /* What a row along the panel's top leaves its pin: 8 px in, 28 px wide, 6 px apart. */
+  --panel-pin-room: 42px;
+  width: var(--panel-w);
+  margin: 8px 8px 8px 0;
 }
 
 /* Unpinned, it floats over the board's right edge and slides away while it isn't open. It hides by
@@ -967,20 +957,25 @@ kbd {
   visibility: hidden;
 }
 
-/* The panel's title bar, its empty space a window drag region like the top bar's. It starts past the
-   3px the resize handle reaches into the panel and ends where the shell's pin begins: both come
-   first in the panel, and a drag box over them would take their drags and clicks. The title still
-   sits 16px in. Its buttons sit just left of the pin, in one row with it. */
-.p-title-bar {
+/* The panel's title bar, and the manager's laid out alike: its empty space a window drag region like
+   the top bar's. */
+.p-title-bar,
+.manager-title-bar {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
   height: 46px;
   min-width: 0;
+  -webkit-app-region: drag;
+}
+
+/* The panel's starts past the 3px the resize handle reaches into the panel and ends where the shell's
+   pin begins: both come first in the panel, and a drag box over them would take their drags and
+   clicks. The title still sits 16px in. Its buttons sit just left of the pin, in one row with it. */
+.p-title-bar {
   margin: 0 var(--panel-pin-room) 0 3px;
   padding: 6px 0 4px 13px;
-  -webkit-app-region: drag;
 }
 
 /* A drag region takes no pointer events: the glyph and the title keep their tooltips, the buttons

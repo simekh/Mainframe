@@ -1,9 +1,11 @@
+import { BOARD_ROOM, MIN_WIDTH } from '../panel/panelPrefs';
+
 /** The manager column's width: what it starts at, and the range the owner can drag it through. */
 export const MANAGER_WIDTH = { default: 400, min: 320, max: 640 };
 
 const KEY = 'mainframe.manager';
 /** What the window keeps beside the column: the session panel's minimum and the board's room when pinned. */
-const BESIDE = 780;
+const BESIDE = MIN_WIDTH + BOARD_ROOM.pinned;
 
 /** The width the column can take in this window. The minimum wins when the window is too narrow. */
 export function clampManagerWidth(width: number, windowWidth: number): number {

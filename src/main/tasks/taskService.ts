@@ -1,15 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChangedFile, ProgramState, StartCheck, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { inTurn, resumePromptFor, turnAtEnd } from './carryOn';
-import { hookSettings, readRecordedSession, reopenArgv, startArgv } from './launch';
+import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
 import { sessionName, slugify, uniqueSlug } from './naming';
 import { openingPrompt } from './openingPrompt';
 import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
-
-const SETTINGS_FILE = 'settings.json';
 
 export interface TaskServiceDeps {
   projectDir: string;
@@ -128,7 +126,7 @@ export class TaskService {
       noQuestions: req.noQuestions,
     };
 
-    const argv = this.startArgvOf(task, this.writeHookSettings(task.id));
+    const argv = this.startArgvOf(task, writeHookSettings(this.taskDir(task.id)));
     this.records.push(task);
     this.addSession({ taskId: task.id, argv, startedWithPrompt: true, resumePending: false });
     this.commit();
@@ -142,7 +140,7 @@ export class TaskService {
     // Another reopen may have finished while git answered.
     if (this.sessionOf(task.id)) return this.view(task);
 
-    const settingsPath = this.writeHookSettings(task.id);
+    const settingsPath = writeHookSettings(this.taskDir(task.id));
     const recorded = readRecordedSession(this.taskDir(task.id));
     const prompt = recorded === null ? undefined : resumePromptFor(task);
     const carryOn = prompt !== undefined;
@@ -284,15 +282,6 @@ export class TaskService {
     } catch {
       return [];
     }
-  }
-
-  /** Writes the task's SessionStart hook into its folder, making the folder if it has gone; returns its path. */
-  private writeHookSettings(taskId: string): string {
-    const taskDir = this.taskDir(taskId);
-    mkdirSync(taskDir, { recursive: true });
-    const settingsPath = join(taskDir, SETTINGS_FILE);
-    writeFileSync(settingsPath, hookSettings(taskDir));
-    return settingsPath;
   }
 
   /** The launch that begins the task's conversation, under its `claudeSessionId`. */

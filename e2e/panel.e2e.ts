@@ -1,10 +1,8 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, firstSpawn, fitSize, screen, sendLine, startTask, termSize } from './tasks';
+import { box, card, firstSpawn, fitSize, screen, sendLine, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
-
-const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
 
 test("dragging the panel's edge sets its width, and a restart keeps it", async () => {
   const first = await launchApp();

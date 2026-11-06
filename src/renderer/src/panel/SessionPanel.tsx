@@ -7,6 +7,7 @@ import { errorMessage } from '../bridgeError';
 import { closeTask, reopenTask, sessionOf, tasksStore, terminalOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
 import ChangedFiles from './ChangedFiles';
+import ResumeIcon from './ResumeIcon';
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -47,18 +48,7 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                         onMouseDown={keepFocus}
                         onClick={() => reopen(task().id)}
                       >
-                        <svg
-                          viewBox="0 0 14 14"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="1.5"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M2.5 7a4.5 4.5 0 1 0 1.4-3.3" />
-                          <path d="M3.5 1.5v2.6h2.6" />
-                        </svg>
+                        <ResumeIcon />
                         Reopen
                       </button>
                     }

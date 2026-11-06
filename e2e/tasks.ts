@@ -64,6 +64,12 @@ export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'closed', tas
 export const settled = (page: Page) =>
   page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
 
+export const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
+
+/** Whether the focus is in the task's terminal on show, where typing goes. */
+export const terminalHasFocus = (page: Page) =>
+  page.evaluate(() => document.activeElement?.closest('.well > .terminal:not(.terminal--hidden)') != null);
+
 export async function run(page: Page, line: string): Promise<void> {
   await page.keyboard.type(line);
   await page.keyboard.press('Enter');
@@ -146,7 +152,7 @@ export async function sendManagerLine(page: Page, line: string): Promise<void> {
 
 /** A JSON-RPC response of Mainframe's MCP server: the parts of `tools/list` and `tools/call` results the tests read. */
 interface McpResponse {
-  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }>; isError?: boolean };
+  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }> };
 }
 
 /**

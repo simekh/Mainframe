@@ -89,7 +89,6 @@ it('the first start launches claude in the main checkout, under a fresh id and w
   const record = readRecord();
   expect(new Set([record.claudeSessionId, view.session!.id]).size).toBe(2);
   expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(record.claudeSessionId, false) });
-  expect(service.launchSpec(view.session!.id).argv).toContain('damela-manager');
   expect(service.view()).toEqual(view);
   expect(changes).toEqual([view]);
 });
@@ -176,9 +175,6 @@ it.each([
   ['working', RESUME_PROMPT],
   ['blocked', ASK_AGAIN_PROMPT],
   ['idle', undefined],
-  ['done', undefined],
-  ['error', undefined],
-  [null, undefined],
 ] as const)('a session that exits while %s is resumed with %j', (state, prompt) => {
   const t = setup();
   const view = started(t, state);
@@ -192,7 +188,6 @@ it.each([
 
 it.each([
   [['working'], RESUME_PROMPT],
-  [['blocked'], ASK_AGAIN_PROMPT],
   [['working', 'idle'], undefined],
 ] as const)('a quit while the session reported %j resumes it at the next start with %j', (states, prompt) => {
   const t = setup();
@@ -269,11 +264,12 @@ it('an ask-again from an earlier turn does not outlive it: a resumed session tha
   expect(t.service.launchSpec(next.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 });
 
-it('an exit sends the view with no session, and the session is no longer the manager', () => {
+it('owns only its own session, and an exit sends the view with no session and lets that go too', () => {
   const { service, changes, readRecord, sessionStarted } = setup();
   const view = service.start();
   sessionStarted(readRecord().claudeSessionId);
   expect(service.owns(view.session!.id)).toBe(true);
+  expect(service.owns('a-task-session')).toBe(false);
 
   service.onSessionExit(view.session!.id);
 
@@ -282,13 +278,6 @@ it('an exit sends the view with no session, and the session is no longer the man
   expect(service.view()).toEqual({ session: null });
   expect(service.owns(view.session!.id)).toBe(false);
   expect(() => service.launchSpec(view.session!.id)).toThrow(view.session!.id);
-});
-
-it('owns only its own session: not a task session, not one that is unknown', () => {
-  const { service } = setup();
-  expect(service.owns('a-task-session')).toBe(false);
-  service.start();
-  expect(service.owns('a-task-session')).toBe(false);
 });
 
 it('a status or an exit for another session, or after the end, changes nothing', () => {

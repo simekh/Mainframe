@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,6 +76,14 @@ export function hookSettings(dir: string, allow: string[] = []): string {
     },
     ...(allow.length > 0 && { permissions: { allow } }),
   });
+}
+
+/** Writes `hookSettings` into the session's folder, making the folder if it has gone; returns the file's path. */
+export function writeHookSettings(dir: string, allow: string[] = []): string {
+  mkdirSync(dir, { recursive: true });
+  const settingsPath = join(dir, 'settings.json');
+  writeFileSync(settingsPath, hookSettings(dir, allow));
+  return settingsPath;
 }
 
 export function readSessionStart(text: string | null): string | null {

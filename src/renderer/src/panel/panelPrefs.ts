@@ -7,9 +7,9 @@ export interface PanelPrefs {
 export const DEFAULT_PANEL_PREFS: PanelPrefs = { width: 640, pinned: true };
 
 const KEY = 'mainframe.panel';
-const MIN_WIDTH = 420;
+export const MIN_WIDTH = 420;
 /** What the window keeps beside the panel: room for the board when pinned, a strip of it when not. */
-const BOARD_ROOM = { pinned: 360, unpinned: 80 };
+export const BOARD_ROOM = { pinned: 360, unpinned: 80 };
 
 /** The width the panel can take in this window. The minimum wins when the window is too narrow. */
 export function clampWidth(width: number, windowWidth: number, pinned: boolean): number {

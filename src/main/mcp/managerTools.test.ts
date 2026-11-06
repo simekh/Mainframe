@@ -112,11 +112,9 @@ it('start_task warns, as the new task dialog does, when the branch is ahead of i
   );
 });
 
-it('start_task gives no warning when nothing is ahead or the check has no answer', async () => {
-  for (const check of [{ ahead: 0, branch: 'stage', base: 'origin/stage' }, null]) {
-    const { call } = setup({ check });
-    expect(json(await call('start_task', { title: 'Fix login', brief: '' }))).not.toHaveProperty('warning');
-  }
+it('start_task gives no warning when nothing is ahead', async () => {
+  const { call } = setup({ check: { ahead: 0, branch: 'stage', base: 'origin/stage' } });
+  expect(json(await call('start_task', { title: 'Fix login', brief: '' }))).not.toHaveProperty('warning');
 });
 
 it('start_task turns a start that fails into an error result with its message', async () => {

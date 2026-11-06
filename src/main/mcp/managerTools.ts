@@ -1,14 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { commitsThatArent } from '../../shared/commitsThatArent';
-import type { StartCheck, TaskView } from '../../shared/types';
-import type { SessionReport } from '../tasks/taskService';
-
-export interface ManagerToolDeps {
-  reports(): SessionReport[];
-  start(req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
-  startCheck(): Promise<StartCheck | null>;
-}
+import type { StartCheck } from '../../shared/types';
+import type { TaskService } from '../tasks/taskService';
 
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
@@ -17,7 +11,7 @@ const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
   `${branch} has ${commitsThatArent(ahead)} on ${base}. New worktrees start from ${base}, so this task won't have ${ahead === 1 ? 'it' : 'them'}.`;
 
 /** The tools the manager session has: to read the task sessions, and to start one. */
-export function registerManagerTools(server: McpServer, deps: ManagerToolDeps): void {
+export function registerManagerTools(server: McpServer, deps: Pick<TaskService, 'reports' | 'start' | 'startCheck'>): void {
   server.registerTool(
     'list_sessions',
     {

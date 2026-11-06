@@ -4,8 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp } from './launch';
 import {
-  card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo, run,
-  screen, sendLine, sendManagerLine, settled, startTask, termSize,
+  box, card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo,
+  run, screen, sendLine, sendManagerLine, settled, startTask, terminalHasFocus, termSize,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -13,8 +13,6 @@ test.afterEach(cleanUp);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const STOPPED_NOTE = 'The manager stopped. Restart continues its chat.';
-
-const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
 
 /** The id of the conversation the manager's first launch began. */
 function firstConversation(dataDir: string): string {
@@ -114,12 +112,10 @@ test("the manager's tools answer only with the token, and start_task starts a ta
   await expect.poll(() => screen(page, taskId)).toContain('$');
   await expect(card(page, taskId)).toHaveAttribute('data-selected', 'false');
   await expect(card(page, alpha)).toHaveAttribute('data-selected', 'true');
-  expect(await page.evaluate(() => document.activeElement?.closest('.well > .terminal:not(.terminal--hidden)') != null)).toBe(
-    true,
-  );
+  expect(await terminalHasFocus(page)).toBe(true);
 
   // What a session last reported, with its message, is what the manager reads.
-  await sendLine(page, alpha, "printf '\\033]7501;state=blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBscw==\\033\\\\'");
+  await sendLine(page, alpha, report('blocked:kind=permission:msg=YXBwcm92ZSBCYXNoOiBscw=='));
   await expect(cardIn(page, 'needs-you', alpha)).toHaveCount(1);
   const { sessions } = await callTool(dataDir, 'list_sessions', {});
   expect(sessions).toEqual([
@@ -177,7 +173,7 @@ test("the manager's terminal fits its column", async () => {
   const { app, page } = await launchApp();
   // At the window's left, its full height 8 px in, and 400 px wide.
   const height = await page.evaluate(() => window.innerHeight);
-  expect(await page.getByTestId('manager-column').boundingBox()).toEqual({ x: 8, y: 8, width: 400, height: height - 16 });
+  expect(await box(page, 'manager-column')).toEqual({ x: 8, y: 8, width: 400, height: height - 16 });
 
   await expect.poll(() => managerScreen(page)).toContain('$');
   await page.getByTestId('manager-column').click();
