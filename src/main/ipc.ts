@@ -5,6 +5,7 @@ import type { RendererConfig } from '../shared/types';
 import type { AppConfig } from './config';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
+import type { ManagerService } from './manager/managerService';
 import type { SessionHost } from './pty/sessionHost';
 import type { TaskService } from './tasks/taskService';
 
@@ -14,9 +15,13 @@ export interface ClipboardDeps {
   newImagePath: () => string;
 }
 
+/** What a session's launch, reports and end go to: the manager for its own, the tasks for the rest. */
+type SessionOwner = Pick<TaskService, 'launchSpec' | 'noteStatus' | 'onSessionExit'>;
+
 export function registerIpc(
   win: BrowserWindow,
   service: TaskService,
+  manager: ManagerService,
   host: SessionHost,
   config: AppConfig,
   clipboardDeps: ClipboardDeps,
@@ -45,12 +50,17 @@ export function registerIpc(
     }
   });
 
+  ipcMain.handle(IPC.getManager, () => manager.view());
+  ipcMain.handle(IPC.restartManager, () => manager.start());
+
+  const ownerOf = (sessionId: string): SessionOwner => (manager.owns(sessionId) ? manager : service);
+
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
-  const sessionEnded = (sessionId: string) => {
+  const sessionEnded = (owner: SessionOwner, sessionId: string) => {
     try {
-      service.onSessionExit(sessionId);
+      owner.onSessionExit(sessionId);
     } catch (err) {
-      console.error(`[tasks] could not record the end of session ${sessionId}`, err);
+      console.error(`[sessions] could not record the end of session ${sessionId}`, err);
     }
   };
 
@@ -65,21 +75,22 @@ export function registerIpc(
       send(IPC.status, { sessionId, status: host.status(sessionId) });
       return;
     }
+    const owner = ownerOf(sessionId);
     try {
-      host.spawn(sessionId, { ...service.launchSpec(sessionId), cols, rows }, {
+      host.spawn(sessionId, { ...owner.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
         onStatus: (status) => {
-          service.noteStatus(sessionId, status?.state ?? null);
+          owner.noteStatus(sessionId, status?.state ?? null, status?.msg);
           send(IPC.status, { sessionId, status });
         },
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });
-          sessionEnded(sessionId);
+          sessionEnded(owner, sessionId);
         },
       });
     } catch (err) {
-      // The terminal shows the error; the task closes rather than wait for an exit that never comes.
-      sessionEnded(sessionId);
+      // The terminal shows the error; its task or the manager stops rather than wait for an exit that never comes.
+      sessionEnded(owner, sessionId);
       throw err;
     }
   });

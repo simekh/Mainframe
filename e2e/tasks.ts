@@ -101,7 +101,7 @@ export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
 /** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */
-export function launches(dataDir: string): Array<{ cwd: string; args: string[] }> {
+function allLaunches(dataDir: string): Array<{ cwd: string; args: string[] }> {
   const dir = join(dataDir, 'fake-claude');
   return readdirSync(dir)
     .filter((name) => name.endsWith('.argv'))
@@ -111,4 +111,62 @@ export function launches(dataDir: string): Array<{ cwd: string; args: string[] }
       const [cwd, ...args] = readFileSync(file, 'utf8').split('\0').slice(0, -1);
       return { cwd, args };
     });
+}
+
+/** Only the manager's launches carry a role prompt. */
+const isManager = (launch: { args: string[] }) => launch.args.includes('--append-system-prompt');
+
+/** The tasks' launches in this data folder, oldest first: the manager, which starts with the app, is left out. */
+export const launches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isManager(launch));
+
+/** The manager's launches in this data folder, oldest first. */
+export const managerLaunches = (dataDir: string) => allLaunches(dataDir).filter(isManager);
+
+/** The manager's folder in this data folder, where an e2e run's one project has its manager. */
+export function managerDir(dataDir: string): string {
+  const [key] = readdirSync(join(dataDir, 'managers'));
+  return join(dataDir, 'managers', key);
+}
+
+export const managerScreen = (page: Page) => page.evaluate(() => window.__mainframeE2E.managerScreen());
+
+export const managerTermSize = (page: Page) => page.evaluate(() => window.__mainframeE2E.managerTermSize());
+
+/** Sends a line to the manager's session through the bridge, so the focus can stay where it is. */
+export async function sendManagerLine(page: Page, line: string): Promise<void> {
+  await page.evaluate(async (data) => {
+    const { session } = await window.mainframe.getManager();
+    window.mainframe.write(session!.id, data);
+  }, `${line}\r`);
+}
+
+/** A JSON-RPC response of Mainframe's MCP server: the parts of `tools/list` and `tools/call` results the tests read. */
+interface McpResponse {
+  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }>; isError?: boolean };
+}
+
+/**
+ * Posts one JSON-RPC request to Mainframe's MCP server, at the address in the manager's `mcp.json` and
+ * with its token, another one, or none (`token: null`). `body` is the server's response; null without one.
+ */
+export async function mcpCall(
+  dataDir: string,
+  method: string,
+  params: Record<string, unknown>,
+  { token }: { token?: string | null } = {},
+): Promise<{ status: number; body: McpResponse | null }> {
+  const { url, headers } = JSON.parse(readFileSync(join(managerDir(dataDir), 'mcp.json'), 'utf8')).mcpServers.mainframe;
+  const authorization = token === undefined ? headers.Authorization : token === null ? undefined : `Bearer ${token}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      ...(authorization && { authorization }),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  // The server answers over an event stream of one event, whose data is the response.
+  const data = (await res.text()).match(/^data: (.*)$/m)?.[1];
+  return { status: res.status, body: data === undefined ? null : JSON.parse(data) };
 }

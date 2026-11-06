@@ -8,6 +8,9 @@ import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
 import { registerIpc } from './ipc';
+import { ManagerService } from './manager/managerService';
+import { registerManagerTools } from './mcp/managerTools';
+import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
@@ -69,7 +72,7 @@ function createWindow(): BrowserWindow {
 }
 
 /** Throws when Mainframe can't start; nothing that can throw comes after the window opens. */
-function start(config: AppConfig): void {
+async function start(config: AppConfig): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
@@ -85,16 +88,26 @@ function start(config: AppConfig): void {
   // Before the window: a state.json it can't use stops the start here, with no window left
   // waiting for handlers that never come.
   let win: BrowserWindow | undefined;
+  // Exits keep arriving while the app quits, after the window has gone.
+  const toWindow = (channel: string, payload: unknown) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  };
   const service = new TaskService({
     projectDir: config.projectDir,
     dataDir: config.dataDir,
     claudeBin: config.claudeBin,
     git: gitQueries,
     kill: (sessionId) => host.kill(sessionId),
-    // Exits keep arriving while the app quits, after the window has gone.
-    onChange: (tasks) => {
-      if (win && !win.isDestroyed()) win.webContents.send(IPC.tasksChanged, tasks);
-    },
+    onChange: (tasks) => toWindow(IPC.tasksChanged, tasks),
+  });
+  // The manager's tools, on the tasks. Its mcp.json carries this run's port and token to it.
+  const mcp = await startMcpServer((server) => registerManagerTools(server, service));
+  const manager = new ManagerService({
+    projectDir: config.projectDir,
+    dataDir: config.dataDir,
+    claudeBin: config.claudeBin,
+    mcpConfig: mcpConfigJson(mcp.url, mcp.token),
+    onChange: (view) => toWindow(IPC.managerChanged, view),
   });
   const shown = createWindow();
   win = shown;
@@ -102,6 +115,7 @@ function start(config: AppConfig): void {
   registerIpc(
     shown,
     service,
+    manager,
     host,
     config,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
@@ -116,6 +130,12 @@ function start(config: AppConfig): void {
   });
   // A list asked for before this finishes gets the tasks as they are; the changes follow.
   service.restore().catch((err: unknown) => console.error('[tasks] could not restore the tasks', err));
+  // Logged, never thrown: the tasks run on without the manager.
+  try {
+    manager.start();
+  } catch (err) {
+    console.error('[manager] could not start the manager', err);
+  }
   // beginQuit can't be undone, so it runs here only, once quitting is under way.
   app.on('before-quit', () => {
     // Logged, never thrown: the sessions must still be ended.
@@ -123,6 +143,11 @@ function start(config: AppConfig): void {
       service.beginQuit();
     } catch (err) {
       console.error('[tasks] could not record where the sessions were as the app quit', err);
+    }
+    try {
+      manager.beginQuit();
+    } catch (err) {
+      console.error("[manager] could not record where the manager's turn was as the app quit", err);
     }
     host.killAll();
   });
@@ -138,10 +163,10 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
 } else {
   app.on('window-all-closed', () => app.quit());
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     try {
       if (config instanceof Error) throw config;
-      start(config);
+      await start(config);
     } catch (err) {
       dialog.showErrorBox('Mainframe could not start', err instanceof Error ? err.message : String(err));
       app.quit();

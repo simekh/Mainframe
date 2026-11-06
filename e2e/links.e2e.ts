@@ -32,7 +32,7 @@ type Spot = { before: string; text: string } | { blankColumn: number };
 function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<boolean> {
   return page.evaluate(
     ([id, target, metaKey]) => {
-      const screenEl = document.querySelector('.terminal:not(.terminal--hidden) .xterm-screen')!;
+      const screenEl = document.querySelector('.well > .terminal:not(.terminal--hidden) .xterm-screen')!;
       const lines = window.__mainframeE2E.screenText(id).split('\n');
       const size = window.__mainframeE2E.termSize(id)!;
       const box = screenEl.getBoundingClientRect();
@@ -114,11 +114,12 @@ test('a Cmd+click on a link stays out of a program that asks for the mouse, a pl
   await expect.poll(reports).toHaveLength(2);
 
   // The Cmd+click on the link opens it and is not reported. A second plain click, a column over,
-  // follows it: once that is reported the reports stand in the order they were sent, so a report
-  // of the Cmd+click would sit between the two clicks' and show.
+  // follows it: once its release, the last report sent, shows, the reports stand in the order they
+  // were sent, so a report of the Cmd+click would sit between the two clicks' and show. The press
+  // and the release are sent apart, so the press can show alone.
   expect(await click(page, a, link, true)).toBe(true);
   expect(await click(page, a, { blankColumn: 30 }, false)).toBe(false);
-  await expect.poll(async () => (await reports()).some((r) => r.includes(';31;'))).toBe(true);
+  await expect.poll(async () => (await reports()).some((r) => /;31;\d+m$/.test(r))).toBe(true);
   const sent = await reports();
   expect(sent).toHaveLength(4);
   expect(sent.map((r) => r.split(';')[1])).toEqual(['3', '3', '31', '31']);

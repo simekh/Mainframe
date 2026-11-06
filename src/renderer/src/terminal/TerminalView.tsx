@@ -48,7 +48,13 @@ function scheduleFrame(flush: () => void): () => void {
   return cancel;
 }
 
-export default function TerminalView(props: { sessionId: string; selected: boolean; config: RendererConfig }) {
+export default function TerminalView(props: {
+  sessionId: string;
+  selected: boolean;
+  /** Whether coming on screen puts the cursor in it; true unless set. */
+  takeFocus?: boolean;
+  config: RendererConfig;
+}) {
   let container!: HTMLDivElement;
   const api = window.mainframe;
 
@@ -320,7 +326,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
             // The well as it is now, with this task's own panel laid out: the window or this
             // task's files may have changed it while the terminal was off screen.
             fitIfResized();
-            term.focus();
+            if (props.takeFocus ?? true) term.focus();
           } else if (detachTimer === undefined) {
             detachTimer = setTimeout(() => {
               detachTimer = undefined;

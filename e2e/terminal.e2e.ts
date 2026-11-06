@@ -33,7 +33,7 @@ test('the terminal is measured in the bundled JetBrains Mono, loaded before it o
   const rows = (await screen(page, a)).split('\n').length; // a fresh shell's buffer is exactly one screen
   const { loaded, cellHeight, fontCellHeight } = await page.evaluate((r) => {
     const loaded = [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'JetBrains Mono' && f.status === 'loaded');
-    const screenEl = document.querySelector<HTMLElement>('.xterm-screen')!;
+    const screenEl = document.querySelector<HTMLElement>('.well > .terminal:not(.terminal--hidden) .xterm-screen')!;
     // xterm's own measurement: font box height, rounded to device pixels.
     const ctx = new OffscreenCanvas(10, 10).getContext('2d')!;
     ctx.font = "13px 'JetBrains Mono', monospace";

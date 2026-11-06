@@ -1,9 +1,12 @@
+import type { Terminal } from '@xterm/xterm';
 import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import Board from './board/Board';
 import { glyphOf, stateLabel } from './board/lanes';
 import NewTaskDialog from './board/NewTaskDialog';
 import { installBoardShortcuts } from './board/shortcuts';
 import StatusGlyph from './board/StatusGlyph';
+import ManagerColumn from './manager/ManagerColumn';
+import { loadManager, managerStore } from './manager/managerStore';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import SessionPanel from './panel/SessionPanel';
 import SidePanel from './panel/SidePanel';
@@ -27,26 +30,27 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
 
-const terminalOfTask = (taskId: string) => {
-  const sessionId = terminalOf(taskId);
-  return sessionId ? getTerminal(sessionId) : undefined;
-};
+const termOf = (sessionId: string | null) => (sessionId ? getTerminal(sessionId) : undefined);
+const terminalOfTask = (taskId: string) => termOf(terminalOf(taskId));
+
+function textOf(term: Terminal | undefined): string {
+  const buffer = term?.buffer.active;
+  if (!buffer) return '';
+  const lines: string[] = [];
+  for (let i = 0; i < buffer.length; i++) lines.push(buffer.getLine(i)?.translateToString(true) ?? '');
+  return lines.join('\n');
+}
+
+const sizeOf = (term: Terminal | undefined) => (term ? { cols: term.cols, rows: term.rows } : null);
 
 function installE2eHooks(): void {
   const firstSpawns = new Map<string, { cols: number; rows: number }>();
   window.__mainframeE2E = {
     taskIds: () => tasksStore.tasks.map((t) => t.id),
-    screenText: (taskId) => {
-      const buffer = terminalOfTask(taskId)?.buffer.active;
-      if (!buffer) return '';
-      const lines: string[] = [];
-      for (let i = 0; i < buffer.length; i++) lines.push(buffer.getLine(i)?.translateToString(true) ?? '');
-      return lines.join('\n');
-    },
-    termSize: (taskId) => {
-      const term = terminalOfTask(taskId);
-      return term ? { cols: term.cols, rows: term.rows } : null;
-    },
+    screenText: (taskId) => textOf(terminalOfTask(taskId)),
+    termSize: (taskId) => sizeOf(terminalOfTask(taskId)),
+    managerScreen: () => textOf(termOf(managerStore.managerTerminal)),
+    managerTermSize: () => sizeOf(termOf(managerStore.managerTerminal)),
     cell: (taskId, row, col) => {
       const cell = terminalOfTask(taskId)?.buffer.active.getLine(row)?.getCell(col);
       if (!cell) return null;
@@ -95,7 +99,10 @@ export default function App() {
     if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(false);
   };
 
-  onMount(() => void loadTasks());
+  onMount(() => {
+    void loadTasks();
+    void loadManager();
+  });
   onCleanup(installBoardShortcuts(window, jumpToNeedsYou));
 
   const closeDialog = () => {
@@ -106,6 +113,8 @@ export default function App() {
 
   return (
     <div class="app">
+      <ManagerColumn config={config()} />
+
       <section class="left" aria-label="Tasks">
         <header class="topbar">
           <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>

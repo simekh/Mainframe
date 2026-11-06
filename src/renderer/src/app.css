@@ -92,9 +92,18 @@ button {
   opacity: 0.7;
 }
 
+/* --- The manager's column, at the window's left, its full height ---------------------------- */
+
+.manager-column {
+  position: relative;
+  flex: none;
+  width: 400px;
+}
+
 /* --- Left column: the top bar over the board ----------------------------------------------- */
 
-/* The rest of the window beside the pinned panel; all of it while the panel floats. */
+/* The rest of the window beside the manager's column and the pinned panel; unpinned, the panel
+   floats over it. */
 .left {
   flex: 1;
   min-width: 0;

@@ -9,6 +9,9 @@ declare global {
       /** The task's terminal buffer, its running session's or the last one's. */
       screenText(taskId: string): string;
       termSize(taskId: string): { cols: number; rows: number } | null;
+      /** The manager's terminal buffer, its running session's or the last one's. */
+      managerScreen(): string;
+      managerTermSize(): { cols: number; rows: number } | null;
       /**
        * A cell of the task's terminal buffer, at the row screenText gives its line: its
        * foreground (`#rrggbb`, `default` or `palette n`), and whether xterm draws it bold and underlined.

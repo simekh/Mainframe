@@ -1,6 +1,7 @@
 import type {
   ChangedFile,
   ClipboardPaste,
+  ManagerView,
   PtyDataEvent,
   PtyExitEvent,
   RendererConfig,
@@ -18,6 +19,9 @@ export const IPC = {
   closeTask: 'tasks:close',
   changedFiles: 'tasks:changed-files',
   tasksChanged: 'tasks:changed',
+  getManager: 'manager:get',
+  restartManager: 'manager:restart',
+  managerChanged: 'manager:changed',
   spawn: 'pty:spawn',
   write: 'pty:write',
   resize: 'pty:resize',
@@ -42,7 +46,12 @@ export interface MainframeApi {
   changedFiles(taskId: string): Promise<ChangedFile[] | null>;
   /** Every change to the tasks, with the whole list. */
   onTasks(cb: (tasks: TaskView[]) => void): () => void;
-  /** The PTY calls and events below take a task's `session.id`. */
+  getManager(): Promise<ManagerView>;
+  /** Launches the manager again, carrying on its chat, unless it runs; rejects with why it couldn't. */
+  restartManager(): Promise<ManagerView>;
+  /** Every change to the manager's session. */
+  onManager(cb: (view: ManagerView) => void): () => void;
+  /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;
   resize(sessionId: string, cols: number, rows: number): void;
