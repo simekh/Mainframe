@@ -23,6 +23,8 @@ Claude Code stays the core. Every session in the app is a normal interactive `cl
 
 **Anti-goal:** the app never replaces a Claude Code feature with its own version: no chat view of its own, no agent loop of its own, no screen-scraping to guess state, no copy of a project's rules.
 
+**(Owner, 2026-11-06):** one exception. Claude Code gives no signal when a "You should know" suggestion appears, so the app reads the bottom of the terminal for that block. It uses what it reads only to show a ring on the card, never to move a card between lanes. If Claude Code changes the wording, the ring stops showing; nothing else breaks.
+
 The app adds its hooks and MCP server only to the sessions it starts, through launch flags (`--settings`, `--mcp-config`). It never edits the owner's or a repo's settings files.
 
 ## 3. Goals, non-goals, anti-goals
@@ -99,6 +101,11 @@ Agreed with the owner from a mockup based on Parallel Code's board view:
   5. **Merged today**.
 - **Right panel**: the selected session. Header with the task's title, project, branch, a link to the card, and Close session; the files the session changed; the **real Claude Code terminal**; and a **message field** below it that sends text into that terminal as if typed (multi-line via bracketed paste, then Enter). With nothing selected, the panel shows the manager session.
   - **(Owner, 2026-11-05):** the session panel and the manager's panel are both full height, with a width the owner drags, and a pin/unpin button. Pinned, the panel sits beside the board. Unpinned, it slides over the board when a session is selected and hides when the owner clicks the board.
+  - **(Owner, 2026-11-06, after the plan 2a acceptance run):**
+    - **No message field.** The terminal already takes messages, so the terminal runs to the bottom of the panel.
+    - **Links open.** Links in the terminal open in the default browser with Cmd+click, as in iTerm2.
+    - **Colours match the owner's iTerm2.** Text Claude Code prints in bold, and links it marks as links, take the colours of the owner's iTerm2 profile (Night Owl): bold `#addb67`, links `#82aaff`, underlined.
+    - **Suggestion ring.** A working card shows a soft light ring while its session shows a "You should know" suggestion (§2, the one exception).
 - **Ctrl+Tab** jumps to the next session that needs the owner (as in Parallel Code).
 - **History**: every session the project has had, including merged and closed ones, with **Reopen**.
 
@@ -147,6 +154,8 @@ In step 1 (before the merge turn exists) a finished session sits under Needs you
 ### 7.4 Reopening
 
 **Reopen** runs `claude --resume <session id>` for that task, with the same app hooks and MCP config, in the same project/worktree context the session was started in, so the same chat continues. When the app quits, it ends its sessions; when it starts again, it reopens every session that was running (Parallel Code does the same).
+
+**(Owner, 2026-11-06):** Close session means "stop for a while". A session that was in the middle of a turn when it was closed, or when the app quit, carries on by itself when it is reopened. A session that was waiting for the owner stays waiting. Claude Code never starts a turn by itself after `--resume` (sessions docs, 2026-11-06), so the app sends one prompt with the resume. A task whose first launch never began a conversation starts again with its opening prompt (plan 2a final review).
 
 ### 7.5 Trello
 
@@ -205,7 +214,7 @@ Each step is usable on its own. Damela is the test project throughout.
 1. **Start and see** (Damela only)
    - **Feel test first:** one Claude Code session in the app's terminal next to iTerm2. The owner compares typing, Shift+Enter, Option keys, copy/paste (including fullscreen mode), scrolling, and speed with 6–8 sessions running. The owner decides pass or fail. On fail, stop and rethink with the owner.
    - TODO lane from Trello with card details and Start; Start next card (top non-"You" card); sessions launched as in §7.2; card moved to In Progress.
-   - Needs you and Working lanes from §7.3; right panel with terminal, changed files and message field; Ctrl+Tab.
+   - Needs you and Working lanes from §7.3; right panel with terminal, changed files and message field (the message field was dropped on 2026-11-06, §7.1); Ctrl+Tab.
    - Closed sessions shown with Reopen; sessions reopened after an app restart.
    - Merging works as today (the worker follows CLAUDE.md, no turn yet).
    - **(2026-11-05):** the rest of step 1 is split into two plans:
