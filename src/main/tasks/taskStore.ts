@@ -23,6 +23,11 @@ export interface TaskRecord {
    * Claude to carry on, which it never does by itself. Records kept before it was saved lack it: false.
    */
   midTurn?: boolean;
+  /**
+   * Whether that turn was Claude waiting for the owner's answer: Reopen then asks Claude to ask again.
+   * Read only while midTurn. Records kept before it was saved lack it: false.
+   */
+  askAgain?: boolean;
 }
 
 /** The version of `state.json` this build writes and reads. */
@@ -53,7 +58,8 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (t.closedAt === null || typeof t.closedAt === 'number') &&
     typeof t.open === 'boolean' &&
     (t.noQuestions === undefined || typeof t.noQuestions === 'boolean') &&
-    (t.midTurn === undefined || typeof t.midTurn === 'boolean')
+    (t.midTurn === undefined || typeof t.midTurn === 'boolean') &&
+    (t.askAgain === undefined || typeof t.askAgain === 'boolean')
   );
 }
 

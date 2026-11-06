@@ -16,7 +16,7 @@
 
 - Stack as in plan 2a. **One new dependency:** `@xterm/addon-web-links` pinned to exactly `0.13.0-beta.195`, the beta that matches the pinned `@xterm/xterm` `6.1.0-beta.195`. It is Parallel Code's choice, and it is needed for the owner's clickable links.
 - **Colours** come from the owner's iTerm2 profile (Night Owl): bold `#addb67`, links `#82aaff`. The suggestion ring is a light white that is not Claude orange; that colour belongs to the Needs input tone.
-- **The resume prompt** is exactly `Continue where you left off.`
+- **The resume prompt** is exactly `Continue where you left off.` A session that was asking the owner something (blocked) gets `The session stopped while you were waiting for my answer. Ask me again.` instead (owner, 2026-11-06, during acceptance).
 - **Lanes still come from OSC 7501 alone.** Screen reading is allowed only for the suggestion ring (spec §2, owner's exception of 2026-11-06).
 - **Attribution:** code adapted from Parallel Code (MIT, commit 97c3558, clone at `/private/tmp/claude-501/-Users-simonekholm-Developer-Simmesolo-TheSource/ab5b0969-4ca5-497a-ab02-feba94e1f449/scratchpad/parallel-code`) gets the first-line header `// Adapted from Parallel Code (MIT): <path> (fn) at 97c3558. See THIRD_PARTY_NOTICES.md.` and a `TheSource path ← Parallel Code path` line in `THIRD_PARTY_NOTICES.md`.
 - **Commits:** conventional prefixes. No `Co-Authored-By`, and no mention of Claude, Anthropic or AI as author.

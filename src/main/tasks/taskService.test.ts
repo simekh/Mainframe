@@ -221,6 +221,7 @@ it('exits during a quit leave tasks open, and restore reopens them', async () =>
 });
 
 const RESUME_PROMPT = 'Continue where you left off.';
+const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
 /** Each state a session can last report, and whether ending in it leaves the turn owed. */
 const END_STATES = [
@@ -334,38 +335,55 @@ it('quitting with a session that was waiting restores it without the prompt', as
   expect(second.launchSpec(restored.session!.id).argv).not.toContain(RESUME_PROMPT);
 });
 
-// Mid-turn, it resumes with the prompt and the card stays in Working; waiting, it has no prompt.
+// Working, it carries on; waiting for the owner's answer, Claude is asked to ask again, never to
+// pick an answer itself. Either way the card stays in Working. Done with its turn, it has no prompt.
 it.each([
-  [['working'], true],
-  [['working', 'idle'], false],
-] as const)('reopen of a session closed after %j resumes with the prompt: %s', async (states, prompted) => {
+  [['working'], RESUME_PROMPT],
+  [['working', 'blocked'], ASK_AGAIN_PROMPT],
+  [['working', 'idle'], null],
+] as const)('reopen of a session closed after %j resumes with %j', async (states, prompt) => {
   const t = setup();
   const view = await closedAfter(t, ...states);
 
   const reopened = await t.service.reopen(view.id);
-  expect(reopened.session).toEqual({ id: expect.any(String), startedWithPrompt: prompted });
+  expect(reopened.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== null });
   expect(t.service.launchSpec(reopened.session!.id).argv).toEqual([
     'claude', '--resume', t.readState()[0].claudeSessionId, '--settings', join(t.taskDir(view.id), 'settings.json'),
-    ...(prompted ? [RESUME_PROMPT] : []),
+    ...(prompt === null ? [] : [prompt]),
   ]);
 });
 
-it('a resume prompt that never took is owed again: a reopen that ends with no reports keeps midTurn', async () => {
+it('a task saved before askAgain existed resumes mid-turn with Continue', async () => {
+  const t = setup();
+  const view = await closedAfter(t, 'working');
+  const record = t.readState()[0];
+  delete record.askAgain;
+  writeFileSync(t.stateFile, JSON.stringify({ version: 1, tasks: [record] }));
+
+  const second = t.make();
+  const reopened = await second.reopen(view.id);
+  expect(second.launchSpec(reopened.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+});
+
+it.each([
+  ['working', RESUME_PROMPT],
+  ['blocked', ASK_AGAIN_PROMPT],
+] as const)('a resume prompt that never took is owed again, the same one: closed while %s', async (state, prompt) => {
   const t = setup();
   const { service, readState } = t;
-  const view = await closedAfter(t, 'blocked');
+  const view = await closedAfter(t, state);
   expect(readState()[0].midTurn).toBe(true);
 
   const first = await service.reopen(view.id);
   expect(readState()[0].midTurn).toBe(false);
-  expect(service.launchSpec(first.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+  expect(service.launchSpec(first.session!.id).argv.at(-1)).toBe(prompt);
 
   // The launch failed, or the app quit at once: Claude never began the turn it was asked to.
   service.onSessionExit(first.session!.id);
   expect(readState()[0].midTurn).toBe(true);
 
   const second = await service.reopen(view.id);
-  expect(service.launchSpec(second.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+  expect(service.launchSpec(second.session!.id).argv.at(-1)).toBe(prompt);
   expect(second.session!.startedWithPrompt).toBe(true);
 });
 

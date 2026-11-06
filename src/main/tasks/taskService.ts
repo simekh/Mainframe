@@ -12,6 +12,8 @@ const SETTINGS_FILE = 'settings.json';
 
 /** What a reopen says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
 const RESUME_PROMPT = 'Continue where you left off.';
+/** What it says instead when Claude was waiting for the owner's answer, so Claude asks again rather than picks one. */
+const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
 /** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
 const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
@@ -112,7 +114,8 @@ export class TaskService {
 
     const settingsPath = this.writeHookSettings(task.id);
     const recorded = this.recordedSession(task.id);
-    const carryOn = recorded !== null && task.midTurn === true;
+    const prompt = recorded !== null && task.midTurn === true ? (task.askAgain ? ASK_AGAIN_PROMPT : RESUME_PROMPT) : undefined;
+    const carryOn = prompt !== undefined;
     let argv: string[];
     if (recorded) {
       task.claudeSessionId = recorded;
@@ -122,7 +125,7 @@ export class TaskService {
         claudeSessionId: task.claudeSessionId,
         settingsPath,
         branchExists,
-        prompt: carryOn ? RESUME_PROMPT : undefined,
+        prompt,
       });
     } else {
       // SessionStart never fired: claude was missing, or quit before the conversation began, so
@@ -225,13 +228,20 @@ export class TaskService {
   }
 
   /**
-   * Records on the task whether the session ends in the middle of a turn, from the state it was in
-   * before the end was decided. A resume prompt that never took, as when the launch failed or the
-   * app quit at once, leaves the turn still owed.
+   * Records on the task whether the session ends in the middle of a turn, and whether Claude was
+   * waiting for the owner's answer, from the state it was in before the end was decided. A resume
+   * prompt that never took, as when the launch failed or the app quit at once, leaves the same turn
+   * still owed.
    */
   private markEnding(session: Session): void {
     session.ending = true;
-    this.find(session.taskId).midTurn = inTurn(session.lastState) || session.resumePending;
+    const task = this.find(session.taskId);
+    if (inTurn(session.lastState)) {
+      task.midTurn = true;
+      task.askAgain = session.lastState === 'blocked';
+    } else {
+      task.midTurn = session.resumePending;
+    }
   }
 
   private sessionOf(taskId: string): Session | undefined {
