@@ -103,6 +103,58 @@ test('quitting with tasks running reopens them at the next start, in their workt
   await app.close();
 });
 
+test("a session closed mid-turn carries on when reopened; one that was waiting doesn't", async () => {
+  const main = repo();
+  const first = await launchApp({ THESOURCE_PROJECT_DIR: main });
+  const { page, dataDir } = first;
+  const a = await startTask(page, 'Alpha');
+  const b = await startTask(page, 'Beta');
+  const report = (state: string) => `printf '\\033]7501;state=${state}\\033\\\\'`;
+  /** The launches of one task, oldest first: its start, its Reopen, then its restore after a quit. */
+  const launchesOf = (id: string) =>
+    launches(dataDir).filter((l) => l.args.includes(settingsFile(dataDir, id))).map((l) => l.args);
+
+  // Alpha is mid-turn; Beta has finished its turn and waits for the owner.
+  await sendLine(page, a, report('working'));
+  await sendLine(page, b, `${report('working')}; ${report('idle')}`);
+  await expect(cardIn(page, 'working', a).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
+  await expect(cardIn(page, 'needs-you', b)).toHaveCount(1);
+
+  for (const id of [a, b]) await page.evaluate((taskId) => window.thesource.closeTask(taskId), id);
+  for (const id of [a, b]) await expect(cardIn(page, 'closed', id)).toHaveCount(1);
+  for (const id of [a, b]) await cardIn(page, 'closed', id).getByTestId('reopen').click();
+
+  // On the content: fake-claude creates its file before it writes the arguments.
+  await expect.poll(() => launchesOf(a).length).toBe(2);
+  await expect.poll(() => launchesOf(b).length).toBe(2);
+  const alpha = sessionIdOf(launchesOf(a)[0]);
+  const beta = sessionIdOf(launchesOf(b)[0]);
+  expect(launchesOf(a)[1]).toEqual(['--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
+  expect(launchesOf(b)[1]).toEqual(['--resume', beta, '--settings', settingsFile(dataDir, b)]);
+
+  // Both sessions say they are idle before they have worked. Alpha was given a prompt, so its card
+  // keeps to Working until it does; Beta was not, so it is waiting for the owner. The echo comes
+  // after the report on the same stream, so its output shows only once the report has been handled.
+  const idleAndEcho = `${report('idle')}; echo idle-$((1+1))`;
+  await sendLine(page, a, idleAndEcho);
+  await sendLine(page, b, idleAndEcho);
+  for (const id of [a, b]) await expect.poll(() => screen(page, id)).toContain('idle-2');
+  await expect(cardIn(page, 'needs-you', b)).toHaveCount(1);
+  await expect(cardIn(page, 'working', a).getByTestId('task-activity')).toHaveText('Starting…');
+
+  // Alpha is mid-turn again as the app quits; Beta is waiting.
+  await sendLine(page, a, report('working'));
+  await expect(cardIn(page, 'working', a).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
+  await first.app.close();
+
+  const second = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: dataDir });
+  await expect.poll(() => launchesOf(a).length).toBe(3);
+  await expect.poll(() => launchesOf(b).length).toBe(3);
+  expect(launchesOf(a)[2]).toEqual(['--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
+  expect(launchesOf(b)[2]).toEqual(['--resume', beta, '--settings', settingsFile(dataDir, b)]);
+  await second.app.close();
+});
+
 test('tasks reopened at startup start at the size their terminal shows', async () => {
   const first = await launchApp();
   const id = await startTask(first.page);

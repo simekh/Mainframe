@@ -81,6 +81,16 @@ it('a task kept before noQuestions was recorded loads without it', () => {
   expect(loadTasks(file, 1000, () => {})).toEqual([TASK, { ...TASK, id: 't2', noQuestions: true }]);
 });
 
+it('a task kept before midTurn was recorded loads without it', () => {
+  const file = join(folder(), 'state.json');
+  saveTasks(file, [TASK, { ...TASK, id: 't2', midTurn: true }, { ...TASK, id: 't3', midTurn: false }]);
+  expect(loadTasks(file, 1000, () => {})).toEqual([
+    TASK,
+    { ...TASK, id: 't2', midTurn: true },
+    { ...TASK, id: 't3', midTurn: false },
+  ]);
+});
+
 it.each([
   ['a list instead of an object', '[]'],
   ['no version', JSON.stringify({ tasks: [] })],
@@ -90,6 +100,7 @@ it.each([
   ['a task whose open is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, open: 'yes' }] })],
   ['a task whose closedAt is not a number or null', JSON.stringify({ version: 1, tasks: [{ ...TASK, closedAt: '900' }] })],
   ['a task whose noQuestions is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, noQuestions: 'no' }] })],
+  ['a task whose midTurn is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: 'yes' }] })],
 ])('a file with %s is kept aside', (_what, text) => {
   const file = join(folder(), 'state.json');
   writeFileSync(file, text);

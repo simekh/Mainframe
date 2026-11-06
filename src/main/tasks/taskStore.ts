@@ -18,6 +18,11 @@ export interface TaskRecord {
   open: boolean;
   /** Whether the opening prompt waives questions. Records kept before it was saved lack it: false. */
   noQuestions?: boolean;
+  /**
+   * Whether the last session ended in the middle of a turn, working or blocked. Reopen then tells
+   * Claude to carry on, which it never does by itself. Records kept before it was saved lack it: false.
+   */
+  midTurn?: boolean;
 }
 
 /** The version of `state.json` this build writes and reads. */
@@ -47,7 +52,8 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof t.createdAt === 'number' &&
     (t.closedAt === null || typeof t.closedAt === 'number') &&
     typeof t.open === 'boolean' &&
-    (t.noQuestions === undefined || typeof t.noQuestions === 'boolean')
+    (t.noQuestions === undefined || typeof t.noQuestions === 'boolean') &&
+    (t.midTurn === undefined || typeof t.midTurn === 'boolean')
   );
 }
 

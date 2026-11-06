@@ -66,7 +66,10 @@ export function registerIpc(
     try {
       host.spawn(sessionId, { ...service.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
-        onStatus: (status) => send(IPC.status, { sessionId, status }),
+        onStatus: (status) => {
+          service.noteStatus(sessionId, status?.state ?? null);
+          send(IPC.status, { sessionId, status });
+        },
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });
           sessionEnded(sessionId);

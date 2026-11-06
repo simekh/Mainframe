@@ -114,7 +114,12 @@ function start(config: AppConfig): void {
   service.restore().catch((err: unknown) => console.error('[tasks] could not restore the tasks', err));
   // beginQuit can't be undone, so it runs here only, once quitting is under way.
   app.on('before-quit', () => {
-    service.beginQuit();
+    // Logged, never thrown: the sessions must still be ended.
+    try {
+      service.beginQuit();
+    } catch (err) {
+      console.error('[tasks] could not record where the sessions were as the app quit', err);
+    }
     host.killAll();
   });
 }

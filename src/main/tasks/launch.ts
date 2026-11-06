@@ -21,10 +21,13 @@ export function reopenArgv(o: {
   claudeSessionId: string;
   settingsPath: string;
   branchExists: boolean;
+  /** Sent to the resumed conversation as its next prompt: Claude starts no turn of its own after a resume. */
+  prompt?: string;
 }): string[] {
   if (!isUuid(o.claudeSessionId)) throw new Error(`not a session id: ${o.claudeSessionId}`);
   const worktree = o.branchExists ? ['--worktree', o.slug] : [];
-  return [o.claudeBin, ...worktree, '--resume', o.claudeSessionId, '--settings', o.settingsPath];
+  const prompt = o.prompt === undefined ? [] : [o.prompt];
+  return [o.claudeBin, ...worktree, '--resume', o.claudeSessionId, '--settings', o.settingsPath, ...prompt];
 }
 
 function shQuote(path: string): string {

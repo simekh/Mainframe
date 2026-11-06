@@ -220,6 +220,211 @@ it('exits during a quit leave tasks open, and restore reopens them', async () =>
   });
 });
 
+const RESUME_PROMPT = 'Continue where you left off.';
+
+it.each([
+  ['working', true],
+  ['blocked', true],
+  ['idle', false],
+  ['done', false],
+  ['error', false],
+  [null, false],
+] as const)('a session closed while %s leaves midTurn %s', async (state, midTurn) => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  service.noteStatus(view.session!.id, state);
+
+  service.close(view.id);
+  // Written before the kill, so it is kept if the app dies before the exit arrives.
+  expect(readState()[0].midTurn).toBe(midTurn);
+
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0].midTurn).toBe(midTurn);
+});
+
+it('a session that exits by itself while working leaves midTurn set, and one that finished does not', async () => {
+  const { service, readState } = setup();
+  const working = await service.start({ ...NEW_TASK, title: 'Working' });
+  const done = await service.start({ ...NEW_TASK, title: 'Done' });
+  service.noteStatus(working.session!.id, 'working');
+  service.noteStatus(done.session!.id, 'working');
+  service.noteStatus(done.session!.id, 'done');
+
+  service.onSessionExit(working.session!.id);
+  service.onSessionExit(done.session!.id);
+
+  expect(readState().map((t) => [t.id, t.midTurn])).toEqual([[working.id, true], [done.id, false]]);
+});
+
+it('the state a session reports as it ends does not change what it was doing', async () => {
+  const { service, readState } = setup();
+  const closed = await service.start({ ...NEW_TASK, title: 'Closed' });
+  const quit = await service.start({ ...NEW_TASK, title: 'Quit' });
+  service.noteStatus(closed.session!.id, 'working');
+  service.noteStatus(quit.session!.id, 'blocked');
+
+  service.close(closed.id);
+  service.beginQuit();
+  // A clear on the way out, and the trailing status the host sends once the process has gone.
+  service.noteStatus(closed.session!.id, null);
+  service.noteStatus(quit.session!.id, null);
+  service.onSessionExit(closed.session!.id);
+  service.onSessionExit(quit.session!.id);
+  service.noteStatus(quit.session!.id, null);
+
+  expect(readState().map((t) => [t.id, t.midTurn])).toEqual([[closed.id, true], [quit.id, true]]);
+});
+
+it('quitting with a working session records it before the exit arrives, and restore resumes with the prompt', async () => {
+  const { service, make, projectDir, readState, taskDir, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+
+  service.beginQuit();
+  expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
+
+  const second = make();
+  await second.restore();
+  const [restored] = second.list();
+  expect(restored).toMatchObject({ id: view.id, closedAt: null, session: { startedWithPrompt: true } });
+  expect(second.launchSpec(restored.session!.id)).toEqual({
+    cwd: projectDir,
+    argv: reopenArgv({
+      claudeBin: 'claude',
+      slug: 'fix-login',
+      claudeSessionId: readState()[0].claudeSessionId,
+      settingsPath: join(taskDir(view.id), 'settings.json'),
+      branchExists: false,
+      prompt: RESUME_PROMPT,
+    }),
+  });
+  expect(second.launchSpec(restored.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+});
+
+it('quitting with a session that was waiting restores it without the prompt', async () => {
+  const { service, make, sessionStarted, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus(view.session!.id, 'idle');
+
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const second = make();
+  await second.restore();
+  const [restored] = second.list();
+  expect(restored.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
+  expect(second.launchSpec(restored.session!.id).argv).not.toContain(RESUME_PROMPT);
+});
+
+it('reopen of a session closed mid-turn resumes with the prompt and keeps the card in Working', async () => {
+  const { service, readState, taskDir, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(reopened.session).toEqual({ id: expect.any(String), startedWithPrompt: true });
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual([
+    'claude', '--resume', readState()[0].claudeSessionId, '--settings', join(taskDir(view.id), 'settings.json'), RESUME_PROMPT,
+  ]);
+});
+
+it('reopen of a session that was waiting has no prompt', async () => {
+  const { service, readState, taskDir, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus(view.session!.id, 'idle');
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(reopened.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual([
+    'claude', '--resume', readState()[0].claudeSessionId, '--settings', join(taskDir(view.id), 'settings.json'),
+  ]);
+});
+
+it('a reopen clears midTurn, so the next one has no prompt unless the session was mid-turn again', async () => {
+  const { service, readState, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'blocked');
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0].midTurn).toBe(true);
+
+  const first = await service.reopen(view.id);
+  expect(readState()[0].midTurn).toBe(false);
+  expect(service.launchSpec(first.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+
+  // It ends without having reported anything: the prompt it was given is not owed again.
+  service.onSessionExit(first.session!.id);
+  const second = await service.reopen(view.id);
+  expect(service.launchSpec(second.session!.id).argv).not.toContain(RESUME_PROMPT);
+  expect(second.session!.startedWithPrompt).toBe(false);
+});
+
+it('a reopen that starts the conversation over clears midTurn and gives it the opening prompt only', async () => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  service.noteStatus(view.session!.id, 'working');
+  // SessionStart never fired, so there is no conversation to resume.
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0].midTurn).toBe(true);
+
+  const reopened = await service.reopen(view.id);
+  expect(readState()[0].midTurn).toBe(false);
+  expect(service.launchSpec(reopened.session!.id).argv).not.toContain(RESUME_PROMPT);
+  expect(service.launchSpec(reopened.session!.id).argv).toContain('-w');
+});
+
+it('a task kept before midTurn was recorded reopens without the prompt', async () => {
+  const { projectDir, stateFile, make, readState, taskDir, sessionStarted } = setup();
+  const old: TaskRecord = {
+    id: 'old',
+    projectDir,
+    title: 'Fix login',
+    description: '',
+    slug: 'fix-login',
+    name: 'damela-fix-login',
+    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
+    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
+    branch: 'worktree-fix-login',
+    createdAt: 5,
+    closedAt: 6,
+    open: false,
+  };
+  writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
+  mkdirSync(taskDir(old.id), { recursive: true });
+  sessionStarted(old.id, old.claudeSessionId);
+
+  const service = make();
+  const reopened = await service.reopen('old');
+  expect(reopened.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
+  expect(service.launchSpec(reopened.session!.id).argv).not.toContain(RESUME_PROMPT);
+  expect(readState()[0].midTurn).toBe(false);
+});
+
+it('a status for a session that has ended, or never was, is ignored', async () => {
+  const { service, changes } = setup();
+  const view = await service.start(NEW_TASK);
+  service.onSessionExit(view.session!.id);
+  const before = changes.length;
+
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus('nobody', 'working');
+
+  expect(changes.length).toBe(before);
+});
+
 it("restore leaves closed tasks closed and other projects' tasks alone", async () => {
   const { service, make, stateFile, readState } = setup();
   const kept = await service.start({ ...NEW_TASK, title: 'Kept' });

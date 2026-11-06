@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ChangedFile, StartCheck, TaskView } from '../../shared/types';
+import type { ChangedFile, ProgramState, StartCheck, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { hookSettings, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { sessionName, slugify, uniqueSlug } from './naming';
@@ -9,6 +9,9 @@ import { openingPrompt } from './openingPrompt';
 import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
 
 const SETTINGS_FILE = 'settings.json';
+
+/** What a reopen says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
+const RESUME_PROMPT = 'Continue where you left off.';
 
 export interface TaskServiceDeps {
   projectDir: string;
@@ -28,6 +31,10 @@ interface Session {
   taskId: string;
   argv: string[];
   startedWithPrompt: boolean;
+  /** What its last OSC 7501 report said; null before the first, and after a clear. */
+  lastState: ProgramState | null;
+  /** Set once it has been told to end: what it reports on the way out is not what its turn was. */
+  ending: boolean;
 }
 
 export class TaskService {
@@ -101,24 +108,29 @@ export class TaskService {
     const settingsPath = this.writeHookSettings(task.id);
     const recorded = this.recordedSession(task.id);
     let argv: string[];
+    let startedWithPrompt: boolean;
     if (recorded) {
       task.claudeSessionId = recorded;
+      startedWithPrompt = task.midTurn === true;
       argv = reopenArgv({
         claudeBin: this.deps.claudeBin,
         slug: task.slug,
         claudeSessionId: task.claudeSessionId,
         settingsPath,
         branchExists,
+        prompt: startedWithPrompt ? RESUME_PROMPT : undefined,
       });
     } else {
       // SessionStart never fired: claude was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = this.newId();
+      startedWithPrompt = true;
       argv = this.startArgvOf(task, settingsPath);
     }
     task.open = true;
     task.closedAt = null;
-    this.addSession({ taskId: task.id, argv, startedWithPrompt: !recorded });
+    task.midTurn = false;
+    this.addSession({ taskId: task.id, argv, startedWithPrompt });
     this.commit();
     return this.view(task);
   }
@@ -142,7 +154,9 @@ export class TaskService {
   close(taskId: string): void {
     const running = this.sessionOf(taskId);
     if (!running) return;
-    // Cleared before the kill so a crash before the exit arrives does not bring the task back.
+    // Both set before the kill so a crash before the exit arrives does not bring the task back, or
+    // lose where its turn was.
+    this.markEnding(running);
     this.find(taskId).open = false;
     this.commit();
     this.deps.kill(running.id);
@@ -154,11 +168,18 @@ export class TaskService {
     return { argv: session.argv, cwd: this.deps.projectDir };
   }
 
+  /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
+  noteStatus(sessionId: string, state: ProgramState | null): void {
+    const session = this.sessions.get(sessionId);
+    if (session && !session.ending) session.lastState = state;
+  }
+
   onSessionExit(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
-    const task = this.records.find((t) => t.id === session.taskId)!;
+    this.markEnding(session);
+    const task = this.taskOf(session);
 
     task.claudeSessionId = this.recordedSession(task.id) ?? task.claudeSessionId;
     // While quitting, the SIGHUPs end sessions that should run again at the next start.
@@ -171,6 +192,9 @@ export class TaskService {
 
   beginQuit(): void {
     this.quitting = true;
+    // Now rather than at each exit: the app may be gone before they arrive.
+    for (const session of this.sessions.values()) this.markEnding(session);
+    this.commit();
   }
 
   async changedFiles(taskId: string): Promise<ChangedFile[] | null> {
@@ -188,9 +212,22 @@ export class TaskService {
     return task;
   }
 
-  private addSession(session: Omit<Session, 'id'>): void {
+  private addSession(session: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt'>): void {
     const id = this.newId();
-    this.sessions.set(id, { id, ...session });
+    this.sessions.set(id, { id, ...session, lastState: null, ending: false });
+  }
+
+  private taskOf(session: Session): TaskRecord {
+    return this.records.find((t) => t.id === session.taskId)!;
+  }
+
+  /**
+   * Records on the task whether the session ends in the middle of a turn: working, or blocked on
+   * a prompt that dies with it. The state is as it was before the end was decided.
+   */
+  private markEnding(session: Session): void {
+    session.ending = true;
+    this.taskOf(session).midTurn = session.lastState === 'working' || session.lastState === 'blocked';
   }
 
   private sessionOf(taskId: string): Session | undefined {
