@@ -96,20 +96,9 @@ export const report = (state: string) => `printf '\\033]7501;state=${state}\\033
 /** Closes the task's session, as Close session in the panel does. */
 export const closeTask = (page: Page, taskId: string) => page.evaluate((id) => window.thesource.closeTask(id), taskId);
 
-/**
- * Stands in for the owner's browser: from now on the app records the links it is asked to open
- * instead of opening them. Gives what it has recorded so far, oldest first.
- */
-export async function catchOpenedLinks(app: ElectronApplication): Promise<() => Promise<string[]>> {
-  await app.evaluate(({ shell }) => {
-    const opened: string[] = [];
-    const record = async (url: string) => void opened.push(url);
-    shell.openExternal = record;
-    if (shell.openExternal !== record) throw new Error('shell.openExternal could not be replaced');
-    (globalThis as { openedLinks?: string[] }).openedLinks = opened;
-  });
-  return () => app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
-}
+/** The links the app was asked to open, oldest first. `launchApp` keeps them from the owner's browser. */
+export const openedLinks = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
 /** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */
 export function launches(dataDir: string): Array<{ cwd: string; args: string[] }> {

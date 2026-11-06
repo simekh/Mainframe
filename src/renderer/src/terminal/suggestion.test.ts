@@ -9,6 +9,10 @@ describe('hasSuggestion', () => {
     expect(hasSuggestion(['> ', '', SEEN, CHOICES, ''])).toBe(true);
   });
 
+  it('is true when a narrow panel wraps the choices between 0: and Dismiss', () => {
+    expect(hasSuggestion([SEEN, '1: Learn more   2: Knew this already   0:', 'Dismiss'])).toBe(true);
+  });
+
   it('is true when the label reads Heads up', () => {
     expect(hasSuggestion(['✦ Heads up · Run /help to list the commands.', CHOICES])).toBe(true);
   });

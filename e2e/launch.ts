@@ -52,6 +52,15 @@ export async function launchApp(
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));
+  // No e2e run opens the owner's browser: the links main is asked to open are recorded instead,
+  // for `openedLinks`. Main looks the opener up at each call.
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    const record = async (url: string) => void opened.push(url);
+    shell.openExternal = record;
+    if (shell.openExternal !== record) throw new Error('shell.openExternal could not be replaced');
+    (globalThis as { openedLinks?: string[] }).openedLinks = opened;
+  });
   const page = await app.firstWindow();
   // The renderer installs its test hooks once its config and font are in.
   await page.waitForFunction(() => window.__thesourceE2E !== undefined);
