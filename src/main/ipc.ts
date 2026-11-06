@@ -89,7 +89,7 @@ export function registerIpc(
 
   ipcMain.handle(IPC.openLink, (_e, url: unknown) => openLink(url, openExternal));
 
-  ipcMain.on(IPC.write,(_e, sessionId: string, data: string) => host.write(sessionId, data));
+  ipcMain.on(IPC.write, (_e, sessionId: string, data: string) => host.write(sessionId, data));
   ipcMain.on(IPC.resize, (_e, sessionId: string, cols: number, rows: number) => host.resize(sessionId, cols, rows));
   ipcMain.on(IPC.pause, (_e, sessionId: string) => host.pause(sessionId));
   ipcMain.on(IPC.resume, (_e, sessionId: string) => host.resume(sessionId));

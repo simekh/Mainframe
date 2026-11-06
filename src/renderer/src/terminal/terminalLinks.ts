@@ -1,4 +1,5 @@
-// Adapted from Parallel Code (MIT): src/lib/terminalLinks.ts (normalizeHttpUrl, createTerminalHttpLinkHandler) at 97c3558. See THIRD_PARTY_NOTICES.md.
+// Adapted from Parallel Code (MIT): src/lib/terminalLinks.ts (createTerminalHttpLinkHandler) at 97c3558. See THIRD_PARTY_NOTICES.md.
+import { httpUrl } from '../../../shared/httpUrl';
 
 /** The part of a mouse event the handler reads. */
 export interface TerminalLinkMouseEvent {
@@ -7,19 +8,8 @@ export interface TerminalLinkMouseEvent {
 }
 
 export interface TerminalLinkHandlerOptions {
-  openExternal: (url: string) => Promise<void> | void;
-  onOpenError?: (err: unknown) => void;
-}
-
-/** The address in its normalised form if it is a web page; null for anything else (javascript:, file:, garbage). */
-export function normalizeHttpUrl(uri: string): string | null {
-  try {
-    const parsed = new URL(uri);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    return parsed.href;
-  } catch {
-    return null;
-  }
+  openExternal: (url: string) => Promise<void>;
+  onOpenError: (err: unknown) => void;
 }
 
 /**
@@ -31,13 +21,9 @@ export function createTerminalHttpLinkHandler(options: TerminalLinkHandlerOption
     if (!event.metaKey) return;
 
     event.preventDefault();
-    const url = normalizeHttpUrl(uri);
+    const url = httpUrl(uri);
     if (!url) return;
 
-    try {
-      Promise.resolve(options.openExternal(url)).catch((err: unknown) => options.onOpenError?.(err));
-    } catch (err) {
-      options.onOpenError?.(err);
-    }
+    options.openExternal(url).catch(options.onOpenError);
   };
 }

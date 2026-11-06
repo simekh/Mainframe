@@ -1,27 +1,22 @@
 import { appendFile } from 'node:fs/promises';
+import { httpUrl } from '../shared/httpUrl';
 
 /** Where an e2e run, which opens no browser, records the links it was asked to open: one URL a line, in the data folder. */
 export const OPENED_LINKS_FILE = 'opened-links.log';
 
-function webAddress(url: unknown): string | undefined {
-  if (typeof url !== 'string') return undefined;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
+const LOGGED_PREFIX_LENGTH = 200;
 
 /**
- * Opens a web page in the owner's browser. The renderer has checked the address already; this is
- * the last check before the system opens it, so only http: and https: pass and anything else is
- * dropped with a warning.
+ * Opens a web page in the owner's browser. The renderer has checked the address already; main
+ * checks it again, as the last check before the system opens it: only http: and https: pass and
+ * anything else is dropped with a warning.
  */
 export async function openLink(url: unknown, openExternal: (url: string) => Promise<void>): Promise<void> {
-  const address = webAddress(url);
-  if (address === undefined) {
-    console.warn('[links] dropped a link that is not an http(s) address', url);
+  const address = httpUrl(url);
+  if (address === null) {
+    // Only the type and a prefix: what came from the renderer may be large, or hold a secret.
+    const prefix = typeof url === 'string' ? url.slice(0, LOGGED_PREFIX_LENGTH) : '';
+    console.warn('[links] dropped a link that is not an http(s) address', typeof url, prefix);
     return;
   }
   await openExternal(address);

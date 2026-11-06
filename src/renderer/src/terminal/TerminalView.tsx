@@ -67,6 +67,19 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     term.open(container);
     registerTerminal(id, { term, fit });
 
+    // A Cmd+click on a link is ours alone. xterm's own mousedown, on the .xterm element above the
+    // screen, would also report it to a program that asks for the mouse, as Claude Code does in
+    // fullscreen. This one sits on the screen itself, after the link handling there, so the link
+    // still activates on the mouseup, and it stops the event before it rises to the .xterm element.
+    const linkScreen = term.element!.querySelector<HTMLElement>('.xterm-screen')!;
+    const keepLinkClickHere = (e: MouseEvent) => {
+      if (e.button !== 0 || !e.metaKey || !linkScreen.classList.contains('xterm-cursor-pointer')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      term.focus();
+    };
+    linkScreen.addEventListener('mousedown', keepLinkClickHere);
+
     // --- Fit ---------------------------------------------------------------------------------
     // Every terminal sits in the one well, whose height follows the selected task's files. A
     // terminal off screen keeps the size it last fitted at, so its session isn't resized on every
@@ -297,6 +310,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       observer.disconnect();
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
+      linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);
       container.removeEventListener('copy', onCopy, true);
       container.removeEventListener('dragover', onDragOver, true);
