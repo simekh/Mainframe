@@ -26,7 +26,10 @@ const BLOCKED_BY: Record<ProgramKind, string> = {
   auth: 'Needs you to sign in',
 };
 
-function standingOf(task: TaskView, s: SessionState | undefined): Standing {
+/** A task's, or the manager's: both have a session of the same shape. */
+type HasSession = Pick<TaskView, 'session'>;
+
+function standingOf(task: HasSession, s: SessionState | undefined): Standing {
   if (!task.session) return 'closed';
   if (!s?.status) return 'starting';
   // Idle until Claude submits the opening prompt: without this, every new task would flash
@@ -37,9 +40,9 @@ function standingOf(task: TaskView, s: SessionState | undefined): Standing {
 
 export const laneOf = (task: TaskView, s: SessionState | undefined): Lane => ROWS[standingOf(task, s)].lane;
 
-export const glyphOf = (task: TaskView, s: SessionState | undefined): Glyph => ROWS[standingOf(task, s)].glyph;
+export const glyphOf = (task: HasSession, s: SessionState | undefined): Glyph => ROWS[standingOf(task, s)].glyph;
 
-export function stateLabel(task: TaskView, s: SessionState | undefined): { text: string; tone: Tone } {
+export function stateLabel(task: HasSession, s: SessionState | undefined): { text: string; tone: Tone } {
   const row = ROWS[standingOf(task, s)];
   return { text: row.label, tone: row.tone };
 }

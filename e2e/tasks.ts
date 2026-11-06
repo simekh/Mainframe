@@ -60,6 +60,10 @@ export const card = (page: Page, taskId: string) => page.locator(`[data-testid=t
 export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'closed', taskId: string) =>
   page.locator(`[data-testid=lane][data-lane=${lane}] [data-testid=task-card][data-task-id="${taskId}"]`);
 
+/** Two frames: a layout change has been measured and any fit it caused has run. */
+export const settled = (page: Page) =>
+  page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+
 export async function run(page: Page, line: string): Promise<void> {
   await page.keyboard.type(line);
   await page.keyboard.press('Enter');

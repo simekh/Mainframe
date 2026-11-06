@@ -1,8 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, fitSize, git, launches, repo, run, screen, sendLine, startTask, termSize } from './tasks';
+import { card, cardIn, fitSize, git, launches, repo, run, screen, sendLine, settled, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -112,10 +112,6 @@ test('changed files lists what the task changed in its worktree', async () => {
   await app.close();
 });
 
-/** Two frames: a layout change has been measured and any fit it caused has run. */
-const settled = (page: Page) =>
-  page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
-
 test('switching tasks resizes no terminal off screen, and none whose panel looks as it did', async () => {
   const main = repo();
   const { app, page } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
@@ -159,22 +155,23 @@ test('switching tasks resizes no terminal off screen, and none whose panel looks
   shown[a] = (await termSize(page, a))!;
   expect(await termSize(page, b)).toEqual(shown[b]);
 
-  // A wider panel fits the terminal on screen at once, and the other one as soon as it shows,
-  // though the switch doesn't change the well.
+  // A narrower panel fits the terminal on screen at once, and the other one as soon as it shows,
+  // though the switch doesn't change the well. (Beside the manager's column, the panel starts out
+  // as wide as the window lets it be.)
   await card(page, b).click();
   await expect(files).toHaveAttribute('data-count', '0');
   await settled(page);
   expect(await termSize(page, b)).toEqual(shown[b]);
   await page.getByTestId('panel-resize').focus();
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   await settled(page);
-  expect((await termSize(page, b))!.cols).toBeGreaterThan(shown[b].cols);
+  expect((await termSize(page, b))!.cols).toBeLessThan(shown[b].cols);
   shown[b] = (await termSize(page, b))!;
   expect(await termSize(page, a)).toEqual(shown[a]);
   await card(page, a).click();
   await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
   await settled(page);
-  expect((await termSize(page, a))!.cols).toBeGreaterThan(shown[a].cols);
+  expect((await termSize(page, a))!.cols).toBeLessThan(shown[a].cols);
   shown[a] = (await termSize(page, a))!;
   expect(await fitSize(page, a)).toEqual(shown[a]);
   expect(await termSize(page, b)).toEqual(shown[b]);

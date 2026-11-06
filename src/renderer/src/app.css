@@ -94,17 +94,63 @@ button {
 
 /* --- The manager's column, at the window's left, its full height ---------------------------- */
 
+/* An island like the side panel, at the owner's width; its header has the session panel's heights,
+   so the two headers' dividers line up across the window. */
 .manager-column {
   position: relative;
   flex: none;
-  width: 400px;
+  min-height: 0;
+  margin: 8px 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  background: var(--task-container-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius-lg);
 }
 
-/* --- Left column: the top bar over the board ----------------------------------------------- */
+/* The window's title bar, a drag region throughout: the window buttons sit in its first 90 px,
+   the glyph and the title after them. */
+.manager-title-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  min-width: 0;
+  padding: 6px 16px 4px 90px;
+  -webkit-app-region: drag;
+}
 
-/* The rest of the window beside the manager's column and the pinned panel; unpinned, the panel
+/* While the manager is stopped, under its last output: the note, Restart, and why a Restart failed. */
+.manager-stopped {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 0 8px 8px 16px;
+  color: var(--fg-muted);
+}
+
+.manager-stopped p {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  text-wrap: balance;
+}
+
+/* It names manager.json by its full path. */
+.manager-stopped .manager-error {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: wrap;
+}
+
+/* --- The board's column: the top bar over the board ---------------------------------------- */
+
+/* The rest of the window, between the manager's column and the pinned panel; unpinned, the panel
    floats over it. */
-.left {
+.board-column {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -112,7 +158,7 @@ button {
   flex-direction: column;
 }
 
-/* The window's title bar: the window buttons sit in its first 90 px. */
+/* The board's title bar, a window drag region like the panels' title bars. */
 .topbar {
   flex: none;
   height: 46px;
@@ -120,7 +166,7 @@ button {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 0 12px 0 90px;
+  padding: 0 12px;
   -webkit-app-region: drag;
 }
 
@@ -735,23 +781,31 @@ kbd {
    clicks. Everything in the panel inherits it; a title bar in the panel can make itself a drag
    region again. */
 .side-panel,
-.panel-resize {
+.resize-edge {
   -webkit-app-region: no-drag;
 }
 
-/* The edge facing the board: a drag or the arrow keys set the width. */
-.panel-resize {
+/* A column's edge facing the board, the panel's or the manager's: a drag or the arrow keys set the
+   width. It straddles the column's border. */
+.resize-edge {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -5px;
   z-index: 4;
   width: 8px;
   cursor: col-resize;
   touch-action: none;
 }
 
-.panel-resize::after {
+.resize-edge[data-grows='left'] {
+  left: -5px;
+}
+
+.resize-edge[data-grows='right'] {
+  right: -5px;
+}
+
+.resize-edge::after {
   content: '';
   position: absolute;
   top: 14px;
@@ -763,14 +817,14 @@ kbd {
   opacity: 0;
 }
 
-.panel-resize:hover::after,
-.panel-resize:focus-visible::after,
-.panel-resize[data-dragging='true']::after {
+.resize-edge:hover::after,
+.resize-edge:focus-visible::after,
+.resize-edge[data-dragging='true']::after {
   opacity: 0.8;
 }
 
 /* The line is its focus ring. */
-.panel-resize:focus-visible {
+.resize-edge:focus-visible {
   outline: none;
 }
 
@@ -1183,9 +1237,10 @@ kbd {
   opacity: 0.4;
 }
 
-/* The terminal panel; it takes the height the rest leaves, and sits 8px in from the panel's edge on
-   every side, the bottom too. */
-.well {
+/* The terminal panel, the session panel's and the manager's; it takes the height the rest leaves,
+   and sits 8px in from the panel's edge on every side, the bottom too. */
+.well,
+.manager-well {
   position: relative;
   flex: 1;
   min-height: 0;
@@ -1198,7 +1253,8 @@ kbd {
 }
 
 /* While the terminal has the focus: xterm's textarea is inside. */
-.well:focus-within {
+.well:focus-within,
+.manager-well:focus-within {
   border-color: var(--border-focus);
   box-shadow: 0 0 0 1px var(--border-focus);
 }
@@ -1355,7 +1411,8 @@ kbd {
 }
 
 .nt-warn,
-.nt-error {
+.nt-error,
+.manager-error {
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -1372,7 +1429,8 @@ kbd {
   font-weight: 500;
 }
 
-.nt-error {
+.nt-error,
+.manager-error {
   background: color-mix(in srgb, var(--error) 9%, transparent);
   color: var(--error);
   user-select: text;

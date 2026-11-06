@@ -1,0 +1,31 @@
+/** The manager column's width: what it starts at, and the range the owner can drag it through. */
+export const MANAGER_WIDTH = { default: 400, min: 320, max: 640 };
+
+const KEY = 'mainframe.manager';
+/** What the window keeps beside the column: the session panel's minimum and the board's room when pinned. */
+const BESIDE = 780;
+
+/** The width the column can take in this window. The minimum wins when the window is too narrow. */
+export function clampManagerWidth(width: number, windowWidth: number): number {
+  const max = Math.min(MANAGER_WIDTH.max, windowWidth - BESIDE);
+  return Math.round(Math.max(MANAGER_WIDTH.min, Math.min(width, max)));
+}
+
+export function loadManagerWidth(storage: Pick<Storage, 'getItem'>): number {
+  try {
+    const saved: unknown = JSON.parse(storage.getItem(KEY) ?? 'null');
+    const width = typeof saved === 'object' && saved !== null ? (saved as Record<string, unknown>).width : undefined;
+    return typeof width === 'number' && Number.isFinite(width) ? width : MANAGER_WIDTH.default;
+  } catch {
+    return MANAGER_WIDTH.default;
+  }
+}
+
+/** A storage that refuses the write (full, or turned off) leaves the width for this run only. */
+export function saveManagerWidth(storage: Pick<Storage, 'setItem'>, width: number): void {
+  try {
+    storage.setItem(KEY, JSON.stringify({ width }));
+  } catch {
+    // Nothing to do: the column keeps working with what it has.
+  }
+}

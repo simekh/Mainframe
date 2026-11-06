@@ -1,16 +1,26 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp } from './launch';
 import {
   card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo, run,
-  screen, sendLine, sendManagerLine, startTask,
+  screen, sendLine, sendManagerLine, settled, startTask, termSize,
 } from './tasks';
 
 test.afterEach(cleanUp);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+const STOPPED_NOTE = 'The manager stopped. Restart continues its chat.';
+
+const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
+
+/** The id of the conversation the manager's first launch began. */
+function firstConversation(dataDir: string): string {
+  const [{ args }] = managerLaunches(dataDir);
+  return args[args.indexOf('--session-id') + 1];
+}
 
 /** The files of the manager's that each of its launches names. */
 const filesOf = (dataDir: string) => ({
@@ -26,6 +36,25 @@ const resumeArgs = (dataDir: string, id: string, ...prompt: string[]) => [
 
 const focusInManager = (page: Page) =>
   page.evaluate(() => document.activeElement?.closest('[data-testid=manager-column]') != null);
+
+const focusInManagerTerminal = (page: Page) =>
+  page.evaluate(() => document.activeElement?.closest('[data-testid=manager-column] .terminal') != null);
+
+/**
+ * Runs `stty size` in a session until it gives `size`. A terminal's resize reaches its session up to
+ * 33 ms later, so one asked at once can still give the size before.
+ */
+const expectSessionSize = (
+  size: { rows: number; cols: number },
+  send: (line: string) => Promise<void>,
+  read: () => Promise<string>,
+) =>
+  expect
+    .poll(async () => {
+      await send('stty size');
+      return read();
+    })
+    .toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
 
 /** What a tool answered: the JSON in its one text block. */
 async function callTool(dataDir: string, name: string, args: Record<string, unknown>) {
@@ -108,8 +137,7 @@ test("quitting resumes the manager's chat at the next start, carrying on a turn 
   await sendManagerLine(first.page, `${report('working')}; echo working-$((1+1))`);
   await expect.poll(() => managerScreen(first.page)).toContain('working-2');
   await first.app.close();
-  const [started] = managerLaunches(dataDir);
-  const id = started.args[started.args.indexOf('--session-id') + 1];
+  const id = firstConversation(dataDir);
 
   const second = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
   await expect.poll(() => managerLaunches(dataDir).length).toBe(2);
@@ -147,9 +175,9 @@ test('the manager never takes the focus by itself', async () => {
 
 test("the manager's terminal fits its column", async () => {
   const { app, page } = await launchApp();
-  // At the window's left, its full height and 400 px wide.
+  // At the window's left, its full height 8 px in, and 400 px wide.
   const height = await page.evaluate(() => window.innerHeight);
-  expect(await page.getByTestId('manager-column').boundingBox()).toEqual({ x: 0, y: 0, width: 400, height });
+  expect(await page.getByTestId('manager-column').boundingBox()).toEqual({ x: 8, y: 8, width: 400, height: height - 16 });
 
   await expect.poll(() => managerScreen(page)).toContain('$');
   await page.getByTestId('manager-column').click();
@@ -157,5 +185,143 @@ test("the manager's terminal fits its column", async () => {
   await run(page, 'stty size');
   await expect.poll(() => managerScreen(page)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
   expect(await managerTermSize(page)).toEqual(size);
+  await app.close();
+});
+
+// CDP clicks skip native drag regions, so this pins the styles; the owner checks the window buttons' padding.
+test('the manager column sits left of the board, and its top strip holds the window buttons', async () => {
+  const { app, page } = await launchApp();
+  const column = await box(page, 'manager-column');
+  expect(column.x + column.width).toBeLessThanOrEqual((await box(page, 'board')).x);
+
+  const strip = page.getByTestId('manager-title-bar');
+  expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
+  expect((await strip.boundingBox())!.height).toBe(46);
+  // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
+  // out of it in that order. None starts within its first 90 px, where the window buttons are.
+  const starts = await strip.evaluate((bar) => {
+    const s = bar.getBoundingClientRect();
+    return [...document.querySelectorAll('*')]
+      .filter((el) => bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.left < s.right && s.left < r.right && r.top < s.bottom && s.top < r.bottom)
+      .map((r) => r.left - s.left);
+  });
+  expect(Math.min(...starts)).toBeGreaterThanOrEqual(90);
+
+  // The board's top bar no longer makes room for them.
+  expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
+  await app.close();
+});
+
+test('Ctrl+Tab skips the manager', async () => {
+  const { app, page, dataDir } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  // A task at work and not selected: the manager's start leaves the selection as it is.
+  const { taskId } = await callTool(dataDir, 'start_task', { title: 'At work', brief: 'Say hi' });
+  await expect(cardIn(page, 'working', taskId)).toBeVisible();
+
+  const column = page.getByTestId('manager-column');
+  await column.click();
+  await run(page, report('blocked:kind=question'));
+  await expect(page.getByTestId('manager-state')).toHaveText('Needs input');
+  await expect(column.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
+
+  // Nothing on the board needs the owner, and the manager is no stop on the way.
+  await page.keyboard.press('Control+Tab');
+  await expect(card(page, taskId)).toHaveAttribute('data-selected', 'false');
+  await expect(page.getByTestId('panel-title')).toHaveCount(0);
+  expect(await focusInManagerTerminal(page)).toBe(true);
+  await expect(page.getByTestId('manager-state')).toHaveText('Needs input');
+  await app.close();
+});
+
+test("Restart continues the manager's chat after it exits", async () => {
+  const { app, page, dataDir } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const column = page.getByTestId('manager-column');
+  const restart = page.getByTestId('manager-restart');
+  await expect(restart).toHaveCount(0);
+  await expect(page.getByTestId('manager-title')).toHaveText('Manager');
+
+  await column.click();
+  await run(page, 'exit');
+  await expect(restart).toBeVisible();
+  await expect(column.getByText(STOPPED_NOTE)).toBeVisible();
+  // Its last output stays on screen.
+  await expect.poll(() => managerScreen(page)).toContain('[Process exited]');
+
+  await restart.click();
+  await expect.poll(() => managerLaunches(dataDir).length).toBe(2);
+  expect(managerLaunches(dataDir)[1].args).toEqual(resumeArgs(dataDir, firstConversation(dataDir)));
+  await expect(restart).toHaveCount(0);
+  await expect(column.getByText(STOPPED_NOTE)).toHaveCount(0);
+  // The owner's click was on Restart: the new terminal has the focus, and what is typed reaches it.
+  await expect.poll(() => focusInManagerTerminal(page)).toBe(true);
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  await run(page, 'echo restarted-$((1+1))');
+  await expect.poll(() => managerScreen(page)).toContain('restarted-2');
+  await app.close();
+});
+
+test('a Restart that fails shows why', async () => {
+  const { app, page, dataDir } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  await sendManagerLine(page, 'exit');
+  const restart = page.getByTestId('manager-restart');
+  await expect(restart).toBeVisible();
+
+  // As a newer Mainframe would leave it.
+  const record = join(managerDir(dataDir), 'manager.json');
+  writeFileSync(record, JSON.stringify({ ...JSON.parse(readFileSync(record, 'utf8')), version: 2 }));
+  await restart.click();
+  const column = page.getByTestId('manager-column');
+  await expect(column.getByRole('alert')).toHaveText(/^The manager's record .+ was written by a newer Mainframe/);
+  await expect(column.getByText(STOPPED_NOTE)).toBeVisible();
+  expect(managerLaunches(dataDir)).toHaveLength(1);
+  await app.close();
+});
+
+// Review Focus 5: the window is narrow with the column and the pinned session panel both showing.
+test("dragging the manager's edge resizes it, keeps the width, and its terminal fits", async () => {
+  const first = await launchApp();
+  const { page, dataDir } = first;
+  const id = await startTask(page);
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const before = { manager: (await managerTermSize(page))!, task: (await termSize(page, id))! };
+
+  const handle = page.getByTestId('manager-resize');
+  const edge = await box(page, 'manager-resize');
+  const x = edge.x + edge.width / 2;
+  const y = edge.y + edge.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 80, y, { steps: 8 });
+  await page.mouse.up();
+  await expect(handle).toHaveAttribute('aria-valuenow', '480');
+  // The arrow keys move the edge too: right widens.
+  await handle.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(handle).toHaveAttribute('aria-valuenow', '496');
+  expect((await box(page, 'manager-column')).width).toBe(496);
+
+  // The pinned session panel gives up what the column took, so the board keeps its 360 px.
+  const windowWidth = await page.evaluate(() => window.innerWidth);
+  await expect(page.getByTestId('panel-resize')).toHaveAttribute('aria-valuenow', String(windowWidth - 496 - 360));
+
+  // Both terminals fit what they show now, and their sessions come to that size.
+  await settled(page);
+  const manager = (await managerTermSize(page))!;
+  const task = (await termSize(page, id))!;
+  expect(manager.cols).toBeGreaterThan(before.manager.cols);
+  expect(task.cols).toBeLessThan(before.task.cols);
+  await expectSessionSize(manager, (line) => sendManagerLine(page, line), () => managerScreen(page));
+  await expectSessionSize(task, (line) => sendLine(page, id, line), () => screen(page, id));
+  await first.app.close();
+
+  const { app, page: again } = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
+  await expect(again.getByTestId('manager-resize')).toHaveAttribute('aria-valuenow', '496');
+  expect((await box(again, 'manager-column')).width).toBe(496);
   await app.close();
 });

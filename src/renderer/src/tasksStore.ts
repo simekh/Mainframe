@@ -83,8 +83,8 @@ export function setPanelOpen(open: boolean): void {
   setStore('panelOpen', open);
 }
 
-/** What the task's running session has reported; nothing while it is closed. */
-export function sessionOf(task: TaskView): SessionState | undefined {
+/** What the task's running session, or the manager's, has reported; nothing while it is closed. */
+export function sessionOf(task: Pick<TaskView, 'session'>): SessionState | undefined {
   return task.session ? store.sessions[task.session.id] : undefined;
 }
 

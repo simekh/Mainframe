@@ -1,8 +1,7 @@
-import { createSignal, onCleanup, Show, type JSX } from 'solid-js';
+import { createSignal, Show, type JSX } from 'solid-js';
+import { windowWidth } from '../windowWidth';
 import { clampWidth, type PanelPrefs } from './panelPrefs';
-
-/** How far one arrow key moves the panel's edge. */
-const KEY_STEP = 16;
+import ResizeEdge from './ResizeEdge';
 
 // The pin doesn't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -18,6 +17,8 @@ export default function SidePanel(props: {
   prefs: PanelPrefs;
   /** The owner set a width or the pin: keep it. */
   onPrefsChange: (prefs: PanelPrefs) => void;
+  /** The width of the column on the board's other side, which the panel leaves the window to. */
+  besideWidth: number;
   /** Whether the unpinned panel is out. The pinned one always is. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -32,46 +33,17 @@ export default function SidePanel(props: {
   let hideButton!: HTMLButtonElement;
   let showButton!: HTMLButtonElement;
 
-  // A window resize re-clamps the width shown, and keeps the one the owner set.
-  const [windowWidth, setWindowWidth] = createSignal(window.innerWidth);
-  const onWindowResize = () => setWindowWidth(window.innerWidth);
-  window.addEventListener('resize', onWindowResize);
-  onCleanup(() => window.removeEventListener('resize', onWindowResize));
-
   /** The width while the edge is dragged; kept once the pointer lets go. */
   const [dragWidth, setDragWidth] = createSignal<number | null>(null);
-  const clamp = (w: number) => clampWidth(w, windowWidth(), props.prefs.pinned);
+  // A window resize, or the column beside it, re-clamps the width shown, and keeps the one the owner set.
+  const clamp = (w: number) => clampWidth(w, windowWidth() - props.besideWidth, props.prefs.pinned);
   const width = () => clamp(dragWidth() ?? props.prefs.width);
   const shown = () => props.prefs.pinned || props.open;
   const keepWidth = (w: number) => props.onPrefsChange({ ...props.prefs, width: clamp(w) });
-
-  // Captured, so the drag goes on when the pointer leaves the edge or the window.
-  const startDrag = (e: PointerEvent & { currentTarget: HTMLDivElement }) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const handle = e.currentTarget;
-    const from = { x: e.clientX, width: width() };
-    handle.setPointerCapture(e.pointerId);
-    setDragWidth(from.width);
-    const move = (ev: PointerEvent) => setDragWidth(from.width + from.x - ev.clientX);
-    const end = () => {
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('lostpointercapture', end);
-      // The drag is over before the width is kept, so a save that fails can't leave it running.
-      const w = width();
-      setDragWidth(null);
-      keepWidth(w);
-    };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('lostpointercapture', end);
-  };
-
-  // The edge faces the board: left widens the panel.
-  const onResizeKey = (e: KeyboardEvent) => {
-    const step = { ArrowLeft: KEY_STEP, ArrowRight: -KEY_STEP }[e.key];
-    if (step === undefined) return;
-    e.preventDefault();
-    keepWidth(width() + step);
+  // The drag is over before the width is kept, so a save that fails can't leave it running.
+  const dragDone = (w: number) => {
+    setDragWidth(null);
+    keepWidth(w);
   };
 
   const togglePin = () => {
@@ -100,19 +72,15 @@ export default function SidePanel(props: {
         aria-label={props.label}
         style={{ '--panel-w': `${width()}px` }}
       >
-        <div
-          class="panel-resize"
-          data-testid="panel-resize"
-          data-dragging={String(dragWidth() !== null)}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Panel width"
-          aria-valuemin={clamp(0)}
-          aria-valuemax={clamp(Infinity)}
-          aria-valuenow={width()}
-          tabindex="0"
-          onPointerDown={startDrag}
-          onKeyDown={onResizeKey}
+        <ResizeEdge
+          width={width()}
+          onDrag={setDragWidth}
+          onDone={dragDone}
+          grows="left"
+          label="Panel width"
+          testId="panel-resize"
+          min={clamp(0)}
+          max={clamp(Infinity)}
         />
         <button
           class="panel-hide"

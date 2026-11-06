@@ -13,12 +13,13 @@ test("dragging the panel's edge sets its width, and a restart keeps it", async (
   const edge = await box(first.page, 'panel-resize');
   const x = edge.x + edge.width / 2;
   const y = edge.y + edge.height / 2;
+  // Narrower: beside the manager's column, the panel starts out as wide as the window lets it be.
   await first.page.mouse.move(x, y);
   await first.page.mouse.down();
-  await first.page.mouse.move(x - 200, y, { steps: 8 });
+  await first.page.mouse.move(x + 200, y, { steps: 8 });
   await first.page.mouse.up();
   const dragged = (await box(first.page, 'side-panel')).width;
-  expect(Math.abs(dragged - (before + 200))).toBeLessThanOrEqual(2);
+  expect(Math.abs(dragged - (before - 200))).toBeLessThanOrEqual(2);
   await expect(handle).toHaveAttribute('aria-valuenow', String(Math.round(dragged)));
 
   // The arrow keys move the edge too: left widens.

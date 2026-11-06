@@ -6,6 +6,7 @@ import NewTaskDialog from './board/NewTaskDialog';
 import { installBoardShortcuts } from './board/shortcuts';
 import StatusGlyph from './board/StatusGlyph';
 import ManagerColumn from './manager/ManagerColumn';
+import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from './manager/managerPrefs';
 import { loadManager, managerStore } from './manager/managerStore';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import SessionPanel from './panel/SessionPanel';
@@ -21,6 +22,7 @@ import {
 } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
+import { windowWidth } from './windowWidth';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -94,6 +96,15 @@ export default function App() {
     setPanelPrefs(prefs);
     savePanelPrefs(localStorage, prefs);
   };
+  // The owner's width for the manager's column, or the one its edge is dragged to. The window
+  // clamps what it shows, and the session panel leaves it that much.
+  const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
+  const shownManagerWidth = () => clampManagerWidth(managerWidth(), windowWidth());
+  const keepManagerWidth = (w: number) => {
+    const kept = clampManagerWidth(w, windowWidth());
+    setManagerWidth(kept);
+    saveManagerWidth(localStorage, kept);
+  };
   // Unpinned, a press on the board outside any card puts the panel away.
   const hideUnpinnedPanel = (e: MouseEvent) => {
     if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(false);
@@ -113,9 +124,14 @@ export default function App() {
 
   return (
     <div class="app">
-      <ManagerColumn config={config()} />
+      <ManagerColumn
+        config={config()}
+        width={shownManagerWidth()}
+        onDrag={setManagerWidth}
+        onDone={keepManagerWidth}
+      />
 
-      <section class="left" aria-label="Tasks">
+      <section class="board-column" aria-label="Tasks">
         <header class="topbar">
           <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
@@ -154,6 +170,7 @@ export default function App() {
         label="Selected session"
         prefs={panelPrefs()}
         onPrefsChange={keepPanelPrefs}
+        besideWidth={shownManagerWidth()}
         open={tasksStore.panelOpen}
         onOpenChange={setPanelOpen}
         badge={

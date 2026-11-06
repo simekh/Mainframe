@@ -51,7 +51,7 @@ function createWindow(): BrowserWindow {
     width: 1400,
     height: 900,
     backgroundColor: APP_BACKGROUND,
-    // The window buttons sit in the board's top bar, and the panel runs to the top edge.
+    // The window buttons sit in the manager's column, which runs to the top edge as the panel does.
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
