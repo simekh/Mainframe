@@ -7,7 +7,6 @@ import { errorMessage } from '../bridgeError';
 import { closeTask, reopenTask, sessionOf, tasksStore, terminalOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
 import ChangedFiles from './ChangedFiles';
-import MessageField from './MessageField';
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -15,8 +14,8 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 const labelOf = (task: TaskView) => stateLabel(task, sessionOf(task));
 
 /**
- * The selected task in the side panel: its header, what it changed, its terminal and a field to
- * message it. Laid out at one size with a selection or without, so the terminals keep theirs.
+ * The selected task in the side panel: its header, what it changed and its terminal. Laid out at
+ * one size with a selection or without, so the terminals keep theirs.
  */
 export default function SessionPanel(props: { task: TaskView | undefined; config: RendererConfig | undefined }) {
   const shownTerminal = () => (props.task ? terminalOf(props.task.id) : null);
@@ -134,8 +133,6 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
           <p class="closed-note">Closed. Reopen continues this chat.</p>
         </Show>
       </div>
-
-      <MessageField task={props.task} />
     </div>
   );
 }

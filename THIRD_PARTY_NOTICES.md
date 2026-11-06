@@ -26,9 +26,7 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/board/cardMoves.ts` ← `src/components/task-board-motion.ts` (`planCardMotion`'s sub-pixel rule, `useCardMotion`'s cancel-before-measure and ghost hiding)
 - `src/renderer/src/board/TaskCard.tsx` ← `src/components/TaskBoardCard.tsx` (handing the focus to a card rebuilt in its new lane)
 - `src/renderer/src/app.css` (the side panel's hide pill) ← `src/components/task-board.css` (`.board-side-panel-close`)
-- `src/renderer/src/terminal/sendMessage.ts` ← `src/store/tasks.ts` (`sendPrompt`, `pasteDelayMs`) and `src/lib/paste-text.ts` (`cleanPasteText`)
 - `src/renderer/src/panel/ChangedFiles.tsx` ← `src/components/ChangedFilesList.tsx` (polling every 5 s while the window shows, with a cancel flag and an in-flight guard)
-- `src/renderer/src/panel/MessageField.tsx` ← `src/components/PromptInput.tsx` (the `sending()` guard: no second send until the first one's Enter has gone)
 - `src/renderer/src/app.css` (the changed files' pane heading and line counts) ← `.task-pane-heading` in `src/styles.css` and `.task-board-diff` in `src/components/task-board.css`
 - `src/renderer/src/board/lanes.ts` (`nextNeedsYou`) ← `src/components/next-attention-task.ts` (`stepInQueue`: wrapping around, and where it starts when the current task isn't in the queue)
 - `src/renderer/src/board/shortcuts.ts` ← `src/lib/keybindings/defaults.ts` (`app.nav.next-attention` and `app.nav.previous-attention`: Ctrl+Tab and Ctrl+Shift+Tab, Ctrl on macOS too)

@@ -7,11 +7,8 @@ import { card, cardIn, fitSize, git, launches, repo, run, screen, sendLine, star
 test.afterEach(cleanUp);
 
 const CLOSED_NOTE = 'Closed. Reopen continues this chat.';
-const HINT = 'Enter sends it to the session. Shift+Enter adds a line.';
-const BLOCKED_HINT = 'Answer Claude in the terminal first. Your message stays here.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
-const blocked = "printf '\\033]7501;state=blocked:kind=question\\033\\\\'";
 
 test('the header shows the task, project and branch, with Close session and then Reopen', async () => {
   const main = repo();
@@ -64,12 +61,10 @@ test('a task closed during this run keeps its terminal; one closed before it sho
   await card(page, id).click();
   await expect(page.getByTestId('panel-title')).toHaveText('Fix login');
   await expect(page.getByText(CLOSED_NOTE)).toBeVisible();
-  await expect(page.getByTestId('message-field')).toBeDisabled();
 
   await page.getByTestId('panel-reopen').click();
   await expect(page.getByText(CLOSED_NOTE)).toHaveCount(0);
   await expect.poll(() => screen(page, id)).toContain('$');
-  await expect(page.getByTestId('message-field')).toBeEnabled();
   await app.close();
 });
 
@@ -199,153 +194,23 @@ async function expectRow(row: Locator, want: { status: string; letter: string; p
   await expect(row.locator('.diff')).toHaveText(want.diff);
 }
 
-test('the message field sends one line as typed', async () => {
+test('the terminal runs to the bottom of the panel, with no message box', async () => {
   const { app, page } = await launchApp();
   const id = await startTask(page);
-  const field = page.getByTestId('message-field');
-  const send = page.getByTestId('message-send');
-  await field.click();
-  await expect(send).toBeDisabled();
+  await expect(page.getByTestId('message-field')).toHaveCount(0);
+  await settled(page);
 
-  await page.keyboard.type('echo msg-$((2+2))');
-  await expect(send).toBeEnabled();
-  await page.keyboard.press('Enter');
-  await expect.poll(() => screen(page, id)).toContain('msg-4');
-  await expect(field).toHaveValue('');
-  await expect(field).toBeFocused();
-  await expect(send).toBeDisabled();
+  // The well ends where the panel's padding does: as far from the panel's bottom edge as from its sides.
+  const panel = await box(page.getByTestId('side-panel'));
+  const well = await box(page.locator('.well'));
+  const gap = panel.y + panel.height - (well.y + well.height);
+  expect(gap).toBeLessThanOrEqual(16);
+  expect(Math.abs(gap - (well.x - panel.x))).toBeLessThanOrEqual(1);
 
-  // Blank: nothing is sent, so no empty prompt line comes before the next command.
-  await page.keyboard.type('   ');
-  await expect(send).toBeDisabled();
-  await page.keyboard.press('Enter');
-  await field.fill('echo msg-$((3+3))');
-  await send.click();
-  await expect.poll(() => screen(page, id)).toContain('msg-6');
-  expect(await screen(page, id)).toMatch(/^msg-4\n[^\n]*\$ echo msg-\$\(\(3\+3\)\)\nmsg-6$/m);
-  await expect(field).toHaveValue('');
-  await expect(field).toBeFocused();
-  await app.close();
-});
-
-/** Runs `cat -v` with bracketed paste on; resolves once xterm has seen it switched on. */
-async function catWithBracketedPaste(page: Page, taskId: string): Promise<void> {
-  await run(page, "printf '\\033[?2004h'; echo ready; cat -v");
-  await expect.poll(() => screen(page, taskId)).toMatch(/^ready$/m);
-}
-
-test('several lines arrive as one bracketed paste, then Enter', async () => {
-  const { app, page } = await launchApp();
-  const id = await startTask(page);
-  await catWithBracketedPaste(page, id);
-  await page.getByTestId('message-field').click();
-  await page.keyboard.type('first');
-  await page.keyboard.press('Shift+Enter');
-  await page.keyboard.type('second');
-  await page.keyboard.press('Enter');
-  await expect.poll(() => screen(page, id)).toContain('^[[200~first');
-  await expect.poll(() => screen(page, id)).toContain('second^[[201~');
-  await app.close();
-});
-
-test('a second message waits until the first one has had its Enter', async () => {
-  const { app, page } = await launchApp();
-  const id = await startTask(page);
-  await catWithBracketedPaste(page, id);
-  const field = page.getByTestId('message-field');
-  const send = page.getByTestId('message-send');
-  // 40 lines, so the first message's Enter comes 500 ms after its paste. All in one task of the page:
-  // that Enter's timer can't run between these steps. The events go to the field's own handlers.
-  const during = await page.evaluate((first) => {
-    const area = document.querySelector<HTMLTextAreaElement>('[data-testid=message-field]')!;
-    const button = document.querySelector<HTMLButtonElement>('[data-testid=message-send]')!;
-    const type = (value: string) => {
-      area.value = value;
-      area.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-    // False when a handler prevented it.
-    const enter = () => area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    type(first);
-    const firstTaken = !enter();
-    const afterFirst = area.value;
-    type('second');
-    const sendDisabled = button.disabled;
-    const secondTaken = !enter();
-    return { firstTaken, afterFirst, sendDisabled, secondTaken, afterSecond: area.value };
-  }, Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n'));
-  expect(during).toEqual({ firstTaken: true, afterFirst: '', sendDisabled: true, secondTaken: true, afterSecond: 'second' });
-  await expect.poll(() => screen(page, id)).toContain('^[[200~line 0');
-
-  await expect(send).toBeEnabled();
-  await field.press('Enter');
-  await expect(field).toHaveValue('');
-  // Its own paste on its own line: the first message's Enter came before it.
-  await expect.poll(() => screen(page, id)).toMatch(/^\^\[\[200~second\^\[\[201~$/m);
-  await app.close();
-});
-
-test('the message field tells when Claude waits in the terminal, and is off while the task is closed', async () => {
-  const { app, page } = await launchApp();
-  const id = await startTask(page);
-  const field = page.getByTestId('message-field');
-  await expect(field).toBeEnabled();
-  await expect(field).toHaveAttribute('placeholder', 'Message this session');
-  await expect(page.getByText(HINT)).toBeVisible();
-
-  await sendLine(page, id, blocked);
-  await expect(field).toHaveAttribute('placeholder', 'Claude is waiting for your answer in the terminal');
-  await sendLine(page, id, working);
-  await expect(field).toHaveAttribute('placeholder', 'Message this session');
-
-  await page.getByTestId('close-session').click();
-  await expect(field).toBeDisabled();
-  await expect(field).toHaveAttribute('placeholder', 'Reopen the session to send it a message');
-  await expect(page.getByText(HINT)).toBeHidden();
-  await expect(page.getByTestId('message-send')).toBeDisabled();
-  await app.close();
-});
-
-test('while Claude waits in the terminal, the message field keeps its draft and sends nothing', async () => {
-  const { app, page } = await launchApp();
-  const id = await startTask(page);
-  const field = page.getByTestId('message-field');
-  const send = page.getByTestId('message-send');
-  await sendLine(page, id, blocked);
-  await expect(field).toHaveAttribute('placeholder', 'Claude is waiting for your answer in the terminal');
-  await expect(page.getByText(BLOCKED_HINT, { exact: true })).toBeVisible();
-
-  await field.click();
-  await page.keyboard.type('echo held-$((6*7))');
-  await expect(send).toBeDisabled();
-  await page.keyboard.press('Enter');
-  await expect(field).toHaveValue('echo held-$((6*7))');
-  await expect(send).toBeDisabled();
-  // Nothing reached the shell: a line written after the Enter runs on its own, and nothing ran before it.
-  await sendLine(page, id, 'echo probe-$((1+1))');
-  await expect.poll(() => screen(page, id)).toMatch(/^probe-2$/m);
-  expect(await screen(page, id)).not.toContain('held');
-
-  await sendLine(page, id, working);
-  await expect(field).toHaveAttribute('placeholder', 'Message this session');
-  await expect(page.getByText(HINT, { exact: true })).toBeVisible();
-  await expect(send).toBeEnabled();
-  await field.press('Enter');
-  await expect.poll(() => screen(page, id)).toMatch(/^held-42$/m);
-  await expect(field).toHaveValue('');
-  await app.close();
-});
-
-test('a draft stays with the task it was written for', async () => {
-  const { app, page } = await launchApp();
-  const a = await startTask(page, 'Alpha');
-  const b = await startTask(page, 'Beta');
-  const field = page.getByTestId('message-field');
-  await field.fill('for beta');
-  await card(page, a).click();
-  await expect(field).toHaveValue('');
-  await expect(page.getByTestId('message-send')).toBeDisabled();
-  await card(page, b).click();
-  await expect(field).toHaveValue('for beta');
+  // The session has the size its terminal shows, now the well is taller.
+  const size = (await termSize(page, id))!;
+  await sendLine(page, id, 'stty size');
+  await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
   await app.close();
 });
 
@@ -357,7 +222,8 @@ test("the terminal's well shows the focus ring while the terminal has the focus"
   const well = page.locator('.well');
   // --border-focus, then --island-border.
   await expect.poll(() => borderColor(well)).toBe('rgb(103, 217, 237)');
-  await page.getByTestId('message-field').click();
+  // The title takes no focus, so a click on it leaves the focus on the page itself.
+  await page.getByTestId('panel-title').click();
   await expect.poll(() => borderColor(well)).toBe('rgb(41, 52, 61)');
   await page.locator('.well > .terminal:not(.terminal--hidden)').click();
   await expect.poll(() => borderColor(well)).toBe('rgb(103, 217, 237)');

@@ -58,9 +58,9 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     registerTerminal(id, { term, fit });
 
     // --- Fit ---------------------------------------------------------------------------------
-    // Every terminal sits in the one well, whose height follows the selected task's files and
-    // draft. A terminal off screen keeps the size it last fitted at, so its session isn't resized
-    // on every switch; once on screen again it fits only if its container changed meanwhile.
+    // Every terminal sits in the one well, whose height follows the selected task's files. A
+    // terminal off screen keeps the size it last fitted at, so its session isn't resized on every
+    // switch; once on screen again it fits only if its container changed meanwhile.
     let fitted = { width: 0, height: 0 };
     const fitToContainer = () => {
       fitted = { width: container.clientWidth, height: container.clientHeight };

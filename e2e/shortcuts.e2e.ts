@@ -96,13 +96,13 @@ test('from an unpinned panel that is put away, Ctrl+Tab brings it out with the t
   await app.close();
 });
 
-test('with one session waiting and its message field focused, Ctrl+Tab puts the cursor back in its terminal', async () => {
+test('with one session waiting and the focus out of its terminal, Ctrl+Tab puts the cursor back in it', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Alpha');
   await blocked(page);
   await expect(cardIn(page, 'needs-you', a)).toHaveCount(1);
-  await page.getByTestId('message-field').click();
-  await expect(page.getByTestId('message-field')).toBeFocused();
+  // The title takes no focus, so a click on it leaves the focus on the page itself.
+  await page.getByTestId('panel-title').click();
   expect(await terminalHasFocus(page)).toBe(false);
 
   await page.keyboard.press('Control+Tab');

@@ -839,7 +839,7 @@ kbd {
   font-weight: 600;
 }
 
-/* --- The session panel: the selected task's header, changed files, terminal and message field --- */
+/* --- The session panel: the selected task's header, changed files and terminal --- */
 
 /* Laid out at one size with a selection or without, so the terminals in the well keep theirs; with
    nothing selected it is hidden but still laid out. */
@@ -1124,12 +1124,13 @@ kbd {
   opacity: 0.4;
 }
 
-/* The terminal panel; it takes the height the rest leaves. */
+/* The terminal panel; it takes the height the rest leaves, and sits 8px in from the panel's edge on
+   every side, the bottom too. */
 .well {
   position: relative;
   flex: 1;
   min-height: 0;
-  margin: 8px 8px 0;
+  margin: 8px;
   background: var(--terminal);
   border: 1px solid var(--island-border);
   border-radius: var(--radius-md);
@@ -1185,90 +1186,6 @@ kbd {
 
 .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {
   background: color-mix(in srgb, var(--fg) 45%, transparent) !important;
-}
-
-/* The message field under the terminal. */
-.prompt {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  margin: 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-}
-
-.prompt:focus-within {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-/* One line, growing with its text to eight. */
-.prompt textarea {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  max-height: calc(8lh + 15px);
-  margin: 0;
-  padding: 11px 14px 4px;
-  field-sizing: content;
-  resize: none;
-  background: none;
-  border: 0;
-  outline: none;
-  color: var(--fg);
-  font: 14px/1.55 var(--font-ui);
-}
-
-.prompt textarea::placeholder {
-  color: var(--fg-subtle);
-}
-
-.prompt textarea:disabled {
-  cursor: not-allowed;
-}
-
-.prompt-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px 8px 14px;
-  color: var(--fg-subtle);
-  font-size: 12px;
-}
-
-/* One line on the narrowest panel too, so the terminal above keeps its height. */
-.prompt-hint {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.send {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-muted);
-}
-
-.send:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--fg);
-}
-
-.send:disabled {
-  opacity: 0.4;
-}
-
-.send svg {
-  width: 14px;
-  height: 14px;
 }
 
 /* --- New task dialog ------------------------------------------------------------------------ */
@@ -1439,8 +1356,7 @@ kbd {
   .btn,
   .tb-btn,
   .panel-pin,
-  .pane-heading,
-  .send {
+  .pane-heading {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
