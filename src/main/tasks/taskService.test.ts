@@ -822,3 +822,55 @@ it("changedFiles asks git about the task's worktree", async () => {
   expect(await service.changedFiles(view.id)).toEqual(files);
   expect(asked).toEqual([view.worktreePath]);
 });
+
+it('reports lists every task oldest first: a running one with its last state and message, a closed one as not running', async () => {
+  const { service, projectDir, readState } = setup();
+  const first = await service.start({ ...NEW_TASK, title: 'First' });
+  const second = await service.start({ ...NEW_TASK, title: 'Second' });
+  service.noteStatus(first.session!.id, 'blocked', 'Run rm -rf build?');
+  service.close(second.id);
+  service.onSessionExit(second.session!.id);
+
+  const [firstRecord, secondRecord] = readState();
+  expect(service.reports()).toEqual([
+    {
+      taskId: first.id,
+      title: 'First',
+      branch: 'worktree-first',
+      worktreePath: join(projectDir, '.claude', 'worktrees', 'first'),
+      claudeSessionId: firstRecord.claudeSessionId,
+      createdAt: 1000,
+      closedAt: null,
+      running: true,
+      state: 'blocked',
+      msg: 'Run rm -rf build?',
+    },
+    {
+      taskId: second.id,
+      title: 'Second',
+      branch: 'worktree-second',
+      worktreePath: join(projectDir, '.claude', 'worktrees', 'second'),
+      claudeSessionId: secondRecord.claudeSessionId,
+      createdAt: 1000,
+      closedAt: 1000,
+      running: false,
+      state: null,
+      msg: null,
+    },
+  ]);
+});
+
+it('a report without a message, and a clear, leave no message from the report before', async () => {
+  const { service } = setup();
+  const view = await service.start(NEW_TASK);
+  const id = view.session!.id;
+  expect(service.reports()[0]).toMatchObject({ running: true, state: null, msg: null });
+
+  service.noteStatus(id, 'blocked', 'Run it?');
+  service.noteStatus(id, 'working');
+  expect(service.reports()[0]).toMatchObject({ state: 'working', msg: null });
+
+  service.noteStatus(id, 'idle', 'Done for now');
+  service.noteStatus(id, null);
+  expect(service.reports()[0]).toMatchObject({ state: null, msg: null });
+});

@@ -1,9 +1,8 @@
 import { createSignal, onMount, Show } from 'solid-js';
+import { commitsThatArent } from '../../../shared/commitsThatArent';
 import type { StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { startTask } from '../tasksStore';
-
-const commitsThatArent = (n: number) => (n === 1 ? "1 commit that isn't" : `${n} commits that aren't`);
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { projectName: string; onClose: () => void }) {

@@ -23,6 +23,22 @@ export interface TaskServiceDeps {
   warn?: (msg: string) => void;
 }
 
+/** A task as the manager sees it: the raw OSC 7501 state of its session, not the board's lane. */
+export interface SessionReport {
+  taskId: string;
+  title: string;
+  branch: string;
+  worktreePath: string;
+  claudeSessionId: string;
+  createdAt: number;
+  closedAt: number | null;
+  running: boolean;
+  /** What its running session last reported; null before the first report, after a clear, and when none runs. */
+  state: ProgramState | null;
+  /** The `msg` of that report; null when it had none. */
+  msg: string | null;
+}
+
 /** One `claude` process of a task, held with its launch spec until it exits. */
 interface Session {
   id: string;
@@ -31,6 +47,8 @@ interface Session {
   startedWithPrompt: boolean;
   /** What its last OSC 7501 report said; null before the first, and after a clear. */
   lastState: ProgramState | null;
+  /** The `msg` of that report; null when it had none. */
+  lastMsg: string | null;
   /** Set once it has been told to end: what it reports on the way out is not what its turn was. */
   ending: boolean;
   /** It was launched with the resume prompt and has not yet worked or blocked: the prompt has not taken. */
@@ -57,6 +75,25 @@ export class TaskService {
 
   list(): TaskView[] {
     return this.mine().map((task) => this.view(task));
+  }
+
+  /** Every task of the project, oldest first, with what its session last reported. */
+  reports(): SessionReport[] {
+    return this.mine().map((task) => {
+      const running = this.sessionOf(task.id);
+      return {
+        taskId: task.id,
+        title: task.title,
+        branch: task.branch,
+        worktreePath: task.worktreePath,
+        claudeSessionId: task.claudeSessionId,
+        createdAt: task.createdAt,
+        closedAt: task.closedAt,
+        running: running !== undefined,
+        state: running?.lastState ?? null,
+        msg: running?.lastMsg ?? null,
+      };
+    });
   }
 
   startCheck(): Promise<StartCheck | null> {
@@ -170,10 +207,11 @@ export class TaskService {
   }
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
-  noteStatus(sessionId: string, state: ProgramState | null): void {
+  noteStatus(sessionId: string, state: ProgramState | null, msg?: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.ending) return;
     session.lastState = state;
+    session.lastMsg = msg ?? null;
     if (inTurn(state)) session.resumePending = false;
   }
 
@@ -218,7 +256,7 @@ export class TaskService {
 
   private addSession(session: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt' | 'resumePending'>): void {
     const id = this.newId();
-    this.sessions.set(id, { id, ...session, lastState: null, ending: false });
+    this.sessions.set(id, { id, ...session, lastState: null, lastMsg: null, ending: false });
   }
 
   /**
