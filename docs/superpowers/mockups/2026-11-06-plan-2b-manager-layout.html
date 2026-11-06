@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mainframe: the manager on the left</title>
+<style>
+  :root {
+    --bg: #080c10; --island: #10161c; --island-border: #29343d; --terminal: #13191f;
+    --border: #394752; --border-subtle: #2b3741; --hover: #1b252f;
+    --fg: #f0f4f7; --fg-muted: #c5ced7; --fg-subtle: #a0afbd;
+    --accent: #67d9ed; --accent-text: #080c10; --warning: #dfba83; --error: #f08f8a; --success: #98c9ae; --project: #8fbddd;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Sora', var(--font-ui);
+    --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px 60px; background: #05080b; color: var(--fg); font: 13px/1.4 var(--font-ui); -webkit-font-smoothing: antialiased; }
+  h1 { font: 600 20px/1.3 var(--font-display); margin: 0 0 6px; }
+  .lede { color: var(--fg-muted); margin: 0 0 6px; max-width: 1000px; font-size: 14px; }
+  .note { color: var(--fg-subtle); margin: 0 0 22px; font-size: 12px; max-width: 1000px; }
+  .step { font: 600 13px var(--font-display); color: var(--fg-muted); margin: 0 0 8px; }
+  .step span { color: var(--accent); }
+  .cost { font-size: 12px; color: var(--fg-subtle); margin: -18px 0 28px; max-width: 1000px; }
+  .cost b { color: var(--fg-muted); font-weight: 500; }
+
+  .win { position: relative; display: flex; height: 400px; margin-bottom: 30px; border-radius: 12px; overflow: hidden; border: 1px solid var(--island-border);
+    background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 40%), var(--bg); }
+  .lights { position: absolute; left: 14px; top: 15px; display: flex; gap: 7px; z-index: 9; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; background: #3a444d; }
+
+  .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+  .tb-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 6px; font-weight: 500; font-size: 12px; white-space: nowrap; }
+  .tb-btn.on { border-color: var(--accent); color: var(--accent); }
+  .tb-project { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--island); font-weight: 500; font-size: 12px; }
+  .tb-project i { width: 7px; height: 7px; border-radius: 2px; background: var(--project); }
+  .lanes { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 8px 12px 12px; }
+  .lane { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; }
+  .lane-title { display: flex; align-items: center; gap: 6px; padding: 0 2px 8px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .lane-count { color: var(--fg-subtle); font-weight: 400; }
+  .needs::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); }
+  .needs .lane-count { color: var(--warning); }
+  .cards { display: flex; flex-direction: column; gap: 6px; }
+  .card { position: relative; display: flex; flex-direction: column; gap: 5px; padding: 9px 11px; border-radius: 8px; background: color-mix(in srgb, var(--fg) 4.5%, transparent); font-size: 12.5px; }
+  .card.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .card.you { opacity: 0.5; }
+  .card-title { font-weight: 500; line-height: 16px; display: flex; gap: 6px; align-items: flex-start; }
+  .num { color: var(--fg-subtle); font-weight: 400; }
+  .body { color: var(--fg-subtle); font-size: 12px; line-height: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .lbl { font-size: 10.5px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg-muted); }
+  .lbl.blocker { background: color-mix(in srgb, var(--error) 18%, transparent); color: var(--error); }
+  .lbl.note { background: transparent; border: 1px dashed var(--border); color: var(--fg-subtle); }
+  .start { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 5px; background: var(--accent); color: var(--accent-text); }
+  .act { font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border); }
+  .ask { font-size: 12px; color: var(--warning); }
+  .meta { font-size: 11.5px; color: var(--fg-subtle); }
+  .glyph { flex: none; width: 10px; height: 10px; margin-top: 3px; border-radius: 50%; border: 1.5px solid var(--accent); border-right-color: transparent; }
+  .glyph.wait { border: 0; background: var(--warning); }
+
+  .panel { position: relative; flex: none; display: flex; flex-direction: column; border-radius: 10px; background: var(--island); border: 1px solid var(--island-border); overflow: hidden; margin: 8px 0; }
+  .pin { position: absolute; top: 11px; right: 10px; font-size: 11px; color: var(--fg-subtle); padding: 2px 6px; border-radius: 5px; }
+  .pin.on { color: var(--accent); }
+  .p-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border-subtle); }
+  .p-title { font: 600 13.5px/1.3 var(--font-display); margin: 0 0 4px; padding-right: 28px; }
+  .p-sub { font-size: 11.5px; color: var(--fg-subtle); display: flex; gap: 8px; align-items: center; }
+  .link { color: var(--accent); }
+  .term { flex: 1; background: var(--terminal); padding: 10px 12px; font: 11.5px/1.6 var(--font-mono); color: #d6deeb; overflow: hidden; }
+  .term .b { color: #addb67; font-weight: 700; }
+  .term .dim { color: #637777; }
+  .term .you { color: #82aaff; }
+
+  /* The manager: a column on the left */
+  .manager { width: 360px; margin-left: 8px; }
+  .manager .p-head { padding-top: 40px; }
+  .mgr-badge { display: inline-flex; align-items: center; gap: 5px; font: 500 11px var(--font-ui); color: var(--fg-subtle); }
+  .mgr-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  /* The session panel on the right */
+  .session { width: 330px; margin-right: 8px; }
+
+  /* The Todo panel */
+  .todo { width: 300px; }
+  .todo.float { position: absolute; top: 8px; bottom: 8px; left: 8px; margin: 0; z-index: 5; box-shadow: 18px 0 40px rgba(0,0,0,.55); }
+  .todo.pinned { margin-left: 8px; margin-right: 8px; }
+  .todo .tabs { margin-top: 34px; }
+  .tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border-subtle); }
+  .tab { padding: 7px 10px 8px; font-size: 12.5px; font-weight: 500; color: var(--fg-subtle); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
+  .tab.later { color: #5d6a75; font-weight: 400; font-style: italic; }
+  .src { display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 11.5px; color: var(--fg-subtle); }
+  .tool { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--border-subtle); color: var(--fg-muted); font-size: 11.5px; }
+  .list { flex: 1; overflow: hidden; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .manager.under { opacity: 0.4; }
+
+  /* The handle that shows the hidden Todo panel */
+  .handle { position: absolute; left: 0; top: 50%; margin-top: -40px; width: 18px; height: 80px; border-radius: 0 7px 7px 0; background: var(--island); border: 1px solid var(--border); border-left: 0;
+    writing-mode: vertical-rl; transform: rotate(180deg); display: grid; place-items: center; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--fg-muted); z-index: 6; }
+</style>
+</head>
+<body>
+  <h1>The manager on the left, with the Todo panel over it or beside it</h1>
+  <p class="lede">This is how I read your answer. The manager is a Claude Code session in its own column on the left edge of the app. The board sits in the middle and the session panel on the right. Unpinned, the Todo panel slides out over the manager. Pinned, it sits on the far left and pushes the manager to the right.</p>
+  <p class="note">I read "above it" as "on top of it", not "stacked above it in the same column". Tell me if you meant the other one. How you open the Todo panel when it's hidden is my guess: a Todo button in the top bar, and a handle on the left edge. The cards are made up.</p>
+
+  <!-- 1 -->
+  <p class="step"><span>1</span> · Todo hidden: the manager, the board and the session</p>
+  <div class="win">
+    <span class="lights"><i></i><i></i><i></i></span>
+    <span class="handle">TODO</span>
+    <aside class="panel manager">
+      <span class="pin on">📌</span>
+      <div class="p-head"><p class="p-title">Manager</p><div class="p-sub"><span class="mgr-badge"><i></i>Damela · main checkout</span></div></div>
+      <div class="term">
+        <span class="you">&gt; sync the todo list</span><br>
+        <span class="b">⏺ trello</span> - read list (Damela › TODO)<br>
+        <span class="dim">  ⎿  9 cards</span><br>
+        <span class="b">⏺ mainframe</span> - set_todo (9 cards)<br>
+        <span class="dim">  ⎿  Todo updated</span><br><br>
+        ⏺ Synced 9 cards from Damela's TODO list. Two are "You" cards, and #128 is a Blocker.<br><br>
+        <span class="dim">&gt; </span>
+      </div>
+    </aside>
+    <div class="mid">
+      <div class="topbar"><span class="tb-btn">☰ Todo</span><span class="tb-btn">+ New task</span><span class="tb-project"><i></i>Damela</span></div>
+      <div class="lanes">
+        <section class="lane"><div class="lane-title needs">Needs you <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card"><div class="card-title"><span class="glyph wait"></span><span><span class="num">#124</span> Saved addresses</span></div>
+            <div class="row"><span class="ask grow">answer: Which address is the default?</span></div><div class="row"><span class="act">Answer</span></div></div></div></section>
+        <section class="lane"><div class="lane-title">Working <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card sel"><div class="card-title"><span class="glyph"></span><span><span class="num">#126</span> Speed up product search</span></div><div class="meta">12m · Running tests</div></div></div></section>
+        <section class="lane"><div class="lane-title">Closed <span class="lane-count">0</span></div><div class="meta" style="padding:2px">No closed tasks</div></section>
+      </div>
+    </div>
+    <aside class="panel session">
+      <span class="pin on">📌</span>
+      <div class="p-head"><p class="p-title">#126 Speed up product search</p><div class="p-sub">worktree-speed-up-search · <span class="link">Trello ↗</span></div></div>
+      <div class="term"><span class="b">⏺ Bash</span>(npm test -- search)<br><span class="dim">  ⎿  Running 48 tests…</span><br><br><span class="dim">✻ Running tests… (12m · esc to interrupt)</span></div>
+    </aside>
+  </div>
+
+  <!-- 2 -->
+  <p class="step"><span>2</span> · Todo open and unpinned: it slides out over the manager</p>
+  <div class="win">
+    <span class="lights"><i></i><i></i><i></i></span>
+    <aside class="panel todo float">
+      <span class="pin">📌</span>
+      <div class="tabs"><span class="tab on">Todo</span><span class="tab later">later tabs…</span></div>
+      <div class="src"><span>Trello · Damela · TODO</span><span class="grow"></span><span class="tool">↻ Sync</span></div>
+      <div class="list">
+        <div class="card"><div class="card-title"><span><span class="num">#128</span> Checkout shows the wrong total after a discount code</span></div>
+          <div class="body">When a discount code is applied after shipping is picked, the summary total leaves the discount out.</div>
+          <div class="row"><span class="lbl blocker">Blocker</span><span class="lbl">Backend</span><span class="grow"></span><span class="start">Start</span></div></div>
+        <div class="card"><div class="card-title"><span><span class="num">#131</span> Order history jumps when new orders arrive</span></div>
+          <div class="row"><span class="lbl">UI</span><span class="grow"></span><span class="start">Start</span></div></div>
+        <div class="card you"><div class="card-title"><span><span class="num">#119</span> Decide on the refund window</span></div><div class="row"><span class="lbl">You</span><span class="lbl">Decision</span></div></div>
+        <div class="card"><div class="card-title"><span>Clean up the old feature flags</span></div><div class="row"><span class="lbl note">Note</span><span class="grow"></span><span class="start">Start</span></div></div>
+      </div>
+    </aside>
+    <aside class="panel manager under">
+      <div class="p-head"><p class="p-title">Manager</p><div class="p-sub"><span class="mgr-badge"><i></i>Damela · main checkout</span></div></div>
+      <div class="term"><span class="you">&gt; sync the todo list</span><br><span class="b">⏺ trello</span> - read list (Damela › TODO)<br><span class="dim">  ⎿  9 cards</span></div>
+    </aside>
+    <div class="mid">
+      <div class="topbar"><span class="tb-btn on">☰ Todo</span><span class="tb-btn">+ New task</span><span class="tb-project"><i></i>Damela</span></div>
+      <div class="lanes">
+        <section class="lane"><div class="lane-title needs">Needs you <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card"><div class="card-title"><span class="glyph wait"></span><span><span class="num">#124</span> Saved addresses</span></div><div class="row"><span class="act">Answer</span></div></div></div></section>
+        <section class="lane"><div class="lane-title">Working <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card sel"><div class="card-title"><span class="glyph"></span><span><span class="num">#126</span> Speed up product search</span></div></div></div></section>
+        <section class="lane"><div class="lane-title">Closed <span class="lane-count">0</span></div></section>
+      </div>
+    </div>
+    <aside class="panel session">
+      <span class="pin on">📌</span>
+      <div class="p-head"><p class="p-title">#126 Speed up product search</p><div class="p-sub">worktree-speed-up-search</div></div>
+      <div class="term"><span class="b">⏺ Bash</span>(npm test -- search)<br><span class="dim">  ⎿  Running 48 tests…</span></div>
+    </aside>
+  </div>
+
+  <!-- 3 -->
+  <p class="step"><span>3</span> · Todo pinned: it takes the far left and pushes the manager right</p>
+  <div class="win">
+    <span class="lights"><i></i><i></i><i></i></span>
+    <aside class="panel todo pinned">
+      <span class="pin on">📌</span>
+      <div class="tabs"><span class="tab on">Todo</span><span class="tab later">later tabs…</span></div>
+      <div class="src"><span>Trello · Damela · TODO</span><span class="grow"></span><span class="tool">↻ Sync</span></div>
+      <div class="list">
+        <div class="card"><div class="card-title"><span><span class="num">#128</span> Checkout shows the wrong total after a discount code</span></div>
+          <div class="row"><span class="lbl blocker">Blocker</span><span class="lbl">Backend</span><span class="grow"></span><span class="start">Start</span></div></div>
+        <div class="card"><div class="card-title"><span><span class="num">#131</span> Order history jumps when new orders arrive</span></div>
+          <div class="row"><span class="lbl">UI</span><span class="grow"></span><span class="start">Start</span></div></div>
+        <div class="card you"><div class="card-title"><span><span class="num">#119</span> Decide on the refund window</span></div></div>
+      </div>
+    </aside>
+    <aside class="panel manager" style="margin-left:0; width:300px">
+      <span class="pin on">📌</span>
+      <div class="p-head" style="padding-top:12px"><p class="p-title">Manager</p><div class="p-sub"><span class="mgr-badge"><i></i>Damela · main checkout</span></div></div>
+      <div class="term"><span class="you">&gt; sync the todo list</span><br><span class="b">⏺ trello</span> - read list (Damela › TODO)<br><span class="dim">  ⎿  9 cards</span><br><br>⏺ Synced 9 cards.</div>
+    </aside>
+    <div class="mid">
+      <div class="topbar"><span class="tb-btn on">☰ Todo</span><span class="tb-btn">+ New</span></div>
+      <div class="lanes">
+        <section class="lane"><div class="lane-title needs">Needs you <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card"><div class="card-title"><span class="glyph wait"></span><span><span class="num">#124</span> Saved addresses</span></div></div></div></section>
+        <section class="lane"><div class="lane-title">Working <span class="lane-count">1</span></div>
+          <div class="cards"><div class="card sel"><div class="card-title"><span class="glyph"></span><span><span class="num">#126</span> Speed up…</span></div></div></div></section>
+      </div>
+    </div>
+    <aside class="panel session" style="width:290px">
+      <span class="pin on">📌</span>
+      <div class="p-head"><p class="p-title">#126 Speed up product search</p><div class="p-sub">worktree-speed-up-search</div></div>
+      <div class="term"><span class="b">⏺ Bash</span>(npm test -- search)<br><span class="dim">  ⎿  Running 48 tests…</span></div>
+    </aside>
+  </div>
+  <p class="cost"><b>Cost to weigh:</b> with Todo, the manager and the session panel all pinned, the board gets narrow on a laptop screen. This mockup is about 1,250 px wide, and the lanes are already squeezed.</p>
+</body>
+</html>

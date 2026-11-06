@@ -220,6 +220,7 @@ Each step is usable on its own. Damela is the test project throughout.
    - **(2026-11-05):** the rest of step 1 is split into two plans:
      - **Plan 2a:** sessions on the board, started with New task (a title and a description, brought forward from step 4).
      - **Plan 2b:** the Trello TODO lane, Start and Start next card.
+       - **(Owner, 2026-11-06):** replaced by `docs/superpowers/specs/2026-11-06-mainframe-manager-and-todo-design.md`. The manager comes forward, and a Todo panel is filled through the owner's connector by a background Claude Code run. Its §8 lists the sections of this spec it changes.
 2. **Merge turn**: §8 in full; Ready to merge and Merged today lanes; card moved to Dev; branch-moved notices.
 3. **Manager**: §7.6; Start next card moves to the manager's judgement.
 4. **All projects**: project rail with counts, several windows, Word², SmasHit and Tele2; History with Reopen; New task from a plain description.
