@@ -352,7 +352,7 @@ it('reopen of a session that was waiting has no prompt', async () => {
   ]);
 });
 
-it('a reopen clears midTurn, so the next one has no prompt unless the session was mid-turn again', async () => {
+it('a resume prompt that never took is owed again: a reopen that ends with no reports keeps midTurn', async () => {
   const { service, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
   sessionStarted(view.id, readState()[0].claudeSessionId);
@@ -365,11 +365,82 @@ it('a reopen clears midTurn, so the next one has no prompt unless the session wa
   expect(readState()[0].midTurn).toBe(false);
   expect(service.launchSpec(first.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 
-  // It ends without having reported anything: the prompt it was given is not owed again.
+  // The launch failed, or the app quit at once: Claude never began the turn it was asked to.
   service.onSessionExit(first.session!.id);
+  expect(readState()[0].midTurn).toBe(true);
+
   const second = await service.reopen(view.id);
-  expect(service.launchSpec(second.session!.id).argv).not.toContain(RESUME_PROMPT);
-  expect(second.session!.startedWithPrompt).toBe(false);
+  expect(service.launchSpec(second.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
+  expect(second.session!.startedWithPrompt).toBe(true);
+});
+
+it('a resume prompt that has only met an idle report has not taken either', async () => {
+  const { service, readState, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+
+  const first = await service.reopen(view.id);
+  // Claude Code is idle until it submits the prompt.
+  service.noteStatus(first.session!.id, 'idle');
+  service.close(view.id);
+  service.onSessionExit(first.session!.id);
+  expect(readState()[0].midTurn).toBe(true);
+});
+
+it.each([
+  ['working', true],
+  ['blocked', true],
+  ['idle', false],
+  ['done', false],
+  ['error', false],
+  [null, false],
+] as const)('a resumed session that worked and then ended %s leaves midTurn %s', async (end, midTurn) => {
+  const { service, readState, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+
+  const resumed = await service.reopen(view.id);
+  service.noteStatus(resumed.session!.id, 'working');
+  service.noteStatus(resumed.session!.id, end);
+  service.close(view.id);
+  service.onSessionExit(resumed.session!.id);
+
+  expect(readState()[0].midTurn).toBe(midTurn);
+  const next = await service.reopen(view.id);
+  expect(next.session!.startedWithPrompt).toBe(midTurn);
+});
+
+it('a quit before a restored session has reported anything keeps the turn owed, for the next restore', async () => {
+  const { service, make, readState, sessionStarted } = setup();
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const second = make();
+  await second.restore();
+  const [restored] = second.list();
+  expect(restored.session!.startedWithPrompt).toBe(true);
+  expect(readState()[0].midTurn).toBe(false);
+
+  // Quit again before the restored session has said anything, or has been spawned at all.
+  second.beginQuit();
+  expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
+  second.onSessionExit(restored.session!.id);
+  expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
+
+  const third = make();
+  await third.restore();
+  const [again] = third.list();
+  expect(again.session!.startedWithPrompt).toBe(true);
+  expect(third.launchSpec(again.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 });
 
 it('a reopen that starts the conversation over clears midTurn and gives it the opening prompt only', async () => {
@@ -413,16 +484,17 @@ it('a task kept before midTurn was recorded reopens without the prompt', async (
   expect(readState()[0].midTurn).toBe(false);
 });
 
-it('a status for a session that has ended, or never was, is ignored', async () => {
-  const { service, changes } = setup();
+it('a status that arrives after the session has ended, or for no session, changes nothing', async () => {
+  const { service, readState } = setup();
   const view = await service.start(NEW_TASK);
+  service.noteStatus(view.session!.id, 'idle');
   service.onSessionExit(view.session!.id);
-  const before = changes.length;
+  expect(readState()[0].midTurn).toBe(false);
 
   service.noteStatus(view.session!.id, 'working');
   service.noteStatus('nobody', 'working');
-
-  expect(changes.length).toBe(before);
+  expect(readState()[0].midTurn).toBe(false);
+  expect(service.list()[0].session).toBeNull();
 });
 
 it("restore leaves closed tasks closed and other projects' tasks alone", async () => {

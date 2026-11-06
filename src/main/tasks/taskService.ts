@@ -13,6 +13,9 @@ const SETTINGS_FILE = 'settings.json';
 /** What a reopen says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
 const RESUME_PROMPT = 'Continue where you left off.';
 
+/** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
+const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -35,6 +38,8 @@ interface Session {
   lastState: ProgramState | null;
   /** Set once it has been told to end: what it reports on the way out is not what its turn was. */
   ending: boolean;
+  /** It was launched with the resume prompt and has not yet worked or blocked: the prompt has not taken. */
+  resumePending: boolean;
 }
 
 export class TaskService {
@@ -93,7 +98,7 @@ export class TaskService {
 
     const argv = this.startArgvOf(task, this.writeHookSettings(task.id));
     this.records.push(task);
-    this.addSession({ taskId: task.id, argv, startedWithPrompt: true });
+    this.addSession({ taskId: task.id, argv, startedWithPrompt: true, resumePending: false });
     this.commit();
     return this.view(task);
   }
@@ -107,30 +112,29 @@ export class TaskService {
 
     const settingsPath = this.writeHookSettings(task.id);
     const recorded = this.recordedSession(task.id);
+    const carryOn = recorded !== null && task.midTurn === true;
     let argv: string[];
-    let startedWithPrompt: boolean;
     if (recorded) {
       task.claudeSessionId = recorded;
-      startedWithPrompt = task.midTurn === true;
       argv = reopenArgv({
         claudeBin: this.deps.claudeBin,
         slug: task.slug,
         claudeSessionId: task.claudeSessionId,
         settingsPath,
         branchExists,
-        prompt: startedWithPrompt ? RESUME_PROMPT : undefined,
+        prompt: carryOn ? RESUME_PROMPT : undefined,
       });
     } else {
       // SessionStart never fired: claude was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = this.newId();
-      startedWithPrompt = true;
       argv = this.startArgvOf(task, settingsPath);
     }
     task.open = true;
     task.closedAt = null;
+    // Cleared here; a session whose resume prompt never takes sets it again as it ends.
     task.midTurn = false;
-    this.addSession({ taskId: task.id, argv, startedWithPrompt });
+    this.addSession({ taskId: task.id, argv, startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
     this.commit();
     return this.view(task);
   }
@@ -171,14 +175,16 @@ export class TaskService {
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
   noteStatus(sessionId: string, state: ProgramState | null): void {
     const session = this.sessions.get(sessionId);
-    if (session && !session.ending) session.lastState = state;
+    if (!session || session.ending) return;
+    session.lastState = state;
+    if (inTurn(state)) session.resumePending = false;
   }
 
   onSessionExit(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
-    this.markEnding(session);
+    if (!session.ending) this.markEnding(session);
     const task = this.taskOf(session);
 
     task.claudeSessionId = this.recordedSession(task.id) ?? task.claudeSessionId;
@@ -212,7 +218,7 @@ export class TaskService {
     return task;
   }
 
-  private addSession(session: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt'>): void {
+  private addSession(session: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt' | 'resumePending'>): void {
     const id = this.newId();
     this.sessions.set(id, { id, ...session, lastState: null, ending: false });
   }
@@ -222,12 +228,13 @@ export class TaskService {
   }
 
   /**
-   * Records on the task whether the session ends in the middle of a turn: working, or blocked on
-   * a prompt that dies with it. The state is as it was before the end was decided.
+   * Records on the task whether the session ends in the middle of a turn, from the state it was in
+   * before the end was decided. A resume prompt that never took, as when the launch failed or the
+   * app quit at once, leaves the turn still owed.
    */
   private markEnding(session: Session): void {
     session.ending = true;
-    this.taskOf(session).midTurn = session.lastState === 'working' || session.lastState === 'blocked';
+    this.taskOf(session).midTurn = inTurn(session.lastState) || session.resumePending;
   }
 
   private sessionOf(taskId: string): Session | undefined {
