@@ -1,4 +1,5 @@
 import headless from '@xterm/headless';
+import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { httpUrl } from '../../../shared/httpUrl';
 import { createTermStyler } from './termStyle';
@@ -78,7 +79,7 @@ function mixedOutput(seed: number, size: number): Uint8Array {
 const STYLE_SEQUENCES = [
   '\x1b[1m', '\x1b[1m', '\x1b[1;31m', '\x1b[31;1m', '\x1b[1:2m', '\x1b[22m', '\x1b[221m', '\x1b[0;1m', '\x1b[1;0m',
   '\x1b[;1m', '\x1b[1;38;5;1m', '\x1b[38;0;1m', '\x1b[38;5m', '\x1b[38;2;1m', '\x1b[48;5;1;1m', '\x1b[38;3;1;1;1;1;1m',
-  link(WEB), link(WEB), 'ID_LINK', link('https://exämple.com/ü'), link('file:///etc/passwd'),
+  link(WEB), link(WEB), link('http://example.com/b', 'id=x'), link('https://exämple.com/ü'), link('file:///etc/passwd'),
   link('mailto:me@example.com'), END_LINK, END_LINK, '\x1b]8;;https://example.com/bel\x07', '\x1b]8;;\x07',
   '\x1b]8;id=x;\x1b\\', '\x1b]8\x07', '\x1b]08;;https://example.com/zero\x07', '\x1b]8;;https://example.com/cut\x1b[33m',
   '\u009b1m', '\u009b22m', '\u009d8;;https://c1.example.com\u009c', '\u009d8;;\u009c', '\x1b[1\x18m',
@@ -86,18 +87,13 @@ const STYLE_SEQUENCES = [
   '\x1b[?1047l', '\x1b[?1048h', '\x1b[?1048l', '\x1b[?1049;25h', '\x1b[?25;1049l', '\x1b[4m', '\x1b[24m', '\x1b[0m',
 ];
 
-/**
- * Mixed output with bold text and links in it. Each link with an id has an id of its own: xterm
- * gives a link that reuses a live id and URI the record it already has, which can outlast a switch
- * of screens that ends a fresh link's record, and the styler doesn't follow ids.
- */
+/** Mixed output with bold text and links in it. */
 function styledOutput(seed: number, tokens: number): Uint8Array {
   const next = random(seed);
   let text = '';
   for (let i = 0; i < tokens; i++) {
     const roll = next();
-    const token = roll < 0.45 ? pick(next, TEXT) : roll < 0.7 ? pick(next, PLAIN_SEQUENCES) : pick(next, STYLE_SEQUENCES);
-    text += token === 'ID_LINK' ? link('http://example.com/b', `id=${i}`) : token;
+    text += roll < 0.45 ? pick(next, TEXT) : roll < 0.7 ? pick(next, PLAIN_SEQUENCES) : pick(next, STYLE_SEQUENCES);
   }
   return bytes(text);
 }
@@ -276,15 +272,6 @@ describe('createTermStyler', () => {
       );
     });
 
-    it('stops colouring a link opened on the alternate screen once the normal screen is back', () => {
-      // xterm clears the alternate screen's link records: the link stays open and underlined but no longer opens.
-      expect(styled(`\x1b[?1049h${link(WEB)}A\x1b[?1049lB${END_LINK}`)).toBe(
-        `\x1b[?1049h${link(WEB)}${LINK}A\x1b[?1049lB${END_LINK}`,
-      );
-      // One opened on the normal screen keeps its record, and its colour, across the switch.
-      expect(styled(`${link(WEB)}\x1b[?1049hA\x1b[?1049lB`)).toBe(`${link(WEB)}${LINK}\x1b[?1049hA\x1b[?1049lB`);
-    });
-
     it('follows ESC 7 and ESC 8, which save and restore the bold and the colour xterm had', () => {
       // Saved plain: the restore brings back plain text, so the bold colour must not come back.
       expect(styled('\x1b7\x1b[1mX\x1b8Y\x1b[39mZ')).toBe(`\x1b7\x1b[1m${BOLD}X\x1b8Y\x1b[39mZ`);
@@ -306,15 +293,6 @@ describe('createTermStyler', () => {
       );
       // Saved underlined, restored in a web link: the restore takes the link colour away, the styler puts it back.
       expect(styled(`\x1b[4m\x1b7${link(WEB)}\x1b8X`)).toBe(`\x1b[4m\x1b7${link(WEB)}${LINK}\x1b8${LINK}X`);
-    });
-
-    it('colours what xterm still marks as a link after a restore, and nothing else', () => {
-      // xterm restores the background word, and with it the flag that carries the link to the cells:
-      // saved outside any link (and not underlined), text after the restore is no longer part of the
-      // link, so it gets no link colour; the bold colour xterm restored stays.
-      expect(styled(`\x1b[1m\x1b7${link(WEB)}A\x1b[22m\x1b8B${END_LINK}C`)).toBe(
-        `\x1b[1m${BOLD}\x1b7${link(WEB)}${LINK}A\x1b[22m\x1b8B${END_LINK}C`,
-      );
     });
 
     it('keeps the saved attributes of the normal and the alternate screen apart, as xterm does', () => {
@@ -367,13 +345,48 @@ describe('createTermStyler', () => {
 // colour of bold text and of web links changed.
 
 const COLS = 30;
+/** xterm's flag for a cell's extended attributes, which carry its link (BgFlags.HAS_EXTENDED). */
+const HAS_EXTENDED = 0x10000000;
+
+// xterm's API doesn't say which link a cell belongs to, nor whether its underline has a colour of
+// its own or follows the foreground; its cells and link service do. Its input handler restores the
+// cursor.
+interface CellInternals {
+  hasExtendedAttrs(): number;
+  extended: { urlId: number; underlineColor: number };
+}
+interface TerminalInternals {
+  _core: {
+    _oscLinkService: { getLinkData(id: number): { uri: string } | undefined };
+    _inputHandler: { restoreCursor(...args: unknown[]): boolean; _curAttrData: { bg: number; extended: { urlId: number } } };
+  };
+}
+
+const titles = new WeakMap<headless.Terminal, string[]>();
 
 /**
  * The chunks written one by one, as TerminalView writes them, each parsed on its own. The scrollback
- * holds all of it: xterm forgets a link whose lines all scroll out of it, which the styler can't see.
+ * holds all of it, so every line is compared.
+ *
+ * xterm's cursor restore brings back the saved flag that carries an open link to the cells: saved
+ * outside the link, the text after the restore is no longer the link's, while the styler still
+ * colours it. With `linkSurvivesRestore` the restore leaves an open link on the cells, which shows
+ * where the styler colours a link.
  */
-async function render(chunks: Uint8Array[]): Promise<headless.Terminal> {
+async function render(chunks: Uint8Array[], linkSurvivesRestore = false): Promise<headless.Terminal> {
   const term = new headless.Terminal({ cols: COLS, rows: 8, scrollback: 5000, allowProposedApi: true });
+  const seen: string[] = [];
+  titles.set(term, seen);
+  term.onTitleChange((title) => seen.push(title));
+  if (linkSurvivesRestore) {
+    const handler = (term as unknown as TerminalInternals)._core._inputHandler;
+    const restoreCursor = handler.restoreCursor.bind(handler);
+    handler.restoreCursor = (...args) => {
+      const done = restoreCursor(...args);
+      if (handler._curAttrData.extended.urlId) handler._curAttrData.bg |= HAS_EXTENDED;
+      return done;
+    };
+  }
   for (const chunk of chunks) term.write(chunk);
   await new Promise<void>((resolve) => term.write('', resolve));
   return term;
@@ -381,15 +394,6 @@ async function render(chunks: Uint8Array[]): Promise<headless.Terminal> {
 
 type Cell = NonNullable<ReturnType<NonNullable<ReturnType<headless.IBuffer['getLine']>>['getCell']>>;
 
-// xterm's API doesn't say which link a cell belongs to, nor whether its underline has a colour of
-// its own or follows the foreground; its cells and link service do.
-interface CellInternals {
-  hasExtendedAttrs(): number;
-  extended: { urlId: number; underlineColor: number };
-}
-interface TerminalInternals {
-  _core: { _oscLinkService: { getLinkData(id: number): { uri: string } | undefined } };
-}
 function linkOf(term: headless.Terminal, cell: Cell): string | null {
   const internals = cell as unknown as CellInternals;
   if (!internals.hasExtendedAttrs() || !internals.extended.urlId) return null;
@@ -417,8 +421,16 @@ function look(term: headless.Terminal, cell: Cell) {
   };
 }
 
-/** Every way the styled screens differ from the original's beyond the two colours; empty if none. */
-function differences(original: headless.Terminal, styledTerm: headless.Terminal): { diffs: string[]; recoloured: Set<string> } {
+/**
+ * Every way the styled screens differ from the original's beyond the two colours; empty if none.
+ * `linked`, the original rendered with `linkSurvivesRestore`, says where the colours go; without it
+ * the foreground isn't compared at all.
+ */
+function differences(
+  original: headless.Terminal,
+  styledTerm: headless.Terminal,
+  linked: headless.Terminal | null,
+): { diffs: string[]; recoloured: Set<string> } {
   const diffs: string[] = [];
   const recoloured = new Set<string>();
   for (const name of ['normal', 'alternate'] as const) {
@@ -432,36 +444,75 @@ function differences(original: headless.Terminal, styledTerm: headless.Terminal)
       for (let x = 0; x < COLS; x++) {
         const cellA = lineA.getCell(x)!;
         const want = look(original, cellA);
-        const uri = want.link;
-        if (uri !== null && httpUrl(uri)) want.fg = COLORS.link;
-        else if (cellA.isBold() && cellA.isFgDefault()) want.fg = COLORS.bold;
-        if (want.fg !== fgOf(cellA)) recoloured.add(want.fg);
         const got = look(styledTerm, lineB.getCell(x)!);
-        // xterm forgets a link once every line it was printed on has left the buffer, while the
-        // link stays open (a line that scrolls off the alternate screen is gone at once); the
-        // styler can't see that, so it may still colour such a link.
-        if (uri === '?' && got.fg === COLORS.link) want.fg = COLORS.link;
+        if (!linked) {
+          want.fg = got.fg;
+        } else {
+          const uri = linkOf(linked, linked.buffer[name].getLine(y)!.getCell(x)!);
+          if (uri !== null && httpUrl(uri)) want.fg = COLORS.link;
+          else if (cellA.isBold() && cellA.isFgDefault()) want.fg = COLORS.bold;
+          if (want.fg !== fgOf(cellA)) recoloured.add(want.fg);
+          // xterm forgets a link once every line it was printed on has left the buffer, while the
+          // link stays open (a line that scrolls off the alternate screen is gone at once); the
+          // styler can't see that, so it may still colour such a link.
+          if (uri === '?' && got.fg === COLORS.link) want.fg = COLORS.link;
+        }
         if (JSON.stringify(got) !== JSON.stringify(want)) diffs.push(`${name} ${y},${x}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
       }
     }
   }
-  const where = (t: headless.Terminal) => `${t.buffer.active.type} ${t.buffer.active.cursorX},${t.buffer.active.cursorY} ${JSON.stringify(t.modes)}`;
-  if (where(original) !== where(styledTerm)) diffs.push(`cursor and modes: ${where(original)}, styled ${where(styledTerm)}`);
+  const where = (t: headless.Terminal) =>
+    `${t.buffer.active.type} ${t.buffer.active.cursorX},${t.buffer.active.cursorY} ${JSON.stringify(t.modes)} ${JSON.stringify(titles.get(t))}`;
+  if (where(original) !== where(styledTerm)) diffs.push(`cursor, modes and titles: ${where(original)}, styled ${where(styledTerm)}`);
   return { diffs, recoloured };
 }
 
-async function compare(input: Uint8Array, seed: number) {
-  const chunks = cut(input, random(seed), 64);
+/** The input cut into pieces of up to `longest` bytes, rendered as it is and styled. */
+async function compare(input: Uint8Array, seed: number, { longest = 64, colours = true } = {}) {
+  const chunks = cut(input, random(seed), longest);
   const style = createTermStyler(COLORS);
   const original = await render(chunks);
   const styledTerm = await render(chunks.map((chunk) => style(chunk)));
-  const result = differences(original, styledTerm);
-  original.dispose();
-  styledTerm.dispose();
+  const linked = colours ? await render(chunks, true) : null;
+  const result = differences(original, styledTerm, linked);
+  for (const term of [original, styledTerm, linked]) term?.dispose();
   return result;
 }
 
+// Pieces of sequences rather than whole ones, so the styler's parser meets every odd transition:
+// lone ESCs, introducers, parameters and finals, C0 and C1 controls, CAN and SUB, DEL, non-ASCII
+// characters and the string introducers, with a few whole sequences among them.
+const FRAGMENTS = [
+  '\x1b', '\x1b', '\x1b', '[', '[', ']', '8', ';', ';', ':', '1', '1', '2', '3', '5', '9', '0', '4', '7',
+  'm', 'm', 'm', 'h', 'l', '?', 'c', 's', 'u', '!', 'p', '>', '<', '=', ' ', '"', '$', '(', 'B', 'P', '_', 'X', '^',
+  '\x1bP', '\x1b_', '\x1bX', '\x1b^', '\x1b]0;', '\x07', '\\', '\n', '\r', '\t', '\b', '\x18', '\x1a', '\x7f', '\x00', '\x05',
+  'é', '中', '🍎', '\u0085', '\u009b', '\u009c', '\u009d', '\u0090', '\u0098', '\u009f', '\u0099',
+  'abc', 'https://e.com/x', 'file:///x', 'id=1', '\x1b[1m', '\x1b[22m', '\x1b[39m', '\x1b[0m', '\x1b]8;;',
+  '\x1b]8;;https://e.com/\x07', '\x1b]8;;\x1b\\', '\x1b[?1049h', '\x1b[?1049l', '\x1b7', '\x1b8', '\x1b[38;2;1;2;3m',
+  '\x1b[38:2::1:2:3m', '\x1b[38;5;1m', '\x1b[31m',
+];
+
+function soup(seed: number, fragments: number): Uint8Array {
+  const next = random(seed);
+  let text = '';
+  for (let i = 0; i < fragments; i++) text += pick(next, FRAGMENTS);
+  return bytes(text);
+}
+
 describe('as xterm draws it', () => {
+  it('compares against the very xterm the app draws with', () => {
+    const require = createRequire(import.meta.url);
+    expect(require('@xterm/headless/package.json').version).toBe(require('@xterm/xterm/package.json').version);
+  });
+
+  const SOUP_SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
+  it.each(SOUP_SEEDS)('draws a soup of sequence fragments exactly as before, but for the foreground (seed %i)', async (seed) => {
+    const input = soup(seed, 300);
+    for (const longest of [16, 3]) {
+      expect((await compare(input, seed, { longest, colours: false })).diffs.slice(0, 5)).toEqual([]);
+    }
+  });
+
   it('draws the varied stretch exactly as before, but for the colour of bold text and web links', async () => {
     const { diffs, recoloured } = await compare(VARIED, 1);
     expect(diffs).toEqual([]);

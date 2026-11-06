@@ -1,3 +1,4 @@
+// Adapted from xterm.js (MIT): src/common/InputHandler.ts (_extractColor), src/common/parser/Params.ts at 6.1.0-beta.195. See THIRD_PARTY_NOTICES.md.
 import { httpUrl, MAX_HTTP_URL_LENGTH } from '../../../shared/httpUrl';
 
 /** The two colours the styler adds, as `#rrggbb`. */
@@ -37,18 +38,13 @@ const OSC_ID = 0;
 const OSC_PAYLOAD = 1;
 const OSC_ABORT = 2;
 
-const NO_LINK = 0;
-const WEB_LINK = 1;
-const OTHER_LINK = 2;
-
 /** The attributes ESC 7, CSI s and ?1049h save, as far as the styler follows them. */
 interface Saved {
   bold: boolean;
   fg: string | null;
-  shown: string | null;
-  hasExtended: boolean;
+  shown: Uint8Array | null;
 }
-const NOTHING_SAVED: Saved = { bold: false, fg: null, shown: null, hasExtended: false };
+const NOTHING_SAVED: Saved = { bold: false, fg: null, shown: null };
 
 /** CSI parameters with sub-parameters, kept as xterm.js keeps them, limits included. */
 class Params {
@@ -121,6 +117,7 @@ function truecolor(hex: string): string {
 }
 
 const sgrBytes = (params: string) => Uint8Array.from(`\x1b[${params}m`, (c) => c.charCodeAt(0));
+const DEFAULT_FG = sgrBytes('39');
 
 /** JavaScript's whitespace, which xterm trims from an OSC 8's params. */
 const isSpace = (cp: number) => cp === 0x20 || (cp >= NON_ASCII && /\s/.test(String.fromCodePoint(cp)));
@@ -142,14 +139,8 @@ const isSpace = (cp: number) => cp === 0x20 || (cp >= NON_ASCII && /\s/.test(Str
  * A sequence cut at a chunk's end is followed into the next chunk; its bytes are not held back.
  */
 export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) => Uint8Array {
-  const BOLD = truecolor(colors.bold);
-  const LINK = truecolor(colors.link);
-  const sgrCache = new Map<string, Uint8Array>();
-  const sgr = (params: string) => {
-    let seq = sgrCache.get(params);
-    if (!seq) sgrCache.set(params, (seq = sgrBytes(params)));
-    return seq;
-  };
+  const BOLD = sgrBytes(truecolor(colors.bold));
+  const LINK = sgrBytes(truecolor(colors.link));
 
   // UTF-8 decoding: continuation bytes still to come, the code point so far, its smallest legal value.
   let pending = 0;
@@ -171,47 +162,33 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
   // The attributes, as the program set them: bold, and its foreground as an SGR (null: the default).
   let bold = false;
   let fg: string | null = null;
-  // The OSC 8 link open, and what decides whether cells carry it: xterm's HAS_EXTENDED flag, which
-  // an open link or an underline style sets, and which a restore can take away.
-  let link = NO_LINK;
-  let linkOnAlternate = false;
-  let underlineStyle = 0;
-  let hasExtended = false;
+  // An OSC 8 link to a web page is open.
+  let webLink = false;
   // The colour the styler set that xterm's foreground still holds (null: the program's own).
-  let shown: string | null = null;
+  let shown: Uint8Array | null = null;
   // Something changed that may call for a colour.
   let dirty = false;
   let alternate = false;
   const saved: [Saved, Saved] = [NOTHING_SAVED, NOTHING_SAVED];
 
-  const updateExtended = () => {
-    hasExtended = link !== NO_LINK || underlineStyle !== 0;
-  };
-
   // --- Attributes ------------------------------------------------------------------------------
 
   const save = () => {
-    saved[alternate ? 1 : 0] = { bold, fg, shown, hasExtended };
+    saved[alternate ? 1 : 0] = { bold, fg, shown };
   };
 
-  // xterm restores the foreground and background words as saved: the bold, the colour it had then
-  // (the styler's own included) and HAS_EXTENDED. The link and the underline style stay as they are.
+  // xterm restores the attributes as saved: the bold and the colour it had then (the styler's own
+  // included). The link stays open. (Saved outside the link, the restore also stops xterm marking
+  // the cells after it as the link's; the styler still colours them.)
   const restore = () => {
-    ({ bold, fg, shown, hasExtended } = saved[alternate ? 1 : 0]);
+    ({ bold, fg, shown } = saved[alternate ? 1 : 0]);
   };
 
   const resetAttributes = () => {
     bold = false;
     fg = null;
     shown = null;
-    link = NO_LINK;
-    underlineStyle = 0;
-    hasExtended = false;
-  };
-
-  const setUnderline = (style: number) => {
-    underlineStyle = style === -1 || style > 5 ? 1 : style;
-    updateExtended();
+    webLink = false;
   };
 
   /** xterm's _extractColor: reads the colour that starts at `pos`; returns how many parameters it took. */
@@ -243,7 +220,7 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
     return advance;
   };
 
-  /** xterm's charAttributes, for the bold, the foreground and the underline style. */
+  /** xterm's charAttributes, for the bold and the foreground. */
   const selectGraphicRendition = () => {
     for (let i = 0; i < params.length; i++) {
       const p = params.values[i];
@@ -254,26 +231,13 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
         bold = false;
         fg = null;
         shown = null;
-        underlineStyle = 0;
-        updateExtended();
       } else if (p === 1) bold = true;
-      else if (p === 4) setUnderline(params.hasSubs(i) ? params.subs[params.subStart[i]] : 1);
-      else if (p === 21) setUnderline(2);
       else if (p === 22 || p === 221) bold = false;
-      else if (p === 24) setUnderline(0);
       else if (p === 39) {
         fg = null;
         shown = null;
-      } else if (p === 59) updateExtended();
-      else if (p === 38 || p === 48 || p === 58) i += extractColor(i);
+      } else if (p === 38 || p === 48 || p === 58) i += extractColor(i);
     }
-  };
-
-  // Coming back to the normal screen, xterm clears the alternate one and the link records that
-  // lived on it: a link opened there is still open, and still underlined, but no longer opens.
-  const toNormalScreen = () => {
-    if (alternate && linkOnAlternate && link === WEB_LINK) link = OTHER_LINK;
-    alternate = false;
   };
 
   const privateModes = (set: boolean) => {
@@ -287,13 +251,10 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
           save();
           alternate = true;
         } else {
-          toNormalScreen();
+          alternate = false;
           restore();
         }
-      } else if (mode === 47 || mode === 1047) {
-        if (set) alternate = true;
-        else toNormalScreen();
-      }
+      } else if (mode === 47 || mode === 1047) alternate = set;
     }
   };
 
@@ -357,12 +318,9 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
   /** xterm's setHyperlink, on an OSC 8 that ended well. */
   const oscEnd = () => {
     if (oscPhase !== OSC_PAYLOAD || oscId !== 8 || oscLength > OSC_PAYLOAD_LIMIT || !linkSeparated) return;
-    if (linkUri) {
-      link = httpUrl(linkUri) ? WEB_LINK : OTHER_LINK;
-      linkOnAlternate = alternate;
-    } else if (linkParamsBlank) link = NO_LINK;
+    if (linkUri) webLink = httpUrl(linkUri) !== null;
+    else if (linkParamsBlank) webLink = false;
     else return;
-    updateExtended();
     dirty = true;
   };
 
@@ -491,7 +449,7 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
   };
 
   /** The colour xterm's foreground should hold now; null for the program's own. */
-  const wanted = () => (link === WEB_LINK && hasExtended ? LINK : bold && fg === null ? BOLD : null);
+  const wanted = () => (webLink ? LINK : bold && fg === null ? BOLD : null);
 
   return (chunk) => {
     let pieces: Uint8Array[] | undefined;
@@ -536,7 +494,7 @@ export function createTermStyler(colors: TermStyleColors): (chunk: Uint8Array) =
         dirty = false;
         const want = wanted();
         if (want !== shown) {
-          (pieces ??= []).push(chunk.subarray(from, i + 1), sgr(want ?? fg ?? '39'));
+          (pieces ??= []).push(chunk.subarray(from, i + 1), want ?? (fg === null ? DEFAULT_FG : sgrBytes(fg)));
           from = i + 1;
           shown = want;
         }

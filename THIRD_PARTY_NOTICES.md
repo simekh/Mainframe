@@ -33,6 +33,14 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/board/lanes.ts` (`nextNeedsYou`) ← `src/components/next-attention-task.ts` (`stepInQueue`: wrapping around, and where it starts when the current task isn't in the queue)
 - `src/renderer/src/board/shortcuts.ts` ← `src/lib/keybindings/defaults.ts` (`app.nav.next-attention` and `app.nav.previous-attention`: Ctrl+Tab and Ctrl+Shift+Tab, Ctrl on macOS too)
 
+## Adapted from xterm.js
+
+TheSource adapts code from xterm.js (https://github.com/xtermjs/xterm.js) at 6.1.0-beta.195, used under the MIT License below. Each adapted file starts with a comment naming its source.
+
+<!-- one line per adapted file: TheSource path ← xterm.js path -->
+
+- `src/renderer/src/terminal/termStyle.ts` ← `src/common/InputHandler.ts` (`_extractColor`) and `src/common/parser/Params.ts` (`Params`)
+
 ## Fonts
 
 Inter, Sora and JetBrains Mono are bundled from the `@fontsource` packages under the SIL Open Font License 1.1; each package's `LICENSE` file holds its copyright notice.
@@ -61,4 +69,30 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## xterm.js license
+
+```
+Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
+Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
