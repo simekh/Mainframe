@@ -110,42 +110,23 @@ test('showing the hidden panel with its button moves nothing sideways', async ()
   await expect(panel).toBeHidden();
   await expect(page.getByTestId('panel-show')).toBeFocused();
 
-  // The panel and everything above it, and the page's own scroller.
-  const sampler = await page.evaluateHandle((testId) => {
-    const panelEl = document.querySelector(`[data-testid=${testId}]`)!;
-    const scrollers = new Set<Element>();
-    for (let el: Element | null = panelEl; el; el = el.parentElement) scrollers.add(el);
-    if (document.scrollingElement) scrollers.add(document.scrollingElement);
-    const nameOf = (el: Element) => el.getAttribute('data-testid') || el.className || el.tagName.toLowerCase();
-
-    /** The furthest each scroller went sideways. */
-    const sideways: Record<string, number> = {};
-    let sampling = true;
-    const sample = () => {
-      for (const el of scrollers) {
-        if (el.scrollLeft > 0) sideways[nameOf(el)] = Math.max(sideways[nameOf(el)] ?? 0, el.scrollLeft);
-      }
-      if (sampling) requestAnimationFrame(sample);
+  // Whatever scrolls sideways while the panel comes in: the page itself or any element in it.
+  await page.evaluate(() => {
+    const seen: string[] = ((window as unknown as { sideways: string[] }).sideways = []);
+    const onScroll = (e: Event) => {
+      const el = e.target === document ? document.scrollingElement! : (e.target as Element);
+      if (el.scrollLeft > 0) seen.push(el.getAttribute('data-testid') || el.className || el.tagName.toLowerCase());
     };
-    requestAnimationFrame(sample);
-
-    const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    return {
-      /** Samples on until the slide has ended, then reports what moved. */
-      async finish() {
-        await nextFrame();
-        await nextFrame();
-        await Promise.all(panelEl.getAnimations().map((animation) => animation.finished));
-        await nextFrame();
-        sampling = false;
-        return sideways;
-      },
-    };
-  }, 'side-panel');
+    document.addEventListener('scroll', onScroll, true);
+  });
 
   await page.getByTestId('panel-show').click();
   await expect(panel).toHaveAttribute('data-open', 'true');
-  expect(await sampler.evaluate((s) => s.finish())).toEqual({});
+  await panel.evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished));
+    await new Promise(requestAnimationFrame);
+  });
+  expect(await page.evaluate(() => (window as unknown as { sideways: string[] }).sideways)).toEqual([]);
 
   await expect(page.getByTestId('panel-hide')).toBeFocused();
   expect(await termSize(page, id)).toEqual(size);

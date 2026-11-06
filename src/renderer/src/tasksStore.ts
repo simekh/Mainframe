@@ -88,9 +88,9 @@ export function sessionOf(task: TaskView): SessionState | undefined {
   return task.session ? store.sessions[task.session.id] : undefined;
 }
 
-/** Written only when it changes, so a scan that finds the same thing wakes nothing. */
+/** Whether a running session shows a suggestion. The store ignores a write of the same value. */
 export function setSuggesting(sessionId: string, on: boolean): void {
-  if (!!store.suggesting[sessionId] !== on) setStore('suggesting', sessionId, on);
+  setStore('suggesting', sessionId, on);
 }
 
 /** Whether the task's running session shows a suggestion; never while it is closed. */

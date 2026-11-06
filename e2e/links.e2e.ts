@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { openedLinks, run, screen, startTask } from './tasks';
+import { catchOpenedLinks, run, screen, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -75,7 +75,8 @@ function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<bo
 }
 
 test("Cmd+click opens a link from the terminal; a plain click doesn't", async () => {
-  const { app, page, dataDir } = await launchApp();
+  const { app, page } = await launchApp();
+  const openedLinks = await catchOpenedLinks(app);
   const a = await startTask(page);
   await run(page, PRINT_LINKS);
   await expect.poll(() => screen(page, a)).toContain('bad: bad-link');
@@ -93,12 +94,13 @@ test("Cmd+click opens a link from the terminal; a plain click doesn't", async ()
   expect(await click(page, a, bad, true)).toBe(false);
   expect(await click(page, a, osc8, true)).toBe(true);
 
-  await expect.poll(() => openedLinks(dataDir)).toEqual(['https://example.com/plain', 'https://example.com/osc8']);
+  await expect.poll(openedLinks).toEqual(['https://example.com/plain', 'https://example.com/osc8']);
   await app.close();
 });
 
 test('a Cmd+click on a link stays out of a program that asks for the mouse, a plain click does not', async () => {
-  const { app, page, dataDir } = await launchApp();
+  const { app, page } = await launchApp();
+  const openedLinks = await catchOpenedLinks(app);
   const a = await startTask(page);
   await run(page, PRINT_LINK_AND_TRACK_MOUSE);
   // Printed after the terminal was asked to report the mouse, so the request has been seen by now.
@@ -123,6 +125,6 @@ test('a Cmd+click on a link stays out of a program that asks for the mouse, a pl
   expect(sent).toHaveLength(4);
   expect(sent.map((r) => r.split(';')[1])).toEqual(['3', '3', '31', '31']);
 
-  await expect.poll(() => openedLinks(dataDir)).toEqual(['https://example.com/tracked']);
+  await expect.poll(openedLinks).toEqual(['https://example.com/tracked']);
   await app.close();
 });

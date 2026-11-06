@@ -25,7 +25,6 @@ export default function TaskCard(props: {
   const activity = () => cardActivity(props.task, props.session);
   const selected = () => props.task.id === tasksStore.selectedId;
   const suggesting = () => isSuggesting(props.task);
-  const suggestionId = `suggestion-${props.task.id}`;
   const reopen = () =>
     reopenTask(props.task.id).catch((err: unknown) =>
       console.error(`[tasks] could not reopen task ${props.task.id}: ${errorMessage(err)}`),
@@ -53,18 +52,13 @@ export default function TaskCard(props: {
       <button
         class="card-title"
         aria-current={selected() ? 'true' : undefined}
-        aria-describedby={suggesting() ? suggestionId : undefined}
+        aria-description={suggesting() ? 'Claude Code has a suggestion for you' : undefined}
         onMouseDown={keepFocus}
         onClick={() => select(props.task.id)}
       >
         <StatusGlyph glyph={glyph()} label={label().text} />
         <span class="card-name">{props.task.title}</span>
       </button>
-      <Show when={suggesting()}>
-        <span id={suggestionId} class="visually-hidden">
-          Claude Code has a suggestion for you
-        </span>
-      </Show>
       <p class="card-meta">
         <span class="card-project">
           <i aria-hidden="true" />

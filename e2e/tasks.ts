@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, type Page } from '@playwright/test';
-import { OPENED_LINKS_FILE } from '../src/main/links';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { removeAfterTest } from './launch';
 
@@ -91,10 +90,25 @@ export async function startTask(page: Page, title = 'Task', description = ''): P
   return id;
 }
 
-/** The links the app would have opened in the owner's browser, oldest first; an e2e run records them in its data folder. */
-export function openedLinks(dataDir: string): string[] {
-  const file = join(dataDir, OPENED_LINKS_FILE);
-  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
+/** A shell command that reports `state` as Claude Code does, over OSC 7501. */
+export const report = (state: string) => `printf '\\033]7501;state=${state}\\033\\\\'`;
+
+/** Closes the task's session, as Close session in the panel does. */
+export const closeTask = (page: Page, taskId: string) => page.evaluate((id) => window.thesource.closeTask(id), taskId);
+
+/**
+ * Stands in for the owner's browser: from now on the app records the links it is asked to open
+ * instead of opening them. Gives what it has recorded so far, oldest first.
+ */
+export async function catchOpenedLinks(app: ElectronApplication): Promise<() => Promise<string[]>> {
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    const record = async (url: string) => void opened.push(url);
+    shell.openExternal = record;
+    if (shell.openExternal !== record) throw new Error('shell.openExternal could not be replaced');
+    (globalThis as { openedLinks?: string[] }).openedLinks = opened;
+  });
+  return () => app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 }
 
 /** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */

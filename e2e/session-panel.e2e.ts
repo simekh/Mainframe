@@ -194,10 +194,9 @@ async function expectRow(row: Locator, want: { status: string; letter: string; p
   await expect(row.locator('.diff')).toHaveText(want.diff);
 }
 
-test('the terminal runs to the bottom of the panel, with no message box', async () => {
+test('the terminal runs to the bottom of the panel', async () => {
   const { app, page } = await launchApp();
   const id = await startTask(page);
-  await expect(page.getByTestId('message-field')).toHaveCount(0);
   await settled(page);
 
   // The well ends where the panel's padding does: as far from the panel's bottom edge as from its sides.

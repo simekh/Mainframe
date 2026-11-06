@@ -55,7 +55,7 @@ function installE2eHooks(): void {
         : cell.isFgDefault()
           ? 'default'
           : `palette ${cell.getFgColor()}`;
-      return { chars: cell.getChars(), fg, bold: !!cell.isBold(), underline: !!cell.isUnderline() };
+      return { fg, bold: !!cell.isBold(), underline: !!cell.isUnderline() };
     },
     fitSize: (taskId) => {
       const sessionId = terminalOf(taskId);

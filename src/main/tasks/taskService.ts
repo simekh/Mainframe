@@ -185,7 +185,7 @@ export class TaskService {
     if (!session) return;
     this.sessions.delete(sessionId);
     if (!session.ending) this.markEnding(session);
-    const task = this.taskOf(session);
+    const task = this.find(session.taskId);
 
     task.claudeSessionId = this.recordedSession(task.id) ?? task.claudeSessionId;
     // While quitting, the SIGHUPs end sessions that should run again at the next start.
@@ -200,7 +200,8 @@ export class TaskService {
     this.quitting = true;
     // Now rather than at each exit: the app may be gone before they arrive.
     for (const session of this.sessions.values()) this.markEnding(session);
-    this.commit();
+    // Saved, not sent: nothing the window shows has changed.
+    saveTasks(this.stateFile, this.records);
   }
 
   async changedFiles(taskId: string): Promise<ChangedFile[] | null> {
@@ -223,10 +224,6 @@ export class TaskService {
     this.sessions.set(id, { id, ...session, lastState: null, ending: false });
   }
 
-  private taskOf(session: Session): TaskRecord {
-    return this.records.find((t) => t.id === session.taskId)!;
-  }
-
   /**
    * Records on the task whether the session ends in the middle of a turn, from the state it was in
    * before the end was decided. A resume prompt that never took, as when the launch failed or the
@@ -234,7 +231,7 @@ export class TaskService {
    */
   private markEnding(session: Session): void {
     session.ending = true;
-    this.taskOf(session).midTurn = inTurn(session.lastState) || session.resumePending;
+    this.find(session.taskId).midTurn = inTurn(session.lastState) || session.resumePending;
   }
 
   private sessionOf(taskId: string): Session | undefined {

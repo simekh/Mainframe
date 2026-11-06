@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
 import {
-  card, cardIn, firstSpawn, fitSize, git, ids, launches, repo, run, screen, sendLine, startTask, termSize,
+  card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendLine, startTask, termSize,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -109,7 +109,6 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   const { page, dataDir } = first;
   const a = await startTask(page, 'Alpha');
   const b = await startTask(page, 'Beta');
-  const report = (state: string) => `printf '\\033]7501;state=${state}\\033\\\\'`;
   /** The launches of one task, oldest first: its start, its Reopen, then its restore after a quit. */
   const launchesOf = (id: string) =>
     launches(dataDir).filter((l) => l.args.includes(settingsFile(dataDir, id))).map((l) => l.args);
@@ -120,7 +119,7 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   await expect(cardIn(page, 'working', a).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
   await expect(cardIn(page, 'needs-you', b)).toHaveCount(1);
 
-  for (const id of [a, b]) await page.evaluate((taskId) => window.thesource.closeTask(taskId), id);
+  for (const id of [a, b]) await closeTask(page, id);
   for (const id of [a, b]) await expect(cardIn(page, 'closed', id)).toHaveCount(1);
   for (const id of [a, b]) await cardIn(page, 'closed', id).getByTestId('reopen').click();
 

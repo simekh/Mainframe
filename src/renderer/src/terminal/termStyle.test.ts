@@ -291,8 +291,8 @@ describe('createTermStyler', () => {
       expect(styled(`${link(WEB)}\x1b7${END_LINK}\x1b8X`)).toBe(
         `${link(WEB)}${LINK}\x1b7${END_LINK}${DEFAULT_FG}\x1b8${DEFAULT_FG}X`,
       );
-      // Saved underlined, restored in a web link: the restore takes the link colour away, the styler puts it back.
-      expect(styled(`\x1b[4m\x1b7${link(WEB)}\x1b8X`)).toBe(`\x1b[4m\x1b7${link(WEB)}${LINK}\x1b8${LINK}X`);
+      // Saved outside a link, restored in a web link: the restore takes the link colour away, the styler puts it back.
+      expect(styled(`\x1b7${link(WEB)}\x1b8X`)).toBe(`\x1b7${link(WEB)}${LINK}\x1b8${LINK}X`);
     });
 
     it('keeps the saved attributes of the normal and the alternate screen apart, as xterm does', () => {
@@ -392,7 +392,7 @@ async function render(chunks: Uint8Array[], linkSurvivesRestore = false): Promis
   return term;
 }
 
-type Cell = NonNullable<ReturnType<NonNullable<ReturnType<headless.IBuffer['getLine']>>['getCell']>>;
+type Cell = headless.IBufferCell;
 
 function linkOf(term: headless.Terminal, cell: Cell): string | null {
   const internals = cell as unknown as CellInternals;

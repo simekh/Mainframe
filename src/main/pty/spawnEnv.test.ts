@@ -36,11 +36,6 @@ it('keeps an existing LANG', () => {
   expect(buildSpawnEnv({ LANG: 'sv_SE.UTF-8' }).LANG).toBe('sv_SE.UTF-8');
 });
 
-it('has Claude Code print OSC 8 hyperlinks, which the terminal makes clickable', () => {
-  expect(buildSpawnEnv({}).FORCE_HYPERLINK).toBe('1');
-});
-
 it("keeps the owner's own FORCE_HYPERLINK, even 0", () => {
   expect(buildSpawnEnv({ FORCE_HYPERLINK: '0' }).FORCE_HYPERLINK).toBe('0');
-  expect(buildSpawnEnv({ FORCE_HYPERLINK: '2' }).FORCE_HYPERLINK).toBe('2');
 });

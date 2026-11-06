@@ -59,7 +59,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     // click still selects and focuses.
     const openLink = createTerminalHttpLinkHandler({
       openExternal: (url) => api.openLink(url),
-      onOpenError: (err) => console.warn('[terminal] could not open the link', err),
+      onOpenError: (err) => console.warn(`[terminal] could not open the link: ${errorMessage(err)}`),
     });
     const term = new Terminal({ ...TERMINAL_OPTIONS, linkHandler: { activate: openLink, allowNonHttpProtocols: false } });
     const fit = new FitAddon();
@@ -180,10 +180,8 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     // the card. Never for a lane. It reads the bottom of the live screen, not the part in view, so
     // scrolling back changes nothing; a terminal off screen is read too.
     let scanTimer: ReturnType<typeof setTimeout> | undefined;
-    let scannedAt = Number.NEGATIVE_INFINITY;
     const scan = () => {
       scanTimer = undefined;
-      scannedAt = performance.now();
       const buffer = term.buffer.active;
       const end = buffer.baseY + term.rows;
       const lines: string[] = [];
@@ -192,16 +190,9 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       }
       setSuggesting(id, hasSuggestion(lines));
     };
-    // At most one scan per interval, the last one after the last output.
-    term.onWriteParsed(() => {
-      if (exited || scanTimer !== undefined) return;
-      scanTimer = setTimeout(scan, Math.max(0, SUGGESTION_SCAN_INTERVAL_MS - (performance.now() - scannedAt)));
-    });
-    const stopScanning = () => {
-      if (scanTimer !== undefined) clearTimeout(scanTimer);
-      scanTimer = undefined;
-      setSuggesting(id, false);
-    };
+    // At most one scan per interval, and always one after the last output. A session that has
+    // ended shows no ring whatever this finds: the ring needs a running session.
+    term.onWriteParsed(() => (scanTimer ??= setTimeout(scan, SUGGESTION_SCAN_INTERVAL_MS)));
 
     // --- Output, with flow control -----------------------------------------------------------
     let cancelFlush: (() => void) | undefined;
@@ -218,7 +209,6 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       if (exited) return;
       exited = true;
       input.dispose();
-      stopScanning();
     };
     // Subscribed before spawning, so no output is missed.
     const unsubscribe = subscribePty(id, {
@@ -347,7 +337,8 @@ export default function TerminalView(props: { sessionId: string; selected: boole
       observer.disconnect();
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
-      stopScanning();
+      clearTimeout(scanTimer);
+      setSuggesting(id, false);
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);
       container.removeEventListener('copy', onCopy, true);

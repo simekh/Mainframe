@@ -69,11 +69,14 @@ button {
   outline-offset: -2px;
 }
 
+/* Clipped, not hidden: the panel slid out past the window's edge must leave nothing to scroll to,
+   or a focus moving onto it slides the whole window sideways. */
 .app {
   position: relative;
   isolation: isolate;
   display: flex;
   height: 100%;
+  overflow: clip;
 }
 
 /* Parallel Code's faint cyan wash across the frame. */
@@ -521,17 +524,6 @@ kbd {
 
 .tone-accent {
   color: var(--accent);
-}
-
-/* Read by a screen reader, never shown. */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 /* Primary by full-strength text, not colour. */

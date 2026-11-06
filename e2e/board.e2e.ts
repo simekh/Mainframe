@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { cardIn, run, screen, sendLine, startTask } from './tasks';
+import { cardIn, closeTask, report, run, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -139,7 +139,7 @@ const SUGGESTION_BLOCK =
 test('a suggestion puts a ring on its card, and answering it takes the ring away', async () => {
   const { app, page } = await launchApp();
   const id = await startTask(page);
-  await sendLine(page, id, "printf '\\033]7501;state=working\\033\\\\'");
+  await sendLine(page, id, report('working'));
   const working = cardIn(page, 'working', id);
   await expect(working.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
   await expect(working).not.toHaveAttribute('data-suggestion', 'true');
@@ -173,7 +173,7 @@ test('a suggestion puts a ring on its card, and answering it takes the ring away
   // is still on its screen.
   await sendLine(page, id, `seq 100; ${SUGGESTION_BLOCK}`);
   await expect(working).toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
-  await page.evaluate((taskId) => window.thesource.closeTask(taskId), id);
+  await closeTask(page, id);
   await expect(cardIn(page, 'closed', id)).toHaveCount(1);
   await expect.poll(() => screen(page, id)).toContain('[Process exited]');
   await page.waitForTimeout(500);
