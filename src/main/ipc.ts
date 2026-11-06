@@ -4,6 +4,7 @@ import { IPC } from '../shared/ipc';
 import type { RendererConfig } from '../shared/types';
 import type { AppConfig } from './config';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
+import { openLink } from './links';
 import type { SessionHost } from './pty/sessionHost';
 import type { TaskService } from './tasks/taskService';
 
@@ -19,6 +20,7 @@ export function registerIpc(
   host: SessionHost,
   config: AppConfig,
   clipboardDeps: ClipboardDeps,
+  openExternal: (url: string) => Promise<void>,
 ): void {
   const send = (channel: string, payload: unknown) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
@@ -85,7 +87,9 @@ export function registerIpc(
     resolveClipboardPaste(clipboardDeps.clipboard, clipboardDeps.writeFile, clipboardDeps.newImagePath),
   );
 
-  ipcMain.on(IPC.write, (_e, sessionId: string, data: string) => host.write(sessionId, data));
+  ipcMain.handle(IPC.openLink, (_e, url: unknown) => openLink(url, openExternal));
+
+  ipcMain.on(IPC.write,(_e, sessionId: string, data: string) => host.write(sessionId, data));
   ipcMain.on(IPC.resize, (_e, sessionId: string, cols: number, rows: number) => host.resize(sessionId, cols, rows));
   ipcMain.on(IPC.pause, (_e, sessionId: string) => host.pause(sessionId));
   ipcMain.on(IPC.resume, (_e, sessionId: string) => host.resume(sessionId));

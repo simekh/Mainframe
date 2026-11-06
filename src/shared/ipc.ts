@@ -27,6 +27,7 @@ export const IPC = {
   exit: 'pty:exit',
   status: 'session:status',
   resolvePaste: 'clipboard:resolve-paste',
+  openLink: 'shell:open-link',
 } as const;
 
 /** What the preload exposes to the renderer as `window.thesource`. */
@@ -48,6 +49,8 @@ export interface TheSourceApi {
   pause(sessionId: string): void;
   resume(sessionId: string): void;
   resolvePaste(): Promise<ClipboardPaste>;
+  /** Opens a web page in the owner's browser; main passes on only http: and https: addresses. */
+  openLink(url: string): Promise<void>;
   getPathForFile(file: File): string;
   onData(cb: (e: PtyDataEvent) => void): () => void;
   onExit(cb: (e: PtyExitEvent) => void): () => void;

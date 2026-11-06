@@ -22,6 +22,7 @@ const api: TheSourceApi = {
   pause: (sessionId) => ipcRenderer.send(IPC.pause, sessionId),
   resume: (sessionId) => ipcRenderer.send(IPC.resume, sessionId),
   resolvePaste: () => ipcRenderer.invoke(IPC.resolvePaste),
+  openLink: (url) => ipcRenderer.invoke(IPC.openLink, url),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   onData: (cb) => listen(IPC.data, cb),
   onExit: (cb) => listen(IPC.exit, cb),

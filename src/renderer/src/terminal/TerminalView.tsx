@@ -1,6 +1,7 @@
 // Adapted from Parallel Code (MIT): src/components/TerminalView.tsx at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -15,6 +16,7 @@ import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
 import { OutputFlow } from './outputFlow';
 import { redrawAllTerminals, registerTerminal, unregisterTerminal } from './registry';
+import { createTerminalHttpLinkHandler } from './terminalLinks';
 import { TERMINAL_OPTIONS } from './terminalOptions';
 import { recordSharedWebglContextLoss, WEBGL_REATTACH_DELAY_MS } from './webglLoss';
 
@@ -47,9 +49,17 @@ export default function TerminalView(props: { sessionId: string; selected: boole
 
   onMount(() => {
     const id = props.sessionId;
-    const term = new Terminal({ ...TERMINAL_OPTIONS });
+    // Cmd+click opens a link in the browser: a plain URL, found by the web-links addon, and an OSC 8
+    // link Claude Code prints, which xterm hands to linkHandler (never a non-http one). A plain
+    // click still selects and focuses.
+    const openLink = createTerminalHttpLinkHandler({
+      openExternal: (url) => api.openLink(url),
+      onOpenError: (err) => console.warn('[terminal] could not open the link', err),
+    });
+    const term = new Terminal({ ...TERMINAL_OPTIONS, linkHandler: { activate: openLink, allowNonHttpProtocols: false } });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon(openLink));
     // Emoji are two columns wide, as Claude Code counts them; xterm's default (Unicode 6) makes
     // many of them one, which pushes table borders out of line.
     term.loadAddon(new Unicode11Addon());

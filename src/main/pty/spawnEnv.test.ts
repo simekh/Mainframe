@@ -13,7 +13,7 @@ it('sets the terminal identity and drops the parent terminal and Claude Code ses
     ELECTRON_RUN_AS_NODE: '1', ELECTRON_RENDERER_URL: 'http://localhost:5173',
   })).toEqual({
     PATH: '/usr/bin', HOME: '/Users/x', CLAUDE_CODE_NO_FLICKER: '1',
-    TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8',
+    TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', FORCE_HYPERLINK: '1',
   });
 });
 
@@ -28,10 +28,19 @@ it('drops what `npm start` and Vite add, keeping the rest of PATH in order', () 
     npm_command: 'run-script', npm_config_prefix: '/x', npm_lifecycle_event: 'start', npm_package_name: 'thesource',
   })).toEqual({
     PATH: '/Users/x/.local/bin:/usr/bin', EDITOR: 'vi',
-    TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8',
+    TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', FORCE_HYPERLINK: '1',
   });
 });
 
 it('keeps an existing LANG', () => {
   expect(buildSpawnEnv({ LANG: 'sv_SE.UTF-8' }).LANG).toBe('sv_SE.UTF-8');
+});
+
+it('has Claude Code print OSC 8 hyperlinks, which the terminal makes clickable', () => {
+  expect(buildSpawnEnv({}).FORCE_HYPERLINK).toBe('1');
+});
+
+it("keeps the owner's own FORCE_HYPERLINK, even 0", () => {
+  expect(buildSpawnEnv({ FORCE_HYPERLINK: '0' }).FORCE_HYPERLINK).toBe('0');
+  expect(buildSpawnEnv({ FORCE_HYPERLINK: '2' }).FORCE_HYPERLINK).toBe('2');
 });

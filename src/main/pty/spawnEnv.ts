@@ -32,5 +32,8 @@ export function buildSpawnEnv(base: NodeJS.ProcessEnv): Record<string, string> {
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
   env.LANG ??= 'en_US.UTF-8';
+  // Claude Code emits OSC 8 hyperlinks when this is 1, and the terminal makes them clickable.
+  // The owner's own setting, even 0, wins.
+  env.FORCE_HYPERLINK ??= '1';
   return env;
 }

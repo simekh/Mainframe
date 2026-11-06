@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, shell } from 'electron';
 import * as pty from 'node-pty';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
 import { registerIpc } from './ipc';
+import { OPENED_LINKS_FILE, recordLinksTo } from './links';
 import { buildMenu } from './menu';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
@@ -99,11 +100,16 @@ function start(config: AppConfig): void {
   const shown = createWindow();
   win = shown;
   Menu.setApplicationMenu(buildMenu());
-  registerIpc(shown, service, host, config, {
-    clipboard,
-    writeFile,
-    newImagePath: () => join(pasteDir, `${randomUUID()}.png`),
-  });
+  // An e2e run opens no browser; it records the links in its data folder instead.
+  const openExternal = config.e2e ? recordLinksTo(join(config.dataDir, OPENED_LINKS_FILE)) : (url: string) => shell.openExternal(url);
+  registerIpc(
+    shown,
+    service,
+    host,
+    config,
+    { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
+    openExternal,
+  );
   // TheSource was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {
     if (shown.isDestroyed()) return;

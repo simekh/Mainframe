@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
+import { OPENED_LINKS_FILE } from '../src/main/links';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { removeAfterTest } from './launch';
 
@@ -66,6 +67,12 @@ export async function startTask(page: Page, title = 'Task', description = ''): P
   const [id] = await added();
   await expect.poll(() => screen(page, id)).toContain('$');
   return id;
+}
+
+/** The links the app would have opened in the owner's browser, oldest first; an e2e run records them in its data folder. */
+export function openedLinks(dataDir: string): string[] {
+  const file = join(dataDir, OPENED_LINKS_FILE);
+  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
 }
 
 /** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */

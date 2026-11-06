@@ -15,9 +15,10 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 - `src/renderer/src/terminal/escapePath.ts` (+ test) ← `src/lib/terminalDrop.ts` (`escapePath` and its cases)
 - `src/renderer/src/terminal/webglLoss.ts` (+ test) ← `src/lib/webglContextLoss.ts` (+ test)
 - `src/renderer/src/terminal/keybindings.ts` ← key sequences from `src/lib/keybindings/defaults.ts`
+- `src/renderer/src/terminal/terminalLinks.ts` (+ test) ← `src/lib/terminalLinks.ts` (+ test) (`normalizeHttpUrl`, `createTerminalHttpLinkHandler`; no file-path links)
 - `src/renderer/src/terminal/inputBatcher.ts` ← `src/components/TerminalView.tsx` (`enqueueInput`)
 - `src/renderer/src/terminal/outputFlow.ts` ← `src/components/TerminalView.tsx` (`enqueueOutput`, `flushOutputQueue`, `scheduleOutputFlush`)
-- `src/renderer/src/terminal/TerminalView.tsx` ← `src/components/TerminalView.tsx` (WebGL attach/detach and context loss, clipboard, drop, key handler)
+- `src/renderer/src/terminal/TerminalView.tsx` ← `src/components/TerminalView.tsx` (WebGL attach/detach and context loss, clipboard, drop, key handler, the web-links addon and `linkHandler` wiring)
 - `src/renderer/src/terminal/registry.ts` ← `src/lib/terminalFitManager.ts` (`redrawAllTerminals`)
 - `src/renderer/src/terminal/terminalOptions.ts` ← colours from `src/lib/parallelCodeTerminalTheme.ts`
 - `src/renderer/src/app.css` ← colours, fonts and scrollbar of the default look in `src/styles.css` (`html[data-look='parallel-code']`)
