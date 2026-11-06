@@ -3,20 +3,13 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChangedFile, ProgramState, StartCheck, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
+import { inTurn, resumePromptFor, turnAtEnd } from './carryOn';
 import { hookSettings, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { sessionName, slugify, uniqueSlug } from './naming';
 import { openingPrompt } from './openingPrompt';
 import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
 
 const SETTINGS_FILE = 'settings.json';
-
-/** What a reopen says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
-const RESUME_PROMPT = 'Continue where you left off.';
-/** What it says instead when Claude was waiting for the owner's answer, so Claude asks again rather than picks one. */
-const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
-
-/** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
-const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
 
 export interface TaskServiceDeps {
   projectDir: string;
@@ -114,8 +107,8 @@ export class TaskService {
 
     const settingsPath = this.writeHookSettings(task.id);
     const recorded = this.recordedSession(task.id);
-    const carryOn = recorded !== null && task.midTurn === true;
-    const prompt = carryOn ? (task.askAgain ? ASK_AGAIN_PROMPT : RESUME_PROMPT) : undefined;
+    const prompt = recorded === null ? undefined : resumePromptFor(task);
+    const carryOn = prompt !== undefined;
     let argv: string[];
     if (recorded) {
       task.claudeSessionId = recorded;
@@ -236,13 +229,7 @@ export class TaskService {
    */
   private markEnding(session: Session): void {
     session.ending = true;
-    const task = this.find(session.taskId);
-    if (inTurn(session.lastState)) {
-      task.midTurn = true;
-      task.askAgain = session.lastState === 'blocked';
-    } else {
-      task.midTurn = session.resumePending;
-    }
+    Object.assign(this.find(session.taskId), turnAtEnd(session.lastState, session.resumePending));
   }
 
   private sessionOf(taskId: string): Session | undefined {

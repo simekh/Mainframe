@@ -71,6 +71,11 @@ export interface TaskView {
   session: { id: string; startedWithPrompt: boolean } | null;
 }
 
+export interface ManagerView {
+  /** The running `claude` process; null before it starts and after it ends. */
+  session: { id: string; startedWithPrompt: boolean } | null;
+}
+
 export interface ChangedFile {
   path: string;
   status: 'A' | 'M' | 'D' | 'T' | 'U' | '?';
