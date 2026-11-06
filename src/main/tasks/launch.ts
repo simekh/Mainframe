@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(s: string): boolean {
@@ -85,4 +88,16 @@ export function readSessionStart(text: string | null): string | null {
   }
   const id = (parsed as { session_id?: unknown } | null)?.session_id;
   return typeof id === 'string' && isUuid(id) ? id : null;
+}
+
+/**
+ * The conversation SessionStart last recorded in `dir`, which `/clear` and compaction change; null while
+ * it has never fired.
+ */
+export function readRecordedSession(dir: string): string | null {
+  try {
+    return readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
+  } catch {
+    return null;
+  }
 }

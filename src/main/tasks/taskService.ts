@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChangedFile, ProgramState, StartCheck, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { inTurn, resumePromptFor, turnAtEnd } from './carryOn';
-import { hookSettings, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
+import { hookSettings, readRecordedSession, reopenArgv, startArgv } from './launch';
 import { sessionName, slugify, uniqueSlug } from './naming';
 import { openingPrompt } from './openingPrompt';
 import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
@@ -106,7 +106,7 @@ export class TaskService {
     if (this.sessionOf(task.id)) return this.view(task);
 
     const settingsPath = this.writeHookSettings(task.id);
-    const recorded = this.recordedSession(task.id);
+    const recorded = readRecordedSession(this.taskDir(task.id));
     const prompt = recorded === null ? undefined : resumePromptFor(task);
     const carryOn = prompt !== undefined;
     let argv: string[];
@@ -184,7 +184,7 @@ export class TaskService {
     if (!session.ending) this.markEnding(session);
     const task = this.find(session.taskId);
 
-    task.claudeSessionId = this.recordedSession(task.id) ?? task.claudeSessionId;
+    task.claudeSessionId = readRecordedSession(this.taskDir(task.id)) ?? task.claudeSessionId;
     // While quitting, the SIGHUPs end sessions that should run again at the next start.
     if (!(this.quitting && task.open)) {
       task.open = false;
@@ -272,18 +272,6 @@ export class TaskService {
         noQuestions: task.noQuestions ?? false,
       }),
     });
-  }
-
-  /**
-   * The conversation SessionStart last recorded for the task, which `/clear` and compaction change;
-   * null while it has never fired.
-   */
-  private recordedSession(taskId: string): string | null {
-    try {
-      return readSessionStart(readFileSync(join(this.taskDir(taskId), SESSION_START_FILE), 'utf8'));
-    } catch {
-      return null;
-    }
   }
 
   private view(task: TaskRecord): TaskView {

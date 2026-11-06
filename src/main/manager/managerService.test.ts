@@ -26,7 +26,6 @@ function setup() {
   const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-data-'));
   cleanup.push(dataDir);
 
-  const killed: string[] = [];
   const changes: ManagerView[] = [];
   const warnings: string[] = [];
   let counter = 0;
@@ -38,7 +37,6 @@ function setup() {
       dataDir,
       claudeBin: 'claude',
       mcpConfig,
-      kill: (id) => killed.push(id),
       onChange: (view) => changes.push(view),
       newId,
       warn: (msg) => warnings.push(msg),
@@ -63,7 +61,7 @@ function setup() {
       prompt,
     });
 
-  return { projectDir, dataDir, dir, file, make, service: make(), killed, changes, warnings, readRecord, sessionStarted, argvOf };
+  return { projectDir, dataDir, dir, file, make, service: make(), changes, warnings, readRecord, sessionStarted, argvOf };
 }
 
 type Setup = ReturnType<typeof setup>;
@@ -120,7 +118,7 @@ it('a later run writes mcp.json again, with its own port and token, and keeps it
 });
 
 it('start while a session runs returns the same view and launches nothing', () => {
-  const { service, changes, killed, file } = setup();
+  const { service, changes, file } = setup();
   const first = service.start();
   const argv = service.launchSpec(first.session!.id).argv;
   rmSync(file('mcp.json'));
@@ -129,7 +127,6 @@ it('start while a session runs returns the same view and launches nothing', () =
 
   expect(service.launchSpec(first.session!.id).argv).toBe(argv);
   expect(changes).toEqual([first]);
-  expect(killed).toEqual([]);
   expect(existsSync(file('mcp.json'))).toBe(false);
 });
 
@@ -273,7 +270,7 @@ it('an ask-again from an earlier turn does not outlive it: a resumed session tha
 });
 
 it('an exit sends the view with no session, and the session is no longer the manager', () => {
-  const { service, changes, killed, readRecord, sessionStarted } = setup();
+  const { service, changes, readRecord, sessionStarted } = setup();
   const view = service.start();
   sessionStarted(readRecord().claudeSessionId);
   expect(service.owns(view.session!.id)).toBe(true);
@@ -285,7 +282,6 @@ it('an exit sends the view with no session, and the session is no longer the man
   expect(service.view()).toEqual({ session: null });
   expect(service.owns(view.session!.id)).toBe(false);
   expect(() => service.launchSpec(view.session!.id)).toThrow(view.session!.id);
-  expect(killed).toEqual([]);
 });
 
 it('owns only its own session: not a task session, not one that is unknown', () => {

@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'n
 import { basename, join } from 'node:path';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { inTurn, resumePromptFor, turnAtEnd } from '../tasks/carryOn';
-import { hookSettings, managerArgv, readSessionStart, SESSION_START_FILE } from '../tasks/launch';
+import { hookSettings, managerArgv, readRecordedSession } from '../tasks/launch';
 import { sessionName, slugify } from '../tasks/naming';
 import { ROLE_PROMPT } from './rolePrompt';
 
@@ -23,7 +23,6 @@ export interface ManagerServiceDeps {
   claudeBin: string;
   /** The contents of `mcp.json`: the MCP server's port and token change with each run of the app. */
   mcpConfig: string;
-  kill(sessionId: string): void;
   onChange(view: ManagerView): void;
   newId?: () => string;
   warn?: (msg: string) => void;
@@ -90,7 +89,7 @@ export class ManagerService {
     // The mode above is only for a file that is made here; one that was there keeps the one it had.
     chmodSync(mcpConfigPath, 0o600);
 
-    const recorded = this.recordedSession();
+    const recorded = readRecordedSession(this.dir);
     const prompt = recorded === null ? undefined : resumePromptFor(prior);
     const carryOn = prompt !== undefined;
     // Without a recorded conversation SessionStart never fired, so none began: this starts it as the first launch would.
@@ -133,7 +132,7 @@ export class ManagerService {
     if (session?.id !== sessionId) return;
     this.session = null;
     if (!session.ending) this.markEnding(session);
-    session.record.claudeSessionId = this.recordedSession() ?? session.record.claudeSessionId;
+    session.record.claudeSessionId = readRecordedSession(this.dir) ?? session.record.claudeSessionId;
     saveRecord(this.recordFile, session.record);
     this.deps.onChange(this.view());
   }
@@ -150,18 +149,6 @@ export class ManagerService {
   private markEnding(session: Session): void {
     session.ending = true;
     Object.assign(session.record, turnAtEnd(session.lastState, session.resumePending));
-  }
-
-  /**
-   * The conversation SessionStart last recorded, which `/clear` and compaction change; null while it
-   * has never fired.
-   */
-  private recordedSession(): string | null {
-    try {
-      return readSessionStart(readFileSync(join(this.dir, SESSION_START_FILE), 'utf8'));
-    } catch {
-      return null;
-    }
   }
 }
 
