@@ -104,9 +104,10 @@ export class TaskService {
 
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
-    // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.
+    // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case. 'manager' is the
+    // manager's session name, which a task must not share in `claude --resume`.
     const taken = new Set(
-      [...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
+      ['manager', ...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
     );
     const slug = uniqueSlug(slugify(title), taken);
 

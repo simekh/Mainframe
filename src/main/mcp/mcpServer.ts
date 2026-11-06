@@ -41,8 +41,9 @@ export async function startMcpServer(
     http.listen(0, '127.0.0.1', resolve);
   });
 
+  const { address, port } = http.address() as AddressInfo;
   return {
-    url: `http://127.0.0.1:${(http.address() as AddressInfo).port}${MCP_PATH}`,
+    url: `http://${address}:${port}${MCP_PATH}`,
     token,
     close: async () => {
       await handler.close();

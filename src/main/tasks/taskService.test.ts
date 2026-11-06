@@ -133,6 +133,12 @@ it('start counts a leftover branch or folder that differs only in case as taken'
   expect((await folder.service.start(NEW_TASK)).slug).toBe('fix-login-2');
 });
 
+it("start keeps the manager's name for the manager: a task titled Manager gets another slug", async () => {
+  const { service, readState } = setup();
+  expect((await service.start({ ...NEW_TASK, title: 'Manager' })).slug).toBe('manager-2');
+  expect(readState()[0].name).toBe('damela-manager-2');
+});
+
 it('two starts at once get different slugs', async () => {
   const { service } = setup();
   const [a, b] = await Promise.all([service.start(NEW_TASK), service.start(NEW_TASK)]);

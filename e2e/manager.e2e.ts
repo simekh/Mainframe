@@ -302,7 +302,8 @@ test("dragging the manager's edge resizes it, keeps the width, and its terminal 
   await expect(handle).toHaveAttribute('aria-valuenow', '496');
   expect((await box(page, 'manager-column')).width).toBe(496);
 
-  // The pinned session panel gives up what the column took, so the board keeps its 360 px.
+  // The pinned session panel gives up what the column took: its clamp leaves the board 360 px of the
+  // window less the column's width (the column's margin comes on top, so the board itself gets less).
   const windowWidth = await page.evaluate(() => window.innerWidth);
   await expect(page.getByTestId('panel-resize')).toHaveAttribute('aria-valuenow', String(windowWidth - 496 - 360));
 
