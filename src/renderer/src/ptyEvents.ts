@@ -12,8 +12,8 @@ let installed = false;
 function install(): void {
   if (installed) return;
   installed = true;
-  window.thesource.onData((e) => handlers.get(e.sessionId)?.data(e.data));
-  window.thesource.onExit((e) => handlers.get(e.sessionId)?.exit(e));
+  window.mainframe.onData((e) => handlers.get(e.sessionId)?.data(e.data));
+  window.mainframe.onExit((e) => handlers.get(e.sessionId)?.exit(e));
 }
 
 export function subscribePty(sessionId: string, h: PtyHandlers): () => void {

@@ -30,8 +30,8 @@ export const IPC = {
   openLink: 'shell:open-link',
 } as const;
 
-/** What the preload exposes to the renderer as `window.thesource`. */
-export interface TheSourceApi {
+/** What the preload exposes to the renderer as `window.mainframe`. */
+export interface MainframeApi {
   getConfig(): Promise<RendererConfig>;
   listTasks(): Promise<TaskView[]>;
   startCheck(): Promise<StartCheck | null>;

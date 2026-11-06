@@ -16,21 +16,21 @@ export function git(...args: string[]): void {
   execFileSync('git', args, { stdio: 'pipe' });
 }
 
-export const ids = (page: Page) => page.evaluate(() => window.__thesourceE2E.taskIds());
+export const ids = (page: Page) => page.evaluate(() => window.__mainframeE2E.taskIds());
 
 export const screen = (page: Page, taskId: string) =>
-  page.evaluate((id) => window.__thesourceE2E.screenText(id), taskId);
+  page.evaluate((id) => window.__mainframeE2E.screenText(id), taskId);
 
 export const termSize = (page: Page, taskId: string) =>
-  page.evaluate((id) => window.__thesourceE2E.termSize(id), taskId);
+  page.evaluate((id) => window.__mainframeE2E.termSize(id), taskId);
 
 /** The size the task's session was first spawned at. */
 export const firstSpawn = (page: Page, taskId: string) =>
-  page.evaluate((id) => window.__thesourceE2E.firstSpawn(id), taskId);
+  page.evaluate((id) => window.__mainframeE2E.firstSpawn(id), taskId);
 
 /** The size a fit of the task's terminal would give now: what fills its well with the renderer it has. */
 export const fitSize = (page: Page, taskId: string) =>
-  page.evaluate((id) => window.__thesourceE2E.fitSize(id), taskId);
+  page.evaluate((id) => window.__mainframeE2E.fitSize(id), taskId);
 
 /**
  * The look of each cell of the first place `text` shows on the task's screen, each distinct look
@@ -39,7 +39,7 @@ export const fitSize = (page: Page, taskId: string) =>
 export const styleOf = (page: Page, taskId: string, text: string) =>
   page.evaluate(
     ([id, wanted]) => {
-      const hooks = window.__thesourceE2E;
+      const hooks = window.__mainframeE2E;
       const lines = hooks.screenText(id).split('\n');
       const row = lines.findIndex((line) => line.includes(wanted));
       if (row < 0) throw new Error(`"${wanted}" is not on the screen`);
@@ -69,8 +69,8 @@ export async function run(page: Page, line: string): Promise<void> {
 export async function sendLine(page: Page, taskId: string, line: string): Promise<void> {
   await page.evaluate(
     async ([id, data]) => {
-      const task = (await window.thesource.listTasks()).find((t) => t.id === id);
-      window.thesource.write(task!.session!.id, data);
+      const task = (await window.mainframe.listTasks()).find((t) => t.id === id);
+      window.mainframe.write(task!.session!.id, data);
     },
     [taskId, `${line}\r`],
   );
@@ -94,7 +94,7 @@ export async function startTask(page: Page, title = 'Task', description = ''): P
 export const report = (state: string) => `printf '\\033]7501;state=${state}\\033\\\\'`;
 
 /** Closes the task's session, as Close session in the panel does. */
-export const closeTask = (page: Page, taskId: string) => page.evaluate((id) => window.thesource.closeTask(id), taskId);
+export const closeTask = (page: Page, taskId: string) => page.evaluate((id) => window.mainframe.closeTask(id), taskId);
 
 /** The links the app was asked to open, oldest first. `launchApp` keeps them from the owner's browser. */
 export const openedLinks = (app: ElectronApplication) =>

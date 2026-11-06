@@ -1,10 +1,10 @@
 # Third-party notices
 
-TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel-code) at commit 97c3558, used under the MIT License below. Each adapted file starts with a comment naming its source.
+Mainframe adapts code from Parallel Code (https://github.com/johannesjo/parallel-code) at commit 97c3558, used under the MIT License below. Each adapted file starts with a comment naming its source.
 
 ## Adapted files
 
-<!-- one line per adapted file: TheSource path ← Parallel Code path -->
+<!-- one line per adapted file: Mainframe path ← Parallel Code path -->
 
 - `scripts/fix-node-pty-spawn-helper.mjs` ← `scripts/fix-node-pty-spawn-helper.mjs`
 - `src/main/pty/outputBatcher.ts` ← `electron/ipc/pty.ts` (`attachPtyOutputHandlers`)
@@ -36,9 +36,9 @@ TheSource adapts code from Parallel Code (https://github.com/johannesjo/parallel
 
 ## Adapted from xterm.js
 
-TheSource adapts code from xterm.js (https://github.com/xtermjs/xterm.js) at 6.1.0-beta.195, used under the MIT License below. Each adapted file starts with a comment naming its source.
+Mainframe adapts code from xterm.js (https://github.com/xtermjs/xterm.js) at 6.1.0-beta.195, used under the MIT License below. Each adapted file starts with a comment naming its source.
 
-<!-- one line per adapted file: TheSource path ← xterm.js path -->
+<!-- one line per adapted file: Mainframe path ← xterm.js path -->
 
 - `src/renderer/src/terminal/termStyle.ts` ← `src/common/InputHandler.ts` (`_extractColor`) and `src/common/parser/Params.ts` (`Params`)
 

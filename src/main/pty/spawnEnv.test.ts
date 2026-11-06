@@ -25,7 +25,7 @@ it('drops what `npm start` and Vite add, keeping the rest of PATH in order', () 
       '/Users/x/.local/bin', '/usr/bin',
     ].join(':'),
     NODE: '/x/node', COLOR: '0', INIT_CWD: '/x', NODE_ENV: 'production', EDITOR: 'vi',
-    npm_command: 'run-script', npm_config_prefix: '/x', npm_lifecycle_event: 'start', npm_package_name: 'thesource',
+    npm_command: 'run-script', npm_config_prefix: '/x', npm_lifecycle_event: 'start', npm_package_name: 'mainframe',
   })).toEqual({
     PATH: '/Users/x/.local/bin:/usr/bin', EDITOR: 'vi',
     TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8', FORCE_HYPERLINK: '1',

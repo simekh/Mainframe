@@ -2,7 +2,7 @@ import { it, expect } from 'vitest';
 import { openingPrompt } from './openingPrompt';
 
 const tail =
-  "TheSource started you in this task's own worktree, on branch worktree-fix-login, so don't call EnterWorktree. " +
+  "Mainframe started you in this task's own worktree, on branch worktree-fix-login, so don't call EnterWorktree. " +
   'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
   'checkout, for example to merge, call ExitWorktree with action "keep" first.';
 

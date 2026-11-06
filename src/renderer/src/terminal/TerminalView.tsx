@@ -50,7 +50,7 @@ function scheduleFrame(flush: () => void): () => void {
 
 export default function TerminalView(props: { sessionId: string; selected: boolean; config: RendererConfig }) {
   let container!: HTMLDivElement;
-  const api = window.thesource;
+  const api = window.mainframe;
 
   onMount(() => {
     const id = props.sessionId;
@@ -243,7 +243,7 @@ export default function TerminalView(props: { sessionId: string; selected: boole
     observer.observe(container);
 
     // An e2e run spawns through its test hooks, which record the size.
-    const spawn = window.__thesourceE2E?.spawn ?? api.spawn;
+    const spawn = window.__mainframeE2E?.spawn ?? api.spawn;
     spawn({ sessionId: id, cols: sent.cols, rows: sent.rows }).catch((err: unknown) => {
       term.write(`\x1b[31mCould not start the session: ${errorMessage(err)}\x1b[0m\r\n`);
       finish();

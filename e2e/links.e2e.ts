@@ -33,8 +33,8 @@ function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<bo
   return page.evaluate(
     ([id, target, metaKey]) => {
       const screenEl = document.querySelector('.terminal:not(.terminal--hidden) .xterm-screen')!;
-      const lines = window.__thesourceE2E.screenText(id).split('\n');
-      const size = window.__thesourceE2E.termSize(id)!;
+      const lines = window.__mainframeE2E.screenText(id).split('\n');
+      const size = window.__mainframeE2E.termSize(id)!;
       const box = screenEl.getBoundingClientRect();
       const pointAt = (row: number, col: number) => ({
         clientX: box.left + (col / size.cols) * box.width,

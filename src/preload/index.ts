@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
-import { IPC, type TheSourceApi } from '../shared/ipc';
+import { IPC, type MainframeApi } from '../shared/ipc';
 
 function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   const handler = (_e: IpcRendererEvent, payload: T) => cb(payload);
@@ -7,7 +7,7 @@ function listen<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, handler);
 }
 
-const api: TheSourceApi = {
+const api: MainframeApi = {
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
   listTasks: () => ipcRenderer.invoke(IPC.listTasks),
   startCheck: () => ipcRenderer.invoke(IPC.startCheck),
@@ -29,4 +29,4 @@ const api: TheSourceApi = {
   onStatus: (cb) => listen(IPC.status, cb),
 };
 
-contextBridge.exposeInMainWorld('thesource', api);
+contextBridge.exposeInMainWorld('mainframe', api);

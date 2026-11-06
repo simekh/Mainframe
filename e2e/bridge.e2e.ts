@@ -7,15 +7,15 @@ import { cleanUp, launchApp, removeAfterTest } from './launch';
 test.afterEach(cleanUp);
 
 test("a task's session streams output, reports OSC 7501 status and exit", async () => {
-  const dir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'thesource-bridge-')));
+  const dir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-bridge-')));
   const claude = join(dir, 'claude');
   writeFileSync(claude, "#!/bin/sh\nprintf 'bridge-%s' ok; printf '\\033]7501;state=working\\033\\\\'; sleep 0.3\n", {
     mode: 0o755,
   });
-  const { app, page } = await launchApp({ THESOURCE_CLAUDE_BIN: claude });
+  const { app, page } = await launchApp({ MAINFRAME_CLAUDE_BIN: claude });
 
   const result = await page.evaluate(async () => {
-    const api = window.thesource;
+    const api = window.mainframe;
     const output = new Map<string, string>();
     // Status and exit events in the order they came.
     const events = new Map<string, string[]>();

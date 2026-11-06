@@ -30,7 +30,7 @@ test("dragging the panel's edge sets its width, and a restart keeps it", async (
   expect(Math.abs(keyed - (dragged + 32))).toBeLessThanOrEqual(2);
   await first.app.close();
 
-  const { app, page } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
   expect(Math.abs((await box(page, 'side-panel')).width - keyed)).toBeLessThanOrEqual(2);
   await app.close();
 });

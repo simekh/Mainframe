@@ -16,11 +16,11 @@ afterEach(() => {
 });
 
 function setup(gitOverrides: Partial<GitQueries> = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'thesource-service-'));
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-service-'));
   cleanup.push(root);
   const projectDir = join(root, 'Damela');
   mkdirSync(projectDir);
-  const dataDir = mkdtempSync(join(tmpdir(), 'thesource-data-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-data-'));
   cleanup.push(dataDir);
 
   const git: GitQueries = {

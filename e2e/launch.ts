@@ -30,10 +30,10 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
   mkdirSync(fakeClaudeLogDir, { recursive: true });
   return {
     ...(process.env as Record<string, string>),
-    THESOURCE_E2E: '1',
-    THESOURCE_PROJECT_DIR: os.tmpdir(),
-    THESOURCE_CLAUDE_BIN: join(root, 'e2e', 'fake-claude.sh'),
-    THESOURCE_DATA_DIR: dataDir,
+    MAINFRAME_E2E: '1',
+    MAINFRAME_PROJECT_DIR: os.tmpdir(),
+    MAINFRAME_CLAUDE_BIN: join(root, 'e2e', 'fake-claude.sh'),
+    MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
     BASH_SILENCE_DEPRECATION_WARNING: '1',
@@ -48,7 +48,7 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
 export async function launchApp(
   env: Record<string, string> = {},
 ): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
-  const dataDir = env.THESOURCE_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'thesource-e2e-')));
+  const dataDir = env.MAINFRAME_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));
@@ -63,7 +63,7 @@ export async function launchApp(
   });
   const page = await app.firstWindow();
   // The renderer installs its test hooks once its config and font are in.
-  await page.waitForFunction(() => window.__thesourceE2E !== undefined);
+  await page.waitForFunction(() => window.__mainframeE2E !== undefined);
   return { app, page, dataDir };
 }
 

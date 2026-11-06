@@ -12,7 +12,7 @@ function git(...args: string[]): void {
  * pushed and `origin/HEAD` set. The caller removes the parent folder of the two paths.
  */
 export function makeRepo(): { origin: string; main: string } {
-  const root = mkdtempSync(join(tmpdir(), 'thesource-repo-'));
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-repo-'));
   const origin = join(root, 'origin.git');
   const main = join(root, 'main');
   git('init', '--bare', '-b', 'stage', origin);

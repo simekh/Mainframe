@@ -34,7 +34,7 @@ const terminalOfTask = (taskId: string) => {
 
 function installE2eHooks(): void {
   const firstSpawns = new Map<string, { cols: number; rows: number }>();
-  window.__thesourceE2E = {
+  window.__mainframeE2E = {
     taskIds: () => tasksStore.tasks.map((t) => t.id),
     screenText: (taskId) => {
       const buffer = terminalOfTask(taskId)?.buffer.active;
@@ -68,7 +68,7 @@ function installE2eHooks(): void {
     },
     spawn: (req) => {
       if (!firstSpawns.has(req.sessionId)) firstSpawns.set(req.sessionId, { cols: req.cols, rows: req.rows });
-      return window.thesource.spawn(req);
+      return window.mainframe.spawn(req);
     },
   };
 }
@@ -79,7 +79,7 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 export default function App() {
   // Terminals render only once the config is here, so waiting for the font here covers them all.
   const [config] = createResource(async () => {
-    const [c] = await Promise.all([window.thesource.getConfig(), loadTerminalFont(document.fonts)]);
+    const [c] = await Promise.all([window.mainframe.getConfig(), loadTerminalFont(document.fonts)]);
     if (c.e2e) installE2eHooks();
     return c;
   });

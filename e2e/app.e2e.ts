@@ -4,13 +4,13 @@ import { launches, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
-test('opens the TheSource window', async () => {
+test('opens the Mainframe window', async () => {
   const { app, page } = await launchApp();
-  expect(await page.title()).toBe('TheSource');
+  expect(await page.title()).toBe('Mainframe');
   await app.close();
 });
 
-test('opened again on the same data folder, TheSource quits and its tasks keep running once', async () => {
+test('opened again on the same data folder, Mainframe quits and its tasks keep running once', async () => {
   const { app, page, dataDir } = await launchApp();
   const id = await startTask(page);
   expect(launches(dataDir)).toHaveLength(1);
@@ -21,7 +21,7 @@ test('opened again on the same data folder, TheSource quits and its tasks keep r
   });
 
   expect(await launchAgain(dataDir)).toBe(0);
-  // A second TheSource that had started would have reopened the open task.
+  // A second Mainframe that had started would have reopened the open task.
   expect(launches(dataDir)).toHaveLength(1);
   // The first one heard of it, which brings its window forward.
   await expect.poll(() => app.evaluate(() => (globalThis as { secondLaunches?: number }).secondLaunches)).toBe(1);

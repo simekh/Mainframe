@@ -41,7 +41,7 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
         const refresh = () => {
           if (inFlight) return;
           inFlight = true;
-          window.thesource
+          window.mainframe
             .changedFiles(taskId)
             .then((files) => {
               if (cancelled) return;

@@ -12,7 +12,7 @@ export function openingPrompt(t: {
   noQuestions: boolean;
 }): string {
   const worktreeNote =
-    `TheSource started you in this task's own worktree, on branch ${t.branch}, so don't call EnterWorktree. ` +
+    `Mainframe started you in this task's own worktree, on branch ${t.branch}, so don't call EnterWorktree. ` +
     'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
     'checkout, for example to merge, call ExitWorktree with action "keep" first.';
   const description = t.description.trim();

@@ -1,18 +1,18 @@
 # Step 1 early checks (spec §11.1–§11.7)
 
-Run 2026-11-05 with Claude Code 2.1.318, in TheSource's terminal. §11.1–§11.3 and §11.5 form 1 were run by the owner at the keyboard. The rest were run by the agent, through a Playwright script that types into the built app. Each app session was a login shell (`THESOURCE_SESSION_ARGV='["/bin/zsh","-l"]'`) with OSC 7501 traffic logged (`THESOURCE_LOG_OSC=1`). `<probe>` is a throwaway directory outside any repository holding a bare `origin.git` (default branch `stage`) and its clone `repo`.
+Run 2026-11-05 with Claude Code 2.1.318, in Mainframe's terminal. §11.1–§11.3 and §11.5 form 1 were run by the owner at the keyboard. The rest were run by the agent, through a Playwright script that types into the built app. Each app session was a login shell (`MAINFRAME_SESSION_ARGV='["/bin/zsh","-l"]'`) with OSC 7501 traffic logged (`MAINFRAME_LOG_OSC=1`). `<probe>` is a throwaway directory outside any repository holding a bare `origin.git` (default branch `stage`) and its clone `repo`.
 
 ## §11.1 Does a `-w` session load Damela's `.claude/settings.local.json` (the review gate)?
 
-**Ran:** in Damela, `claude -w thesource-probe-gate -n thesource-probe-gate --debug-file <probe>/v1-debug.log`; `/hooks`; "Run git status and show the output."; `/exit`, remove.
+**Ran:** in Damela, `claude -w mainframe-probe-gate -n mainframe-probe-gate --debug-file <probe>/v1-debug.log`; `/hooks`; "Run git status and show the output."; `/exit`, remove.
 
 **Observed:**
 
 - `/hooks` → PreToolUse lists `[Local] g=/Users/simonekholm/Developer/Simmesolo/Damela/... Bash · command`: the review gate, sourced from local settings. The `/hooks` menu is read-only in this version ("This menu is read-only. To add or change a hook, edit settings.json or ask Claude.") and lists 24 hooks on 11 events.
-- Debug log: `Skipping settings.local.json copy into /Users/simonekholm/Developer/Simmesolo/Damela/.claude/worktrees/thesource-probe-gate: it resolves localSettings to the canonical repo root, so a copy would become a stale, revocation-resurrecting legacy overlay`.
+- Debug log: `Skipping settings.local.json copy into /Users/simonekholm/Developer/Simmesolo/Damela/.claude/worktrees/mainframe-probe-gate: it resolves localSettings to the canonical repo root, so a copy would become a stale, revocation-resurrecting legacy overlay`.
 - Debug log, when Claude ran `git status`: `Hooks: PreToolUse:Bash [g=/Users/simonekholm/Developer/Simmesolo/Damela/.claude/hooks/code-review-gate.sh; ...]`. The gate ran and let `git status` through. Claude ran it without a permission prompt (a read-only command).
 - Debug log, at startup: `settings defaultMode "bypassPermissions" ignored — only policy/user/flag settings may grant bypass mode (projectSettings and localSettings are repo-controllable)`.
-- `/exit` asked keep or remove; after remove, `git -C <damela> worktree list` and `git -C <damela> branch --list 'worktree-thesource-probe*'` no longer list the probe.
+- `/exit` asked keep or remove; after remove, `git -C <damela> worktree list` and `git -C <damela> branch --list 'worktree-mainframe-probe*'` no longer list the probe.
 
 **Answer:** yes. A `-w` session reads the main checkout's `settings.local.json` in place (not a copy), so Damela's review gate applies inside the worktree and runs on every Bash call.
 
@@ -30,13 +30,13 @@ Run 2026-11-05 with Claude Code 2.1.318, in TheSource's terminal. §11.1–§11.
 - `grep -iE "hook.*(error|fail)" <probe>/v2-debug.log`: no matches. Every `cc-status` run finished with status 0 (SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, Notification, PostToolUse, Stop, SessionEnd). Nothing stray appeared in the terminal.
 - Claude ran `git -C /Users/simonekholm/Developer/Simmesolo/Damela status`, which is not auto-allowed, so with bypass ignored (§11.1) it showed a permission prompt (`permissionDecisionMs=19154`). Its suggested rule had `"destination": "localSettings"`: "don't ask again" would have written Damela's `settings.local.json`. The owner approved once; the file is unchanged.
 
-**Answer:** yes. Hooks from `--settings` run together with user, local and plugin hooks, in the session's cwd. The owner's iTerm2 hooks run cleanly inside TheSource. But `/hooks` doesn't show `--settings` hooks, so the owner can't see TheSource's hooks there.
+**Answer:** yes. Hooks from `--settings` run together with user, local and plugin hooks, in the session's cwd. The owner's iTerm2 hooks run cleanly inside Mainframe. But `/hooks` doesn't show `--settings` hooks, so the owner can't see Mainframe's hooks there.
 
-**For plan 2:** TheSource can add its own hooks per session with `--settings` without touching any settings file. Its hooks are invisible in `/hooks`, so the app should say somewhere which hooks it adds. Expect permission prompts in Damela (`blocked · permission`): approvals with "don't ask again" land in Damela's `settings.local.json`, which is Claude's doing, not the app's.
+**For plan 2:** Mainframe can add its own hooks per session with `--settings` without touching any settings file. Its hooks are invisible in `/hooks`, so the app should say somewhere which hooks it adds. Expect permission prompts in Damela (`blocked · permission`): approvals with "don't ask again" land in Damela's `settings.local.json`, which is Claude's doing, not the app's.
 
 ## §11.3 OSC 7501 in the app's terminal
 
-**Ran:** `claude` in `<probe>/repo` (trusted, and TheSource itself is not; see the ledger ruling), plus the §11.1 and §11.2 sessions in Damela, all logged by the app (`[osc7501] <session> <payload>`). Prompts: "Run git log --oneline and tell me what you see.", "Create a file called note.txt containing hello.", "Ask me a multiple-choice question with your AskUserQuestion tool.", "Count slowly from 1 to 300, one number per line." with Esc while it counted, `/exit`. The owner watched the session row.
+**Ran:** `claude` in `<probe>/repo` (trusted, and Mainframe itself is not; see the ledger ruling), plus the §11.1 and §11.2 sessions in Damela, all logged by the app (`[osc7501] <session> <payload>`). Prompts: "Run git log --oneline and tell me what you see.", "Create a file called note.txt containing hello.", "Ask me a multiple-choice question with your AskUserQuestion tool.", "Count slowly from 1 to 300, one number per line." with Esc while it counted, `/exit`. The owner watched the session row.
 
 **Observed** (every report carries `app=claude-code`; no report carried an `id`; `msg` is base64, decoded here):
 
@@ -55,13 +55,13 @@ Run 2026-11-05 with Claude Code 2.1.318, in TheSource's terminal. §11.1–§11.
 
 In `auto` mode no permission prompt appeared for the file write in `<probe>/repo`, so no `blocked` came; prompts appeared for `git -C <damela> …` commands and for a write into a Damela worktree.
 
-**Answer:** Claude Code 2.1.318 speaks OSC 7501 in TheSource's terminal from the first second: it queries support, then reports `idle`, `working` (with the current tool's description), `blocked` with `kind=permission` or `kind=question` (with the exact question or command), and `done`, and clears on exit. It sends one record per session, without an `id`.
+**Answer:** Claude Code 2.1.318 speaks OSC 7501 in Mainframe's terminal from the first second: it queries support, then reports `idle`, `working` (with the current tool's description), `blocked` with `kind=permission` or `kind=question` (with the exact question or command), and `done`, and clears on exit. It sends one record per session, without an `id`.
 
 **For plan 2 (lane mapping, spec §7.3):** `blocked` → Needs you, with `msg` as the card's line ("approve Bash: …", "answer: …"); `working` → Working, with `msg` as the activity; `done` and `idle` → waiting for the owner's next prompt (`done` after a reply, `idle` before the first); `clear` → the session ended. Esc shows as `idle`, the same as a fresh session. A row must replace its whole status on every report.
 
 ## §11.4 Where must `claude --resume <id>` run for a `-w` session?
 
-**Ran** (driven by the agent through TheSource): from `<probe>/repo`, `claude -w probe-resume -n probe-resume --session-id <uuid C>`, "Say OK.", `/exit` → Keep. Then each resume followed by "Run pwd and show the output.".
+**Ran** (driven by the agent through Mainframe): from `<probe>/repo`, `claude -w probe-resume -n probe-resume --session-id <uuid C>`, "Say OK.", `/exit` → Keep. Then each resume followed by "Run pwd and show the output.".
 
 **Observed:**
 
@@ -76,7 +76,7 @@ In `auto` mode no permission prompt appeared for the file write in `<probe>/repo
 | (b′) `claude --resume <uuid C>` from `~/Developer` (trusted) | loaded | `~/Developer` ("which is not a git repository") |
 | (c) after `git worktree remove --force …/probe-resume`, `claude --resume <uuid C>` from `<probe>/repo` | loaded | `<probe>/repo`; no "worktree … no longer exists" notice was visible (the TUI redraws at start). The branch `worktree-probe-resume` survived the forced remove. |
 | (c′) then `claude --worktree probe-resume --resume <uuid C>` | loaded | a re-created worktree on the surviving branch, at `fbe4c68`, locked again |
-| (d) a new session, `claude -w probe-kill -n probe-kill --session-id <uuid D>`, "Say OK.", then TheSource quit with the session running (as Cmd+Q does; no `/exit`). Then `claude --resume <uuid D>` from `<probe>/repo` | loaded | the worktree (`pwd` → `…/.claude/worktrees/probe-kill`). The quit left the worktree and its branch in place, still marked `locked`. `/exit` → Remove in the resumed session then removed both. |
+| (d) a new session, `claude -w probe-kill -n probe-kill --session-id <uuid D>`, "Say OK.", then Mainframe quit with the session running (as Cmd+Q does; no `/exit`). Then `claude --resume <uuid D>` from `<probe>/repo` | loaded | the worktree (`pwd` → `…/.claude/worktrees/probe-kill`). The quit left the worktree and its branch in place, still marked `locked`. `/exit` → Remove in the resumed session then removed both. |
 
 Exiting (c′) with "Remove worktree" printed "Removing worktree… / Worktree removed." and deleted the branch too.
 
@@ -106,13 +106,13 @@ Quotes are from the session transcript (`~/.claude/projects/<probe-repo>/<uuid A
 3. "Do you have an ExitWorktree tool?": yes (loaded via ToolSearch). `ExitWorktree {"action": "keep"}` returned: "Exited worktree. Your work is preserved at “<probe>/repo/.claude/worktrees/probe-merge” on branch “worktree-probe-merge”. Session is now back in “<probe>/repo”." The transcript records `worktree-state: null` and the cwd of later messages is `<probe>/repo`.
 4. The four commands, run by Claude from `<probe>/repo` without any refusal: `git merge --squash worktree-probe-merge` ("Squash commit -- not updating HEAD"), `git commit -m 'probe squash'` (`[stage 4aedd91] probe squash`), `git worktree remove …/probe-merge` (no output), `git branch -D worktree-probe-merge` ("Deleted branch worktree-probe-merge (was 5e01dd3).").
 5. `/exit` (run by the owner; what it printed was not recorded). The session had already left the worktree in step 3.
-6. `claude --resume <uuid A>` from `<probe>/repo` (re-run later by the agent through TheSource): the whole conversation loaded, down to the merge summary, and the status line showed `repo`. On exit Claude printed "Resume this session with: claude --resume <uuid A>".
+6. `claude --resume <uuid A>` from `<probe>/repo` (re-run later by the agent through Mainframe): the whole conversation loaded, down to the merge summary, and the status line showed `repo`. On exit Claude printed "Resume this session with: claude --resume <uuid A>".
 
 Afterwards: `git -C <probe>/repo log --oneline -3` → `4aedd91 probe squash`, `fbe4c68 init`; `worktree list` → only `<probe>/repo [stage]`; `branch` → `* stage`. The transcript is stored under the **main checkout's** project directory (`-…-probe-repo/<uuid A>.jsonl`), not under the worktree's.
 
 ### Form 2: `claude -n probe-enter --session-id <uuid B>`, then EnterWorktree
 
-Driven by the agent through TheSource (a script typing into the app's terminal). The file was `probe-enter.txt`, because `probe.txt` was already on `stage` from form 1.
+Driven by the agent through Mainframe (a script typing into the app's terminal). The file was `probe-enter.txt`, because `probe.txt` was already on `stage` from form 1.
 
 0. "Use EnterWorktree named probe-enter": `Creating worktree(probe-enter)` → "Switched to worktree on branch worktree-probe-enter" at `<probe>/repo/.claude/worktrees/probe-enter`, "created from the current repo state". Claude added: "To leave it mid-session, use ExitWorktree. Otherwise you'll be asked whether to keep or remove it when the session ends."
 1. Commit: `b7f7c2b probe-enter` on `worktree-probe-enter`.
@@ -132,7 +132,7 @@ Yes, in both forms, but not from inside the worktree. While a session is in a wo
 
 ## §11.6 MCP tool calls that wait
 
-**Ran** (driven by the agent through TheSource, in `<probe>/repo`; see the ledger ruling): the spike server in `spikes/mcp-wait`, built on `@modelcontextprotocol/server` 2.4.0 (the v2 TypeScript SDK). It has one tool, `wait_seconds`. Each app session ran `claude --mcp-config <root>/spikes/mcp-wait/mcp.json` and got this prompt: "Call the wait_seconds tool from the wait MCP server with seconds=<n>, then tell me exactly what it returned."
+**Ran** (driven by the agent through Mainframe, in `<probe>/repo`; see the ledger ruling): the spike server in `spikes/mcp-wait`, built on `@modelcontextprotocol/server` 2.4.0 (the v2 TypeScript SDK). It has one tool, `wait_seconds`. Each app session ran `claude --mcp-config <root>/spikes/mcp-wait/mcp.json` and got this prompt: "Call the wait_seconds tool from the wait MCP server with seconds=<n>, then tell me exactly what it returned."
 
 - Four sessions asked for 30, 150, 330 and 630 s.
 - A fifth asked for 300 s, and got Esc after about 20 s.

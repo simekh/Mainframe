@@ -1,1 +1,1 @@
-{ "mcpServers": { "wait": { "command": "node", "args": ["/Users/simonekholm/Developer/Simmesolo/TheSource/spikes/mcp-wait/server.mjs"] } } }
+{ "mcpServers": { "wait": { "command": "node", "args": ["/Users/simonekholm/Developer/Simmesolo/Mainframe/spikes/mcp-wait/server.mjs"] } } }

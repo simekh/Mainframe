@@ -1,6 +1,6 @@
 import { batch } from 'solid-js';
 import { createStore, reconcile, unwrap } from 'solid-js/store';
-import type { TheSourceApi } from '../../shared/ipc';
+import type { MainframeApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
 import { laneOrder, nextNeedsYou } from './board/lanes';
 import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
@@ -36,26 +36,26 @@ function setTasks(tasks: TaskView[]): void {
   });
 }
 
-window.thesource.onTasks((tasks) => {
+window.mainframe.onTasks((tasks) => {
   changed = true;
   setTasks(tasks);
 });
 
-window.thesource.onStatus((e) => {
+window.mainframe.onStatus((e) => {
   setStore('sessions', e.sessionId, nextSessionState(store.sessions[e.sessionId], e.status, Date.now()));
 });
 
 export async function loadTasks(): Promise<void> {
-  const tasks = await window.thesource.listTasks();
+  const tasks = await window.mainframe.listTasks();
   // Every change carries the whole list, so one that came in meanwhile is at least as new.
   if (!changed) setTasks(tasks);
 }
 
 /** Rejects with the reason the task couldn't start. */
-export async function startTask(req: Parameters<TheSourceApi['startTask']>[0]): Promise<void> {
+export async function startTask(req: Parameters<MainframeApi['startTask']>[0]): Promise<void> {
   startPending = true;
   try {
-    const task = await window.thesource.startTask(req);
+    const task = await window.mainframe.startTask(req);
     // Selected already, unless the reply came before the list.
     select(task.id);
   } finally {
@@ -67,11 +67,11 @@ export async function reopenTask(id: string): Promise<void> {
   // Selected first, so the new session's terminal mounts on screen. A reopen that fails leaves
   // the closed task selected, where the owner just asked for it.
   select(id);
-  await window.thesource.reopenTask(id);
+  await window.mainframe.reopenTask(id);
 }
 
 export function closeTask(id: string): void {
-  window.thesource.closeTask(id);
+  window.mainframe.closeTask(id);
 }
 
 /** Whatever selects a task (a card, Answer, Reopen, New task) also brings the panel out to show it. */

@@ -44,7 +44,7 @@ function readConfig(): AppConfig | Error {
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    title: 'TheSource',
+    title: 'Mainframe',
     width: 1400,
     height: 900,
     backgroundColor: APP_BACKGROUND,
@@ -68,10 +68,10 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-/** Throws when TheSource can't start; nothing that can throw comes after the window opens. */
+/** Throws when Mainframe can't start; nothing that can throw comes after the window opens. */
 function start(config: AppConfig): void {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
-  const pasteDir = join(app.getPath('temp'), 'thesource-paste');
+  const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
   mkdirSync(pasteDir, { recursive: true });
 
@@ -108,7 +108,7 @@ function start(config: AppConfig): void {
     // Looked up at each call, so an e2e run can stand in for the browser.
     (url) => shell.openExternal(url),
   );
-  // TheSource was opened again on this data folder: that one has quit, and this one comes forward.
+  // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {
     if (shown.isDestroyed()) return;
     if (shown.isMinimized()) shown.restore();
@@ -130,7 +130,7 @@ function start(config: AppConfig): void {
 
 const config = readConfig();
 
-// One TheSource per data folder: a second one would run every open task's session again, and two
+// One Mainframe per data folder: a second one would run every open task's session again, and two
 // would write one state.json. Electron keeps the lock in userData, which readConfig has just set.
 if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
   // The one that holds it has been told, and shows its window.
@@ -143,7 +143,7 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
       if (config instanceof Error) throw config;
       start(config);
     } catch (err) {
-      dialog.showErrorBox('TheSource could not start', err instanceof Error ? err.message : String(err));
+      dialog.showErrorBox('Mainframe could not start', err instanceof Error ? err.message : String(err));
       app.quit();
     }
   });

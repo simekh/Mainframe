@@ -1,7 +1,7 @@
 // Adapted from Parallel Code (MIT): src/components/TerminalView.tsx (enqueueInput) at 97c3558. See THIRD_PARTY_NOTICES.md.
 
 /**
- * Trailing batching of keystrokes, as in Parallel Code, so `THESOURCE_INPUT_BATCH_MS=8` reproduces
+ * Trailing batching of keystrokes, as in Parallel Code, so `MAINFRAME_INPUT_BATCH_MS=8` reproduces
  * its behaviour in the feel test. With interval 0 every keystroke is sent at once.
  */
 export class InputBatcher {

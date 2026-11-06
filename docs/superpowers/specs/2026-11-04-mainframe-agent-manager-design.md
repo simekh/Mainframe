@@ -1,4 +1,4 @@
-# TheSource: an agent manager on top of Claude Code
+# Mainframe: an agent manager on top of Claude Code
 
 Design, 2026-11-04. Written after a brainstorm with the owner (solo developer, macOS). Decisions the owner made are stated plainly. Decisions the designer made on the owner's behalf are marked **(designer's call)**; the owner may overturn them. Facts about Claude Code, iTerm2 and other tools were checked against current docs and the owner's machine on 2026-11-04 (sources at the end).
 
@@ -6,7 +6,7 @@ Design, 2026-11-04. Written after a brainstorm with the owner (solo developer, m
 
 The owner runs several Claude Code CLI sessions at once, one per ticket, today in separate iTerm2 tabs, and switches between them by hand. The sessions don't know about each other. The owner is the glue: remembering which tab is which, noticing who is waiting for an answer, and holding one session back until another has merged (the last time merging hurt, the owner had to wait for one session to finish before telling the second to merge).
 
-TheSource is a desktop app that makes working with many sessions at once easy: one board that shows which sessions need the owner, which are working and which are ready to merge; tasks started from the owner's to-do list with one click; and merges into the integration branch that happen one at a time without the owner coordinating them.
+Mainframe is a desktop app that makes working with many sessions at once easy: one board that shows which sessions need the owner, which are working and which are ready to merge; tasks started from the owner's to-do list with one click; and merges into the integration branch that happen one at a time without the owner coordinating them.
 
 ## 2. The principle: a layer on top of Claude Code
 
@@ -69,7 +69,7 @@ The app adds its hooks and MCP server only to the sessions it starts, through la
 - **The first thing built is a feel test** (§10, step 1), because terminal feel is the main way this fails and the owner skipped trying Parallel Code first. If the feel test fails, stop and rethink with the owner (the native route is the fallback) before building anything else.
 - The app's own state (projects, sessions, history, merge queue) is kept locally in the app's data folder. Format is the builder's choice.
 - Trello is read and written through Trello's REST API with the owner's API key and token, stored in the macOS Keychain. (The manager session separately has the owner's Trello MCP connector for its own judgement work.)
-- Name: TheSource (the repo name) unless the owner picks another.
+- Name: Mainframe (the repo name) unless the owner picks another.
 
 ## 6. What we copy from Parallel Code
 

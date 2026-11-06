@@ -16,7 +16,7 @@ const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 
 test('New task launches claude -w in the main checkout with a fresh session id, the hooks file and the opening prompt', async () => {
   const main = repo();
-  const { app, page, dataDir } = await launchApp({ THESOURCE_PROJECT_DIR: main });
+  const { app, page, dataDir } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
   const id = await startTask(page, 'Fix login');
 
   const [first, ...rest] = launches(dataDir);
@@ -49,7 +49,7 @@ test("the dialog warns when the main checkout has commits that new worktrees won
   writeFileSync(join(ahead, 'local.txt'), 'local\n');
   git('-C', ahead, 'add', 'local.txt');
   git('-C', ahead, 'commit', '-m', 'local');
-  const first = await launchApp({ THESOURCE_PROJECT_DIR: ahead });
+  const first = await launchApp({ MAINFRAME_PROJECT_DIR: ahead });
   await first.page.getByTestId('new-task').click();
   await expect(first.page.getByTestId('start-check-warning')).toHaveText(
     "stage has 1 commit that isn't on origin/stage. New worktrees start from origin/stage, so this task won't have it. Push stage first, or start anyway.",
@@ -65,7 +65,7 @@ test("the dialog warns when the main checkout has commits that new worktrees won
   );
   await first.app.close();
 
-  const second = await launchApp({ THESOURCE_PROJECT_DIR: repo() });
+  const second = await launchApp({ MAINFRAME_PROJECT_DIR: repo() });
   await second.page.getByTestId('new-task').click();
   // The check has answered once the dialog names the base.
   await expect(second.page.getByTestId('new-task-base')).toHaveText('origin/stage');
@@ -76,14 +76,14 @@ test("the dialog warns when the main checkout has commits that new worktrees won
 
 test('quitting with tasks running reopens them at the next start, in their worktrees while the branch exists', async () => {
   const main = repo();
-  const first = await launchApp({ THESOURCE_PROJECT_DIR: main });
+  const first = await launchApp({ MAINFRAME_PROJECT_DIR: main });
   const alpha = await startTask(first.page, 'Alpha');
   const beta = await startTask(first.page, 'Beta');
   git('-C', main, 'branch', 'worktree-alpha');
   await first.app.close();
   const [alphaStart, betaStart] = launches(first.dataDir);
 
-  const { app, page, dataDir } = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: first.dataDir });
+  const { app, page, dataDir } = await launchApp({ MAINFRAME_PROJECT_DIR: main, MAINFRAME_DATA_DIR: first.dataDir });
   await expect.poll(() => ids(page)).toEqual([alpha, beta]);
   for (const id of [alpha, beta]) {
     await expect(cardIn(page, 'working', id).getByTestId('task-activity')).toHaveText('Starting…');
@@ -105,7 +105,7 @@ test('quitting with tasks running reopens them at the next start, in their workt
 
 test("a session closed mid-turn carries on when reopened; one that was waiting doesn't", async () => {
   const main = repo();
-  const first = await launchApp({ THESOURCE_PROJECT_DIR: main });
+  const first = await launchApp({ MAINFRAME_PROJECT_DIR: main });
   const { page, dataDir } = first;
   const a = await startTask(page, 'Alpha');
   const b = await startTask(page, 'Beta');
@@ -146,7 +146,7 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   await expect(cardIn(page, 'working', a).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
   await first.app.close();
 
-  const second = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: dataDir });
+  const second = await launchApp({ MAINFRAME_PROJECT_DIR: main, MAINFRAME_DATA_DIR: dataDir });
   await expect.poll(() => launchesOf(a).length).toBe(3);
   await expect.poll(() => launchesOf(b).length).toBe(3);
   expect(launchesOf(a)[2]).toEqual(['--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
@@ -159,7 +159,7 @@ test('tasks reopened at startup start at the size their terminal shows', async (
   const id = await startTask(first.page);
   await first.app.close();
 
-  const { app, page } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
   await expect.poll(() => screen(page, id)).toContain('$');
   await expect(card(page, id)).toHaveAttribute('data-selected', 'false');
   expect(await firstSpawn(page, id)).toEqual(await termSize(page, id));
@@ -175,7 +175,7 @@ test('tasks reopened at startup start at the size their terminal shows', async (
 });
 
 test("a task whose claude can't start lands in Closed and stays closed after a restart", async () => {
-  const first = await launchApp({ THESOURCE_CLAUDE_BIN: '/nonexistent/claude' });
+  const first = await launchApp({ MAINFRAME_CLAUDE_BIN: '/nonexistent/claude' });
   await first.page.getByTestId('new-task').click();
   await first.page.getByTestId('new-task-title').fill('Fix login');
   await first.page.getByTestId('new-task-start').click();
@@ -189,7 +189,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   const saved = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks;
   expect(saved).toEqual([expect.objectContaining({ id, open: false })]);
 
-  const { app, page, dataDir } = await launchApp({ THESOURCE_DATA_DIR: first.dataDir });
+  const { app, page, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
   await expect(cardIn(page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
   expect(launches(dataDir)).toEqual([]);
   await app.close();
@@ -197,7 +197,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
 
 test('Reopen of a task whose claude never started begins its conversation, and the next Reopen resumes it', async () => {
   const main = repo();
-  const first = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_CLAUDE_BIN: '/nonexistent/claude' });
+  const first = await launchApp({ MAINFRAME_PROJECT_DIR: main, MAINFRAME_CLAUDE_BIN: '/nonexistent/claude' });
   await first.page.getByTestId('new-task').click();
   await first.page.getByTestId('new-task-title').fill('Fix login');
   await first.page.getByTestId('new-task-no-questions').check();
@@ -208,7 +208,7 @@ test('Reopen of a task whose claude never started begins its conversation, and t
   await first.app.close();
   const before = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks[0].claudeSessionId;
 
-  const { app, page, dataDir } = await launchApp({ THESOURCE_PROJECT_DIR: main, THESOURCE_DATA_DIR: first.dataDir });
+  const { app, page, dataDir } = await launchApp({ MAINFRAME_PROJECT_DIR: main, MAINFRAME_DATA_DIR: first.dataDir });
   await cardIn(page, 'closed', id).getByTestId('reopen').click();
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('No questions on this task');
@@ -231,10 +231,10 @@ test('Reopen of a task whose claude never started begins its conversation, and t
 });
 
 test('a start that fails shows why and keeps the dialog open', async () => {
-  const dataDir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'thesource-e2e-')));
+  const dataDir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
   // A file where the tasks folder goes: main can't make the new task's folder.
   writeFileSync(join(dataDir, 'tasks'), '');
-  const { app, page } = await launchApp({ THESOURCE_DATA_DIR: dataDir });
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
   await page.getByTestId('new-task').click();
   await page.getByTestId('new-task-title').fill('Fix login');
   await page.getByTestId('new-task-start').click();
@@ -251,7 +251,7 @@ test('reloading the window keeps running tasks running, in the state they last r
   await sendLine(page, id, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
   await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
   await page.reload();
-  await page.waitForFunction(() => window.__thesourceE2E !== undefined);
+  await page.waitForFunction(() => window.__mainframeE2E !== undefined);
   await expect(cardIn(page, 'needs-you', id).getByTestId('task-ask')).toHaveText('Needs input');
   await expect(card(page, id).getByTestId('task-activity')).toHaveText('Asking you a question');
   await card(page, id).click();

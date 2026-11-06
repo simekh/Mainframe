@@ -1,4 +1,4 @@
-# Feel test: TheSource's terminal next to iTerm2
+# Feel test: Mainframe's terminal next to iTerm2
 
 Spec §10 step 1: does the app's terminal feel as good as iTerm2 for real Claude Code work? The owner decides Pass or Fail.
 
@@ -12,22 +12,22 @@ Spec §10 step 1: does the app's terminal feel as good as iTerm2 for real Claude
 
 1. Count Claude and MCP processes before starting the app (for check 13), in iTerm2:
    `pgrep -lf 'claude|mcp' | wc -l` → before: 69
-2. Build once: `npm --prefix /Users/simonekholm/Developer/Simmesolo/TheSource run build`
+2. Build once: `npm --prefix /Users/simonekholm/Developer/Simmesolo/Mainframe run build`
 3. Start one variant at a time (Cmd+Q between variants):
 
 | Variant | Command | Input batching | Output batching |
 |---|---|---|---|
-| A (default) | `npm --prefix /Users/simonekholm/Developer/Simmesolo/TheSource start` | 0 ms | 8 ms |
-| B (Parallel Code) | `THESOURCE_INPUT_BATCH_MS=8 npm --prefix /Users/simonekholm/Developer/Simmesolo/TheSource start` | 8 ms | 8 ms |
-| C | `THESOURCE_OUTPUT_BATCH_MS=0 npm --prefix /Users/simonekholm/Developer/Simmesolo/TheSource start` | 0 ms | 0 ms |
+| A (default) | `npm --prefix /Users/simonekholm/Developer/Simmesolo/Mainframe start` | 0 ms | 8 ms |
+| B (Parallel Code) | `MAINFRAME_INPUT_BATCH_MS=8 npm --prefix /Users/simonekholm/Developer/Simmesolo/Mainframe start` | 8 ms | 8 ms |
+| C | `MAINFRAME_OUTPUT_BATCH_MS=0 npm --prefix /Users/simonekholm/Developer/Simmesolo/Mainframe start` | 0 ms | 0 ms |
 
 Click **New session** to start `claude` in Damela.
 
 ## Checks
 
-Same / worse / better is TheSource compared with iTerm2.
+Same / worse / better is Mainframe compared with iTerm2.
 
-| # | Check | iTerm2 | TheSource | Same / worse / better | Note |
+| # | Check | iTerm2 | Mainframe | Same / worse / better | Note |
 |---|---|---|---|---|---|
 | 1 | Typing: fast typing and key repeat in the prompt. Does any variant (A, B, C) feel delayed? | | Variant A: "the feel of the terminal is OK" | | Owner, 2026-11-05 |
 | 2 | Shift+Enter inserts a newline; Enter submits. | | Works as it should | same | Owner, 2026-11-05: "Everything else is working as it should." |

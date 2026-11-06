@@ -1,20 +1,20 @@
-# TheSource feel test and early checks: implementation plan
+# Mainframe feel test and early checks: implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** An Electron app that runs up to 8 real `claude` sessions in Damela's main checkout, shows one at a time in a terminal built from Parallel Code's terminal handling, and reports each session's OSC 7501 status. The owner uses it to decide whether the terminal feels as good as iTerm2 (spec §10 step 1, "feel test first"). The same plan answers the spec's §11 questions in a findings file.
 
-**Architecture:** electron-vite app with three parts. The main process owns PTYs (node-pty), batches their output, answers and parses OSC 7501, and resolves clipboard pastes. A sandboxed preload exposes a typed `window.thesource` bridge. The SolidJS renderer stacks one xterm.js view per session and shows only the selected one; only that one holds a WebGL context. Main owns sessions and status from the start, so plan 2 (the board) builds on these pieces instead of replacing them.
+**Architecture:** electron-vite app with three parts. The main process owns PTYs (node-pty), batches their output, answers and parses OSC 7501, and resolves clipboard pastes. A sandboxed preload exposes a typed `window.mainframe` bridge. The SolidJS renderer stacks one xterm.js view per session and shows only the selected one; only that one holds a WebGL context. Main owns sessions and status from the start, so plan 2 (the board) builds on these pieces instead of replacing them.
 
 **Tech Stack:** Electron 44, electron-vite 6, Vite 8, SolidJS 1.9, TypeScript 5.9, xterm.js 6.1 beta (the build Parallel Code ships), node-pty 1.1, Vitest 5, Playwright 1.64 (Electron mode).
 
-**Spec:** `docs/superpowers/specs/2026-11-04-thesource-agent-manager-design.md`. Read §2, §5, §6.1, §7.3 (OSC 7501), §10 step 1 and §11 before starting.
+**Spec:** `docs/superpowers/specs/2026-11-04-mainframe-agent-manager-design.md`. Read §2, §5, §6.1, §7.3 (OSC 7501), §10 step 1 and §11 before starting.
 
 **Scope of this plan.** It covers the feel test and the §11 checks only. The rest of build step 1 (TODO lane from Trello, `claude -w` launches, hook-based status, Needs you/Working lanes, Ctrl+Tab, Reopen) gets plan 2. Plan 2 is written after Task 8 passes, from the findings of Task 9, because those findings decide how sessions are launched (for example §11.1 and §11.7 decide between `-w` and `EnterWorktree`). If Task 8 fails, plan 2 is not written (spec §5).
 
 ## Global Constraints
 
-- `<root>` = `/Users/simonekholm/Developer/Simmesolo/TheSource`; `<damela>` = `/Users/simonekholm/Developer/Simmesolo/Damela`; `<pc>` = a clone of https://github.com/johannesjo/parallel-code at commit `97c3558`, outside the repo (e.g. the session scratchpad); never committed.
+- `<root>` = `/Users/simonekholm/Developer/Simmesolo/Mainframe`; `<damela>` = `/Users/simonekholm/Developer/Simmesolo/Damela`; `<pc>` = a clone of https://github.com/johannesjo/parallel-code at commit `97c3558`, outside the repo (e.g. the session scratchpad); never committed.
 - Every command passes absolute paths (`npm --prefix <root> …`, `git -C <root> …`); never `cd x && …` (owner's global CLAUDE.md).
 - Work on a branch `feel-test` off `main`.
 - macOS only (macOS 26, Node 24 via nvm, npm). No `"type": "module"` in package.json: main and preload build to CommonJS, which a sandboxed preload requires.
@@ -30,7 +30,7 @@
 ## Review Focus
 
 1. **Swedish Option-key characters** (Option+2 → @, Option+8/9 → [ ], Option+Shift+8/9 → { }, Option+7 → |, Option+¨ dead key → ~) must reach `claude` exactly as in iTerm2. Pinned by the keybinding test in Task 6 (Option keys are never intercepted) and the `TERMINAL_OPTIONS` test (`macOptionIsMeta: false`).
-2. **The app started with `npm start` from iTerm2 or from a Claude Code session** passes its launcher's environment to every session. From iTerm2 and Claude Code that is `TERM_PROGRAM=iTerm.app`, `ITERM_SESSION_ID`, `CLAUDECODE=1`, `CLAUDE_CODE_SESSION_ID` and similar, so `claude` misdetects the terminal or acts as a nested session. From npm and Vite it is `npm_*`, `NODE_ENV` and TheSource's `node_modules/.bin` at the front of PATH, so a Damela session's `npm install` or bare `tsc` behaves differently. Pinned by the two `buildSpawnEnv` tests in Task 2, whose lists were taken from a real Claude Code session's environment and a real `npm run`.
+2. **The app started with `npm start` from iTerm2 or from a Claude Code session** passes its launcher's environment to every session. From iTerm2 and Claude Code that is `TERM_PROGRAM=iTerm.app`, `ITERM_SESSION_ID`, `CLAUDECODE=1`, `CLAUDE_CODE_SESSION_ID` and similar, so `claude` misdetects the terminal or acts as a nested session. From npm and Vite it is `npm_*`, `NODE_ENV` and Mainframe's `node_modules/.bin` at the front of PATH, so a Damela session's `npm install` or bare `tsc` behaves differently. Pinned by the two `buildSpawnEnv` tests in Task 2, whose lists were taken from a real Claude Code session's environment and a real `npm run`.
 3. **A huge output burst in a session that isn't on screen** (a long file dump while the owner looks at another session) must neither stall nor grow memory without bound; it must all be there on return. Pinned by the `OutputFlow` watermark test in Task 6 and the flood e2e test in Task 7.
 4. **Quitting with sessions running** must leave no orphaned `claude` processes, and none of the processes they started. Two layers protect this. Every PTY's controlling side closes when the app exits, so the kernel sends SIGHUP to each session's foreground process group. `killAll` on `before-quit` sends the same signal earlier and on purpose. The `killAll` unit test in Task 4 pins that it reaches every session. The quit e2e test in Task 7 pins the outcome (the session's shell is gone), but it can't tell the two layers apart. What `claude` itself started, such as MCP servers in their own process groups, no automated test covers; feel-test check 13 counts those by hand.
 5. **The OSC 7501 support query split across PTY reads, or followed in the same read by the program's `CSI c`**, must still be answered, and answered before xterm's DA1 reply, or `claude` decides the terminal has no support (spec: "If the terminal's reply to `CSI c` arrives first, the protocol is unsupported"). Pinned by the split-query test in Task 3 and the reply-order test in Task 4. Main answers the query as soon as it reads it; the renderer's DA1 reply can only come later.
@@ -44,7 +44,7 @@ package.json, electron.vite.config.ts, tsconfig.json, vitest.config.ts, playwrig
 THIRD_PARTY_NOTICES.md            Parallel Code MIT notice and list of adapted files
 scripts/fix-node-pty-spawn-helper.mjs   postinstall: chmod node-pty's spawn-helper (from Parallel Code)
 src/shared/types.ts               types shared by main, preload and renderer
-src/shared/ipc.ts                 IPC channel names and the TheSourceApi bridge interface
+src/shared/ipc.ts                 IPC channel names and the MainframeApi bridge interface
 src/main/index.ts                 app start, window, quit handling
 src/main/config.ts                AppConfig from environment variables
 src/main/menu.ts                  macOS app menu (Edit roles, View → Redraw Terminals)
@@ -56,7 +56,7 @@ src/main/pty/outputBatcher.ts     leading-edge output batching
 src/main/pty/sessionHost.ts       PTY lifecycle, OSC 7501 answering, status, flow control
 src/main/status/osc7501.ts        streaming OSC 7501 scanner and report parser
 src/main/status/programStatus.ts  per-session record store (OSC 7501 lifetimes)
-src/preload/index.ts              contextBridge → window.thesource
+src/preload/index.ts              contextBridge → window.mainframe
 src/renderer/index.html, src/renderer/src/main.tsx, App.tsx, app.css, env.d.ts
 src/renderer/src/sessionsStore.ts  Solid store: sessions, selection, status, exit
 src/renderer/src/ptyEvents.ts      one bridge listener per event, dispatch by session id
@@ -88,7 +88,7 @@ Unit tests sit next to their module as `*.test.ts`.
 - Test: `e2e/app.e2e.ts`
 
 **Interfaces:**
-- Produces: `launchApp(env?: Record<string, string>): Promise<{ app: ElectronApplication; page: Page }>` in `e2e/launch.ts`. It launches `<root>` with `{ ...process.env, THESOURCE_E2E: '1', THESOURCE_PROJECT_DIR: os.tmpdir(), THESOURCE_SESSION_ARGV: '["/bin/bash","--noprofile","--norc"]', PS1: '$ ', BASH_SILENCE_DEPRECATION_WARNING: '1', ...env }` and returns the first window. Later e2e tests use only this.
+- Produces: `launchApp(env?: Record<string, string>): Promise<{ app: ElectronApplication; page: Page }>` in `e2e/launch.ts`. It launches `<root>` with `{ ...process.env, MAINFRAME_E2E: '1', MAINFRAME_PROJECT_DIR: os.tmpdir(), MAINFRAME_SESSION_ARGV: '["/bin/bash","--noprofile","--norc"]', PS1: '$ ', BASH_SILENCE_DEPRECATION_WARNING: '1', ...env }` and returns the first window. Later e2e tests use only this.
 - Produces: npm scripts `dev` (`electron-vite dev`), `build` (`electron-vite build`), `start` (`electron-vite preview`), `typecheck` (`tsc --noEmit`), `test` (`vitest run`), `test:e2e` (`electron-vite build && playwright test`).
 
 - [ ] **Step 0: Start the branch**
@@ -102,16 +102,16 @@ Expected: `git -C <pc> log -1 --oneline` prints `97c3558c fix(status): show agen
 
 - [ ] **Step 2: Write package.json, configs and the failing smoke test**
 
-`package.json`: `name` `thesource`, `private: true`, `main: "out/main/index.js"`, the scripts above, and the pinned dev dependencies from Global Constraints (electron, electron-vite, vite, vite-plugin-solid, typescript, vitest, @playwright/test, @types/node) plus `solid-js` as a dependency. `electron.vite.config.ts`: `defineConfig({ main: {}, preload: { build: { externalizeDeps: false } }, renderer: { plugins: [solid()] } })`; the sandboxed preload must not `require` anything but `electron`. `vitest.config.ts`: `include: ['src/**/*.test.ts']`. `playwright.config.ts`: `testDir: 'e2e'`, `testMatch: '**/*.e2e.ts'`, `workers: 1`, `timeout: 60_000`. `tsconfig.json`: `strict`, `noEmit`, `target ES2023`, `module ESNext`, `moduleResolution bundler`, `jsx preserve`, `jsxImportSource solid-js`, `lib [ES2023, DOM, DOM.Iterable]`, `types [node]`, `include [src, e2e, *.config.ts, electron.vite.config.ts]`.
+`package.json`: `name` `mainframe`, `private: true`, `main: "out/main/index.js"`, the scripts above, and the pinned dev dependencies from Global Constraints (electron, electron-vite, vite, vite-plugin-solid, typescript, vitest, @playwright/test, @types/node) plus `solid-js` as a dependency. `electron.vite.config.ts`: `defineConfig({ main: {}, preload: { build: { externalizeDeps: false } }, renderer: { plugins: [solid()] } })`; the sandboxed preload must not `require` anything but `electron`. `vitest.config.ts`: `include: ['src/**/*.test.ts']`. `playwright.config.ts`: `testDir: 'e2e'`, `testMatch: '**/*.e2e.ts'`, `workers: 1`, `timeout: 60_000`. `tsconfig.json`: `strict`, `noEmit`, `target ES2023`, `module ESNext`, `moduleResolution bundler`, `jsx preserve`, `jsxImportSource solid-js`, `lib [ES2023, DOM, DOM.Iterable]`, `types [node]`, `include [src, e2e, *.config.ts, electron.vite.config.ts]`.
 
 ```ts
 // e2e/app.e2e.ts
 import { test, expect } from '@playwright/test';
 import { launchApp } from './launch';
 
-test('opens the TheSource window', async () => {
+test('opens the Mainframe window', async () => {
   const { app, page } = await launchApp();
-  expect(await page.title()).toBe('TheSource');
+  expect(await page.title()).toBe('Mainframe');
   await app.close();
 });
 ```
@@ -123,7 +123,7 @@ Expected: FAIL (no main entry yet, build or launch error).
 
 - [ ] **Step 4: Implement the window**
 
-`src/main/index.ts`: on `app.whenReady()` create a `BrowserWindow` (title `TheSource`, 1400×900, `backgroundColor` matching the renderer background, `webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }`). `backgroundThrottling: false` keeps output parsing and terminal replies running while the window is hidden (Parallel Code `electron/main.ts`). Before ready: `app.commandLine.appendSwitch('max-active-webgl-contexts', '64')`. Load `process.env.ELECTRON_RENDERER_URL` when set (dev), else `join(__dirname, '../renderer/index.html')`. Deny new windows (`setWindowOpenHandler(() => ({ action: 'deny' }))`) and in-page navigation (`will-navigate` → `preventDefault`). Quit when the window closes. `src/preload/index.ts` is empty for now. `index.html` has `<title>TheSource</title>` and mounts `App` (a placeholder heading). Write `THIRD_PARTY_NOTICES.md`.
+`src/main/index.ts`: on `app.whenReady()` create a `BrowserWindow` (title `Mainframe`, 1400×900, `backgroundColor` matching the renderer background, `webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }`). `backgroundThrottling: false` keeps output parsing and terminal replies running while the window is hidden (Parallel Code `electron/main.ts`). Before ready: `app.commandLine.appendSwitch('max-active-webgl-contexts', '64')`. Load `process.env.ELECTRON_RENDERER_URL` when set (dev), else `join(__dirname, '../renderer/index.html')`. Deny new windows (`setWindowOpenHandler(() => ({ action: 'deny' }))`) and in-page navigation (`will-navigate` → `preventDefault`). Quit when the window closes. `src/preload/index.ts` is empty for now. `index.html` has `<title>Mainframe</title>` and mounts `App` (a placeholder heading). Write `THIRD_PARTY_NOTICES.md`.
 
 - [ ] **Step 5: Run the test and typecheck**
 
@@ -134,7 +134,7 @@ Expected: 1 passed; typecheck prints no errors.
 
 ```bash
 git -C <root> add .gitignore package.json package-lock.json electron.vite.config.ts tsconfig.json vitest.config.ts playwright.config.ts THIRD_PARTY_NOTICES.md src e2e
-git -C <root> commit -m "feat: Electron + Solid skeleton that opens the TheSource window"
+git -C <root> commit -m "feat: Electron + Solid skeleton that opens the Mainframe window"
 ```
 
 ---
@@ -146,7 +146,7 @@ git -C <root> commit -m "feat: Electron + Solid skeleton that opens the TheSourc
 - Test: `src/main/config.test.ts`, `src/main/pty/spawnEnv.test.ts`
 
 **Interfaces:**
-- Produces: `interface AppConfig { projectDir: string; sessionArgv: string[]; inputBatchMs: number; outputBatchMs: number; logOsc: boolean; e2e: boolean }` and `loadConfig(env: NodeJS.ProcessEnv, isDirectory: (path: string) => boolean): AppConfig`. It throws an `Error` whose message names the offending variable. Variables: `THESOURCE_PROJECT_DIR` (default `/Users/simonekholm/Developer/Simmesolo/Damela`, must be a directory), `THESOURCE_SESSION_ARGV` (JSON array of ≥1 strings, default `["claude"]`), `THESOURCE_INPUT_BATCH_MS` (integer 0–50, default 0), `THESOURCE_OUTPUT_BATCH_MS` (integer 0–50, default 8), `THESOURCE_LOG_OSC` (`1` → true), `THESOURCE_E2E` (`1` → true).
+- Produces: `interface AppConfig { projectDir: string; sessionArgv: string[]; inputBatchMs: number; outputBatchMs: number; logOsc: boolean; e2e: boolean }` and `loadConfig(env: NodeJS.ProcessEnv, isDirectory: (path: string) => boolean): AppConfig`. It throws an `Error` whose message names the offending variable. Variables: `MAINFRAME_PROJECT_DIR` (default `/Users/simonekholm/Developer/Simmesolo/Damela`, must be a directory), `MAINFRAME_SESSION_ARGV` (JSON array of ≥1 strings, default `["claude"]`), `MAINFRAME_INPUT_BATCH_MS` (integer 0–50, default 0), `MAINFRAME_OUTPUT_BATCH_MS` (integer 0–50, default 8), `MAINFRAME_LOG_OSC` (`1` → true), `MAINFRAME_E2E` (`1` → true).
 - Produces: `buildSpawnEnv(base: NodeJS.ProcessEnv): Record<string, string>`.
 
 The batching defaults are a choice the feel test revisits. Input 0 because Parallel Code's 8 ms input timer delays every keystroke. Output 8 because its leading edge already sends echoes after a quiet spell at once (spec §6.1).
@@ -170,22 +170,22 @@ describe('loadConfig', () => {
 
   it('reads every override', () => {
     expect(loadConfig({
-      THESOURCE_PROJECT_DIR: '/tmp/x', THESOURCE_SESSION_ARGV: '["/bin/zsh","-l"]',
-      THESOURCE_INPUT_BATCH_MS: '8', THESOURCE_OUTPUT_BATCH_MS: '0', THESOURCE_LOG_OSC: '1', THESOURCE_E2E: '1',
+      MAINFRAME_PROJECT_DIR: '/tmp/x', MAINFRAME_SESSION_ARGV: '["/bin/zsh","-l"]',
+      MAINFRAME_INPUT_BATCH_MS: '8', MAINFRAME_OUTPUT_BATCH_MS: '0', MAINFRAME_LOG_OSC: '1', MAINFRAME_E2E: '1',
     }, isDir)).toEqual({
       projectDir: '/tmp/x', sessionArgv: ['/bin/zsh', '-l'], inputBatchMs: 8, outputBatchMs: 0, logOsc: true, e2e: true,
     });
   });
 
   it.each([
-    ['THESOURCE_SESSION_ARGV', '[]'], ['THESOURCE_SESSION_ARGV', 'claude'], ['THESOURCE_SESSION_ARGV', '[1]'],
-    ['THESOURCE_INPUT_BATCH_MS', '-1'], ['THESOURCE_INPUT_BATCH_MS', '51'], ['THESOURCE_OUTPUT_BATCH_MS', '2.5'],
+    ['MAINFRAME_SESSION_ARGV', '[]'], ['MAINFRAME_SESSION_ARGV', 'claude'], ['MAINFRAME_SESSION_ARGV', '[1]'],
+    ['MAINFRAME_INPUT_BATCH_MS', '-1'], ['MAINFRAME_INPUT_BATCH_MS', '51'], ['MAINFRAME_OUTPUT_BATCH_MS', '2.5'],
   ])('rejects %s=%s and names the variable', (key, value) => {
     expect(() => loadConfig({ [key]: value }, isDir)).toThrow(key);
   });
 
   it('rejects a project dir that is not a directory', () => {
-    expect(() => loadConfig({ THESOURCE_PROJECT_DIR: '/nope' }, () => false)).toThrow('THESOURCE_PROJECT_DIR');
+    expect(() => loadConfig({ MAINFRAME_PROJECT_DIR: '/nope' }, () => false)).toThrow('MAINFRAME_PROJECT_DIR');
   });
 });
 ```
@@ -219,7 +219,7 @@ it('drops what `npm start` and Vite add, keeping the rest of PATH in order', () 
       '/Users/x/.local/bin', '/usr/bin',
     ].join(':'),
     NODE: '/x/node', COLOR: '0', INIT_CWD: '/x', NODE_ENV: 'production', EDITOR: 'vi',
-    npm_command: 'run-script', npm_config_prefix: '/x', npm_lifecycle_event: 'start', npm_package_name: 'thesource',
+    npm_command: 'run-script', npm_config_prefix: '/x', npm_lifecycle_event: 'start', npm_package_name: 'mainframe',
   })).toEqual({
     PATH: '/Users/x/.local/bin:/usr/bin', EDITOR: 'vi',
     TERM: 'xterm-256color', COLORTERM: 'truecolor', LANG: 'en_US.UTF-8',
@@ -639,7 +639,7 @@ git -C <root> commit -m "feat: PTY session host with output batching and OSC 750
 - Produces in `src/shared/types.ts`: `interface SessionInfo { id: string; name: string; cwd: string }`; `type ClipboardPaste = { kind: 'file' | 'image'; path: string } | { kind: 'text'; text: string } | { kind: 'empty' }`; `interface RendererConfig { inputBatchMs: number; e2e: boolean }`; `interface PtyDataEvent { sessionId: string; data: Uint8Array }`; `interface PtyExitEvent { sessionId: string; exitCode: number; signal: number | null }`; `interface StatusEvent { sessionId: string; status: ProgramStatus | null }`.
 - Produces in `src/shared/ipc.ts`: channel constants `IPC = { getConfig: 'app:get-config', createSession: 'session:create', spawn: 'pty:spawn', write: 'pty:write', resize: 'pty:resize', pause: 'pty:pause', resume: 'pty:resume', kill: 'pty:kill', data: 'pty:data', exit: 'pty:exit', status: 'session:status', resolvePaste: 'clipboard:resolve-paste', redrawTerminals: 'app:redraw-terminals' } as const`. Also the bridge interface:
   ```ts
-  interface TheSourceApi {
+  interface MainframeApi {
     getConfig(): Promise<RendererConfig>;
     createSession(): Promise<SessionInfo>;
     spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
@@ -656,9 +656,9 @@ git -C <root> commit -m "feat: PTY session host with output batching and OSC 750
     onRedrawTerminals(cb: () => void): () => void;
   }
   ```
-  `src/renderer/src/env.d.ts` declares `window.thesource: TheSourceApi`.
+  `src/renderer/src/env.d.ts` declares `window.mainframe: MainframeApi`.
 - Produces in `src/main/sessions.ts`: `class SessionRegistry { constructor(opts: { projectDir: string; sessionArgv: string[] }); create(): SessionInfo; launchSpec(id: string): { argv: string[]; cwd: string } }`. Ids come from `crypto.randomUUID()`, names are `Session 1`, `Session 2`, …, and `launchSpec` throws on an unknown id.
-- Produces in `src/main/clipboard.ts`: `resolveClipboardPaste(clipboard: ClipboardReader, writeFile: (path: string, data: Buffer) => Promise<void>, newImagePath: () => string): Promise<ClipboardPaste>`. `ClipboardReader` is the subset of Electron's `clipboard` it uses (`availableFormats`, `read`, `readImage`, `readText`). The order is a `public.file-url` file, then an image (saved as PNG), then text, then empty (Parallel Code `electron/ipc/register.ts` `ResolveClipboardPaste`). Each image gets its own file, so two screenshots pasted into one prompt don't overwrite each other. In `index.ts`, images go into a folder `pasteDir = join(app.getPath('temp'), 'thesource-paste')`, emptied (`rm -rf` then `mkdir -p`) at app start so the files don't pile up. `newImagePath` returns `join(pasteDir, randomUUID() + '.png')`.
+- Produces in `src/main/clipboard.ts`: `resolveClipboardPaste(clipboard: ClipboardReader, writeFile: (path: string, data: Buffer) => Promise<void>, newImagePath: () => string): Promise<ClipboardPaste>`. `ClipboardReader` is the subset of Electron's `clipboard` it uses (`availableFormats`, `read`, `readImage`, `readText`). The order is a `public.file-url` file, then an image (saved as PNG), then text, then empty (Parallel Code `electron/ipc/register.ts` `ResolveClipboardPaste`). Each image gets its own file, so two screenshots pasted into one prompt don't overwrite each other. In `index.ts`, images go into a folder `pasteDir = join(app.getPath('temp'), 'mainframe-paste')`, emptied (`rm -rf` then `mkdir -p`) at app start so the files don't pile up. `newImagePath` returns `join(pasteDir, randomUUID() + '.png')`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -727,10 +727,10 @@ import { launchApp } from './launch';
 
 test('a session runs its command, streams output, reports OSC 7501 status and exit', async () => {
   const { app, page } = await launchApp({
-    THESOURCE_SESSION_ARGV: JSON.stringify(['/bin/sh', '-c', "printf 'bridge-%s' ok; printf '\\033]7501;state=working\\033\\\\'; sleep 0.3"]),
+    MAINFRAME_SESSION_ARGV: JSON.stringify(['/bin/sh', '-c', "printf 'bridge-%s' ok; printf '\\033]7501;state=working\\033\\\\'; sleep 0.3"]),
   });
   const result = await page.evaluate(async () => {
-    const api = window.thesource;
+    const api = window.mainframe;
     const s = await api.createSession();
     let output = '';
     const states: string[] = [];
@@ -753,11 +753,11 @@ test('a session runs its command, streams output, reports OSC 7501 status and ex
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npm --prefix <root> test -- src/main/sessions.test.ts src/main/clipboard.test.ts` then `npm --prefix <root> run test:e2e -- bridge`
-Expected: unit tests FAIL (modules not found); e2e FAILS (`window.thesource` undefined).
+Expected: unit tests FAIL (modules not found); e2e FAILS (`window.mainframe` undefined).
 
 - [ ] **Step 3: Implement registry, clipboard, IPC handlers, preload and startup**
 
-`src/main/index.ts` at startup: `loadConfig(process.env, isDirectory)`. If it throws, show `dialog.showErrorBox('TheSource', message)` and quit. Then create `SessionRegistry` and `SessionHost` with `spawnPty: pty.spawn`, `env: buildSpawnEnv(process.env)`, and `log: console.log` when `logOsc`. Call `registerIpc(win, registry, host, config, clipboardDeps)`, and on `before-quit` run `host.killAll()`. `src/main/ipc.ts`: `ipcMain.handle` for invoke channels and `ipcMain.on` for fire-and-forget ones (`write`, `resize`, `pause`, `resume`, `kill`). `spawn` looks up `registry.launchSpec` and passes a listener that calls `win.webContents.send(IPC.data | IPC.status | IPC.exit, …)` unless the window is destroyed. `src/preload/index.ts`: `contextBridge.exposeInMainWorld('thesource', api)` built only from `ipcRenderer.invoke/send/on` and `webUtils.getPathForFile`; each `on*` returns a function that removes its listener.
+`src/main/index.ts` at startup: `loadConfig(process.env, isDirectory)`. If it throws, show `dialog.showErrorBox('Mainframe', message)` and quit. Then create `SessionRegistry` and `SessionHost` with `spawnPty: pty.spawn`, `env: buildSpawnEnv(process.env)`, and `log: console.log` when `logOsc`. Call `registerIpc(win, registry, host, config, clipboardDeps)`, and on `before-quit` run `host.killAll()`. `src/main/ipc.ts`: `ipcMain.handle` for invoke channels and `ipcMain.on` for fire-and-forget ones (`write`, `resize`, `pause`, `resume`, `kill`). `spawn` looks up `registry.launchSpec` and passes a listener that calls `win.webContents.send(IPC.data | IPC.status | IPC.exit, …)` unless the window is destroyed. `src/preload/index.ts`: `contextBridge.exposeInMainWorld('mainframe', api)` built only from `ipcRenderer.invoke/send/on` and `webUtils.getPathForFile`; each `on*` returns a function that removes its listener.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
@@ -792,7 +792,7 @@ Write the other four new.
 - Produces: `TERMINAL_OPTIONS` (an `ITerminalOptions`): `fontFamily: 'Monaco, Menlo, monospace'`, `fontSize: 13`, `lineHeight: 1.05`, `cursorBlink: false`, `macOptionIsMeta: false`, `macOptionClickForcesSelection: true`, `scrollback: 10_000`, `scrollSensitivity: 2`, and a dark theme whose background is the shell's terminal colour (set in Task 7).
 - Produces: `interface KeyLike { type: string; key: string; metaKey: boolean; shiftKey: boolean; altKey: boolean; ctrlKey: boolean }`; `type TerminalAction = { send: string } | { scroll: 'line-up' | 'line-down' | 'page-up' | 'page-down' }`; `matchTerminalBinding(e: KeyLike): TerminalAction | undefined` (keydown only); `swallowsKeyEvent(e: KeyLike): boolean`, true for the keypress and keyup of Shift+Enter. xterm.js calls the custom key handler for keydown, keypress and keyup. A keypress that gets through after the keydown sent ESC CR would make xterm send a plain `\r` too, and the prompt would submit (Parallel Code's handler returns false for every non-keydown Shift+Enter).
 - Produces: `parseOsc52Write(data: string): string | undefined`, `handleOsc52Writes(term, { allowed, write }): IDisposable`, `trackRecentGesture(container): { isRecent(): boolean; dispose(): void }`, `cleanCopiedTerminalText(text: string): string`, `escapePath(p: string): string`, `recordSharedWebglContextLoss(now?: number): boolean`, `WEBGL_REATTACH_DELAY_MS`. Signatures stay as in Parallel Code.
-- Produces: `class InputBatcher { constructor(opts: { intervalMs: number; maxChars?: number; send: (data: string) => void }); push(data: string): void; flush(): void; dispose(): void }`. `maxChars` defaults to 2048. Batching is trailing, as in Parallel Code, so that `THESOURCE_INPUT_BATCH_MS=8` reproduces its behaviour for comparison; 0 sends at once.
+- Produces: `class InputBatcher { constructor(opts: { intervalMs: number; maxChars?: number; send: (data: string) => void }); push(data: string): void; flush(): void; dispose(): void }`. `maxChars` defaults to 2048. Batching is trailing, as in Parallel Code, so that `MAINFRAME_INPUT_BATCH_MS=8` reproduces its behaviour for comparison; 0 sends at once.
 - Produces: `class OutputFlow { constructor(opts: { write: (data: Uint8Array, done: () => void) => void; pause: () => void; resume: () => void; schedule: (flush: () => void) => () => void; highWater?: number; lowWater?: number; flushAt?: number }); push(chunk: Uint8Array): void; whenDrained(cb: () => void): void }`. Defaults: 256 KiB, 32 KiB, 64 KiB. `schedule` returns a cancel function; the default in TerminalView is the earlier of `requestAnimationFrame` and a 50 ms timer.
 
 - [ ] **Step 1: Write the failing tests for the new modules (ported tests come with their modules in Step 3)**
@@ -973,7 +973,7 @@ git -C <root> commit -m "feat: terminal key bindings, clipboard, flow control an
 - Produces: `subscribePty(sessionId: string, handlers: { data(d: Uint8Array): void; exit(e: PtyExitEvent): void }): () => void` in `ptyEvents.ts`. It installs one bridge listener per event type and dispatches by id.
 - Produces: the store in `sessionsStore.ts`: `sessions: Array<SessionInfo & { status: ProgramStatus | null; exited: boolean }>`, `selectedId: string | null`, `newSession(): Promise<void>` (creates and selects), `select(id)`, `close(id)` (kills when running, then removes).
 - Produces: `registerTerminal(id, entry: { term: Terminal; fit: FitAddon })`, `unregisterTerminal(id)`, `redrawAllTerminals()` in `registry.ts`. Redraws are coalesced in a microtask and cover every terminal, because WebGL terminals share one glyph atlas (`<pc>/src/lib/terminalFitManager.ts` lines 195–213).
-- Produces, only when `RendererConfig.e2e`: `window.__thesourceE2E = { sessionIds(): string[]; screenText(id: string): string }`, declared (as always present) in `src/renderer/src/env.d.ts` so the e2e files typecheck. `screenText` joins the active buffer's lines.
+- Produces, only when `RendererConfig.e2e`: `window.__mainframeE2E = { sessionIds(): string[]; screenText(id: string): string }`, declared (as always present) in `src/renderer/src/env.d.ts` so the e2e files typecheck. `screenText` joins the active buffer's lines.
 - Produces: test ids `new-session`, `session-row` (with `data-session-id` and `data-selected`), `session-status`, `close-session`.
 
 TerminalView behaviour (from `<pc>/src/components/TerminalView.tsx`, keeping only what's listed here):
@@ -996,8 +996,8 @@ Shell (`App.tsx`): a left column with `New session`, then one row per session sh
 import { test, expect, type Page } from '@playwright/test';
 import { launchApp } from './launch';
 
-const ids = (page: Page) => page.evaluate(() => window.__thesourceE2E.sessionIds());
-const screen = (page: Page, id: string) => page.evaluate((i) => window.__thesourceE2E.screenText(i), id);
+const ids = (page: Page) => page.evaluate(() => window.__mainframeE2E.sessionIds());
+const screen = (page: Page, id: string) => page.evaluate((i) => window.__mainframeE2E.screenText(i), id);
 async function newSession(page: Page): Promise<string> {
   await page.getByTestId('new-session').click();
   const all = await ids(page);
@@ -1043,7 +1043,7 @@ test('OSC 7501 status shows on the session row', async () => {
 test('a flood in a hidden session arrives in full', async () => {
   const { app, page } = await launchApp();
   const a = await newSession(page);
-  await run(page, 'yes thesource | head -c 3000000; echo flood-$((2+3))');
+  await run(page, 'yes mainframe | head -c 3000000; echo flood-$((2+3))');
   await newSession(page);
   await page.waitForTimeout(2000);
   await page.locator(`[data-testid=session-row][data-session-id="${a}"]`).click();
@@ -1079,7 +1079,7 @@ Expected: all unit tests pass; all e2e tests pass (app, bridge, 5 terminal); no 
 
 - [ ] **Step 5: Try it with real `claude` once**
 
-Run: `npm --prefix <root> run build` then `THESOURCE_PROJECT_DIR=<root> npm --prefix <root> start`. Click New session; `claude` starts in TheSource's own repo, not Damela. Type `/status`, then quit with Cmd+Q.
+Run: `npm --prefix <root> run build` then `MAINFRAME_PROJECT_DIR=<root> npm --prefix <root> start`. Click New session; `claude` starts in Mainframe's own repo, not Damela. Type `/status`, then quit with Cmd+Q.
 Expected: Claude Code's UI renders and `/status` lists the owner's user settings among its sources. (Leftover processes after quit are covered by the e2e quit test.)
 
 - [ ] **Step 6: Commit**
@@ -1100,7 +1100,7 @@ This task needs the owner; the agent prepares, runs the app for them, and record
 
 - [ ] **Step 1: Write `docs/feel-test.md`**
 
-Each check row has columns for iTerm2 / TheSource / same–worse–better / note. Start with the setup: build once (`npm --prefix <root> run build`); then `npm --prefix <root> start` for variant A (input 0 ms, output 8 ms), `THESOURCE_INPUT_BATCH_MS=8 npm --prefix <root> start` for variant B (Parallel Code's batching), `THESOURCE_OUTPUT_BATCH_MS=0 npm --prefix <root> start` for variant C. iTerm2 sits next to it, both running `claude` in `<damela>`. The checks:
+Each check row has columns for iTerm2 / Mainframe / same–worse–better / note. Start with the setup: build once (`npm --prefix <root> run build`); then `npm --prefix <root> start` for variant A (input 0 ms, output 8 ms), `MAINFRAME_INPUT_BATCH_MS=8 npm --prefix <root> start` for variant B (Parallel Code's batching), `MAINFRAME_OUTPUT_BATCH_MS=0 npm --prefix <root> start` for variant C. iTerm2 sits next to it, both running `claude` in `<damela>`. The checks:
 1. Typing: fast typing and key repeat in the prompt; does any variant feel delayed?
 2. Shift+Enter inserts a newline; Enter submits.
 3. Swedish Option characters: @ £ $ € | [ ] { } \ ≈, the dead keys ~ ^ ¨ ´ ` (e.g. Option+¨ then space), and å ä ö.
@@ -1143,7 +1143,7 @@ git -C <root> commit -m "docs: feel test results"
 **Files:**
 - Create: `docs/superpowers/findings/<YYYY-MM-DD>-step1-checks.md`, `spikes/mcp-wait/package.json`, `spikes/mcp-wait/server.mjs`, `spikes/mcp-wait/mcp.json`
 
-For each check, record: the question, what was run, what was observed (exact messages, verbatim), the answer, and what it means for plan 2 (which launch form, which fallback). `<probe>` is an empty directory outside any repository, e.g. under the session scratchpad. Probes in `<damela>` only create and remove a probe worktree; nothing in this task pushes or merges anything in Damela. Checks marked *(app)* run in the app with `THESOURCE_SESSION_ARGV='["/bin/zsh","-l"]' THESOURCE_LOG_OSC=1 npm --prefix <root> start`; each app session is then a login shell where commands are typed, and OSC 7501 traffic is logged to the terminal that started the app. The owner does this task at the keyboard, because every check drives an interactive `claude` session. The agent writes the files, hands over the exact commands one check at a time, and records the results.
+For each check, record: the question, what was run, what was observed (exact messages, verbatim), the answer, and what it means for plan 2 (which launch form, which fallback). `<probe>` is an empty directory outside any repository, e.g. under the session scratchpad. Probes in `<damela>` only create and remove a probe worktree; nothing in this task pushes or merges anything in Damela. Checks marked *(app)* run in the app with `MAINFRAME_SESSION_ARGV='["/bin/zsh","-l"]' MAINFRAME_LOG_OSC=1 npm --prefix <root> start`; each app session is then a login shell where commands are typed, and OSC 7501 traffic is logged to the terminal that started the app. The owner does this task at the keyboard, because every check drives an interactive `claude` session. The agent writes the files, hands over the exact commands one check at a time, and records the results.
 
 - [ ] **Step 1: Throwaway repo for the merge and resume checks**
 
@@ -1152,7 +1152,7 @@ Expected: `git -C <probe>/repo symbolic-ref refs/remotes/origin/HEAD` prints `re
 
 - [ ] **Step 2: §11.1 Does a `-w` session load Damela's `.claude/settings.local.json` (the review gate)?** *(app)*
 
-In an app session, run `cd <damela>` and then `claude -w thesource-probe-gate -n thesource-probe-gate --debug-file <probe>/v1-debug.log`. In Claude: `/hooks` → PreToolUse → is the `Bash` entry running `code-review-gate.sh` listed, and from which source? Then ask: "Run `git status` and show the output." Then `grep -c code-review-gate <probe>/v1-debug.log`; if the debug log names no hook commands at all, rely on `/hooks` alone. `/exit`, and choose to remove the worktree (it is clean). Check `git -C <damela> worktree list` and `git -C <damela> branch --list 'worktree-thesource-probe*'`: neither lists the probe. (The worktrees doc says permission approvals made in a worktree are saved to the main checkout's `settings.local.json`, which suggests the answer is yes.)
+In an app session, run `cd <damela>` and then `claude -w mainframe-probe-gate -n mainframe-probe-gate --debug-file <probe>/v1-debug.log`. In Claude: `/hooks` → PreToolUse → is the `Bash` entry running `code-review-gate.sh` listed, and from which source? Then ask: "Run `git status` and show the output." Then `grep -c code-review-gate <probe>/v1-debug.log`; if the debug log names no hook commands at all, rely on `/hooks` alone. `/exit`, and choose to remove the worktree (it is clean). Check `git -C <damela> worktree list` and `git -C <damela> branch --list 'worktree-mainframe-probe*'`: neither lists the probe. (The worktrees doc says permission approvals made in a worktree are saved to the main checkout's `settings.local.json`, which suggests the answer is yes.)
 
 - [ ] **Step 3: §11.2 Do `--settings` hooks run alongside user and project hooks, and do the owner's hooks behave outside iTerm2?** *(app)*
 

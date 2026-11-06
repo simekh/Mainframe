@@ -14,8 +14,8 @@ describe('loadConfig', () => {
 
   it('reads every override', () => {
     expect(loadConfig({
-      THESOURCE_PROJECT_DIR: '/tmp/x', THESOURCE_CLAUDE_BIN: '/x/claude', THESOURCE_DATA_DIR: '/tmp/d',
-      THESOURCE_INPUT_BATCH_MS: '8', THESOURCE_OUTPUT_BATCH_MS: '0', THESOURCE_LOG_OSC: '1', THESOURCE_E2E: '1',
+      MAINFRAME_PROJECT_DIR: '/tmp/x', MAINFRAME_CLAUDE_BIN: '/x/claude', MAINFRAME_DATA_DIR: '/tmp/d',
+      MAINFRAME_INPUT_BATCH_MS: '8', MAINFRAME_OUTPUT_BATCH_MS: '0', MAINFRAME_LOG_OSC: '1', MAINFRAME_E2E: '1',
     }, isDir, '/data')).toEqual({
       projectDir: '/tmp/x', claudeBin: '/x/claude', dataDir: '/tmp/d',
       inputBatchMs: 8, outputBatchMs: 0, logOsc: true, e2e: true,
@@ -23,18 +23,18 @@ describe('loadConfig', () => {
   });
 
   it('makes relative project and data dirs absolute', () => {
-    const config = loadConfig({ THESOURCE_PROJECT_DIR: 'p', THESOURCE_DATA_DIR: 'd' }, isDir, '/data');
+    const config = loadConfig({ MAINFRAME_PROJECT_DIR: 'p', MAINFRAME_DATA_DIR: 'd' }, isDir, '/data');
     expect([config.projectDir, config.dataDir]).toEqual([resolve('p'), resolve('d')]);
   });
 
   it.each([
-    ['THESOURCE_CLAUDE_BIN', ''],
-    ['THESOURCE_INPUT_BATCH_MS', '-1'], ['THESOURCE_INPUT_BATCH_MS', '51'], ['THESOURCE_OUTPUT_BATCH_MS', '2.5'],
+    ['MAINFRAME_CLAUDE_BIN', ''],
+    ['MAINFRAME_INPUT_BATCH_MS', '-1'], ['MAINFRAME_INPUT_BATCH_MS', '51'], ['MAINFRAME_OUTPUT_BATCH_MS', '2.5'],
   ])('rejects %s=%s and names the variable', (key, value) => {
     expect(() => loadConfig({ [key]: value }, isDir, '/data')).toThrow(key);
   });
 
   it('rejects a project dir that is not a directory', () => {
-    expect(() => loadConfig({ THESOURCE_PROJECT_DIR: '/nope' }, () => false, '/data')).toThrow('THESOURCE_PROJECT_DIR');
+    expect(() => loadConfig({ MAINFRAME_PROJECT_DIR: '/nope' }, () => false, '/data')).toThrow('MAINFRAME_PROJECT_DIR');
   });
 });

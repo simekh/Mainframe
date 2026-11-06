@@ -13,9 +13,9 @@ export interface AppConfig {
 const DEFAULT_PROJECT_DIR = '/Users/simonekholm/Developer/Simmesolo/Damela';
 
 function readClaudeBin(env: NodeJS.ProcessEnv): string {
-  const raw = env.THESOURCE_CLAUDE_BIN;
+  const raw = env.MAINFRAME_CLAUDE_BIN;
   if (raw === undefined) return 'claude';
-  if (raw === '') throw new Error('THESOURCE_CLAUDE_BIN must name the claude binary, got an empty value');
+  if (raw === '') throw new Error('MAINFRAME_CLAUDE_BIN must name the claude binary, got an empty value');
   return raw;
 }
 
@@ -34,17 +34,17 @@ export function loadConfig(
   isDirectory: (path: string) => boolean,
   defaultDataDir: string,
 ): AppConfig {
-  const projectDir = resolve(env.THESOURCE_PROJECT_DIR ?? DEFAULT_PROJECT_DIR);
+  const projectDir = resolve(env.MAINFRAME_PROJECT_DIR ?? DEFAULT_PROJECT_DIR);
   if (!isDirectory(projectDir)) {
-    throw new Error(`THESOURCE_PROJECT_DIR is not a directory: ${projectDir}`);
+    throw new Error(`MAINFRAME_PROJECT_DIR is not a directory: ${projectDir}`);
   }
   return {
     projectDir,
     claudeBin: readClaudeBin(env),
-    dataDir: resolve(env.THESOURCE_DATA_DIR ?? defaultDataDir),
-    inputBatchMs: readBatchMs(env, 'THESOURCE_INPUT_BATCH_MS', 0),
-    outputBatchMs: readBatchMs(env, 'THESOURCE_OUTPUT_BATCH_MS', 8),
-    logOsc: env.THESOURCE_LOG_OSC === '1',
-    e2e: env.THESOURCE_E2E === '1',
+    dataDir: resolve(env.MAINFRAME_DATA_DIR ?? defaultDataDir),
+    inputBatchMs: readBatchMs(env, 'MAINFRAME_INPUT_BATCH_MS', 0),
+    outputBatchMs: readBatchMs(env, 'MAINFRAME_OUTPUT_BATCH_MS', 8),
+    logOsc: env.MAINFRAME_LOG_OSC === '1',
+    e2e: env.MAINFRAME_E2E === '1',
   };
 }

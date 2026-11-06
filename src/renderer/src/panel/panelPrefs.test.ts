@@ -22,11 +22,11 @@ describe('panelPrefs', () => {
   it('prefs round-trip, and a bad stored value gives the defaults', () => {
     const storage = memoryStorage();
     savePanelPrefs(storage, { width: 812, pinned: false });
-    expect([...storage.map.keys()]).toEqual(['thesource.panel']);
+    expect([...storage.map.keys()]).toEqual(['mainframe.panel']);
     expect(loadPanelPrefs(storage)).toEqual({ width: 812, pinned: false });
 
     for (const bad of ['{', '{"width":"x"}']) {
-      expect(loadPanelPrefs(memoryStorage({ 'thesource.panel': bad }))).toEqual(DEFAULT_PANEL_PREFS);
+      expect(loadPanelPrefs(memoryStorage({ 'mainframe.panel': bad }))).toEqual(DEFAULT_PANEL_PREFS);
     }
     expect(loadPanelPrefs(memoryStorage())).toEqual(DEFAULT_PANEL_PREFS);
     expect(DEFAULT_PANEL_PREFS).toEqual({ width: 640, pinned: true });

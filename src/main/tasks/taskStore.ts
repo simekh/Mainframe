@@ -34,13 +34,13 @@ export interface TaskRecord {
 /** The version of `state.json` this build writes and reads. */
 const VERSION = 1;
 
-/** A `state.json` from a newer TheSource: neither read nor touched, so that build still has it whole. */
+/** A `state.json` from a newer Mainframe: neither read nor touched, so that build still has it whole. */
 export class NewerStateError extends Error {
   constructor(file: string, version: number) {
     super(
-      `The data folder ${dirname(file)} was written by a newer TheSource (its state.json is version ${version}; ` +
-        `this one reads version ${VERSION}). It is left as it is. Open it with the newer TheSource, or set ` +
-        'THESOURCE_DATA_DIR to another folder.',
+      `The data folder ${dirname(file)} was written by a newer Mainframe (its state.json is version ${version}; ` +
+        `this one reads version ${VERSION}). It is left as it is. Open it with the newer Mainframe, or set ` +
+        'MAINFRAME_DATA_DIR to another folder.',
     );
     this.name = 'NewerStateError';
   }
@@ -70,7 +70,7 @@ export function saveTasks(file: string, tasks: TaskRecord[]): void {
   renameSync(tmp, file);
 }
 
-/** Throws `NewerStateError` for a file a newer TheSource wrote; sets any other bad file aside. */
+/** Throws `NewerStateError` for a file a newer Mainframe wrote; sets any other bad file aside. */
 export function loadTasks(file: string, now: number, warn: (msg: string) => void): TaskRecord[] {
   let text: string;
   try {

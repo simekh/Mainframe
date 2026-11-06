@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 function folder(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'thesource-store-'));
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-store-'));
   cleanup.push(dir);
   return dir;
 }
@@ -59,7 +59,7 @@ it('a file that cannot be read is kept aside and loads as no tasks', () => {
   expect(warnings[0]).toContain('.bad-1000');
 });
 
-it('a file from a newer TheSource is left as it is, and loading says so', () => {
+it('a file from a newer Mainframe is left as it is, and loading says so', () => {
   const dir = folder();
   const file = join(dir, 'state.json');
   const bytes = Buffer.from(JSON.stringify({ version: 2, tasks: [{ id: 'from the future' }] }));
@@ -68,7 +68,7 @@ it('a file from a newer TheSource is left as it is, and loading says so', () => 
 
   expect(() => loadTasks(file, 1000, (m) => warnings.push(m))).toThrow(NewerStateError);
   expect(() => loadTasks(file, 1000, (m) => warnings.push(m))).toThrow(
-    `The data folder ${dir} was written by a newer TheSource`,
+    `The data folder ${dir} was written by a newer Mainframe`,
   );
   expect(readFileSync(file).equals(bytes)).toBe(true);
   expect(readdirSync(dir)).toEqual(['state.json']);

@@ -23,7 +23,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
   onMount(() => {
     dialog.showModal();
     titleInput.focus();
-    window.thesource.startCheck().then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
+    window.mainframe.startCheck().then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
   });
 
   // Esc waits for a start under way, so a failure still has the dialog to show in.

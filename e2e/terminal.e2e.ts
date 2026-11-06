@@ -121,7 +121,7 @@ test('a new status replaces the old one, so a resolved question leaves no kind b
 test('a flood in a hidden task arrives in full', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Flood');
-  await run(page, 'yes thesource | head -c 3000000; echo flood-$((2+3))');
+  await run(page, 'yes mainframe | head -c 3000000; echo flood-$((2+3))');
   await startTask(page, 'Other');
   await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
   await expect.poll(() => screen(page, a), { timeout: 30_000 }).toContain('flood-5');

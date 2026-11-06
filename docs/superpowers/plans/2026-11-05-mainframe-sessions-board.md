@@ -1,14 +1,14 @@
-# TheSource sessions on the board (plan 2a): implementation plan
+# Mainframe sessions on the board (plan 2a): implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The owner starts a task from a title and a description. TheSource launches `claude -w` for it in the project's main checkout, shows it on a board with Needs you, Working and Closed lanes, and shows the selected session in a full-height panel. The panel's width can be dragged and the panel can be pinned or unpinned. It holds the task's header, changed files, terminal and message field. Ctrl+Tab jumps to the next session that needs the owner. Close keeps the work; Reopen continues the same chat; quitting and restarting reopens every task that was running.
+**Goal:** The owner starts a task from a title and a description. Mainframe launches `claude -w` for it in the project's main checkout, shows it on a board with Needs you, Working and Closed lanes, and shows the selected session in a full-height panel. The panel's width can be dragged and the panel can be pinned or unpinned. It holds the task's header, changed files, terminal and message field. Ctrl+Tab jumps to the next session that needs the owner. Close keeps the work; Reopen continues the same chat; quitting and restarting reopens every task that was running.
 
 **Architecture:** Plan 1's main process (PTYs, OSC 7501, clipboard) stays. A `TaskService` in main replaces the feel test's `SessionRegistry`. It keeps task records in `<dataDir>/state.json`, builds each launch command, and writes a per-task `--settings` file whose only hook is a SessionStart hook. That hook records the session's current id for Reopen. Lanes are worked out in the renderer from OSC 7501 status (findings §11.3, §7 of its consequences). Git queries run with `execFile` in main.
 
 **Tech Stack:** unchanged from plan 1: Electron 44, electron-vite 6, SolidJS 1.9, TypeScript 5.9, xterm.js 6.1 beta, node-pty 1.1, Vitest 5, Playwright 1.64. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-11-04-thesource-agent-manager-design.md`. Read §2, §7.1–§7.4, §7.7 and §10 step 1 first, including the 2026-11-05 notes in them. Also read the step 1 findings `docs/superpowers/findings/2026-11-05-step1-checks.md` ("Consequences for plan 2") and `docs/feel-test.md` ("Owner's notes for plan 2").
+**Spec:** `docs/superpowers/specs/2026-11-04-mainframe-agent-manager-design.md`. Read §2, §7.1–§7.4, §7.7 and §10 step 1 first, including the 2026-11-05 notes in them. Also read the step 1 findings `docs/superpowers/findings/2026-11-05-step1-checks.md` ("Consequences for plan 2") and `docs/feel-test.md` ("Owner's notes for plan 2").
 
 **Design:** the mockup the owner approved on 2026-11-05, `docs/superpowers/mockups/2026-11-05-plan-2a-board.html`. Open it in a browser: its script plays every state, the card moves and the panel modes. It is Parallel Code's board at `97c3558`, from `src/components/task-board.css`, `src/components/board/TaskStatus.tsx`, `src/components/StatusDot.tsx` and the `parallel-code` look in `src/styles.css`. Tasks 5–9 build to it. Where the mockup and a task's text differ, the task's text wins; report the difference.
 
@@ -16,7 +16,7 @@
 
 ## Global Constraints
 
-- `<root>` = `/Users/simonekholm/Developer/Simmesolo/TheSource`; `<damela>` = `/Users/simonekholm/Developer/Simmesolo/Damela`; `<pc>` = a clone of https://github.com/johannesjo/parallel-code at `97c3558` in the session scratchpad, never committed (`git clone https://github.com/johannesjo/parallel-code.git <pc>`, `git -C <pc> checkout 97c3558`).
+- `<root>` = `/Users/simonekholm/Developer/Simmesolo/Mainframe`; `<damela>` = `/Users/simonekholm/Developer/Simmesolo/Damela`; `<pc>` = a clone of https://github.com/johannesjo/parallel-code at `97c3558` in the session scratchpad, never committed (`git clone https://github.com/johannesjo/parallel-code.git <pc>`, `git -C <pc> checkout 97c3558`).
 - Work on the branch `sessions-board` (it exists; this plan is committed on it).
 - Every command passes absolute paths (`npm --prefix <root> …`, `git -C <dir> …`); never `cd x && …` (owner's global CLAUDE.md).
 - Pinned versions and the build setup from plan 1 stay as they are. No new npm dependencies.
@@ -27,7 +27,7 @@
   - No `--permission-mode`, no `--mcp-config` (spec §7.2, 2026-11-05 notes).
 - **Close and quit end a session with SIGHUP** (node-pty's default `kill()`), which Claude Code treats like a terminal closing: no keep/remove question, worktree and branch kept (findings §11.4 row d). The app never removes a worktree or a branch.
 - The app never edits the owner's or a repo's settings files. Its own files live in `<dataDir>`: `state.json` and `tasks/<taskId>/{settings.json,session-start.json}`.
-- `<dataDir>` is Electron's `userData` (`~/Library/Application Support/thesource`), or `THESOURCE_DATA_DIR` when set. The app calls `app.setPath('userData', dataDir)` before `ready`, so Chromium's storage (the panel's `localStorage`) lives there too and e2e runs never touch the owner's.
+- `<dataDir>` is Electron's `userData` (`~/Library/Application Support/mainframe`), or `MAINFRAME_DATA_DIR` when set. The app calls `app.setPath('userData', dataDir)` before `ready`, so Chromium's storage (the panel's `localStorage`) lives there too and e2e runs never touch the owner's.
 - Session state comes only from OSC 7501, never from regexes on terminal output (spec §2, §6.2).
 - Main runs git as `execFile('git', ['--no-optional-locks', '-C', <absolute dir>, …])`, and diffs with `-c diff.autoRefreshIndex=false`, so the app never takes the index lock while a session runs git.
 - Code adapted from Parallel Code starts with `// Adapted from Parallel Code (MIT): <path> at 97c3558. See THIRD_PARTY_NOTICES.md.`, and `THIRD_PARTY_NOTICES.md` lists the file.
@@ -120,7 +120,7 @@ import { it, expect } from 'vitest';
 import { openingPrompt } from './openingPrompt';
 
 const tail =
-  "TheSource started you in this task's own worktree, on branch worktree-fix-login, so don't call EnterWorktree. " +
+  "Mainframe started you in this task's own worktree, on branch worktree-fix-login, so don't call EnterWorktree. " +
   'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
   'checkout, for example to merge, call ExitWorktree with action "keep" first.';
 
@@ -445,10 +445,10 @@ This task swaps the feel test's sessions for tasks from end to end. The left sid
 **Interfaces:**
 - Consumes: Task 4 `TaskService`, Task 3 `gitQueries`.
 - Produces: `AppConfig` is `{ projectDir; claudeBin; dataDir; inputBatchMs; outputBatchMs; logOsc; e2e }`, and `loadConfig(env, isDirectory, defaultDataDir: string)`.
-  - New variables: `THESOURCE_CLAUDE_BIN` (default `claude`; empty is rejected and the error names the variable) and `THESOURCE_DATA_DIR` (default `defaultDataDir`).
-  - `THESOURCE_SESSION_ARGV` is removed.
+  - New variables: `MAINFRAME_CLAUDE_BIN` (default `claude`; empty is rejected and the error names the variable) and `MAINFRAME_DATA_DIR` (default `defaultDataDir`).
+  - `MAINFRAME_SESSION_ARGV` is removed.
 - Produces: `RendererConfig` adds `projectName: string`, the basename of `projectDir`.
-- Produces, the bridge (`TheSourceApi`):
+- Produces, the bridge (`MainframeApi`):
   - Removed: `createSession`, `kill` and `onRedrawTerminals`.
   - Added: `listTasks(): Promise<TaskView[]>`, `startCheck(): Promise<StartCheck | null>`, `startTask(req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>`, `reopenTask(taskId: string): Promise<TaskView>`, `closeTask(taskId: string): void` and `onTasks(cb: (tasks: TaskView[]) => void): () => void`.
   - The PTY calls and events keep their `sessionId`, which is now `TaskView.session.id`.
@@ -463,14 +463,14 @@ This task swaps the feel test's sessions for tasks from end to end. The left sid
 - Produces in `tasksStore.ts`:
   - `tasksStore`: `{ tasks: TaskView[]; sessions: Record<string, SessionState>; terminals: TerminalEntry[]; selectedId: string | null }`.
   - `loadTasks()`, `startTask(req)` (selects the new task), `reopenTask(id)` (selects it), `closeTask(id)`, `select(id: string | null)` and `terminalOf(taskId): string | null`.
-- Produces, e2e hooks: `window.__thesourceE2E = { taskIds(): string[]; screenText(taskId: string): string; termSize(taskId: string): { cols: number; rows: number } | null }`.
+- Produces, e2e hooks: `window.__mainframeE2E = { taskIds(): string[]; screenText(taskId: string): string; termSize(taskId: string): { cols: number; rows: number } | null }`.
 - Produces, test ids: `new-task` (toolbar button), `new-task-title`, `new-task-description`, `new-task-no-questions` (checkbox), `new-task-start`, `start-check-warning`, `task-card` (with `data-task-id`, `data-selected`), `task-status` (inside a card), `close-session` (panel header).
 - Produces, e2e helpers in `e2e/tasks.ts`:
   - `startTask(page, title?, description?): Promise<string>` opens the dialog, fills it and starts. It returns the new task id once its screen shows `$`.
   - `ids(page)`, `screen(page, taskId)`, `termSize(page, taskId)`, `card(page, taskId)`, `run(page, line)`.
   - `launches(dataDir): Array<{ cwd: string; args: string[] }>`, in launch order.
 - Produces: `launchApp(env?)` returns `{ app, page, dataDir }`.
-  - Defaults: `THESOURCE_CLAUDE_BIN=<root>/e2e/fake-claude.sh`, `THESOURCE_PROJECT_DIR=os.tmpdir()`, and `THESOURCE_DATA_DIR` a fresh `mkdtempSync` unless the caller passes one (the restart test does).
+  - Defaults: `MAINFRAME_CLAUDE_BIN=<root>/e2e/fake-claude.sh`, `MAINFRAME_PROJECT_DIR=os.tmpdir()`, and `MAINFRAME_DATA_DIR` a fresh `mkdtempSync` unless the caller passes one (the restart test does).
   - Also `FAKE_CLAUDE_LOG_DIR=<dataDir>/fake-claude`, created by the helper.
 
 `e2e/fake-claude.sh`:
@@ -516,8 +516,8 @@ exec /bin/bash --noprofile --norc
 
 `config.test.ts`:
 - `uses the defaults` expects `{ projectDir: <damela>, claudeBin: 'claude', dataDir: '/data', inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false }` for `loadConfig({}, isDir, '/data')`.
-- `reads every override` sets `THESOURCE_CLAUDE_BIN: '/x/claude'` and `THESOURCE_DATA_DIR: '/tmp/d'`.
-- The rejected cases become `['THESOURCE_CLAUDE_BIN', '']` plus the three batch cases.
+- `reads every override` sets `MAINFRAME_CLAUDE_BIN: '/x/claude'` and `MAINFRAME_DATA_DIR: '/tmp/d'`.
+- The rejected cases become `['MAINFRAME_CLAUDE_BIN', '']` plus the three batch cases.
 
 `taskModel.test.ts`:
 - `started turns true at the first status other than idle, and stays true`: `idle` gives false, `working` true, then `idle` true.
@@ -537,7 +537,7 @@ Update `e2e/launch.ts` as in the interfaces above. Rewrite `e2e/terminal.e2e.ts`
 - `Close session ends the process and keeps the task, and the other tasks keep running`. After closing, that card's `task-status` reads `closed`, its terminal shows `[Process exited]`, the task stays selected, and the other shells are still alive and still take input.
 
 Rewrite `e2e/bridge.e2e.ts`: `a task's session streams output, reports OSC 7501 status and exit`.
-- `THESOURCE_CLAUDE_BIN` is a script the test writes into its temp folder (mode 755): `#!/bin/sh\nprintf 'bridge-%s' ok; printf '\033]7501;state=working\033\\'; sleep 0.3`.
+- `MAINFRAME_CLAUDE_BIN` is a script the test writes into its temp folder (mode 755): `#!/bin/sh\nprintf 'bridge-%s' ok; printf '\033]7501;state=working\033\\'; sleep 0.3`.
 - In `page.evaluate`, listen to `onData`, `onStatus` and `onExit` before calling `startTask`, then filter by the returned `session.id`. The renderer mounts the terminal and spawns it itself.
 - Expected: the output contains `bridge-ok`, the states are `['working', 'none']`, and the exit code is 0.
 
@@ -553,7 +553,7 @@ New `e2e/tasks.e2e.ts`:
   - Relaunch with the same `dataDir`. Both cards are back and running.
   - The two new `launches()` entries are `--worktree alpha --resume <alpha's uuid> --settings …` and `--resume <beta's uuid> --settings …`.
 - `tasks reopened at startup start at the size their terminal shows` (Review Focus 3). After a restart with nothing selected, click the card and `run(page, 'stty size')`. The screen shows `<rows> <cols>` from `termSize`.
-- `a task whose claude can't start lands in Closed and stays closed after a restart` (Review Focus 5). With `THESOURCE_CLAUDE_BIN=/nonexistent/claude`, the card's `task-status` reads `closed`. After a relaunch with the same data dir, it still reads `closed`, and `launches()` is empty.
+- `a task whose claude can't start lands in Closed and stays closed after a restart` (Review Focus 5). With `MAINFRAME_CLAUDE_BIN=/nonexistent/claude`, the card's `task-status` reads `closed`. After a relaunch with the same data dir, it still reads `closed`, and `launches()` is empty.
 
 - [ ] **Step 3: Run them to see them fail**
 
@@ -717,7 +717,7 @@ Spec §7.1, the owner's note of 2026-11-05. Build the panel as a shell (`SidePan
 - Produces in `panelPrefs.ts`:
   - `interface PanelPrefs { width: number; pinned: boolean }` and `DEFAULT_PANEL_PREFS = { width: 640, pinned: true }`.
   - `clampWidth(width: number, windowWidth: number, pinned: boolean): number`. The range is from 420 to `windowWidth − 360` when pinned (room for the board), or to `windowWidth − 80` when unpinned. The minimum wins when the window is too narrow.
-  - `loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs`, which falls back to the defaults on a missing or bad value, and `savePanelPrefs(storage: Pick<Storage, 'setItem'>, prefs: PanelPrefs): void`. The key is `thesource.panel`.
+  - `loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs`, which falls back to the defaults on a missing or bad value, and `savePanelPrefs(storage: Pick<Storage, 'setItem'>, prefs: PanelPrefs): void`. The key is `mainframe.panel`.
 - Produces in `tasksStore`: `panelOpen: boolean` and `setPanelOpen(open: boolean)`. Selecting a task (card, Answer, Reopen, New task, Ctrl+Tab) sets it to true.
 - Produces, test ids: `side-panel` (with `data-pinned` and `data-open`), `panel-resize` (`role="separator"`, `aria-orientation="vertical"`, `aria-valuenow` = the width, focusable; ArrowLeft and ArrowRight change the width by 16), `panel-pin` (`aria-pressed`), `panel-hide`, `panel-show`, `board`.
 
@@ -910,7 +910,7 @@ git -C <root> commit -m "feat: Ctrl+Tab jumps to the next session that needs the
 - Create: `docs/superpowers/findings/<YYYY-MM-DD>-plan-2a-acceptance.md`
 
 The e2e tests run a fake `claude`, so they can't check five things: what Claude Code does with the launch forms, the hook in real use, the merge flow, startup timing, and the feel. Here the owner works at the keyboard on one small real Damela card that they pick, and the agent records what happens.
-- Start the app with `THESOURCE_LOG_OSC=1 npm --prefix <root> start`, after `npm --prefix <root> run build`.
+- Start the app with `MAINFRAME_LOG_OSC=1 npm --prefix <root> start`, after `npm --prefix <root> run build`.
 - Check the results with `git -C <damela> worktree list`, `git -C <damela> branch --list 'worktree-*'` and the files under `<dataDir>/tasks/<taskId>/`.
 - Record each check as a row with what was done, what was seen, and pass or fail, in the style of `docs/feel-test.md`.
 

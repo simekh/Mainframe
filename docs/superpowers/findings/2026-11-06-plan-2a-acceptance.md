@@ -1,14 +1,14 @@
 # Acceptance: plan 2a, sessions on the board
 
-The owner ran TheSource with real Claude Code in Damela on 2026-11-06, in two passes.
-- **First pass:** plan 2a's Task 10. It found six things to change, which became plan `docs/superpowers/plans/2026-11-06-thesource-acceptance-fixes.md`.
+The owner ran Mainframe with real Claude Code in Damela on 2026-11-06, in two passes.
+- **First pass:** plan 2a's Task 10. It found six things to change, which became plan `docs/superpowers/plans/2026-11-06-mainframe-acceptance-fixes.md`.
 - **Second pass:** that plan's Task 7. It checked the six fixes, the rows the first pass hadn't reached, and the items the final reviews added.
 
 The owner decides Pass or Fail.
 
 ## First pass (plan 2a, Task 10)
 
-Logged with `THESOURCE_LOG_OSC=1`.
+Logged with `MAINFRAME_LOG_OSC=1`.
 
 | # | Check | Seen | Pass / fail | Note |
 |---|---|---|---|---|

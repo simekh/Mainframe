@@ -36,7 +36,7 @@ it("startCheck reports the main checkout's branch, origin/HEAD and how far ahead
 });
 
 it('startCheck is null outside a repo and without origin/HEAD', async () => {
-  const bare = mkdtempSync(join(tmpdir(), 'thesource-norepo-'));
+  const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
   expect(await startCheck(bare)).toBeNull();
 
@@ -100,7 +100,7 @@ it("changedFiles is null for a plain folder where the task's worktree goes, insi
 });
 
 it('changedFiles is null for a folder that is not a work tree', async () => {
-  const bare = mkdtempSync(join(tmpdir(), 'thesource-norepo-'));
+  const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
   expect(await changedFiles(bare)).toBeNull();
 });

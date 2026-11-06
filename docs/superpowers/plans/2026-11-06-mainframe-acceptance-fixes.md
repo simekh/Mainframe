@@ -10,7 +10,7 @@
 
 **Tech Stack:** Electron 44, electron-vite 6, SolidJS 1.9, TypeScript 5.9, xterm.js 6.1 beta, node-pty 1.1, Vitest, Playwright e2e.
 
-**Spec:** `docs/superpowers/specs/2026-11-04-thesource-agent-manager-design.md`, mainly the notes dated 2026-11-06 in §2, §7.1 and §7.4. The owner's findings are recorded in `.superpowers/sdd/2026-11-05-thesource-sessions-board/progress.md` (lines starting `Task 10:`).
+**Spec:** `docs/superpowers/specs/2026-11-04-mainframe-agent-manager-design.md`, mainly the notes dated 2026-11-06 in §2, §7.1 and §7.4. The owner's findings are recorded in `.superpowers/sdd/2026-11-05-mainframe-sessions-board/progress.md` (lines starting `Task 10:`).
 
 ## Global Constraints
 
@@ -18,7 +18,7 @@
 - **Colours** come from the owner's iTerm2 profile (Night Owl): bold `#addb67`, links `#82aaff`. The suggestion ring is a light white that is not Claude orange; that colour belongs to the Needs input tone.
 - **The resume prompt** is exactly `Continue where you left off.` A session that was asking the owner something (blocked) gets `The session stopped while you were waiting for my answer. Ask me again.` instead (owner, 2026-11-06, during acceptance).
 - **Lanes still come from OSC 7501 alone.** Screen reading is allowed only for the suggestion ring (spec §2, owner's exception of 2026-11-06).
-- **Attribution:** code adapted from Parallel Code (MIT, commit 97c3558, clone at `/private/tmp/claude-501/-Users-simonekholm-Developer-Simmesolo-TheSource/ab5b0969-4ca5-497a-ab02-feba94e1f449/scratchpad/parallel-code`) gets the first-line header `// Adapted from Parallel Code (MIT): <path> (fn) at 97c3558. See THIRD_PARTY_NOTICES.md.` and a `TheSource path ← Parallel Code path` line in `THIRD_PARTY_NOTICES.md`.
+- **Attribution:** code adapted from Parallel Code (MIT, commit 97c3558, clone at `/private/tmp/claude-501/-Users-simonekholm-Developer-Simmesolo-Mainframe/ab5b0969-4ca5-497a-ab02-feba94e1f449/scratchpad/parallel-code`) gets the first-line header `// Adapted from Parallel Code (MIT): <path> (fn) at 97c3558. See THIRD_PARTY_NOTICES.md.` and a `Mainframe path ← Parallel Code path` line in `THIRD_PARTY_NOTICES.md`.
 - **Commits:** conventional prefixes. No `Co-Authored-By`, and no mention of Claude, Anthropic or AI as author.
 - **UI tasks** (1, 2, 6) invoke `frontend-design:frontend-design` before changing markup or CSS. The approved look is `src/renderer/src/app.css` and `docs/superpowers/mockups/2026-11-05-plan-2a-board.html`; Parallel Code is the reference the owner likes.
 - **e2e windows** open on the owner's screen. Tests must not depend on the real mouse staying still.
