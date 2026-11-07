@@ -133,7 +133,7 @@ test('a focused card keeps the focus when it changes lanes', async () => {
 // The block Claude Code shows for a suggestion, as a shell prints it. Octal escapes, so the shell's
 // locale doesn't matter: \342\234\246 is the star, \302\267 the middle dot.
 const SUGGESTION_BLOCK =
-  "printf '\\342\\234\\246 You should know \\302\\267 Damela has a splash screen too.\\n" +
+  "printf '\\342\\234\\246 You should know \\302\\267 Acme has a splash screen too.\\n" +
   "1: Learn more   2: Knew this already   0: Dismiss\\n'";
 
 test('a suggestion puts a ring on its card, and answering it takes the ring away', async () => {

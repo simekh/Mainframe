@@ -3,13 +3,19 @@ import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config';
 
 const isDir = () => true;
+const PROJECT = { MAINFRAME_PROJECT_DIR: '/p' };
 
 describe('loadConfig', () => {
-  it('uses the defaults', () => {
-    expect(loadConfig({}, isDir, '/data')).toEqual({
-      projectDir: '/Users/simonekholm/Developer/Simmesolo/Damela',
+  it('uses the defaults for all but the project', () => {
+    expect(loadConfig(PROJECT, isDir, '/data')).toEqual({
+      projectDir: '/p',
       claudeBin: 'claude', dataDir: '/data', inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
     });
+  });
+
+  // Mainframe has no project of its own to fall back on.
+  it.each([[{}], [{ MAINFRAME_PROJECT_DIR: '' }]])('rejects a missing project dir (%o) and names the variable', (env) => {
+    expect(() => loadConfig(env, isDir, '/data')).toThrow('MAINFRAME_PROJECT_DIR is not set');
   });
 
   it('reads every override', () => {
@@ -31,7 +37,7 @@ describe('loadConfig', () => {
     ['MAINFRAME_CLAUDE_BIN', ''],
     ['MAINFRAME_INPUT_BATCH_MS', '-1'], ['MAINFRAME_INPUT_BATCH_MS', '51'], ['MAINFRAME_OUTPUT_BATCH_MS', '2.5'],
   ])('rejects %s=%s and names the variable', (key, value) => {
-    expect(() => loadConfig({ [key]: value }, isDir, '/data')).toThrow(key);
+    expect(() => loadConfig({ ...PROJECT, [key]: value }, isDir, '/data')).toThrow(key);
   });
 
   it('rejects a project dir that is not a directory', () => {

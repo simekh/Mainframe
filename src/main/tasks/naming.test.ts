@@ -20,5 +20,5 @@ it('uniqueSlug adds the first free number', () => {
 });
 
 it('sessionName prefixes the slug with the project folder', () => {
-  expect(sessionName('/Users/x/Developer/Damela', 'fix-login')).toBe('damela-fix-login');
+  expect(sessionName('/Users/x/Developer/Acme', 'fix-login')).toBe('acme-fix-login');
 });

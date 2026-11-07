@@ -18,13 +18,13 @@ function folder(): string {
 
 const TASK: TaskRecord = {
   id: 't1',
-  projectDir: '/p/Damela',
+  projectDir: '/p/Acme',
   title: 'Fix login',
   description: 'Users get logged out',
   slug: 'fix-login',
-  name: 'damela-fix-login',
+  name: 'acme-fix-login',
   claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
-  worktreePath: '/p/Damela/.claude/worktrees/fix-login',
+  worktreePath: '/p/Acme/.claude/worktrees/fix-login',
   branch: 'worktree-fix-login',
   createdAt: 500,
   closedAt: null,

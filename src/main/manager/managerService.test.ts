@@ -21,7 +21,7 @@ const U2 = '11111111-1111-4111-8111-111111111111';
 function setup() {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-manager-'));
   cleanup.push(root);
-  const projectDir = join(root, 'Damela');
+  const projectDir = join(root, 'Acme');
   mkdirSync(projectDir);
   const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-data-'));
   cleanup.push(dataDir);
@@ -42,7 +42,7 @@ function setup() {
       warn: (msg) => warnings.push(msg),
     });
 
-  const dir = join(dataDir, 'managers', `damela-${createHash('sha256').update(projectDir).digest('hex').slice(0, 8)}`);
+  const dir = join(dataDir, 'managers', `acme-${createHash('sha256').update(projectDir).digest('hex').slice(0, 8)}`);
   const file = (name: string) => join(dir, name);
   const readRecord = () => JSON.parse(readFileSync(file('manager.json'), 'utf8'));
   /**
@@ -52,7 +52,7 @@ function setup() {
    */
   const sessionStarted = (claudeSessionId: string, { source = 'startup', saved = true } = {}) => {
     mkdirSync(dir, { recursive: true });
-    const folder = join(dataDir, 'projects', '-damela');
+    const folder = join(dataDir, 'projects', '-acme');
     mkdirSync(folder, { recursive: true });
     const transcript = join(folder, `${claudeSessionId}.jsonl`);
     if (saved) writeFileSync(transcript, '');
@@ -62,7 +62,7 @@ function setup() {
   const argvOf = (claudeSessionId: string, resume: boolean, prompt?: string) =>
     managerArgv({
       claudeBin: 'claude',
-      name: 'damela-manager',
+      name: 'acme-manager',
       claudeSessionId,
       resume,
       mcpConfigPath: file('mcp.json'),

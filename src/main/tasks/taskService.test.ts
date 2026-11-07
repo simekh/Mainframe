@@ -18,7 +18,7 @@ afterEach(() => {
 function setup(gitOverrides: Partial<GitQueries> = {}) {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-service-'));
   cleanup.push(root);
-  const projectDir = join(root, 'Damela');
+  const projectDir = join(root, 'Acme');
   mkdirSync(projectDir);
   const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-data-'));
   cleanup.push(dataDir);
@@ -85,7 +85,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
   expect(record).toMatchObject({
     id: view.id,
     projectDir,
-    name: 'damela-fix-login',
+    name: 'acme-fix-login',
     worktreePath: view.worktreePath,
     branch: 'worktree-fix-login',
     noQuestions: false,
@@ -101,7 +101,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
     argv: startArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
-      name: 'damela-fix-login',
+      name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath,
       prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
@@ -139,7 +139,7 @@ it('start counts a leftover branch or folder that differs only in case as taken'
 it("start keeps the manager's name for the manager: a task titled Manager gets another slug", async () => {
   const { service, readState } = setup();
   expect((await service.start({ ...NEW_TASK, title: 'Manager' })).slug).toBe('manager-2');
-  expect(readState()[0].name).toBe('damela-manager-2');
+  expect(readState()[0].name).toBe('acme-manager-2');
 });
 
 it('two starts at once get different slugs', async () => {
@@ -500,7 +500,7 @@ it('a task kept before midTurn was recorded reopens without the prompt', async (
     title: 'Fix login',
     description: '',
     slug: 'fix-login',
-    name: 'damela-fix-login',
+    name: 'acme-fix-login',
     claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
     worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
     branch: 'worktree-fix-login',
@@ -568,7 +568,7 @@ it('restore skips a task it cannot reopen, closes it, and reopens the rest', asy
     title: id,
     description: '',
     slug: id,
-    name: `damela-${id}`,
+    name: `acme-${id}`,
     claudeSessionId,
     worktreePath: join(projectDir, '.claude', 'worktrees', id),
     branch: `worktree-${id}`,
@@ -669,7 +669,7 @@ it('reopen resumes the recorded conversation although no transcript of it can be
   const { service, readState, taskDir, dataDir } = setup();
   const view = await service.start(NEW_TASK);
   const { claudeSessionId } = readState()[0];
-  const transcript_path = join(dataDir, 'projects', '-damela', `${claudeSessionId}.jsonl`);
+  const transcript_path = join(dataDir, 'projects', '-acme', `${claudeSessionId}.jsonl`);
   writeFileSync(join(taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup', transcript_path }));
   service.onSessionExit(view.session!.id);
 
@@ -702,7 +702,7 @@ it('reopen of a task whose first launch never began a conversation starts one, w
     startArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
-      name: 'damela-fix-login',
+      name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath: join(taskDir(view.id), 'settings.json'),
       prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
@@ -718,7 +718,7 @@ it('a task kept before its noQuestions was recorded reopens with the prompt that
     title: 'Fix login',
     description: '',
     slug: 'fix-login',
-    name: 'damela-fix-login',
+    name: 'acme-fix-login',
     claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
     worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
     branch: 'worktree-fix-login',

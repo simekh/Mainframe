@@ -20,7 +20,7 @@ it('sets the terminal identity and drops the parent terminal and Claude Code ses
 it('drops what `npm start` and Vite add, keeping the rest of PATH in order', () => {
   expect(buildSpawnEnv({
     PATH: [
-      '<root>/node_modules/.bin', '/Users/simonekholm/Developer/node_modules/.bin', '/node_modules/.bin',
+      '<root>/node_modules/.bin', '/Users/x/Developer/node_modules/.bin', '/node_modules/.bin',
       '/Users/x/.nvm/versions/node/v24.21.0/lib/node_modules/npm/node_modules/@npmcli/run-script/lib/node-gyp-bin',
       '/Users/x/.local/bin', '/usr/bin',
     ].join(':'),

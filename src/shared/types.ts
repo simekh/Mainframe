@@ -51,7 +51,7 @@ export interface StartCheck {
   ahead: number;
   /** The main checkout's current branch. */
   branch: string;
-  /** What origin/HEAD points at, e.g. `origin/stage`. */
+  /** What origin/HEAD points at: the remote's default branch, as `origin/<branch>`. */
   base: string;
 }
 

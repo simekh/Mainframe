@@ -7,13 +7,13 @@ import { hookSettings, managerArgv, readRecordedSession, readSessionStart, reope
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
-const MCP = '/data/managers/damela-0a1b2c3d/mcp.json';
-const MS = '/data/managers/damela-0a1b2c3d/settings.json';
-const M = { claudeBin: 'claude', name: 'damela-manager', claudeSessionId: U, mcpConfigPath: MCP, settingsPath: MS, rolePrompt: 'ROLE' };
+const MCP = '/data/managers/acme-0a1b2c3d/mcp.json';
+const MS = '/data/managers/acme-0a1b2c3d/settings.json';
+const M = { claudeBin: 'claude', name: 'acme-manager', claudeSessionId: U, mcpConfigPath: MCP, settingsPath: MS, rolePrompt: 'ROLE' };
 
 it('starts claude in a named worktree with a fixed session id, the hooks file and the prompt', () => {
-  expect(startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'damela-fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
-    .toEqual(['claude', '-w', 'fix-login', '-n', 'damela-fix-login', '--session-id', U, '--settings', S, 'P']);
+  expect(startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'acme-fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
+    .toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--settings', S, 'P']);
 });
 
 it('reopens in the worktree while its branch exists, and in the main checkout once it is gone', () => {
@@ -34,7 +34,7 @@ it('refuses to resume an id that is not a UUID', () => {
 
 it('starts the manager in the main checkout, named, with a fixed session id, its MCP config, hooks file and role prompt', () => {
   expect(managerArgv({ ...M, resume: false })).toEqual([
-    'claude', '-n', 'damela-manager', '--session-id', U, '--mcp-config', MCP, '--settings', MS, '--append-system-prompt', 'ROLE',
+    'claude', '-n', 'acme-manager', '--session-id', U, '--mcp-config', MCP, '--settings', MS, '--append-system-prompt', 'ROLE',
   ]);
 });
 

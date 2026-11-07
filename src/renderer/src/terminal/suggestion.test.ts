@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hasSuggestion } from './suggestion';
 
 const CHOICES = '1: Learn more   2: Knew this already   0: Dismiss';
-const SEEN = "✦ You should know · Damela's splash screen has a second line that wraps onto the next row too.";
+const SEEN = "✦ You should know · Acme's splash screen has a second line that wraps onto the next row too.";
 
 describe('hasSuggestion', () => {
   it('is true for the block as Claude Code shows it', () => {

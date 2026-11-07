@@ -10,8 +10,6 @@ export interface AppConfig {
   e2e: boolean;
 }
 
-const DEFAULT_PROJECT_DIR = '/Users/simonekholm/Developer/Simmesolo/Damela';
-
 function readClaudeBin(env: NodeJS.ProcessEnv): string {
   const raw = env.MAINFRAME_CLAUDE_BIN;
   if (raw === undefined) return 'claude';
@@ -34,7 +32,11 @@ export function loadConfig(
   isDirectory: (path: string) => boolean,
   defaultDataDir: string,
 ): AppConfig {
-  const projectDir = resolve(env.MAINFRAME_PROJECT_DIR ?? DEFAULT_PROJECT_DIR);
+  // Mainframe has no project of its own to fall back on.
+  if (!env.MAINFRAME_PROJECT_DIR) {
+    throw new Error('MAINFRAME_PROJECT_DIR is not set: set it to the folder of the project Mainframe should run on');
+  }
+  const projectDir = resolve(env.MAINFRAME_PROJECT_DIR);
   if (!isDirectory(projectDir)) {
     throw new Error(`MAINFRAME_PROJECT_DIR is not a directory: ${projectDir}`);
   }
