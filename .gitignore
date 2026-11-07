@@ -1,3 +1,10 @@
+# Claude Code: the owner's global ~/.gitignore keeps CLAUDE.md and .claude/ out of every repo. Here the rules
+# and the review gate are shared; personal settings (which register the gate) and worktrees stay local.
+!CLAUDE.md
+!.claude/
+.claude/settings.local.json
+.claude/worktrees/
+
 .superpowers/
 node_modules/
 out/
