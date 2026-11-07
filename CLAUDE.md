@@ -12,6 +12,16 @@ Mainframe runs several Claude Code sessions across whatever project the user poi
 
 **Why:** the owner decided 2026-11-07 to publish Mainframe for friends to use on their own projects. A value that works only on the owner's machine is a bug the owner cannot see, because it works for them. Fixing each one after a friend hits it costs more than not writing it.
 
+## Mainframe runs several projects at once, in one window (since 2026-11-07)
+
+One Mainframe, one window, several projects open at the same time (Damela and Word², say), each with its own board, tasks and manager. The owner switches between them from a list of projects, or shows several at once: side by side with dividers they drag to resize, or as smaller panes in a grid. Not one copy of Mainframe per project, and not one window per project.
+
+- **Today's code opens one project.** Mainframe asks for its folder at the first start and keeps it in `projects.json` in the data folder; File → Open Project… restarts on another. The branch that opens several replaces that.
+- **Until then, no change adds a one-project assumption.** No single global "the project" that code reaches for instead of being handed its project; no file in the data folder that only one project can use (`projects.json` is a list for this reason); no menu item, shortcut or IPC message that only makes sense with one project on screen; no MCP tool or session that can't tell which project it belongs to.
+- **One question for every change:** would this still work with Damela and Word² both open, side by side? Task reviews ask it, and a no is an Important finding.
+
+**Why:** the owner wants to work on several projects at once without juggling apps. On 2026-11-07 they chose one Mainframe with all projects in one window over a copy per project: one Dock icon, one Quit that ends and later restores every session, and one place that can show what every project needs from them. Each one-project assumption added now is one the multi-project branch has to find and take out.
+
 ## Keep code in proportion to what it does
 
 - **Task reviews judge proportion.** Each task review asks whether the code is the simplest thing that meets the requirement. A diff much larger than its requirement is an Important finding. The exception is when the size buys real safety, and the review then names what that safety is.
