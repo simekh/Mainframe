@@ -1,6 +1,5 @@
 /* Mainframe in Parallel Code's default look (its styles.css, html[data-look='parallel-code']).
-   Blue-black frame, rounded panels, one cyan accent. Sizes follow the approved board mockup,
-   docs/superpowers/mockups/2026-11-05-plan-2a-board.html. */
+   Blue-black frame, rounded panels, one cyan accent. */
 :root {
   --bg: #080c10;
   --bg-elevated: #161e26;

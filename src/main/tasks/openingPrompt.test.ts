@@ -23,6 +23,7 @@ it('passes on no-questions mode', () => {
   expect(openingPrompt({ ...t, description: '', noQuestions: true })).toBe(
     brief + 'Task: Fix login\n\n' + tail + '\n\n' +
       "No questions on this task: don't ask me clarifying questions; make reasonable choices and note them. " +
-      "When the work is done and reviewed as this repo's CLAUDE.md requires, merge without asking me, even where your workflow would ask how to finish the branch.",
+      "When the work is done and reviewed as this repo's CLAUDE.md requires, finish the branch without asking me, even where your workflow would ask how: " +
+      'merge it, unless this CLAUDE.md integrates work another way, such as a pull request.',
   );
 });
