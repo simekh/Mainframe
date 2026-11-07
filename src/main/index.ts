@@ -126,7 +126,9 @@ async function start(config: AppConfig, projectDir: string): Promise<void> {
         app.relaunch();
         app.quit();
       },
-    }).catch((err: unknown) => console.error('[projects] could not open the project', err));
+    }).catch((err: unknown) =>
+      dialog.showErrorBox('Mainframe could not open the project', err instanceof Error ? err.message : String(err)),
+    );
   Menu.setApplicationMenu(buildMenu(onOpenProject));
   registerIpc(
     toWindow,

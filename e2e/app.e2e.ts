@@ -49,3 +49,21 @@ test('Open Project… remembers the picked folder and restarts Mainframe on it',
   expect(existsSync(relaunched)).toBe(true);
   expect(JSON.parse(readFileSync(join(dataDir, 'projects.json'), 'utf8'))).toEqual({ version: 1, open: [picked] });
 });
+
+test('Open Project… says why it could not open the folder', async () => {
+  const { app } = await launchApp();
+  await app.evaluate(({ dialog, Menu }) => {
+    const seen = globalThis as { errorBoxes?: string[] };
+    seen.errorBoxes = [];
+    dialog.showOpenDialog = async () => {
+      throw new Error('the dialog failed');
+    };
+    dialog.showErrorBox = (title, content) => void seen.errorBoxes!.push(`${title}: ${content}`);
+    Menu.getApplicationMenu()!.getMenuItemById('open-project')!.click();
+  });
+
+  await expect
+    .poll(() => app.evaluate(() => (globalThis as { errorBoxes?: string[] }).errorBoxes))
+    .toEqual(['Mainframe could not open the project: the dialog failed']);
+  await app.close();
+});
