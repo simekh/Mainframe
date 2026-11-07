@@ -32,11 +32,12 @@ export function loadConfig(
   isDirectory: (path: string) => boolean,
   defaultDataDir: string,
 ): AppConfig {
+  const rawProjectDir = env.MAINFRAME_PROJECT_DIR;
   // Mainframe has no project of its own to fall back on.
-  if (!env.MAINFRAME_PROJECT_DIR) {
+  if (!rawProjectDir) {
     throw new Error('MAINFRAME_PROJECT_DIR is not set: set it to the folder of the project Mainframe should run on');
   }
-  const projectDir = resolve(env.MAINFRAME_PROJECT_DIR);
+  const projectDir = resolve(rawProjectDir);
   if (!isDirectory(projectDir)) {
     throw new Error(`MAINFRAME_PROJECT_DIR is not a directory: ${projectDir}`);
   }

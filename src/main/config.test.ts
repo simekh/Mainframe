@@ -13,7 +13,6 @@ describe('loadConfig', () => {
     });
   });
 
-  // Mainframe has no project of its own to fall back on.
   it.each([[{}], [{ MAINFRAME_PROJECT_DIR: '' }]])('rejects a missing project dir (%o) and names the variable', (env) => {
     expect(() => loadConfig(env, isDir, '/data')).toThrow('MAINFRAME_PROJECT_DIR is not set');
   });
