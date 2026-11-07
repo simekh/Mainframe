@@ -89,7 +89,7 @@ export class ManagerService {
     const recorded = readRecordedSession(this.dir);
     const prompt = recorded === null ? undefined : resumePromptFor(prior);
     const carryOn = prompt !== undefined;
-    // Without a recorded conversation SessionStart never fired, so none began: this starts it as the first launch would.
+    // Without a recorded conversation none was saved, whether SessionStart fired or not: this starts it as the first launch would.
     const claudeSessionId = recorded ?? this.newId();
     const argv = managerArgv({
       claudeBin: this.deps.claudeBin,

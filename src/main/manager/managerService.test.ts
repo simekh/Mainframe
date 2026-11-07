@@ -45,9 +45,16 @@ function setup() {
   const dir = join(dataDir, 'managers', `damela-${createHash('sha256').update(projectDir).digest('hex').slice(0, 8)}`);
   const file = (name: string) => join(dir, name);
   const readRecord = () => JSON.parse(readFileSync(file('manager.json'), 'utf8'));
-  /** What the SessionStart hook leaves once claude has begun the manager's conversation. */
-  const sessionStarted = (claudeSessionId: string) =>
-    writeFileSync(file(SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
+  /**
+   * What the SessionStart hook leaves once claude has begun the manager's conversation. Claude Code has saved
+   * that conversation, its transcript is there, unless `saved` says it has not (nobody has typed to it yet).
+   */
+  const sessionStarted = (claudeSessionId: string, { source = 'startup', saved = true } = {}) => {
+    mkdirSync(dir, { recursive: true });
+    const transcript = file(`${claudeSessionId}.jsonl`);
+    if (saved) writeFileSync(transcript, '');
+    writeFileSync(file(SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source, transcript_path: transcript }));
+  };
   /** The launch the manager's files lead to, for the conversation `claudeSessionId`. */
   const argvOf = (claudeSessionId: string, resume: boolean, prompt?: string) =>
     managerArgv({
@@ -131,7 +138,6 @@ it('start while a session runs returns the same view and launches nothing', () =
 
 it('start resumes the conversation SessionStart last recorded', () => {
   const t = setup();
-  mkdirSync(t.dir, { recursive: true });
   t.sessionStarted(U2);
 
   const view = t.service.start();
@@ -144,7 +150,7 @@ it('a /clear or a compaction moves the conversation the next start resumes', () 
   const t = setup();
   const view = started(t);
   const first = t.readRecord().claudeSessionId;
-  writeFileSync(t.file(SESSION_START_FILE), JSON.stringify({ session_id: U2, source: 'clear' }));
+  t.sessionStarted(U2, { source: 'clear' });
 
   t.service.onSessionExit(view.session!.id);
   expect(t.readRecord().claudeSessionId).toBe(U2);
@@ -160,6 +166,21 @@ it('a launch whose conversation never began starts one again, under a fresh id',
   const firstId = t.readRecord().claudeSessionId;
   // claude was missing or quit at once: SessionStart never fired.
   t.service.noteStatus(first.session!.id, 'working');
+  t.service.onSessionExit(first.session!.id);
+
+  const again = t.service.start();
+  const { claudeSessionId } = t.readRecord();
+  expect(claudeSessionId).not.toBe(firstId);
+  expect(again.session!.startedWithPrompt).toBe(false);
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(claudeSessionId, false));
+});
+
+it('a recorded conversation Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', () => {
+  const t = setup();
+  // Launched, SessionStart fired, and nobody typed: the transcript was never written.
+  const first = t.service.start();
+  const firstId = t.readRecord().claudeSessionId;
+  t.sessionStarted(firstId, { saved: false });
   t.service.onSessionExit(first.session!.id);
 
   const again = t.service.start();

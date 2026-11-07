@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
@@ -149,6 +149,31 @@ test("quitting resumes the manager's chat at the next start, carrying on a turn 
   expect(managerLaunches(dataDir)[2].args).toEqual(resumeArgs(dataDir, id));
   expect(launches(dataDir)).toEqual([]);
   await third.app.close();
+});
+
+test('a manager chat that Claude Code never saved is not resumed: the next start begins a new one', async () => {
+  const first = await launchApp();
+  const { dataDir } = first;
+  await expect.poll(() => managerScreen(first.page)).toContain('$');
+  // The fake saves its chat as it starts, naming the transcript in the file the hook writes; nobody typed to
+  // this manager, so the real one would have saved nothing.
+  const id = firstConversation(dataDir);
+  const transcript = join(dataDir, 'fake-claude', `${id}.jsonl`);
+  const hookFile = join(managerDir(dataDir), 'session-start.json');
+  await expect.poll(() => existsSync(hookFile) && readFileSync(hookFile, 'utf8')).toContain(transcript);
+  rmSync(transcript);
+  await first.app.close();
+
+  const second = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
+  await expect.poll(() => managerLaunches(dataDir).length).toBe(2);
+  const [{ args: began }, { args }] = managerLaunches(dataDir);
+  // The first form again, under another id.
+  expect(args).toEqual([...began.slice(0, 3), expect.stringMatching(UUID), ...began.slice(4)]);
+  expect(args[3]).not.toBe(id);
+  await expect.poll(() => managerScreen(second.page)).toContain('$');
+  await expect(second.page.getByTestId('manager-restart')).toHaveCount(0);
+  await expect(second.page.getByTestId('manager-column').getByText(STOPPED_NOTE)).toHaveCount(0);
+  await second.app.close();
 });
 
 test('the manager never takes the focus by itself', async () => {

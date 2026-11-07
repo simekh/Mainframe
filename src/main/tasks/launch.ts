@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,7 +86,8 @@ export function writeHookSettings(dir: string, allow: string[] = []): string {
   return settingsPath;
 }
 
-export function readSessionStart(text: string | null): string | null {
+/** The conversation a SessionStart payload names, and where Claude Code saves it; null when it names either badly. */
+export function readSessionStart(text: string | null): { id: string; transcriptPath: string } | null {
   if (text === null) return null;
   let parsed: unknown;
   try {
@@ -94,17 +95,19 @@ export function readSessionStart(text: string | null): string | null {
   } catch {
     return null;
   }
-  const id = (parsed as { session_id?: unknown } | null)?.session_id;
-  return typeof id === 'string' && isUuid(id) ? id : null;
+  const { session_id: id, transcript_path: transcriptPath } = (parsed ?? {}) as { session_id?: unknown; transcript_path?: unknown };
+  return typeof id === 'string' && isUuid(id) && typeof transcriptPath === 'string' ? { id, transcriptPath } : null;
 }
 
 /**
- * The conversation SessionStart last recorded in `dir`, which `/clear` and compaction change; null while
- * it has never fired.
+ * The conversation SessionStart last recorded in `dir`, which `/clear` and compaction change, provided Claude
+ * Code saved it: it writes a transcript only once the chat has a message, and cannot resume one without. Null
+ * while SessionStart has never fired, and while nothing has been said in the conversation it recorded.
  */
 export function readRecordedSession(dir: string): string | null {
   try {
-    return readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
+    const start = readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
+    return start !== null && existsSync(start.transcriptPath) ? start.id : null;
   } catch {
     return null;
   }

@@ -52,9 +52,16 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
   const stateFile = join(dataDir, 'state.json');
   const readState = (): TaskRecord[] => JSON.parse(readFileSync(stateFile, 'utf8')).tasks;
   const taskDir = (taskId: string) => join(dataDir, 'tasks', taskId);
-  /** What the SessionStart hook leaves once claude has begun the task's conversation. */
-  const sessionStarted = (taskId: string, claudeSessionId: string) =>
-    writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
+  /**
+   * What the SessionStart hook leaves once claude has begun the task's conversation. Claude Code has saved
+   * that conversation, its transcript is there, unless `saved` says it has not (the prompt was never submitted).
+   */
+  const sessionStarted = (taskId: string, claudeSessionId: string, { source = 'startup', saved = true } = {}) => {
+    mkdirSync(taskDir(taskId), { recursive: true });
+    const transcript = join(taskDir(taskId), `${claudeSessionId}.jsonl`);
+    if (saved) writeFileSync(transcript, '');
+    writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source, transcript_path: transcript }));
+  };
 
   return {
     projectDir, dataDir, stateFile, make, service: make(), killed, changes, warnings, readState, taskDir, sessionStarted,
@@ -490,7 +497,7 @@ it('a reopen that starts the conversation over clears midTurn and gives it the o
 });
 
 it('a task kept before midTurn was recorded reopens without the prompt', async () => {
-  const { projectDir, stateFile, make, readState, taskDir, sessionStarted } = setup();
+  const { projectDir, stateFile, make, readState, sessionStarted } = setup();
   const old: TaskRecord = {
     id: 'old',
     projectDir,
@@ -506,7 +513,6 @@ it('a task kept before midTurn was recorded reopens without the prompt', async (
     open: false,
   };
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
-  mkdirSync(taskDir(old.id), { recursive: true });
   sessionStarted(old.id, old.claudeSessionId);
 
   const service = make();
@@ -553,7 +559,7 @@ it("restore leaves closed tasks closed and other projects' tasks alone", async (
 });
 
 it('restore skips a task it cannot reopen, closes it, and reopens the rest', async () => {
-  const { projectDir, stateFile, make, warnings, readState, taskDir, sessionStarted } = setup({
+  const { projectDir, stateFile, make, warnings, readState, sessionStarted } = setup({
     branchExists: async (_dir, branch) => {
       if (branch === 'worktree-broken') throw new Error('git broke');
       return false;
@@ -578,10 +584,7 @@ it('restore skips a task it cannot reopen, closes it, and reopens the rest', asy
     record('fine', '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10'),
   ];
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: seeded }));
-  for (const task of seeded) {
-    mkdirSync(taskDir(task.id), { recursive: true });
-    sessionStarted(task.id, task.claudeSessionId);
-  }
+  for (const task of seeded) sessionStarted(task.id, task.claudeSessionId);
 
   const service = make();
   await service.restore();
@@ -627,11 +630,11 @@ it('reopen asks git about the main checkout and the real branch', async () => {
 
 it('reopen continues the conversation SessionStart last recorded', async () => {
   const U2 = '11111111-1111-4111-8111-111111111111';
-  const { service, readState, taskDir } = setup();
+  const { service, readState, taskDir, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
   expect(readState()[0].claudeSessionId).not.toBe(U2);
 
-  writeFileSync(join(taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: U2, source: 'clear' }));
+  sessionStarted(view.id, U2, { source: 'clear' });
   service.onSessionExit(view.session!.id);
   expect(readState()[0].claudeSessionId).toBe(U2);
 
@@ -650,11 +653,11 @@ it('reopen continues the conversation SessionStart last recorded', async () => {
 
 it('reopen reads the id SessionStart recorded after the exit, too', async () => {
   const U2 = '11111111-1111-4111-8111-111111111111';
-  const { service, readState, taskDir } = setup();
+  const { service, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
   service.onSessionExit(view.session!.id);
 
-  writeFileSync(join(taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: U2 }));
+  sessionStarted(view.id, U2);
   const reopened = await service.reopen(view.id);
   expect(service.launchSpec(reopened.session!.id).argv).toContain(U2);
   expect(readState()[0].claudeSessionId).toBe(U2);
@@ -671,6 +674,30 @@ it('reopen of a task whose first launch never began a conversation starts one, w
   expect(reopened).toMatchObject({ closedAt: null, session: { startedWithPrompt: true } });
   const [record] = readState();
   expect(record).toMatchObject({ open: true, closedAt: null });
+  expect(record.claudeSessionId).not.toBe(first);
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual(
+    startArgv({
+      claudeBin: 'claude',
+      slug: 'fix-login',
+      name: 'damela-fix-login',
+      claudeSessionId: record.claudeSessionId,
+      settingsPath: join(taskDir(view.id), 'settings.json'),
+      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+    }),
+  );
+});
+
+it('reopen of a task whose recorded conversation Claude Code never saved starts one, with a fresh id and the same prompt', async () => {
+  const { service, readState, taskDir, sessionStarted } = setup();
+  const view = await service.start({ ...NEW_TASK, noQuestions: true });
+  const first = readState()[0].claudeSessionId;
+  // claude quit after SessionStart and before the opening prompt was submitted: no transcript was written.
+  sessionStarted(view.id, first, { saved: false });
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(reopened).toMatchObject({ closedAt: null, session: { startedWithPrompt: true } });
+  const [record] = readState();
   expect(record.claudeSessionId).not.toBe(first);
   expect(service.launchSpec(reopened.session!.id).argv).toEqual(
     startArgv({

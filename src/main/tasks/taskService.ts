@@ -157,7 +157,7 @@ export class TaskService {
         prompt,
       });
     } else {
-      // SessionStart never fired: claude was missing, or quit before the conversation began, so
+      // No conversation was saved: claude was missing, or quit before the opening prompt began one, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = this.newId();
       argv = this.startArgvOf(task, settingsPath);

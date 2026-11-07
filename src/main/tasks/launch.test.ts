@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it, expect } from 'vitest';
-import { hookSettings, managerArgv, readSessionStart, reopenArgv, startArgv } from './launch';
+import { hookSettings, managerArgv, readRecordedSession, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
@@ -77,11 +77,36 @@ it('the hook command saves its input silently, also in a folder whose path has a
 });
 
 it.each([
-  [`{"session_id":"${U}"}`, U],
+  [`{"session_id":"${U}","transcript_path":"/t/${U}.jsonl"}`, { id: U, transcriptPath: `/t/${U}.jsonl` }],
+  [`{"session_id":"${U}"}`, null],
+  [`{"session_id":"${U}","transcript_path":7}`, null],
   [null, null],
   ['{', null],
-  ['{"session_id":"--evil"}', null],
+  ['{"session_id":"--evil","transcript_path":"/t/x.jsonl"}', null],
   ['[]', null],
-])('readSessionStart(%j) is %j', (text, id) => {
-  expect(readSessionStart(text)).toBe(id);
+])('readSessionStart(%j) is %j', (text, start) => {
+  expect(readSessionStart(text)).toEqual(start);
+});
+
+function recordedIn(payload: (transcript: string) => object) {
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-recorded-'));
+  const transcript = join(dir, `${U}.jsonl`);
+  writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify(payload(transcript)));
+  return { dir, transcript };
+}
+
+it('the recorded session is the one SessionStart named, once Claude Code has saved its transcript', () => {
+  const { dir, transcript } = recordedIn((transcript_path) => ({ session_id: U, transcript_path }));
+  writeFileSync(transcript, '');
+  expect(readRecordedSession(dir)).toBe(U);
+});
+
+it('there is no recorded session while the transcript SessionStart named has not been saved', () => {
+  const { dir } = recordedIn((transcript_path) => ({ session_id: U, transcript_path }));
+  expect(readRecordedSession(dir)).toBeNull();
+});
+
+it('there is no recorded session when SessionStart named no transcript, or has not fired', () => {
+  expect(readRecordedSession(recordedIn(() => ({ session_id: U })).dir)).toBeNull();
+  expect(readRecordedSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
 });
