@@ -295,6 +295,20 @@ it('a status or an exit for another session, or after the end, changes nothing',
   expect(t.changes).toHaveLength(2);
 });
 
+it('a start whose manager.json cannot be written holds no session, so the next start tries again', () => {
+  const t = setup();
+  // A folder where the write's temporary file goes makes the write fail.
+  mkdirSync(t.file('manager.json.tmp'), { recursive: true });
+
+  expect(() => t.service.start()).toThrow();
+  expect(t.service.view()).toEqual({ session: null });
+
+  rmSync(t.file('manager.json.tmp'), { recursive: true });
+  const view = t.service.start();
+  expect(view.session).not.toBeNull();
+  expect(t.changes).toEqual([view]);
+});
+
 it('a quit with no session records nothing', () => {
   const { service, dataDir } = setup();
   service.beginQuit();

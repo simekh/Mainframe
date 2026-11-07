@@ -99,8 +99,9 @@ export class ManagerService {
     // midTurn is cleared here; a session whose carry-on prompt never takes sets it again as it ends. askAgain
     // is kept, so the prompt owed again is the same one.
     const record: ManagerRecord = { version: VERSION, midTurn: false, askAgain: prior.askAgain };
-    this.session = { id: this.newId(), argv, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn) };
+    // Saved first: a start that cannot save it holds no session, so the next one tries again.
     writeJsonAtomic(this.recordFile, record);
+    this.session = { id: this.newId(), argv, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn) };
     const view = this.view();
     this.deps.onChange(view);
     return view;
