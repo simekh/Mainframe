@@ -1,5 +1,6 @@
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { localFiles } from './pty/sessionHost';
 import { writeJsonAtomic } from './tasks/taskStore';
 
 /**
@@ -14,14 +15,6 @@ export interface ProjectPick {
   dataDir: string;
   /** Asks the owner for a project folder; undefined when they cancel. */
   pick: () => Promise<string | undefined>;
-}
-
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -54,7 +47,7 @@ function readOpen(dataDir: string, warn: (msg: string) => void): string[] {
   return open;
 }
 
-function writeOpen(dataDir: string, open: string[]): void {
+export function writeOpenProjects(dataDir: string, open: string[]): void {
   writeJsonAtomic(join(dataDir, FILE), { version: VERSION, open });
 }
 
@@ -65,9 +58,9 @@ function writeOpen(dataDir: string, open: string[]): void {
  */
 export async function chooseProject(deps: ProjectPick & { warn: (msg: string) => void }): Promise<string | undefined> {
   const [remembered] = readOpen(deps.dataDir, deps.warn);
-  if (remembered !== undefined && isDirectory(remembered)) return remembered;
+  if (remembered !== undefined && localFiles.isDirectory(remembered)) return remembered;
   const picked = await deps.pick();
-  if (picked !== undefined) writeOpen(deps.dataDir, [picked]);
+  if (picked !== undefined) writeOpenProjects(deps.dataDir, [picked]);
   return picked;
 }
 
@@ -75,6 +68,6 @@ export async function chooseProject(deps: ProjectPick & { warn: (msg: string) =>
 export async function openProject(deps: ProjectPick & { current: string; restart: () => void }): Promise<void> {
   const picked = await deps.pick();
   if (picked === undefined || picked === deps.current) return;
-  writeOpen(deps.dataDir, [picked]);
+  writeOpenProjects(deps.dataDir, [picked]);
   deps.restart();
 }

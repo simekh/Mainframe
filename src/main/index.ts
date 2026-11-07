@@ -117,17 +117,17 @@ async function start(config: AppConfig, projectDir: string): Promise<void> {
   });
   const shown = createWindow();
   win = shown;
-  Menu.setApplicationMenu(
-    buildMenu(() => {
-      const restart = () => {
+  const onOpenProject = () =>
+    openProject({
+      dataDir: config.dataDir,
+      current: projectDir,
+      pick: () => pickProjectFolder(shown),
+      restart: () => {
         app.relaunch();
         app.quit();
-      };
-      openProject({ dataDir: config.dataDir, current: projectDir, pick: () => pickProjectFolder(shown), restart }).catch(
-        (err: unknown) => console.error('[projects] could not open the project', err),
-      );
-    }),
-  );
+      },
+    }).catch((err: unknown) => console.error('[projects] could not open the project', err));
+  Menu.setApplicationMenu(buildMenu(onOpenProject));
   registerIpc(
     toWindow,
     service,

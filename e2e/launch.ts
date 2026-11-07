@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { writeOpenProjects } from '../src/main/projects';
 
 const root = join(__dirname, '..');
 
@@ -50,7 +51,7 @@ export async function launchApp(
   project = os.tmpdir(),
 ): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
   const dataDir = env.MAINFRAME_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
-  writeFileSync(join(dataDir, 'projects.json'), JSON.stringify({ version: 1, open: [project] }));
+  writeOpenProjects(dataDir, [project]);
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { chooseProject, openProject } from './projects';
 
 let root: string;
@@ -23,16 +23,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const projectsFile = () => join(dataDir, 'projects.json');
 const remember = (value: unknown) => writeFileSync(projectsFile(), JSON.stringify(value));
 const remembered = () => JSON.parse(readFileSync(projectsFile(), 'utf8'));
-
-/** A picker that answers `answer` and counts how often it was asked. */
-function picker(answer: string | undefined) {
-  const pick = async () => {
-    pick.asked += 1;
-    return answer;
-  };
-  pick.asked = 0;
-  return pick;
-}
+const picker = (answer: string | undefined) => vi.fn(async () => answer);
 
 describe('chooseProject', () => {
   it('asks for a folder the first time and remembers it', async () => {
@@ -45,7 +36,7 @@ describe('chooseProject', () => {
     remember({ version: 1, open: [acme] });
     const pick = picker(globex);
     expect(await chooseProject({ dataDir, pick, warn })).toBe(acme);
-    expect(pick.asked).toBe(0);
+    expect(pick).not.toHaveBeenCalled();
   });
 
   it('asks again when the remembered folder has gone, and remembers the new one', async () => {
@@ -68,32 +59,25 @@ describe('chooseProject', () => {
     writeFileSync(projectsFile(), text);
     const pick = picker(acme);
     expect(await chooseProject({ dataDir, pick, warn })).toBe(acme);
-    expect(pick.asked).toBe(1);
+    expect(pick).toHaveBeenCalledOnce();
   });
 
   it('leaves a projects.json from a newer Mainframe as it is, and says so', async () => {
     remember({ version: 2, open: [acme] });
     const pick = picker(globex);
     await expect(chooseProject({ dataDir, pick, warn })).rejects.toThrow('newer Mainframe');
-    expect(pick.asked).toBe(0);
+    expect(pick).not.toHaveBeenCalled();
     expect(remembered()).toEqual({ version: 2, open: [acme] });
   });
 });
 
 describe('openProject', () => {
-  /** A restart that only counts. */
-  function restarter() {
-    const restart = () => void (restart.count += 1);
-    restart.count = 0;
-    return restart;
-  }
-
   it('remembers the picked folder and restarts on it', async () => {
     remember({ version: 1, open: [acme] });
-    const restart = restarter();
+    const restart = vi.fn();
     await openProject({ dataDir, current: acme, pick: picker(globex), restart });
     expect(remembered()).toEqual({ version: 1, open: [globex] });
-    expect(restart.count).toBe(1);
+    expect(restart).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -101,9 +85,9 @@ describe('openProject', () => {
     ['the owner picks the open folder', 'acme'],
   ])('changes nothing when %s', async (_case, answer) => {
     remember({ version: 1, open: [acme] });
-    const restart = restarter();
+    const restart = vi.fn();
     await openProject({ dataDir, current: acme, pick: picker(answer && join(root, answer)), restart });
     expect(remembered()).toEqual({ version: 1, open: [acme] });
-    expect(restart.count).toBe(0);
+    expect(restart).not.toHaveBeenCalled();
   });
 });
