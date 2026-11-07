@@ -84,6 +84,8 @@ The MCP config goes to the manager and to the background sync run (§5.3), each 
 
 **Mainframe's tools run without a permission prompt (owner).** The owner's user-level mode is `auto`, which still asks before some actions (step 1 findings §11.1), and "don't ask again" would write the rule into the repo's `settings.local.json`. So each per-launch `--settings` file allows Mainframe's tools; the exact rule syntax is to be verified against the current settings docs. This means only the role prompt keeps the manager from starting sessions the owner didn't ask for. The owner accepted that: an unwanted session shows in the manager's chat and on the board, and Close stops it.
 
+**Changed 2026-11-07 (owner):** only the tools that read run without a prompt. Starting a task goes through the owner's permission mode (a prompt in the manager's terminal, or auto mode's classifier), so it is no longer the role prompt alone.
+
 The manager's tools, with names and exact shapes left to the builder:
 - **Sync the Todo list.** Starts the same background sync as the panel's Sync button, so "sync my list" still works when said to the manager. It returns when the sync ends, with the card count or the error.
 - **List sessions.** Returns every task: id, title, card (number and URL, if any), lane and state as the board shows them, branch, worktree path, Claude session id, and start and close times. With that, the manager answers "what is #124 doing?" by reading the worktree and its git history itself.

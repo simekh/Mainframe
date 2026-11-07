@@ -115,7 +115,7 @@ it('start writes manager.json, the hooks and permissions in settings.json, and m
   service.start();
 
   expect(readRecord()).toEqual({ version: 1, midTurn: false });
-  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, ['mcp__mainframe__*']));
+  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, ['mcp__mainframe__list_sessions']));
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(MCP_CONFIG);
   expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });

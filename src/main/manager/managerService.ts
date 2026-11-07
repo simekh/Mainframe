@@ -12,8 +12,11 @@ import { ROLE_PROMPT } from './rolePrompt';
 const MANAGER_FILE = 'manager.json';
 const MCP_FILE = 'mcp.json';
 
-/** What the manager may call without asking: every tool of the one server, as an allow rule must name it. */
-const ALLOWED_TOOLS = ['mcp__mainframe__*'];
+/**
+ * What the manager may call without asking, as an allow rule names a tool. Only the read: starting a task goes
+ * through the owner's permission mode, so the role prompt is not all that stands between the manager and a session.
+ */
+const ALLOWED_TOOLS = ['mcp__mainframe__list_sessions'];
 
 /** The version of `manager.json` this build writes and reads. */
 const VERSION = 1;
