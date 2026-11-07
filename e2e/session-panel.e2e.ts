@@ -12,7 +12,7 @@ const working = "printf '\\033]7501;state=working\\033\\\\'";
 
 test('the header shows the task, project and branch, with Close session and then Reopen', async () => {
   const main = repo();
-  const { app, page, dataDir } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
+  const { app, page, dataDir } = await launchApp({}, main);
   await startTask(page, 'Fix login');
   const panel = page.getByTestId('side-panel');
   const title = page.getByTestId('panel-title');
@@ -70,7 +70,7 @@ test('a task closed during this run keeps its terminal; one closed before it sho
 
 test('changed files lists what the task changed in its worktree', async () => {
   const main = repo();
-  const { app, page } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
+  const { app, page } = await launchApp({}, main);
   await startTask(page, 'Fix login');
   const files = page.getByTestId('changed-files');
   const heading = files.locator('.pane-heading');
@@ -114,7 +114,7 @@ test('changed files lists what the task changed in its worktree', async () => {
 
 test('switching tasks resizes no terminal off screen, and none whose panel looks as it did', async () => {
   const main = repo();
-  const { app, page } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
+  const { app, page } = await launchApp({}, main);
   const files = page.getByTestId('changed-files');
   const a = await startTask(page, 'Alpha');
   // Three changed files in Alpha's worktree, as `claude -w alpha` and its edits would leave them.

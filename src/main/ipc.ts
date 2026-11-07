@@ -1,8 +1,6 @@
-import { basename } from 'node:path';
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { RendererConfig } from '../shared/types';
-import type { AppConfig } from './config';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -24,14 +22,11 @@ export function registerIpc(
   service: TaskService,
   manager: ManagerService,
   host: SessionHost,
-  config: AppConfig,
+  rendererConfig: RendererConfig,
   clipboardDeps: ClipboardDeps,
   openExternal: (url: string) => Promise<void>,
 ): void {
-  ipcMain.handle(
-    IPC.getConfig,
-    (): RendererConfig => ({ inputBatchMs: config.inputBatchMs, e2e: config.e2e, projectName: basename(config.projectDir) }),
-  );
+  ipcMain.handle(IPC.getConfig, () => rendererConfig);
 
   // Rejections reach the renderer's invoke, which shows them.
   ipcMain.handle(IPC.listTasks, () => service.list());

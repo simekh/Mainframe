@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu, shell } from 'electron';
+import { basename, join } from 'node:path';
+import { app, BrowserWindow, clipboard, dialog, Menu, shell, type OpenDialogOptions } from 'electron';
 import * as pty from 'node-pty';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
@@ -12,6 +12,7 @@ import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
+import { chooseProject, openProject } from './projects';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
@@ -21,21 +22,13 @@ const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 // Every on-screen terminal holds a WebGL context; Chromium's default limit (16) is too low.
 app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
 
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read before `ready`: the data folder becomes `userData`, so Chromium's storage lives there too.
  * An error is shown once the app is ready.
  */
 function readConfig(): AppConfig | Error {
   try {
-    const config = loadConfig(process.env, isDirectory, app.getPath('userData'));
+    const config = loadConfig(process.env, app.getPath('userData'));
     // setPath refuses a folder that doesn't exist.
     mkdirSync(config.dataDir, { recursive: true });
     app.setPath('userData', config.dataDir);
@@ -71,8 +64,20 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+/** The folder dialog, on the window once there is one. Undefined when the owner cancels. */
+async function pickProjectFolder(win?: BrowserWindow): Promise<string | undefined> {
+  const options: OpenDialogOptions = {
+    message: 'Choose the folder of the project Mainframe should run on',
+    buttonLabel: 'Open',
+    properties: ['openDirectory'],
+  };
+  // Looked up at each call, so an e2e run can answer it.
+  const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  return canceled ? undefined : filePaths[0];
+}
+
 /** Throws when Mainframe can't start; nothing that can throw comes after the window opens. */
-async function start(config: AppConfig): Promise<void> {
+async function start(config: AppConfig, projectDir: string): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
@@ -93,7 +98,7 @@ async function start(config: AppConfig): Promise<void> {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
   const service = new TaskService({
-    projectDir: config.projectDir,
+    projectDir,
     dataDir: config.dataDir,
     claudeBin: config.claudeBin,
     git: gitQueries,
@@ -104,7 +109,7 @@ async function start(config: AppConfig): Promise<void> {
   // The manager's tools, on the tasks. Its mcp.json carries this run's port and token to it.
   const mcp = await startMcpServer((server) => registerManagerTools(server, service));
   const manager = new ManagerService({
-    projectDir: config.projectDir,
+    projectDir,
     dataDir: config.dataDir,
     claudeBin: config.claudeBin,
     mcpConfig: mcpConfigJson(mcp.url, mcp.token),
@@ -112,13 +117,23 @@ async function start(config: AppConfig): Promise<void> {
   });
   const shown = createWindow();
   win = shown;
-  Menu.setApplicationMenu(buildMenu());
+  Menu.setApplicationMenu(
+    buildMenu(() => {
+      const restart = () => {
+        app.relaunch();
+        app.quit();
+      };
+      openProject({ dataDir: config.dataDir, current: projectDir, pick: () => pickProjectFolder(shown), restart }).catch(
+        (err: unknown) => console.error('[projects] could not open the project', err),
+      );
+    }),
+  );
   registerIpc(
     toWindow,
     service,
     manager,
     host,
-    config,
+    { inputBatchMs: config.inputBatchMs, e2e: config.e2e, projectName: basename(projectDir) },
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
     // Looked up at each call, so an e2e run can stand in for the browser.
     (url) => shell.openExternal(url),
@@ -167,7 +182,12 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     try {
       if (config instanceof Error) throw config;
-      await start(config);
+      const projectDir = await chooseProject({ dataDir: config.dataDir, pick: () => pickProjectFolder(), warn: console.warn });
+      if (projectDir === undefined) {
+        app.quit();
+        return;
+      }
+      await start(config, projectDir);
     } catch (err) {
       dialog.showErrorBox('Mainframe could not start', err instanceof Error ? err.message : String(err));
       app.quit();

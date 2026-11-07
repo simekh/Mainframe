@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
 
 export interface AppConfig {
-  projectDir: string;
   claudeBin: string;
   dataDir: string;
   inputBatchMs: number;
@@ -26,23 +25,9 @@ function readBatchMs(env: NodeJS.ProcessEnv, key: string, fallback: number): num
   return Number(raw);
 }
 
-/** The project and data folders come back absolute: the session hooks and `--settings` need them so. */
-export function loadConfig(
-  env: NodeJS.ProcessEnv,
-  isDirectory: (path: string) => boolean,
-  defaultDataDir: string,
-): AppConfig {
-  const rawProjectDir = env.MAINFRAME_PROJECT_DIR;
-  // Mainframe has no project of its own to fall back on.
-  if (!rawProjectDir) {
-    throw new Error('MAINFRAME_PROJECT_DIR is not set: set it to the folder of the project Mainframe should run on');
-  }
-  const projectDir = resolve(rawProjectDir);
-  if (!isDirectory(projectDir)) {
-    throw new Error(`MAINFRAME_PROJECT_DIR is not a directory: ${projectDir}`);
-  }
+/** The data folder comes back absolute: the session hooks and `--settings` need it so. */
+export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppConfig {
   return {
-    projectDir,
     claudeBin: readClaudeBin(env),
     dataDir: resolve(env.MAINFRAME_DATA_DIR ?? defaultDataDir),
     inputBatchMs: readBatchMs(env, 'MAINFRAME_INPUT_BATCH_MS', 0),

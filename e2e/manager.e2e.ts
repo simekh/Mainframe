@@ -58,7 +58,7 @@ async function callTool(dataDir: string, name: string, args: Record<string, unkn
 
 test("the manager starts with the app in the main checkout, with Mainframe's tools allowed", async () => {
   const main = repo();
-  const { app, page, dataDir } = await launchApp({ MAINFRAME_PROJECT_DIR: main });
+  const { app, page, dataDir } = await launchApp({}, main);
   await expect.poll(() => managerLaunches(dataDir)).toHaveLength(1);
   const [{ cwd, args }] = managerLaunches(dataDir);
   const { mcp, settings } = filesOf(dataDir);

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -31,7 +31,6 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
   return {
     ...(process.env as Record<string, string>),
     MAINFRAME_E2E: '1',
-    MAINFRAME_PROJECT_DIR: os.tmpdir(),
     MAINFRAME_CLAUDE_BIN: join(root, 'e2e', 'fake-claude.sh'),
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
@@ -43,12 +42,15 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
 
 /**
  * Starts the built app with `e2e/fake-claude.sh` as `claude`, in a data folder of its own: a fresh
- * one unless `env` names one (to relaunch on the same tasks).
+ * one unless `env` names one (to relaunch on the same tasks). It opens on `project`, which the data
+ * folder's `projects.json` names, so the folder dialog never shows.
  */
 export async function launchApp(
   env: Record<string, string> = {},
+  project = os.tmpdir(),
 ): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
   const dataDir = env.MAINFRAME_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
+  writeFileSync(join(dataDir, 'projects.json'), JSON.stringify({ version: 1, open: [project] }));
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));
