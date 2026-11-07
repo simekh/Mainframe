@@ -54,11 +54,14 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
   const taskDir = (taskId: string) => join(dataDir, 'tasks', taskId);
   /**
    * What the SessionStart hook leaves once claude has begun the task's conversation. Claude Code has saved
-   * that conversation, its transcript is there, unless `saved` says it has not (the prompt was never submitted).
+   * that conversation, its transcript is there, in a project folder under Claude Code's projects folder, unless
+   * `saved` says it has not (the prompt was never submitted).
    */
   const sessionStarted = (taskId: string, claudeSessionId: string, { source = 'startup', saved = true } = {}) => {
     mkdirSync(taskDir(taskId), { recursive: true });
-    const transcript = join(taskDir(taskId), `${claudeSessionId}.jsonl`);
+    const folder = join(dataDir, 'projects', '-damela');
+    mkdirSync(folder, { recursive: true });
+    const transcript = join(folder, `${claudeSessionId}.jsonl`);
     if (saved) writeFileSync(transcript, '');
     writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source, transcript_path: transcript }));
   };

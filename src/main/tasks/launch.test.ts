@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it, expect } from 'vitest';
@@ -88,25 +88,53 @@ it.each([
   expect(readSessionStart(text)).toEqual(start);
 });
 
-function recordedIn(payload: (transcript: string) => object) {
-  const dir = mkdtempSync(join(tmpdir(), 'mainframe-recorded-'));
-  const transcript = join(dir, `${U}.jsonl`);
-  writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify(payload(transcript)));
-  return { dir, transcript };
+/**
+ * A session folder whose SessionStart payload names `<projects>/-main/<U>.jsonl`, beside Claude Code's projects
+ * folder with a project folder for the main checkout and one for a worktree. `saveIn` writes the chat's transcript.
+ */
+function recordedIn(payload: (transcriptPath: string) => object = (transcript_path) => ({ session_id: U, transcript_path })) {
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-recorded-'));
+  const dir = join(root, 'session');
+  const projects = join(root, 'projects');
+  mkdirSync(dir);
+  mkdirSync(join(projects, '-main'), { recursive: true });
+  mkdirSync(join(projects, '-worktree'));
+  writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify(payload(join(projects, '-main', `${U}.jsonl`))));
+  const saveIn = (folder: string, id = U) => writeFileSync(join(projects, folder, `${id}.jsonl`), '');
+  return { dir, saveIn };
 }
 
 it('the recorded session is the one SessionStart named, once Claude Code has saved its transcript', () => {
-  const { dir, transcript } = recordedIn((transcript_path) => ({ session_id: U, transcript_path }));
-  writeFileSync(transcript, '');
+  const { dir, saveIn } = recordedIn();
+  saveIn('-main');
   expect(readRecordedSession(dir)).toBe(U);
 });
 
-it('there is no recorded session while the transcript SessionStart named has not been saved', () => {
-  const { dir } = recordedIn((transcript_path) => ({ session_id: U, transcript_path }));
+// A task resumed from the main checkout, as when its worktree branch is gone, records the main checkout's
+// project folder, but Claude Code finds the chat in the worktree's and keeps writing it there.
+it('the recorded session is also saved when its transcript is in another project folder than the one named', () => {
+  const { dir, saveIn } = recordedIn();
+  saveIn('-worktree');
+  expect(readRecordedSession(dir)).toBe(U);
+});
+
+it('there is no recorded session while no project folder holds the transcript, whatever others hold', () => {
+  const { dir, saveIn } = recordedIn();
+  saveIn('-worktree', '11111111-1111-4111-8111-111111111111');
   expect(readRecordedSession(dir)).toBeNull();
 });
 
-it('there is no recorded session when SessionStart named no transcript, or has not fired', () => {
-  expect(readRecordedSession(recordedIn(() => ({ session_id: U })).dir)).toBeNull();
+it('there is no recorded session when the projects folder cannot be read', () => {
+  const { dir } = recordedIn((transcript_path) => ({ session_id: U, transcript_path: transcript_path.replace('projects', 'gone') }));
+  expect(readRecordedSession(dir)).toBeNull();
+});
+
+it('there is no recorded session when SessionStart named no transcript', () => {
+  const { dir, saveIn } = recordedIn(() => ({ session_id: U }));
+  saveIn('-main');
+  expect(readRecordedSession(dir)).toBeNull();
+});
+
+it('there is no recorded session while SessionStart has not fired', () => {
   expect(readRecordedSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
 });

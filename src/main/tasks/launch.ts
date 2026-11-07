@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -86,7 +86,7 @@ export function writeHookSettings(dir: string, allow: string[] = []): string {
   return settingsPath;
 }
 
-/** The conversation a SessionStart payload names, and where Claude Code saves it; null when it names either badly. */
+/** The conversation a SessionStart payload names, and the transcript path it gives; null when it gives either badly. */
 export function readSessionStart(text: string | null): { id: string; transcriptPath: string } | null {
   if (text === null) return null;
   let parsed: unknown;
@@ -107,7 +107,12 @@ export function readSessionStart(text: string | null): { id: string; transcriptP
 export function readRecordedSession(dir: string): string | null {
   try {
     const start = readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
-    return start !== null && existsSync(start.transcriptPath) ? start.id : null;
+    if (start === null) return null;
+    // Any project folder under Claude Code's projects folder may hold the chat, not only the one the payload
+    // names: a task resumed from the main checkout, its worktree branch gone, names the main checkout's folder,
+    // while the chat stays in the worktree's. Ids are UUIDs, so a file of that name elsewhere is the same chat.
+    const projects = dirname(dirname(start.transcriptPath));
+    return readdirSync(projects).some((folder) => existsSync(join(projects, folder, `${start.id}.jsonl`))) ? start.id : null;
   } catch {
     return null;
   }

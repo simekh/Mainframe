@@ -158,10 +158,9 @@ test('a manager chat that Claude Code never saved is not resumed: the next start
   // The fake saves its chat as it starts, naming the transcript in the file the hook writes; nobody typed to
   // this manager, so the real one would have saved nothing.
   const id = firstConversation(dataDir);
-  const transcript = join(dataDir, 'fake-claude', `${id}.jsonl`);
   const hookFile = join(managerDir(dataDir), 'session-start.json');
-  await expect.poll(() => existsSync(hookFile) && readFileSync(hookFile, 'utf8')).toContain(transcript);
-  rmSync(transcript);
+  await expect.poll(() => existsSync(hookFile) && readFileSync(hookFile, 'utf8')).toContain(`${id}.jsonl"}`);
+  rmSync(JSON.parse(readFileSync(hookFile, 'utf8')).transcript_path);
   await first.app.close();
 
   const second = await launchApp({ MAINFRAME_DATA_DIR: dataDir });

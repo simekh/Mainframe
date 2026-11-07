@@ -47,11 +47,14 @@ function setup() {
   const readRecord = () => JSON.parse(readFileSync(file('manager.json'), 'utf8'));
   /**
    * What the SessionStart hook leaves once claude has begun the manager's conversation. Claude Code has saved
-   * that conversation, its transcript is there, unless `saved` says it has not (nobody has typed to it yet).
+   * that conversation, its transcript is there, in a project folder under Claude Code's projects folder, unless
+   * `saved` says it has not (nobody has typed to it yet).
    */
   const sessionStarted = (claudeSessionId: string, { source = 'startup', saved = true } = {}) => {
     mkdirSync(dir, { recursive: true });
-    const transcript = file(`${claudeSessionId}.jsonl`);
+    const folder = join(dataDir, 'projects', '-damela');
+    mkdirSync(folder, { recursive: true });
+    const transcript = join(folder, `${claudeSessionId}.jsonl`);
     if (saved) writeFileSync(transcript, '');
     writeFileSync(file(SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source, transcript_path: transcript }));
   };
