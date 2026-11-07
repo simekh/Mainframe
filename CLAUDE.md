@@ -1,5 +1,17 @@
 # Mainframe: project rules
 
+## Mainframe is project-agnostic: built for other people's projects (since 2026-11-07)
+
+Mainframe runs several Claude Code sessions across whatever project the user points it at. It is meant to be published on GitHub, so friends can run it on their own projects. Build the product for them, not for the owner's machine or the owner's projects.
+
+- **The product knows no particular project.** Code, prompts, defaults, UI copy and user-facing docs name no project, path, branch (`main`), language, test command or folder layout. What is specific to a project comes from that project's folder (its `CLAUDE.md`, its git, its `.claude/`) or from a setting, never from Mainframe.
+- **No default is the owner's value.** A setting that is missing is an error, or a question to the user, never a path or name from the owner's machine.
+- **Don't assume the owner's tooling.** Superpowers, GSD, the `/simplify` and `/code-review` gate and the `docs/superpowers/` layout are how Mainframe itself is developed. A prompt Mainframe sends (the manager's role, a task's opening prompt) must work in a project with none of them: it defers to "this repo's `CLAUDE.md`" and names no skill or plugin.
+- **The owner's setup lives in the repo's workflow files, not the product.** This `CLAUDE.md`, `.claude/` and `docs/` may be the owner's. `src/` and `e2e/` may not, and neither may anything a user's machine ends up running or showing.
+- **One question for every change:** would this work unchanged for a friend whose project is in another language, has a `master` branch, and has none of these plugins installed? Task reviews ask it, and a no is an Important finding.
+
+**Why:** the owner decided 2026-11-07 to publish Mainframe for friends to use on their own projects. A value that works only on the owner's machine is a bug the owner cannot see, because it works for them. Fixing each one after a friend hits it costs more than not writing it.
+
 ## Keep code in proportion to what it does
 
 - **Task reviews judge proportion.** Each task review asks whether the code is the simplest thing that meets the requirement. A diff much larger than its requirement is an Important finding. The exception is when the size buys real safety, and the review then names what that safety is.
