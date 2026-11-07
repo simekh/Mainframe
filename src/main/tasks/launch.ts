@@ -86,8 +86,8 @@ export function writeHookSettings(dir: string, allow: string[] = []): string {
   return settingsPath;
 }
 
-/** The conversation a SessionStart payload names, and the transcript path it gives; null when it gives either badly. */
-export function readSessionStart(text: string | null): { id: string; transcriptPath: string } | null {
+/** What a SessionStart payload says of its conversation: the id, and the source and transcript path where it gives them; null without an id. */
+export function readSessionStart(text: string | null): { id: string; source?: string; transcriptPath?: string } | null {
   if (text === null) return null;
   let parsed: unknown;
   try {
@@ -95,23 +95,47 @@ export function readSessionStart(text: string | null): { id: string; transcriptP
   } catch {
     return null;
   }
-  const { session_id: id, transcript_path: transcriptPath } = (parsed ?? {}) as { session_id?: unknown; transcript_path?: unknown };
-  return typeof id === 'string' && isUuid(id) && typeof transcriptPath === 'string' ? { id, transcriptPath } : null;
+  const { session_id: id, source, transcript_path: transcriptPath } = (parsed ?? {}) as Record<string, unknown>;
+  if (typeof id !== 'string' || !isUuid(id)) return null;
+  return {
+    id,
+    ...(typeof source === 'string' && { source }),
+    ...(typeof transcriptPath === 'string' && { transcriptPath }),
+  };
+}
+
+function readStart(dir: string): ReturnType<typeof readSessionStart> {
+  try {
+    return readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 /**
- * The conversation SessionStart last recorded in `dir`, which `/clear` and compaction change, provided Claude
- * Code saved it: it writes a transcript only once the chat has a message, and cannot resume one without. Null
- * while SessionStart has never fired, and while nothing has been said in the conversation it recorded.
+ * The conversation SessionStart last recorded in `dir`, which `/clear` and compaction change; null while
+ * it has never fired.
  */
 export function readRecordedSession(dir: string): string | null {
+  return readStart(dir)?.id ?? null;
+}
+
+/**
+ * The recorded conversation, when `claude --resume` can open it, for a session that may never have been
+ * typed to: Claude Code writes a chat's transcript with its first message, and cannot resume one without.
+ */
+export function readResumableSession(dir: string): string | null {
+  const start = readStart(dir);
+  if (start === null) return null;
+  // Only a chat that has just begun (startup) or been cleared (clear) can be unsaved. Any other source
+  // (resume, compact, fork) continues one that has been, so it is resumed without a look at Claude Code's files.
+  if (start.source !== 'startup' && start.source !== 'clear') return start.id;
+  if (start.transcriptPath === undefined) return null;
+  // Any project folder under Claude Code's projects folder may hold the chat, not only the one the payload
+  // names: a chat resumed from the main checkout, as when a task's worktree branch is gone, names the main
+  // checkout's folder while it stays in the worktree's. Ids are UUIDs, so a file of that name elsewhere is it.
+  const projects = dirname(dirname(start.transcriptPath));
   try {
-    const start = readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
-    if (start === null) return null;
-    // Any project folder under Claude Code's projects folder may hold the chat, not only the one the payload
-    // names: a task resumed from the main checkout, its worktree branch gone, names the main checkout's folder,
-    // while the chat stays in the worktree's. Ids are UUIDs, so a file of that name elsewhere is the same chat.
-    const projects = dirname(dirname(start.transcriptPath));
     return readdirSync(projects).some((folder) => existsSync(join(projects, folder, `${start.id}.jsonl`))) ? start.id : null;
   } catch {
     return null;

@@ -178,12 +178,12 @@ it('a launch whose conversation never began starts one again, under a fresh id',
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(claudeSessionId, false));
 });
 
-it('a recorded conversation Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', () => {
+it('a startup record whose chat Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', () => {
   const t = setup();
   // Launched, SessionStart fired, and nobody typed: the transcript was never written.
   const first = t.service.start();
   const firstId = t.readRecord().claudeSessionId;
-  t.sessionStarted(firstId, { saved: false });
+  t.sessionStarted(firstId, { source: 'startup', saved: false });
   t.service.onSessionExit(first.session!.id);
 
   const again = t.service.start();
@@ -191,6 +191,16 @@ it('a recorded conversation Claude Code never saved is not resumed: the next sta
   expect(claudeSessionId).not.toBe(firstId);
   expect(again.session!.startedWithPrompt).toBe(false);
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(claudeSessionId, false));
+});
+
+// A resumed chat exists, wherever Claude Code keeps it: Mainframe does not look for its file.
+it('a resume record is resumed although no transcript of it can be found', () => {
+  const t = setup();
+  t.sessionStarted(U2, { source: 'resume', saved: false });
+
+  const view = t.service.start();
+  expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
+  expect(t.readRecord().claudeSessionId).toBe(U2);
 });
 
 // Working, it carries on; waiting for the owner's answer, Claude is asked to ask again, never to

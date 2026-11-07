@@ -3,7 +3,7 @@ import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { inTurn, resumePromptFor, turnAtEnd } from '../tasks/carryOn';
-import { managerArgv, readRecordedSession, writeHookSettings } from '../tasks/launch';
+import { managerArgv, readRecordedSession, readResumableSession, writeHookSettings } from '../tasks/launch';
 import { sessionName, slugify } from '../tasks/naming';
 import { ROLE_PROMPT } from './rolePrompt';
 
@@ -86,10 +86,10 @@ export class ManagerService {
     rmSync(mcpConfigPath, { force: true });
     writeFileSync(mcpConfigPath, this.deps.mcpConfig, { mode: 0o600 });
 
-    const recorded = readRecordedSession(this.dir);
+    const recorded = readResumableSession(this.dir);
     const prompt = recorded === null ? undefined : resumePromptFor(prior);
     const carryOn = prompt !== undefined;
-    // Without a recorded conversation none was saved, whether SessionStart fired or not: this starts it as the first launch would.
+    // Without a conversation to resume none was saved, whether SessionStart fired or not: this starts it as the first launch would.
     const claudeSessionId = recorded ?? this.newId();
     const argv = managerArgv({
       claudeBin: this.deps.claudeBin,
