@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
-import type { ChangedFile, ProgramState, TaskView } from '../../shared/types';
+import type { ChangedFile, ProgramState, ProgramStatus, TaskView } from '../../shared/types';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord } from './taskStore';
@@ -31,6 +31,8 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
     ...gitOverrides,
   };
   const killed: string[] = [];
+  /** What the session host holds as each session's last report. */
+  const statuses = new Map<string, ProgramStatus>();
   const changes: TaskView[][] = [];
   const warnings: string[] = [];
   let counter = 0;
@@ -43,6 +45,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
       claudeBin: 'claude',
       git,
       kill: (id) => killed.push(id),
+      status: (id) => statuses.get(id) ?? null,
       onChange: (tasks) => changes.push(tasks),
       newId,
       now: () => 1000,
@@ -57,7 +60,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
     writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
 
   return {
-    projectDir, dataDir, stateFile, make, service: make(), killed, changes, warnings, readState, taskDir, sessionStarted,
+    projectDir, dataDir, stateFile, make, service: make(), killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
   };
 }
 
@@ -853,10 +856,11 @@ it("changedFiles asks git about the task's worktree", async () => {
 });
 
 it('reports lists every task oldest first: a running one with its last state and message, a closed one as not running', async () => {
-  const { service, projectDir, readState } = setup();
+  const { service, projectDir, readState, statuses } = setup();
   const first = await service.start({ ...NEW_TASK, title: 'First' });
   const second = await service.start({ ...NEW_TASK, title: 'Second' });
-  service.noteStatus(first.session!.id, 'blocked', 'Run rm -rf build?');
+  statuses.set(first.session!.id, { id: '', state: 'blocked', msg: 'Run rm -rf build?', updatedAt: 1 });
+  statuses.set(second.session!.id, { id: '', state: 'working', updatedAt: 1 });
   service.close(second.id);
   service.onSessionExit(second.session!.id);
 
@@ -887,19 +891,4 @@ it('reports lists every task oldest first: a running one with its last state and
       msg: null,
     },
   ]);
-});
-
-it('a report without a message, and a clear, leave no message from the report before', async () => {
-  const { service } = setup();
-  const view = await service.start(NEW_TASK);
-  const id = view.session!.id;
-  expect(service.reports()[0]).toMatchObject({ running: true, state: null, msg: null });
-
-  service.noteStatus(id, 'blocked', 'Run it?');
-  service.noteStatus(id, 'working');
-  expect(service.reports()[0]).toMatchObject({ state: 'working', msg: null });
-
-  service.noteStatus(id, 'idle', 'Done for now');
-  service.noteStatus(id, null);
-  expect(service.reports()[0]).toMatchObject({ state: null, msg: null });
 });

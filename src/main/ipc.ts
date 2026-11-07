@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { ipcMain, type BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
 import type { RendererConfig } from '../shared/types';
 import type { AppConfig } from './config';
@@ -19,7 +19,8 @@ export interface ClipboardDeps {
 type SessionOwner = Pick<TaskService, 'launchSpec' | 'noteStatus' | 'onSessionExit'>;
 
 export function registerIpc(
-  win: BrowserWindow,
+  /** Sends to the window, unless it has gone. */
+  send: (channel: string, payload: unknown) => void,
   service: TaskService,
   manager: ManagerService,
   host: SessionHost,
@@ -27,10 +28,6 @@ export function registerIpc(
   clipboardDeps: ClipboardDeps,
   openExternal: (url: string) => Promise<void>,
 ): void {
-  const send = (channel: string, payload: unknown) => {
-    if (!win.isDestroyed()) win.webContents.send(channel, payload);
-  };
-
   ipcMain.handle(
     IPC.getConfig,
     (): RendererConfig => ({ inputBatchMs: config.inputBatchMs, e2e: config.e2e, projectName: basename(config.projectDir) }),
@@ -80,7 +77,7 @@ export function registerIpc(
       host.spawn(sessionId, { ...owner.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
         onStatus: (status) => {
-          owner.noteStatus(sessionId, status?.state ?? null, status?.msg);
+          owner.noteStatus(sessionId, status?.state ?? null);
           send(IPC.status, { sessionId, status });
         },
         onExit: ({ exitCode, signal }) => {

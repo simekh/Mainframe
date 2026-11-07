@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -104,7 +104,8 @@ export function readSessionStart(text: string | null): { id: string; source?: st
   };
 }
 
-function readStart(dir: string): ReturnType<typeof readSessionStart> {
+/** What SessionStart last recorded in `dir`; null while it has never fired. */
+export function readRecordedStart(dir: string): ReturnType<typeof readSessionStart> {
   try {
     return readSessionStart(readFileSync(join(dir, SESSION_START_FILE), 'utf8'));
   } catch {
@@ -117,27 +118,5 @@ function readStart(dir: string): ReturnType<typeof readSessionStart> {
  * it has never fired.
  */
 export function readRecordedSession(dir: string): string | null {
-  return readStart(dir)?.id ?? null;
-}
-
-/**
- * The recorded conversation, when `claude --resume` can open it, for a session that may never have been
- * typed to: Claude Code writes a chat's transcript with its first message, and cannot resume one without.
- */
-export function readResumableSession(dir: string): string | null {
-  const start = readStart(dir);
-  if (start === null) return null;
-  // Only a chat that has just begun (startup) or been cleared (clear) can be unsaved. Any other source
-  // (resume, compact, fork) continues one that has been, so it is resumed without a look at Claude Code's files.
-  if (start.source !== 'startup' && start.source !== 'clear') return start.id;
-  if (start.transcriptPath === undefined) return null;
-  // Any project folder under Claude Code's projects folder may hold the chat, not only the one the payload
-  // names: a chat resumed from the main checkout, as when a task's worktree branch is gone, names the main
-  // checkout's folder while it stays in the worktree's. Ids are UUIDs, so a file of that name elsewhere is it.
-  const projects = dirname(dirname(start.transcriptPath));
-  try {
-    return readdirSync(projects).some((folder) => existsSync(join(projects, folder, `${start.id}.jsonl`))) ? start.id : null;
-  } catch {
-    return null;
-  }
+  return readRecordedStart(dir)?.id ?? null;
 }

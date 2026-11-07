@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it, expect } from 'vitest';
-import { hookSettings, managerArgv, readRecordedSession, readResumableSession, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
+import { hookSettings, managerArgv, readRecordedSession, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
@@ -88,75 +88,13 @@ it.each([
   expect(readSessionStart(text)).toEqual(start);
 });
 
-/**
- * A session folder whose SessionStart payload is `payload(<projects>/-main/<U>.jsonl)`, beside Claude Code's
- * projects folder with a project folder for the main checkout and one for a worktree. `saveIn` writes a
- * chat's transcript.
- */
-function recordedIn(payload: (transcriptPath: string) => object) {
-  const root = mkdtempSync(join(tmpdir(), 'mainframe-recorded-'));
-  const dir = join(root, 'session');
-  const projects = join(root, 'projects');
-  mkdirSync(dir);
-  mkdirSync(join(projects, '-main'), { recursive: true });
-  mkdirSync(join(projects, '-worktree'));
-  writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify(payload(join(projects, '-main', `${U}.jsonl`))));
-  const saveIn = (folder: string, id = U) => writeFileSync(join(projects, folder, `${id}.jsonl`), '');
-  return { dir, saveIn };
-}
-
-/** A SessionStart payload of `source` (none when undefined) that names its transcript. */
-const startedBy = (source?: string) => (transcript_path: string) => ({ session_id: U, source, transcript_path });
-
-it('the recorded session is the id SessionStart gave, with nothing else in the payload', () => {
-  expect(readRecordedSession(recordedIn(() => ({ session_id: U })).dir)).toBe(U);
-});
-
-it('the recorded session does not depend on the chat having been saved', () => {
-  expect(readRecordedSession(recordedIn(startedBy('startup')).dir)).toBe(U);
+it('the recorded session is the id SessionStart gave, whether or not Claude Code has saved the chat', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-recorded-'));
+  const unsaved = join(dir, 'projects', '-main', `${U}.jsonl`);
+  writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify({ session_id: U, source: 'startup', transcript_path: unsaved }));
+  expect(readRecordedSession(dir)).toBe(U);
 });
 
 it('there is no recorded session while SessionStart has not fired', () => {
   expect(readRecordedSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
-});
-
-// Only a chat that began (startup) or was cleared (clear) can be unsaved: it exists on disk once it has a message.
-// Any other source continues a chat that was resumed, compacted or forked, so it has been saved.
-it.each([['resume'], ['compact'], ['fork'], [undefined]])('a %s record is resumable though no transcript is saved', (source) => {
-  expect(readResumableSession(recordedIn(startedBy(source)).dir)).toBe(U);
-});
-
-it.each([['startup'], ['clear']])('a %s record is resumable once Claude Code has saved the chat in the folder it named', (source) => {
-  const { dir, saveIn } = recordedIn(startedBy(source));
-  saveIn('-main');
-  expect(readResumableSession(dir)).toBe(U);
-});
-
-// A chat resumed from the main checkout, as when a task's worktree branch is gone, records the main checkout's
-// project folder, but Claude Code finds the chat in the worktree's and keeps writing it there.
-it.each([['startup'], ['clear']])('a %s record is resumable when the chat is saved in another project folder than the one named', (source) => {
-  const { dir, saveIn } = recordedIn(startedBy(source));
-  saveIn('-worktree');
-  expect(readResumableSession(dir)).toBe(U);
-});
-
-it.each([['startup'], ['clear']])('a %s record is not resumable while no project folder holds its chat, whatever others hold', (source) => {
-  const { dir, saveIn } = recordedIn(startedBy(source));
-  saveIn('-worktree', '11111111-1111-4111-8111-111111111111');
-  expect(readResumableSession(dir)).toBeNull();
-});
-
-it('a startup record is not resumable when the projects folder cannot be read', () => {
-  const { dir } = recordedIn((transcript_path) => startedBy('startup')(transcript_path.replace('projects', 'gone')));
-  expect(readResumableSession(dir)).toBeNull();
-});
-
-it('a startup record that names no transcript is not resumable', () => {
-  const { dir, saveIn } = recordedIn(() => ({ session_id: U, source: 'startup' }));
-  saveIn('-main');
-  expect(readResumableSession(dir)).toBeNull();
-});
-
-it('nothing is resumable while SessionStart has not fired', () => {
-  expect(readResumableSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
 });

@@ -2,6 +2,9 @@ import { basename } from 'node:path';
 
 const MAX_SLUG_LENGTH = 40;
 
+/** The manager's slug in its session name, which no task may take: `claude --resume` finds a chat by its name. */
+export const MANAGER_SLUG = 'manager';
+
 export function slugify(title: string): string {
   const ascii = title
     .normalize('NFKD')

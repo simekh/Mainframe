@@ -71,7 +71,14 @@ function setup() {
       prompt,
     });
 
-  return { projectDir, dataDir, dir, file, make, service: make(), changes, warnings, readRecord, sessionStarted, argvOf };
+  const service = make();
+  /** The conversation a session of `s` launched with: begun under `--session-id`, or resumed. */
+  const chatOf = (view: ManagerView, s = service) => {
+    const { argv } = s.launchSpec(view.session!.id);
+    return argv[argv.findIndex((arg) => arg === '--session-id' || arg === '--resume') + 1];
+  };
+
+  return { projectDir, dataDir, dir, file, make, service, changes, warnings, readRecord, sessionStarted, argvOf, chatOf };
 }
 
 type Setup = ReturnType<typeof setup>;
@@ -79,7 +86,7 @@ type Setup = ReturnType<typeof setup>;
 /** Starts the manager, has its conversation begin and its session report `states` in order. */
 function started(t: Setup, ...states: (ProgramState | null)[]): ManagerView {
   const view = t.service.start();
-  t.sessionStarted(t.readRecord().claudeSessionId);
+  t.sessionStarted(t.chatOf(view));
   for (const state of states) t.service.noteStatus(view.session!.id, state);
   return view;
 }
@@ -92,22 +99,22 @@ it('has no session before it is started', () => {
 });
 
 it('the first start launches claude in the main checkout, under a fresh id and without a prompt', () => {
-  const { service, projectDir, readRecord, changes, argvOf } = setup();
+  const { service, projectDir, changes, argvOf, chatOf } = setup();
   const view = service.start();
 
   expect(view).toEqual({ session: { id: expect.any(String), startedWithPrompt: false } });
-  const record = readRecord();
-  expect(new Set([record.claudeSessionId, view.session!.id]).size).toBe(2);
-  expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(record.claudeSessionId, false) });
+  const chat = chatOf(view);
+  expect(new Set([chat, view.session!.id]).size).toBe(2);
+  expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(chat, false) });
   expect(service.view()).toEqual(view);
   expect(changes).toEqual([view]);
 });
 
 it('start writes manager.json, the hooks and permissions in settings.json, and mcp.json, which only the owner can read', () => {
-  const { service, projectDir, file, readRecord, dir } = setup();
+  const { service, file, readRecord, dir } = setup();
   service.start();
 
-  expect(readRecord()).toEqual({ version: 1, projectDir, claudeSessionId: expect.any(String), midTurn: false });
+  expect(readRecord()).toEqual({ version: 1, midTurn: false });
   expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, ['mcp__mainframe__*']));
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(MCP_CONFIG);
   expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
@@ -146,17 +153,14 @@ it('start resumes the conversation SessionStart last recorded', () => {
   const view = t.service.start();
   expect(view.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
   expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
-  expect(t.readRecord().claudeSessionId).toBe(U2);
 });
 
 it('a /clear or a compaction moves the conversation the next start resumes', () => {
   const t = setup();
   const view = started(t);
-  const first = t.readRecord().claudeSessionId;
+  const first = t.chatOf(view);
   t.sessionStarted(U2, { source: 'clear' });
-
   t.service.onSessionExit(view.session!.id);
-  expect(t.readRecord().claudeSessionId).toBe(U2);
 
   const again = t.service.start();
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(U2, true));
@@ -166,31 +170,31 @@ it('a /clear or a compaction moves the conversation the next start resumes', () 
 it('a launch whose conversation never began starts one again, under a fresh id', () => {
   const t = setup();
   const first = t.service.start();
-  const firstId = t.readRecord().claudeSessionId;
+  const firstChat = t.chatOf(first);
   // claude was missing or quit at once: SessionStart never fired.
   t.service.noteStatus(first.session!.id, 'working');
   t.service.onSessionExit(first.session!.id);
 
   const again = t.service.start();
-  const { claudeSessionId } = t.readRecord();
-  expect(claudeSessionId).not.toBe(firstId);
+  const chat = t.chatOf(again);
+  expect(chat).not.toBe(firstChat);
   expect(again.session!.startedWithPrompt).toBe(false);
-  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(claudeSessionId, false));
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, false));
 });
 
 it('a startup record whose chat Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', () => {
   const t = setup();
   // Launched, SessionStart fired, and nobody typed: the transcript was never written.
   const first = t.service.start();
-  const firstId = t.readRecord().claudeSessionId;
-  t.sessionStarted(firstId, { source: 'startup', saved: false });
+  const firstChat = t.chatOf(first);
+  t.sessionStarted(firstChat, { source: 'startup', saved: false });
   t.service.onSessionExit(first.session!.id);
 
   const again = t.service.start();
-  const { claudeSessionId } = t.readRecord();
-  expect(claudeSessionId).not.toBe(firstId);
+  const chat = t.chatOf(again);
+  expect(chat).not.toBe(firstChat);
   expect(again.session!.startedWithPrompt).toBe(false);
-  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(claudeSessionId, false));
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, false));
 });
 
 // A resumed chat exists, wherever Claude Code keeps it: Mainframe does not look for its file.
@@ -200,7 +204,6 @@ it('a resume record is resumed although no transcript of it can be found', () =>
 
   const view = t.service.start();
   expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
-  expect(t.readRecord().claudeSessionId).toBe(U2);
 });
 
 // Working, it carries on; waiting for the owner's answer, Claude is asked to ask again, never to
@@ -212,12 +215,13 @@ it.each([
 ] as const)('a session that exits while %s is resumed with %j', (state, prompt) => {
   const t = setup();
   const view = started(t, state);
+  const chat = t.chatOf(view);
 
   t.service.onSessionExit(view.session!.id);
   const again = t.service.start();
 
   expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
-  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(t.readRecord().claudeSessionId, true, prompt));
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
 });
 
 it.each([
@@ -226,6 +230,7 @@ it.each([
 ] as const)('a quit while the session reported %j resumes it at the next start with %j', (states, prompt) => {
   const t = setup();
   const view = started(t, ...states);
+  const chat = t.chatOf(view);
 
   t.service.beginQuit();
   // Written before the exit arrives: the app may be gone before it does.
@@ -235,20 +240,7 @@ it.each([
   const second = t.make();
   const again = second.start();
   expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
-  expect(second.launchSpec(again.session!.id).argv).toEqual(t.argvOf(t.readRecord().claudeSessionId, true, prompt));
-});
-
-it('the state a session reports as it ends does not change what it was doing', () => {
-  const t = setup();
-  const view = started(t, 'working');
-
-  t.service.beginQuit();
-  // A clear on the way out, and the trailing status the host sends once the process has gone.
-  t.service.noteStatus(view.session!.id, null);
-  t.service.onSessionExit(view.session!.id);
-  t.service.noteStatus(view.session!.id, null);
-
-  expect(t.readRecord().midTurn).toBe(true);
+  expect(second.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
 });
 
 it.each([
@@ -272,36 +264,10 @@ it.each([
   expect(again.session!.startedWithPrompt).toBe(true);
 });
 
-it('a carry-on prompt that has only met an idle report has not taken either', () => {
-  const t = setup();
-  const view = started(t, 'working');
-  t.service.onSessionExit(view.session!.id);
-
-  const resumed = t.service.start();
-  // Claude Code is idle until it submits the prompt.
-  t.service.noteStatus(resumed.session!.id, 'idle');
-  t.service.onSessionExit(resumed.session!.id);
-
-  expect(t.readRecord().midTurn).toBe(true);
-});
-
-it('an ask-again from an earlier turn does not outlive it: a resumed session that worked gets Continue next', () => {
-  const t = setup();
-  const view = started(t, 'blocked');
-  t.service.onSessionExit(view.session!.id);
-
-  const resumed = t.service.start();
-  t.service.noteStatus(resumed.session!.id, 'working');
-  t.service.onSessionExit(resumed.session!.id);
-
-  const next = t.service.start();
-  expect(t.service.launchSpec(next.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
-});
-
 it('owns only its own session, and an exit sends the view with no session and lets that go too', () => {
-  const { service, changes, readRecord, sessionStarted } = setup();
+  const { service, changes, sessionStarted, chatOf } = setup();
   const view = service.start();
-  sessionStarted(readRecord().claudeSessionId);
+  sessionStarted(chatOf(view));
   expect(service.owns(view.session!.id)).toBe(true);
   expect(service.owns('a-task-session')).toBe(false);
 
@@ -348,7 +314,7 @@ it.each([
 
   expect(t.warnings).toHaveLength(1);
   expect(t.warnings[0]).toContain(t.file('manager.json'));
-  expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(t.readRecord().claudeSessionId, false));
+  expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(t.chatOf(view), false));
   expect(t.readRecord()).toMatchObject({ version: 1, midTurn: false });
 });
 

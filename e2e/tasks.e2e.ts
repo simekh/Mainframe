@@ -4,15 +4,13 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
 import {
-  card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendLine, startTask, termSize,
+  card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendLine, sessionIdOf, startTask,
+  termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 const settingsFile = (dataDir: string, taskId: string) => join(dataDir, 'tasks', taskId, 'settings.json');
-const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 
 test('New task launches claude -w in the main checkout with a fresh session id, the hooks file and the opening prompt', async () => {
   const main = repo();

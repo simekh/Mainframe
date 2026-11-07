@@ -111,6 +111,11 @@ export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
 /** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The conversation a launch began. */
+export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
+
 function allLaunches(dataDir: string): Array<{ cwd: string; args: string[] }> {
   const dir = join(dataDir, 'fake-claude');
   return readdirSync(dir)

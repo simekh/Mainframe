@@ -65,8 +65,13 @@ function isTaskRecord(value: unknown): value is TaskRecord {
 }
 
 export function saveTasks(file: string, tasks: TaskRecord[]): void {
+  writeJsonAtomic(file, { version: VERSION, tasks });
+}
+
+/** Writes `value` to `file` whole or not at all: a crash mid-write leaves the old file. */
+export function writeJsonAtomic(file: string, value: unknown): void {
   const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ version: VERSION, tasks }, null, 2));
+  writeFileSync(tmp, JSON.stringify(value, null, 2));
   renameSync(tmp, file);
 }
 

@@ -5,20 +5,15 @@ import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp } from './launch';
 import {
   box, card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo,
-  run, screen, sendLine, sendManagerLine, settled, startTask, terminalHasFocus, termSize,
+  run, screen, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 const STOPPED_NOTE = 'The manager stopped. Restart continues its chat.';
 
 /** The id of the conversation the manager's first launch began. */
-function firstConversation(dataDir: string): string {
-  const [{ args }] = managerLaunches(dataDir);
-  return args[args.indexOf('--session-id') + 1];
-}
+const firstConversation = (dataDir: string) => sessionIdOf(managerLaunches(dataDir)[0].args);
 
 /** The files of the manager's that each of its launches names. */
 const filesOf = (dataDir: string) => ({
@@ -202,8 +197,7 @@ test("the manager's terminal fits its column", async () => {
   await expect.poll(() => managerScreen(page)).toContain('$');
   await page.getByTestId('manager-column').click();
   const size = (await managerTermSize(page))!;
-  await run(page, 'stty size');
-  await expect.poll(() => managerScreen(page)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
+  await expectSessionSize(size, (line) => run(page, line), () => managerScreen(page));
   expect(await managerTermSize(page)).toEqual(size);
   await app.close();
 });

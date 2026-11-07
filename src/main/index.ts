@@ -98,6 +98,7 @@ async function start(config: AppConfig): Promise<void> {
     claudeBin: config.claudeBin,
     git: gitQueries,
     kill: (sessionId) => host.kill(sessionId),
+    status: (sessionId) => host.status(sessionId),
     onChange: (tasks) => toWindow(IPC.tasksChanged, tasks),
   });
   // The manager's tools, on the tasks. Its mcp.json carries this run's port and token to it.
@@ -113,7 +114,7 @@ async function start(config: AppConfig): Promise<void> {
   win = shown;
   Menu.setApplicationMenu(buildMenu());
   registerIpc(
-    shown,
+    toWindow,
     service,
     manager,
     host,

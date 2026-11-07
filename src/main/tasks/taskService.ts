@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ChangedFile, ProgramState, StartCheck, TaskView } from '../../shared/types';
+import type { ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
-import { inTurn, resumePromptFor, turnAtEnd } from './carryOn';
+import { resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
-import { sessionName, slugify, uniqueSlug } from './naming';
+import { MANAGER_SLUG, sessionName, slugify, uniqueSlug } from './naming';
 import { openingPrompt } from './openingPrompt';
 import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
 
@@ -15,6 +15,8 @@ export interface TaskServiceDeps {
   claudeBin: string;
   git: GitQueries;
   kill(sessionId: string): void;
+  /** What a running session last reported, as the session host keeps it. */
+  status(sessionId: string): ProgramStatus | null;
   onChange(tasks: TaskView[]): void;
   newId?: () => string;
   now?: () => number;
@@ -43,14 +45,7 @@ interface Session {
   taskId: string;
   argv: string[];
   startedWithPrompt: boolean;
-  /** What its last OSC 7501 report said; null before the first, and after a clear. */
-  lastState: ProgramState | null;
-  /** The `msg` of that report; null when it had none. */
-  lastMsg: string | null;
-  /** Set once it has been told to end: what it reports on the way out is not what its turn was. */
-  ending: boolean;
-  /** It was launched with the resume prompt and has not yet worked or blocked: the prompt has not taken. */
-  resumePending: boolean;
+  turn: TurnTracker;
 }
 
 export class TaskService {
@@ -79,6 +74,7 @@ export class TaskService {
   reports(): SessionReport[] {
     return this.mine().map((task) => {
       const running = this.sessionOf(task.id);
+      const status = running ? this.deps.status(running.id) : null;
       return {
         taskId: task.id,
         title: task.title,
@@ -88,8 +84,8 @@ export class TaskService {
         createdAt: task.createdAt,
         closedAt: task.closedAt,
         running: running !== undefined,
-        state: running?.lastState ?? null,
-        msg: running?.lastMsg ?? null,
+        state: status?.state ?? null,
+        msg: status?.msg ?? null,
       };
     });
   }
@@ -104,10 +100,9 @@ export class TaskService {
 
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
-    // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case. 'manager' is the
-    // manager's session name, which a task must not share in `claude --resume`.
+    // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.
     const taken = new Set(
-      ['manager', ...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
+      [MANAGER_SLUG, ...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
     );
     const slug = uniqueSlug(slugify(title), taken);
 
@@ -206,19 +201,15 @@ export class TaskService {
   }
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
-  noteStatus(sessionId: string, state: ProgramState | null, msg?: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.ending) return;
-    session.lastState = state;
-    session.lastMsg = msg ?? null;
-    if (inTurn(state)) session.resumePending = false;
+  noteStatus(sessionId: string, state: ProgramState | null): void {
+    this.sessions.get(sessionId)?.turn.note(state);
   }
 
   onSessionExit(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this.sessions.delete(sessionId);
-    if (!session.ending) this.markEnding(session);
+    if (!session.turn.ending) this.markEnding(session);
     const task = this.find(session.taskId);
 
     task.claudeSessionId = readRecordedSession(this.taskDir(task.id)) ?? task.claudeSessionId;
@@ -253,20 +244,14 @@ export class TaskService {
     return task;
   }
 
-  private addSession(session: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt' | 'resumePending'>): void {
+  private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'argv' | 'startedWithPrompt'> & { resumePending: boolean }): void {
     const id = this.newId();
-    this.sessions.set(id, { id, ...session, lastState: null, lastMsg: null, ending: false });
+    this.sessions.set(id, { id, ...session, turn: new TurnTracker(resumePending) });
   }
 
-  /**
-   * Records on the task whether the session ends in the middle of a turn, and whether Claude was
-   * waiting for the owner's answer, from the state it was in before the end was decided. A resume
-   * prompt that never took, as when the launch failed or the app quit at once, leaves the same turn
-   * still owed.
-   */
+  /** Records on the task where the session's turn was as its end was decided (`turnAtEnd` says how). */
   private markEnding(session: Session): void {
-    session.ending = true;
-    Object.assign(this.find(session.taskId), turnAtEnd(session.lastState, session.resumePending));
+    Object.assign(this.find(session.taskId), session.turn.end());
   }
 
   private sessionOf(taskId: string): Session | undefined {
