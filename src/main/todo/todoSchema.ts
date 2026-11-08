@@ -1,5 +1,6 @@
-// The only runtime import is zod: the sync run's helper script loads this file under plain Node, which cannot
-// resolve a relative import without its extension. Types are erased, so they may come from anywhere.
+// The only runtime import is zod, so that the schema can be checked against the real `claude` CLI by importing this
+// file under plain Node, which cannot resolve a relative import without its extension. Types are erased, so they may
+// come from anywhere.
 import * as z from 'zod/v4';
 import type { TaskCardRef, TodoCard, TodoListRef, TodoNote, TodoSource } from '../../shared/types';
 
@@ -64,4 +65,7 @@ export const SYNC_ANSWER = z.object({
 });
 export type SyncAnswer = z.infer<typeof SYNC_ANSWER>;
 
-export const SYNC_ANSWER_JSON = JSON.stringify(z.toJSONSchema(SYNC_ANSWER));
+// Without the "$schema" key, which names a draft the CLI cannot resolve: it refuses the schema ("no schema with key or
+// ref https://json-schema.org/draft/2020-12/schema"). The rest, such as "additionalProperties": false, it takes.
+const { $schema: _draft, ...syncAnswerSchema } = z.toJSONSchema(SYNC_ANSWER);
+export const SYNC_ANSWER_JSON = JSON.stringify(syncAnswerSchema);
