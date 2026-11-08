@@ -20,7 +20,7 @@ function setup(
       write: (d: string) => log.push(`write:${d}`),
       resize: (c: number, r: number) => log.push(`resize:${c}x${r}`),
       pause: () => log.push('pause'), resume: () => log.push('resume'),
-      kill: () => { p.killed = true; },
+      kill: (signal?: string) => { p.killed = true; log.push(`kill:${signal ?? 'default'}`); },
       emit: (d: string) => onData(d), exit: (code: number) => onExit({ exitCode: code }),
     };
     ptys.push(p);
@@ -122,6 +122,14 @@ it('passes write, resize, pause and resume through', () => {
   host.spawn('s1', spec, listener);
   host.write('s1', 'ls\r'); host.resize('s1', 90, 20); host.pause('s1'); host.resume('s1');
   expect(log).toEqual(['write:ls\r', 'resize:90x20', 'pause', 'resume']);
+});
+
+it('kill hangs up on the session, or kills it outright with SIGKILL', () => {
+  const { host, log, listener } = setup();
+  host.spawn('s1', spec, listener);
+  host.kill('s1');
+  host.kill('s1', 'SIGKILL');
+  expect(log).toEqual(['kill:default', 'kill:SIGKILL']);
 });
 
 it('killAll kills every running session', () => {

@@ -5,7 +5,6 @@ import { writeOpenProjects } from './projects';
 /** What the registry needs of a project's task service and of its manager. */
 export interface ProjectSessions {
   sessionIds(): string[];
-  owns(sessionId: string): boolean;
   /** Records where each session was, as at Quit, so they run again when the project next opens. */
   beginQuit(): void;
 }
@@ -23,12 +22,13 @@ export interface ProjectRegistryDeps<P> {
   dataDir: string;
   /** Makes a project's services for its folder; throws when it can't. */
   open(dir: string): Promise<P>;
-  kill(sessionId: string): void;
+  /** Hangs up on the session, as closing its terminal does, or kills it outright. */
+  kill(sessionId: string, signal?: 'SIGKILL'): void;
   /** Whether a session's process still runs. */
   running(sessionId: string): boolean;
   /** Every change to the list of open projects, with the whole list. */
   onChange(projects: ProjectView[]): void;
-  /** How long a close waits for its sessions to end. */
+  /** How long a close waits for its sessions to end, after the hangup and again after a kill. */
   closeTimeoutMs?: number;
 }
 
@@ -54,8 +54,8 @@ export class ProjectRegistry<P extends RegisteredProject> {
   /** The task service or the manager that runs the session. */
   ownerOf(sessionId: string): P['service'] | P['manager'] | undefined {
     for (const { service, manager } of this.projects.values()) {
-      if (manager.owns(sessionId)) return manager;
-      if (service.owns(sessionId)) return service;
+      if (manager.sessionIds().includes(sessionId)) return manager;
+      if (service.sessionIds().includes(sessionId)) return service;
     }
     return undefined;
   }
@@ -99,15 +99,29 @@ export class ProjectRegistry<P extends RegisteredProject> {
     recordWhereSessionsWere(dir, project);
     const ids = [...service.sessionIds(), ...manager.sessionIds()];
     for (const id of ids) this.deps.kill(id);
-    const deadline = Date.now() + (this.deps.closeTimeoutMs ?? CLOSE_TIMEOUT_MS);
-    while (ids.some((id) => this.deps.running(id)) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-    }
+    // One that outlasts its hangup is killed outright: left running, it would go on beside the
+    // session a reopen starts in the same conversation.
+    const left = await this.waitForEnd(ids);
+    for (const id of left) this.deps.kill(id, 'SIGKILL');
+    await this.waitForEnd(left);
     await project.release();
   }
 
+  /** The sessions still running once all have ended or the wait is over. */
+  private async waitForEnd(ids: string[]): Promise<string[]> {
+    const deadline = Date.now() + (this.deps.closeTimeoutMs ?? CLOSE_TIMEOUT_MS);
+    const running = () => ids.filter((id) => this.deps.running(id));
+    while (running().length > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    return running();
+  }
+
+  /** A projects.json it can't write costs the next start this list, not this open or close. */
   private changed(): void {
-    writeOpenProjects(this.deps.dataDir, [...this.projects.keys()]);
+    try {
+      writeOpenProjects(this.deps.dataDir, [...this.projects.keys()]);
+    } catch (err) {
+      console.error('[projects] could not remember the open projects', err);
+    }
     this.deps.onChange(this.list());
   }
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -16,7 +16,7 @@ const GLOBEX = '/work/globex';
 
 function fakeSessions(ids: string[]) {
   const running = new Set(ids);
-  return { sessionIds: () => [...running], owns: (id: string) => running.has(id), beginQuit: vi.fn() };
+  return { sessionIds: () => [...running], beginQuit: vi.fn() };
 }
 
 type Fake = RegisteredProject & { service: ReturnType<typeof fakeSessions>; manager: ReturnType<typeof fakeSessions> };
@@ -25,8 +25,11 @@ function fakeProject({ tasks = [] as string[], manager = [] as string[] } = {}):
   return { service: fakeSessions(tasks), manager: fakeSessions(manager), start: vi.fn(), release: vi.fn(async () => {}) };
 }
 
-/** A registry whose projects come from `made`, over a session host where a killed session ends after `exitMs`. */
-function setup({ made = {} as Record<string, () => Fake>, exitMs = 0, closeTimeoutMs = 1000 } = {}) {
+/**
+ * A registry whose projects come from `made`, over a session host where a session ends `exitMs` after
+ * its hangup, or `killMs` after it is killed outright.
+ */
+function setup({ made = {} as Record<string, () => Fake>, exitMs = 0, killMs = 0, closeTimeoutMs = 1000, dir = dataDir } = {}) {
   const host = new Set<string>();
   const killed: string[] = [];
   const changes: ProjectView[][] = [];
@@ -36,11 +39,11 @@ function setup({ made = {} as Record<string, () => Fake>, exitMs = 0, closeTimeo
     return project;
   });
   const registry = new ProjectRegistry<Fake>({
-    dataDir,
+    dataDir: dir,
     open,
-    kill: (id) => {
-      killed.push(id);
-      setTimeout(() => host.delete(id), exitMs);
+    kill: (id, signal) => {
+      killed.push(signal ? `${id} ${signal}` : id);
+      setTimeout(() => host.delete(id), signal ? killMs : exitMs);
     },
     running: (id) => host.has(id),
     onChange: (projects) => changes.push(projects),
@@ -126,12 +129,43 @@ it('closes a project: its sessions end as they do at Quit, then it lets go of th
   expect(changes.at(-1)).toEqual([{ dir: GLOBEX, name: 'globex' }]);
 });
 
-it('lets go of a closed project whose sessions outlast the wait', async () => {
+it('kills outright a session that outlasts the hangup, so none runs on beside the one a reopen starts', async () => {
+  const acme = fakeProject({ tasks: ['t1', 't2'] });
+  const { registry, killed, host } = setup({ made: { [ACME]: () => acme }, exitMs: 10_000, closeTimeoutMs: 50 });
+  await registry.open(ACME);
+  host.delete('t2');
+  vi.mocked(acme.release).mockImplementation(async () => expect([...host]).toEqual([]));
+
+  await registry.close(ACME);
+
+  expect(killed).toEqual(['t1', 't2', 't1 SIGKILL']);
+  expect(acme.release).toHaveBeenCalledOnce();
+});
+
+it('lets go of a closed project whose sessions outlast even being killed', async () => {
   const acme = fakeProject({ tasks: ['t1'] });
-  const { registry } = setup({ made: { [ACME]: () => acme }, exitMs: 10_000, closeTimeoutMs: 50 });
+  const { registry } = setup({ made: { [ACME]: () => acme }, exitMs: 10_000, killMs: 10_000, closeTimeoutMs: 50 });
   await registry.open(ACME);
   await registry.close(ACME);
   expect(acme.release).toHaveBeenCalledOnce();
+});
+
+it('opens and closes a project when it cannot write projects.json, and says why', async () => {
+  const blocked = join(dataDir, 'not-a-folder');
+  writeFileSync(blocked, '');
+  const acme = fakeProject({ tasks: ['t1'] });
+  const { registry, killed, changes } = setup({ made: { [ACME]: () => acme }, dir: blocked });
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  await registry.open(ACME);
+  expect(acme.start).toHaveBeenCalledOnce();
+  await registry.close(ACME);
+
+  expect(killed).toEqual(['t1']);
+  expect(acme.release).toHaveBeenCalledOnce();
+  expect(changes).toEqual([[{ dir: ACME, name: 'acme' }], []]);
+  expect(error).toHaveBeenCalledWith('[projects] could not remember the open projects', expect.any(Error));
+  error.mockRestore();
 });
 
 it('opens a project that is closing only once its sessions have ended', async () => {

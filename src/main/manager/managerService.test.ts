@@ -264,19 +264,17 @@ it.each([
   expect(again.session!.startedWithPrompt).toBe(true);
 });
 
-it('owns only its own session, and an exit sends the view with no session and lets that go too', () => {
+it('an exit sends the view with no session and lets that go too', () => {
   const { service, changes, sessionStarted, chatOf } = setup();
   const view = service.start();
   sessionStarted(chatOf(view));
-  expect(service.owns(view.session!.id)).toBe(true);
-  expect(service.owns('a-task-session')).toBe(false);
 
   service.onSessionExit(view.session!.id);
 
   expect(changes.at(-1)).toEqual({ session: null });
   expect(changes).toHaveLength(2);
   expect(service.view()).toEqual({ session: null });
-  expect(service.owns(view.session!.id)).toBe(false);
+  expect(service.sessionIds()).toEqual([]);
   expect(() => service.launchSpec(view.session!.id)).toThrow(view.session!.id);
 });
 

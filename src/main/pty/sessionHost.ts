@@ -157,9 +157,9 @@ export class SessionHost {
     this.sessions.get(id)?.proc.resume();
   }
 
-  /** node-pty's default signal is SIGHUP, as when a terminal window closes. */
-  kill(id: string): void {
-    this.sessions.get(id)?.proc.kill();
+  /** node-pty's default signal is SIGHUP, as when a terminal window closes; SIGKILL ends it outright. */
+  kill(id: string, signal?: 'SIGKILL'): void {
+    this.sessions.get(id)?.proc.kill(signal);
   }
 
   killAll(): void {

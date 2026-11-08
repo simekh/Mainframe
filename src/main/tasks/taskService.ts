@@ -130,8 +130,9 @@ export class TaskService {
     const task = this.find(taskId);
     const branchExists = await this.deps.git.branchExists(this.deps.projectDir, task.branch);
 
-    // Another reopen may have finished while git answered.
-    if (this.sessionOf(task.id)) return this.view(task);
+    // Another reopen may have finished while git answered, or the project closed or the app began
+    // to quit: then the task stays as recorded, to carry on when the project next opens.
+    if (this.sessionOf(task.id) || this.quitting) return this.view(task);
 
     const settingsPath = writeHookSettings(this.taskDir(task.id));
     const recorded = readRecordedSession(this.taskDir(task.id));
@@ -189,10 +190,6 @@ export class TaskService {
     this.find(taskId).open = false;
     this.commit();
     this.deps.kill(running.id);
-  }
-
-  owns(sessionId: string): boolean {
-    return this.sessions.has(sessionId);
   }
 
   /** The sessions it runs: one per open task. */

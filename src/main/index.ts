@@ -104,7 +104,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   const projects = new ProjectRegistry<Project>({
     dataDir: config.dataDir,
     open: makeProject,
-    kill: (sessionId) => host.kill(sessionId),
+    kill: (sessionId, signal) => host.kill(sessionId, signal),
     running: (sessionId) => host.has(sessionId),
     onChange: (list) => toWindow(IPC.projectsChanged, list),
   });

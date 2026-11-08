@@ -34,7 +34,8 @@ export default function ProjectPane(props: {
   const dir = props.project.dir;
   const shown = () => isShown(dir);
   let root!: HTMLDivElement;
-  const [width, setWidth] = createSignal(window.innerWidth);
+  // The pane's own width, never the window's: measured as it mounts, before the first paint.
+  const [width, setWidth] = createSignal(0);
   onMount(() => {
     setWidth(root.clientWidth);
     const observer = new ResizeObserver(() => setWidth(root.clientWidth));

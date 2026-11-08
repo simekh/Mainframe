@@ -68,10 +68,6 @@ export class ManagerService {
     return { session: this.session ? { id: this.session.id, startedWithPrompt: this.session.startedWithPrompt } : null };
   }
 
-  owns(sessionId: string): boolean {
-    return this.session?.id === sessionId;
-  }
-
   /** Its running session, as a list: none, or the one. */
   sessionIds(): string[] {
     return this.session ? [this.session.id] : [];

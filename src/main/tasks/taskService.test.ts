@@ -329,6 +329,25 @@ it('quitting with a working session records it before the exit arrives, and rest
   expect(second.launchSpec(restored.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 });
 
+it('a project that closes while restore waits on git starts no session, and leaves the task as it was recorded', async () => {
+  let answer!: (exists: boolean) => void;
+  const { service, make, readState, sessionStarted } = setup({ branchExists: () => new Promise((resolve) => (answer = resolve)) });
+  const view = await service.start(NEW_TASK);
+  sessionStarted(view.id, readState()[0].claudeSessionId);
+  service.noteStatus(view.session!.id, 'working');
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const second = make();
+  const restoring = second.restore();
+  second.beginQuit();
+  answer(false);
+  await restoring;
+  expect(second.sessionIds()).toEqual([]);
+  // Still owed its carry-on prompt when the project opens again.
+  expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
+});
+
 it('quitting with a session that was waiting restores it without the prompt', async () => {
   const { service, make, sessionStarted, readState } = setup();
   const view = await service.start(NEW_TASK);
@@ -910,13 +929,11 @@ it('reports lists every task oldest first: a running one with its last state and
   ]);
 });
 
-it('names the sessions it runs, and owns only those', async () => {
+it('names the sessions it runs', async () => {
   const { service } = setup();
   const a = await service.start(NEW_TASK);
   const b = await service.start({ ...NEW_TASK, title: 'Ship it' });
   service.onSessionExit(b.session!.id);
 
   expect(service.sessionIds()).toEqual([a.session!.id]);
-  expect(service.owns(a.session!.id)).toBe(true);
-  expect(service.owns(b.session!.id)).toBe(false);
 });
