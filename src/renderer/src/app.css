@@ -1791,6 +1791,14 @@ kbd {
   top: calc(50% + 56px);
 }
 
+/* Out of sight under the floating Todo panel, which sits 8 px in from the pane's edge: it would cover 14 px of this
+   22 px pill and leave a sliver beside it. It comes back as that panel slides away. The Todo panel's state counts
+   in the selector, so it is more specific than the hidden manager's rule below, which shows the way back. */
+.project-pane:has(> .todo-panel[data-pinned='false'][data-open='true']) .manager-column + .panel-show {
+  visibility: hidden;
+  opacity: 0;
+}
+
 /* Visible at once, so it can take the focus; it fades in once the island has slid out. As visible
    as its pane: one off screen keeps it hidden. */
 .side-panel[data-pinned='false'][data-open='false'] + .panel-show,

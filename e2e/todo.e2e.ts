@@ -303,6 +303,28 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await third.app.close();
 });
 
+test("the manager's way back stays out of sight under the floating Todo panel, and shows again once that is put away", async () => {
+  const { app, page } = await launchApp({}, folder());
+  const manager = page.getByTestId('manager-column');
+  const way = page.getByTestId('manager-show');
+  await page.getByTestId('manager-hide').click();
+  await expect(manager).toBeHidden();
+  await expect(way).toBeVisible();
+
+  // Floating and out, the Todo panel covers the way back's 14 px but not the 8 px margin beside them: no sliver of it shows.
+  await page.getByTestId('todo-toggle').click();
+  const panel = page.getByTestId('todo-panel');
+  await expect(panel).toHaveAttribute('data-pinned', 'false');
+  await expect(panel).toBeVisible();
+  await expect(way).toBeHidden();
+
+  // Put away, the panel slides off and the way back is there again.
+  await page.getByTestId('todo-hide').click();
+  await expect(panel).toBeHidden();
+  await expect(way).toBeVisible();
+  await app.close();
+});
+
 test('Start on a card starts its task at once: under Working, selected; its prompt names the card and asks the session to read it first; the card leaves the list, and comes back with Reopen once the task closes', async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   await syncFirstTime(page, dataDir);
