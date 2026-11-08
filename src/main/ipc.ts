@@ -7,6 +7,7 @@ import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
 import type { SessionHost } from './pty/sessionHost';
 import type { TaskService } from './tasks/taskService';
+import type { TodoService } from './todo/todoService';
 
 export interface ClipboardDeps {
   clipboard: ClipboardReader;
@@ -14,10 +15,11 @@ export interface ClipboardDeps {
   newImagePath: () => string;
 }
 
-/** An open project: its tasks and its manager. */
+/** An open project: its tasks, its manager and its to-do list. */
 export interface Project extends RegisteredProject {
   service: TaskService;
   manager: ManagerService;
+  todo: TodoService;
 }
 
 export function registerIpc(
@@ -44,11 +46,17 @@ export function registerIpc(
   };
   const tasksOf = (dir: string) => projectOf(dir).service;
   const managerOf = (dir: string) => projectOf(dir).manager;
+  const todoOf = (dir: string) => projectOf(dir).todo;
 
   // Rejections reach the renderer's invoke, which shows them.
   ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
   ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
-  ipcMain.handle(IPC.startTask, (_e, dir: string, req: Parameters<TaskService['start']>[0]) => tasksOf(dir).start(req));
+  // Only these three: a card reaches `start` through the Todo service alone, which checks it against the synced list.
+  ipcMain.handle(
+    IPC.startTask,
+    (_e, dir: string, { title, description, noQuestions }: { title: string; description: string; noQuestions: boolean }) =>
+      tasksOf(dir).start({ title, description, noQuestions }),
+  );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
   ipcMain.on(IPC.closeTask, (_e, dir: string, taskId: string) => {
@@ -61,6 +69,26 @@ export function registerIpc(
 
   ipcMain.handle(IPC.getManager, (_e, dir: string) => managerOf(dir).view());
   ipcMain.handle(IPC.restartManager, (_e, dir: string) => managerOf(dir).start());
+
+  ipcMain.handle(IPC.getTodo, (_e, dir: string) => todoOf(dir).view());
+  // What a sync, an allow or a pick found shows in the view, which `todoChanged` sends: the call itself resolves with nothing.
+  ipcMain.handle(IPC.syncTodo, async (_e, dir: string) => {
+    await todoOf(dir).sync();
+  });
+  ipcMain.handle(IPC.confirmTodoTools, async (_e, dir: string) => {
+    await todoOf(dir).confirmTools();
+  });
+  ipcMain.handle(IPC.pickTodoList, async (_e, dir: string, index: number) => {
+    await todoOf(dir).pickList(index);
+  });
+  ipcMain.handle(IPC.resetTodoSource, (_e, dir: string) => todoOf(dir).resetSource());
+  ipcMain.handle(IPC.saveTodoNote, (_e, dir: string, note: { id?: string; title: string; text: string }) => todoOf(dir).saveNote(note));
+  ipcMain.handle(IPC.deleteTodoNote, (_e, dir: string, id: string) => todoOf(dir).deleteNote(id));
+  ipcMain.handle(
+    IPC.startTodoItem,
+    (_e, dir: string, { item, noQuestions }: { item: { kind: 'card' | 'note'; id: string }; noQuestions: boolean }) =>
+      todoOf(dir).startItem(item, { noQuestions }),
+  );
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
   const sessionEnded = (owner: TaskService | ManagerService, sessionId: string) => {

@@ -18,6 +18,7 @@ import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
+import { TodoService } from './todo/todoService';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 
@@ -124,8 +125,24 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
       status: (sessionId) => host.status(sessionId),
       onChange: (tasks) => send(IPC.tasksChanged, { dir, tasks }),
     });
-    // The manager's tools, on this project's tasks. Its mcp.json carries this run's port and token to it.
-    const mcp = await startMcpServer((server) => registerManagerTools(server, service));
+    const todo = new TodoService({
+      projectDir: dir,
+      dataDir: config.dataDir,
+      claudeBin: config.claudeBin,
+      // The sync run gets what sessions get: it must find the owner's connectors as they do.
+      env: buildSpawnEnv(process.env),
+      startTask: (req) => service.start(req),
+      onChange: (view) => send(IPC.todoChanged, { dir, view }),
+    });
+    // The manager's tools, on this project's tasks and to-do list. Its mcp.json carries this run's port and token to it.
+    const mcp = await startMcpServer((server) =>
+      registerManagerTools(server, {
+        reports: () => service.reports(),
+        startCheck: () => service.startCheck(),
+        start: (req) => service.start(req),
+        todo,
+      }),
+    );
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,
@@ -136,6 +153,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
     const project: Project = {
       service,
       manager,
+      todo,
       start: () => {
         // A list asked for before this finishes gets the tasks as they are; the changes follow.
         service.restore().catch((err: unknown) => console.error(`[tasks] could not restore the tasks of ${dir}`, err));
@@ -146,7 +164,11 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
           console.error(`[manager] could not start the manager of ${dir}`, err);
         }
       },
-      release: () => mcp.close(),
+      release: async () => {
+        // First: the manager may be waiting on a sync through the server that closes next.
+        todo.cancel();
+        await mcp.close();
+      },
     };
     return project;
   }
@@ -188,6 +210,8 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   // beginQuit can't be undone, so it runs here only, once quitting is under way.
   app.on('before-quit', () => {
     projects.beginQuit();
+    // A sync run is no session: nothing else ends it with the app.
+    for (const { dir } of projects.list()) projects.get(dir)?.todo.cancel();
     host.killAll();
   });
 }

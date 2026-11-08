@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { expect, it } from 'vitest';
 import type { StartCheck, TaskView } from '../../shared/types';
 import type { SessionReport } from '../tasks/taskService';
+import type { SyncOutcome } from '../todo/todoService';
 import { registerManagerTools } from './managerTools';
 
 interface ToolResult {
@@ -28,7 +29,9 @@ const REPORT: SessionReport = {
 };
 
 /** The tools, registered through a fake server that records `registerTool`, and what they were given. */
-function setup(overrides: { start?: (req: unknown) => Promise<TaskView>; check?: StartCheck | null } = {}) {
+function setup(
+  overrides: { start?: (req: unknown) => Promise<TaskView>; check?: StartCheck | null; sync?: () => Promise<SyncOutcome>; startItem?: () => Promise<TaskView> } = {},
+) {
   const tools = new Map<string, Registered>();
   const server = {
     registerTool: (name: string, config: Registered['config'], handler: Registered['handler']) => {
@@ -37,6 +40,7 @@ function setup(overrides: { start?: (req: unknown) => Promise<TaskView>; check?:
   } as unknown as McpServer;
   const calls: string[] = [];
   const started: unknown[] = [];
+  const startedItems: unknown[] = [];
   registerManagerTools(server, {
     reports: () => [REPORT],
     startCheck: async () => (calls.push('startCheck'), overrides.check ?? null),
@@ -45,9 +49,17 @@ function setup(overrides: { start?: (req: unknown) => Promise<TaskView>; check?:
       started.push(req);
       return overrides.start ? overrides.start(req) : VIEW;
     },
+    todo: {
+      sync: async () => (calls.push('sync'), overrides.sync ? overrides.sync() : { cards: 0 }),
+      startItem: async (item, opts) => {
+        calls.push('startItem');
+        startedItems.push({ item, opts });
+        return overrides.startItem ? overrides.startItem() : VIEW;
+      },
+    },
   });
   const call = (name: string, args?: unknown) => tools.get(name)!.handler(args);
-  return { tools, calls, started, call };
+  return { tools, calls, started, startedItems, call };
 }
 
 const json = (result: ToolResult) => {
@@ -55,9 +67,9 @@ const json = (result: ToolResult) => {
   return JSON.parse(result.content[0].text);
 };
 
-it('registers list_sessions and start_task, and nothing else, each with a description', () => {
+it('registers list_sessions, start_task and sync_todo, and nothing else, each with a description', () => {
   const { tools } = setup();
-  expect([...tools.keys()]).toEqual(['list_sessions', 'start_task']);
+  expect([...tools.keys()]).toEqual(['list_sessions', 'start_task', 'sync_todo']);
   for (const tool of tools.values()) expect(tool.config.description).toMatch(/\w/);
 });
 
@@ -76,6 +88,12 @@ it('start_task takes a title of 1 to 200 characters, a brief of up to 20000 and 
   expect(schema.safeParse({ title: 't', brief: 'y'.repeat(20001) }).success).toBe(false);
   expect(schema.safeParse({ title: 't' }).success).toBe(false);
   expect(schema.safeParse({ title: 't', brief: 'b', noQuestions: 'yes' }).success).toBe(false);
+});
+
+it('start_task takes an optional cardId', () => {
+  const schema = setup().tools.get('start_task')!.config.inputSchema!;
+  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 'card-1' }).success).toBe(true);
+  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
 });
 
 it('start_task checks the start, then starts the task with the brief as its description and questions allowed', async () => {
@@ -112,9 +130,59 @@ it('start_task gives no warning when nothing is ahead', async () => {
   expect(json(await call('start_task', { title: 'Fix login', brief: '' }))).not.toHaveProperty('warning');
 });
 
+it('start_task with a cardId starts from that card with the brief', async () => {
+  const { call, calls, started, startedItems } = setup({ check: { ahead: 1, branch: 'stage', base: 'origin/stage' } });
+  const result = await call('start_task', { title: 'Fix login', brief: 'Only the login page', cardId: 'card-1', noQuestions: true });
+
+  // The start check and its warning are the same as without a card; the task comes from the Todo service, not from `start`.
+  expect(calls).toEqual(['startCheck', 'startItem']);
+  expect(started).toEqual([]);
+  expect(startedItems).toEqual([{ item: { kind: 'card', id: 'card-1' }, opts: { noQuestions: true, brief: 'Only the login page' } }]);
+  expect(result.isError).toBeUndefined();
+  expect(json(result)).toStrictEqual({
+    taskId: 'task-1',
+    title: 'Fix login',
+    branch: 'worktree-fix-login',
+    warning: "stage has 1 commit that isn't on origin/stage. New worktrees start from origin/stage, so this task won't have it.",
+  });
+
+  await call('start_task', { title: 'Fix login', brief: '', cardId: 'card-2' });
+  expect(startedItems[1]).toEqual({ item: { kind: 'card', id: 'card-2' }, opts: { noQuestions: false, brief: '' } });
+});
+
 it('start_task turns a start that fails into an error result with its message', async () => {
   const { call } = setup({ start: () => Promise.reject(new Error('A task needs a title')) });
   const result = await call('start_task', { title: ' ', brief: '' });
   expect(result.isError).toBe(true);
   expect(result.content).toEqual([{ type: 'text', text: 'A task needs a title' }]);
+});
+
+it('start_task turns a card that cannot start into an error result with its message', async () => {
+  const { call } = setup({ startItem: () => Promise.reject(new Error('No card card-9 in the synced list; sync it again')) });
+  const result = await call('start_task', { title: 'Fix login', brief: '', cardId: 'card-9' });
+  expect(result.isError).toBe(true);
+  expect(result.content).toEqual([{ type: 'text', text: 'No card card-9 in the synced list; sync it again' }]);
+});
+
+it('sync_todo takes no input and returns the card count, what the owner must do first, or the error', async () => {
+  expect(setup().tools.get('sync_todo')!.config.inputSchema).toBeUndefined();
+
+  const synced = setup({ sync: async () => ({ cards: 7 }) });
+  expect(json(await synced.call('sync_todo'))).toStrictEqual({ cards: 7 });
+  expect(synced.calls).toEqual(['sync']);
+
+  const tools = setup({ sync: async () => ({ ask: 'tools' }) });
+  expect(json(await tools.call('sync_todo'))).toStrictEqual({ needsOwner: 'Allow the tools that read the to-do list, in the Todo panel' });
+
+  const lists = setup({ sync: async () => ({ ask: 'lists' }) });
+  expect(json(await lists.call('sync_todo'))).toStrictEqual({ needsOwner: 'Pick the to-do list, in the Todo panel' });
+
+  const failed = await setup({ sync: async () => ({ error: "The connector isn't signed in" }) }).call('sync_todo');
+  expect(failed.isError).toBe(true);
+  expect(failed.content).toEqual([{ type: 'text', text: "The connector isn't signed in" }]);
+
+  // A sync that refuses to start, as with a list file a newer Mainframe wrote, is an error result too.
+  const refused = await setup({ sync: () => Promise.reject(new Error('A newer Mainframe wrote the list')) }).call('sync_todo');
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toEqual([{ type: 'text', text: 'A newer Mainframe wrote the list' }]);
 });

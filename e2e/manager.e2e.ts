@@ -69,7 +69,7 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
   ]);
 
   const { hooks, permissions } = JSON.parse(readFileSync(settings, 'utf8'));
-  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions'] });
+  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'] });
   expect(hooks.SessionStart[0].hooks[0].command).toContain(join(managerDir(dataDir), 'session-start.json'));
 
   expect(statSync(mcp).mode & 0o777).toBe(0o600);
@@ -78,6 +78,7 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
     type: 'http',
     url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/),
     headers: { Authorization: expect.stringMatching(/^Bearer [0-9a-f]{64}$/) },
+    timeout: 360000,
   });
   // The token reaches the manager through the file alone.
   expect(args.join(' ')).not.toContain(server.headers.Authorization.slice('Bearer '.length));
@@ -98,7 +99,7 @@ test("the manager's tools answer only with the token, and start_task starts a ta
   expect((await mcpCall(dataDir, 'tools/list', {}, { token: 'not-the-token' })).status).toBe(401);
   const listed = await mcpCall(dataDir, 'tools/list', {});
   expect(listed.status).toBe(200);
-  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task']);
+  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task', 'sync_todo']);
 
   // New task selects the task it starts; the manager's start leaves the selection, and the focus, where they are.
   const alpha = await startTask(page, 'Alpha');

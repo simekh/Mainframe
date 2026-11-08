@@ -56,6 +56,9 @@ export async function startMcpServer(
   };
 }
 
+/** How long `claude` waits on one of this server's tools, in ms: past the sync run's 5 minutes, which `sync_todo` waits out. */
+const TOOL_TIMEOUT_MS = 360_000;
+
 /** The `--mcp-config` entry that has `claude` call this server, as `mainframe`. */
 export const mcpConfigJson = (url: string, token: string): string =>
-  JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` } } } });
+  JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } });

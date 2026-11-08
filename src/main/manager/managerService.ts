@@ -13,10 +13,11 @@ const MANAGER_FILE = 'manager.json';
 const MCP_FILE = 'mcp.json';
 
 /**
- * What the manager may call without asking, as an allow rule names a tool. Only the read: starting a task goes
- * through the owner's permission mode, so the role prompt is not all that stands between the manager and a session.
+ * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, and a sync, whose
+ * background run may use only the tools the owner confirmed. Starting a task goes through the owner's permission mode,
+ * so the role prompt is not all that stands between the manager and a session.
  */
-const ALLOWED_TOOLS = ['mcp__mainframe__list_sessions'];
+const ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'];
 
 /** The version of `manager.json` this build writes and reads. */
 const VERSION = 1;

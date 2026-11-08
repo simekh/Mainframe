@@ -9,6 +9,8 @@ import type {
   StartCheck,
   StatusEvent,
   TaskView,
+  TodoNote,
+  TodoView,
 } from './types';
 
 export const IPC = {
@@ -28,6 +30,15 @@ export const IPC = {
   getManager: 'manager:get',
   restartManager: 'manager:restart',
   managerChanged: 'manager:changed',
+  getTodo: 'todo:get',
+  todoChanged: 'todo:changed',
+  syncTodo: 'todo:sync',
+  confirmTodoTools: 'todo:confirm-tools',
+  pickTodoList: 'todo:pick-list',
+  resetTodoSource: 'todo:reset-source',
+  saveTodoNote: 'todo:save-note',
+  deleteTodoNote: 'todo:delete-note',
+  startTodoItem: 'todo:start-item',
   spawn: 'pty:spawn',
   write: 'pty:write',
   resize: 'pty:resize',
@@ -41,7 +52,7 @@ export const IPC = {
 } as const;
 
 /**
- * What the preload exposes to the renderer as `window.mainframe`. The task and manager calls and
+ * What the preload exposes to the renderer as `window.mainframe`. The task, manager and Todo calls and
  * events name their project by its folder (`ProjectView.dir`); the PTY ones need only the session id,
  * which no two projects share.
  */
@@ -71,6 +82,22 @@ export interface MainframeApi {
   restartManager(dir: string): Promise<ManagerView>;
   /** Every change to a project's manager session. */
   onManager(cb: (e: { dir: string; view: ManagerView }) => void): () => void;
+  getTodo(dir: string): Promise<TodoView>;
+  /** Every change to a project's Todo panel, with its whole view. */
+  onTodo(cb: (e: { dir: string; view: TodoView }) => void): () => void;
+  /** Reads the list with a background run; what it found, asked or failed with shows in the view. */
+  syncTodo(dir: string): Promise<void>;
+  /** Allows the tools the sync asked about to read the list, and syncs again. */
+  confirmTodoTools(dir: string): Promise<void>;
+  /** Picks the list the sync asked about, by its index in the ask, and syncs again. */
+  pickTodoList(dir: string, index: number): Promise<void>;
+  /** Forgets the allowed tools and the picked list; the cards and notes stay. */
+  resetTodoSource(dir: string): Promise<void>;
+  /** Adds a note, or changes the one with `id`. */
+  saveTodoNote(dir: string, note: { id?: string; title: string; text: string }): Promise<TodoNote>;
+  deleteTodoNote(dir: string, id: string): Promise<void>;
+  /** Starts a task from a card or a note. A note leaves the list once its task has started. */
+  startTodoItem(dir: string, req: { item: { kind: 'card' | 'note'; id: string }; noQuestions: boolean }): Promise<TaskView>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;

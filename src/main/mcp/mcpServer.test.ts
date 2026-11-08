@@ -79,7 +79,7 @@ it('answers 404 under any other path', async () => {
 
 it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', () => {
   expect(mcpConfigJson('http://127.0.0.1:5000/mcp', 'abc123')).toBe(
-    '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer abc123"}}}}',
+    '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer abc123"},"timeout":360000}}}',
   );
 });
 
