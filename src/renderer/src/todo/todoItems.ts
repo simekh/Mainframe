@@ -11,33 +11,26 @@ export interface TodoItem {
   number: string | null;
   labels: string[];
   forOwner: boolean;
-  /** Start; Reopen of the newest closed task that has this card; none for a card for the owner that has no task. */
+  /** Start; Reopen of the closed task that has this card; none for a card for the owner that has no task. */
   action: { kind: 'start' } | { kind: 'reopen'; taskId: string } | null;
   card: TodoCard | null;
   note: TodoNote | null;
 }
 
 /**
- * The list as the panel shows it: the cards in the source's order, then the notes. A card is hidden while a task
- * started from it is open, even when a sync brings it back before that task has moved it: Start would refuse it.
+ * The list as the panel shows it: the cards in the source's order, then the notes. A card has one task for good. It is
+ * hidden while that task is open, even when a sync brings it back before the task has moved it: Start would refuse it.
  * A task matches its card on the card's id alone: the source's name is each sync's own answer.
  */
 export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
-  // The tasks started from a card, by the card's id, each in the order of `tasks`.
-  const byCard = new Map<string, TaskView[]>();
-  for (const t of tasks) {
-    if (t.card === null) continue;
-    const own = byCard.get(t.card.id);
-    if (own) own.push(t);
-    else byCard.set(t.card.id, [t]);
-  }
+  const taskOf = new Map<string, TaskView>();
+  for (const t of tasks) if (t.card !== null) taskOf.set(t.card.id, t);
   const cards = view.cards.flatMap((card): TodoItem[] => {
-    const own = byCard.get(card.id) ?? [];
-    if (own.some((t) => t.session !== null)) return [];
-    const newest = own.reduce<TaskView | null>((a, t) => (a && a.createdAt >= t.createdAt ? a : t), null);
-    // A card marked for the owner has no Start in the list, though a task of it that closed can be reopened. The owner
+    const task = taskOf.get(card.id);
+    if (task?.session) return [];
+    // A card marked for the owner has no Start in the list, though its task, once closed, can be reopened. The owner
     // starts it from its ticket.
-    const action: TodoItem['action'] = newest ? { kind: 'reopen', taskId: newest.id } : card.forOwner ? null : { kind: 'start' };
+    const action: TodoItem['action'] = task ? { kind: 'reopen', taskId: task.id } : card.forOwner ? null : { kind: 'start' };
     const { id, title, description, number, labels, forOwner } = card;
     return [{ key: `card:${id}`, kind: 'card', id, title, body: description, number, labels, forOwner, action, card, note: null }];
   });

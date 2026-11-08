@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { expect, it } from 'vitest';
-import type { StartCheck, TaskView } from '../../shared/types';
+import type { StartCheck, TaskView, TodoView } from '../../shared/types';
 import type { SessionReport } from '../tasks/taskService';
 import type { SyncOutcome } from '../todo/todoService';
 import { registerManagerTools } from './managerTools';
@@ -31,7 +31,13 @@ const REPORT: SessionReport = {
 
 /** The tools, registered through a fake server that records `registerTool`, and what they were given. */
 function setup(
-  overrides: { start?: (req: unknown) => Promise<TaskView>; check?: StartCheck | null; sync?: () => Promise<SyncOutcome>; startItem?: (item: unknown, opts: { ownersCard?: boolean }) => Promise<TaskView> } = {},
+  overrides: {
+    start?: (req: unknown) => Promise<TaskView>;
+    check?: StartCheck | null;
+    sync?: () => Promise<SyncOutcome>;
+    startItem?: (item: unknown, opts: { ownersCard?: boolean }) => Promise<TaskView>;
+    ask?: TodoView['ask'];
+  } = {},
 ) {
   const tools = new Map<string, Registered>();
   const server = {
@@ -54,6 +60,7 @@ function setup(
       },
     },
     {
+      view: () => ({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, error: null, ask: overrides.ask ?? null, setUp: false }),
       sync: async () => (calls.push('sync'), overrides.sync ? overrides.sync() : { cards: 0 }),
       startItem: async (item, opts) => {
         calls.push('startItem');
@@ -199,6 +206,26 @@ it('start_task turns a card that cannot start into an error result with its mess
   const result = await call('start_task', { title: 'Fix login', brief: '', cardId: 'card-9' });
   expect(result.isError).toBe(true);
   expect(result.content).toEqual([{ type: 'text', text: 'No card card-9 in the synced list; sync it again' }]);
+});
+
+it("sync_todo does not sync while the Todo panel waits for the owner's answer, and says which question it asks", async () => {
+  const tools = setup({ ask: { kind: 'tools', connector: 'Tracker', tools: ['mcp__tracker__get_list'] } });
+  const waiting = await tools.call('sync_todo');
+  expect(waiting.isError).toBeUndefined();
+  expect(waiting.content).toEqual([
+    {
+      type: 'text',
+      text: 'The Todo panel is waiting for the owner: they must answer its question about tools before the list can sync.',
+    },
+  ]);
+  expect(tools.calls).toEqual([]);
+
+  const lists = setup({ ask: { kind: 'lists', lists: [{ name: 'Doing', board: 'Sprint', url: null }] } });
+  const picking = await lists.call('sync_todo');
+  expect(picking.content[0].text).toBe(
+    'The Todo panel is waiting for the owner: they must answer its question about a list before the list can sync.',
+  );
+  expect(lists.calls).toEqual([]);
 });
 
 it('sync_todo takes no input and returns the card count, what the owner must do first, or the error', async () => {

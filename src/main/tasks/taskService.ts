@@ -102,9 +102,8 @@ export class TaskService {
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
     if (req.card) {
       const { id } = req.card;
-      // A card has one task for good: a closed one is reopened, never started again. An open one is the one to name.
-      const had = this.mine().filter((t) => t.card?.id === id);
-      const other = had.find((t) => t.open) ?? had[0];
+      // A card has one task for good: a closed one is reopened, never started again.
+      const other = this.mine().find((t) => t.card?.id === id);
       const name = req.card.number ?? title;
       if (other?.open) throw new Error(`${name} is already open as the task "${other.title}"`);
       if (other) throw new Error(`${name} already has the task "${other.title}"; reopen it instead`);

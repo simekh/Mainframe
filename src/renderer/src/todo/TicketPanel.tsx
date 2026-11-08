@@ -1,4 +1,5 @@
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
+import { httpUrl } from '../../../shared/httpUrl';
 import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import StartCheckWarning from '../board/StartCheckWarning';
@@ -40,9 +41,10 @@ export default function TicketPanel(props: {
   const reopenId = () => reopenTaskId(action());
   // A card for the owner that has no task has no action: its Start is the owner's own choice, as Start anyway.
   const ownersStart = () => action() === null;
-  // Where the card opens in its source: only for a card with a URL, from a source the last sync named.
+  // Where the card opens in its source: only for a card with a web address, which is all the browser hand-off opens, from a
+  // source the last sync named.
   const link = () => {
-    const url = card()?.url;
+    const url = httpUrl(card()?.url);
     const source = view()?.source;
     return url && source ? { url, kind: source.kind } : null;
   };

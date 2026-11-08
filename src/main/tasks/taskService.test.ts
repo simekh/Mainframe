@@ -211,19 +211,6 @@ it('a start of a card whose task has closed is refused, and says to reopen it', 
   expect(changes.length).toBe(before);
 });
 
-it('a card with an open task and a closed one, as older data has, is refused as open', async () => {
-  const { stateFile, make } = setup();
-  const records = new TaskRecords(stateFile, 1000, () => {});
-  const service = make(records);
-  const first = await service.start({ ...NEW_TASK, card: CARD });
-  service.close(first.id);
-  service.onSessionExit(first.session!.id);
-  // A second task of the card, from before a card had only one: it comes after the closed one.
-  records.all.push({ ...records.all[0], id: 'older', title: 'Older', slug: 'older', open: true, closedAt: null });
-
-  await expect(service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow('#128 is already open as the task "Older"');
-});
-
 it('start picks a slug that no task, worktree branch or worktree folder has taken', async () => {
   const { service, projectDir } = setup({ worktreeBranchNames: async () => ['fix-login-2'] });
   expect((await service.start(NEW_TASK)).slug).toBe('fix-login');

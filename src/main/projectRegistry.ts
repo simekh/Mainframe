@@ -14,7 +14,7 @@ export interface RegisteredProject {
   manager: ProjectSessions;
   /** Once registered: brings back its open tasks and starts its manager. */
   start(): void;
-  /** As its close begins: stops the sync run, whose answer must not be written once the owner has closed the project, and refuses any later one. */
+  /** As its close or the app's quit begins: stops the sync run, whose answer must not be written once the owner has closed the project or the app has quit, and refuses any later one. */
   cancelSync(): void;
   /** Once its sessions have ended: lets go of what else it holds. */
   release(): Promise<void>;
@@ -87,7 +87,11 @@ export class ProjectRegistry<P extends RegisteredProject> {
 
   beginQuit(): void {
     this.quitting = true;
-    for (const [dir, project] of this.projects) recordWhereSessionsWere(dir, project);
+    // A sync run is no session: nothing else ends it with the app.
+    for (const [dir, project] of this.projects) {
+      stopSync(dir, project);
+      recordWhereSessionsWere(dir, project);
+    }
   }
 
   private async openNow(dir: string): Promise<void> {
@@ -103,7 +107,7 @@ export class ProjectRegistry<P extends RegisteredProject> {
 
   private async end(dir: string, project: P): Promise<void> {
     const { service, manager } = project;
-    project.cancelSync();
+    stopSync(dir, project);
     recordWhereSessionsWere(dir, project);
     const ids = [...service.sessionIds(), ...manager.sessionIds()];
     for (const id of ids) this.deps.kill(id);
@@ -131,6 +135,15 @@ export class ProjectRegistry<P extends RegisteredProject> {
       console.error('[projects] could not remember the open projects', err);
     }
     this.deps.onChange(this.list());
+  }
+}
+
+/** Logged, never thrown: the sessions must still be ended, and the other projects' syncs stopped and sessions recorded. */
+function stopSync(dir: string, project: RegisteredProject): void {
+  try {
+    project.cancelSync();
+  } catch (err) {
+    console.error(`[todo] could not stop the sync of ${dir}`, err);
   }
 }
 

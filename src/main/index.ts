@@ -200,8 +200,6 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   // beginQuit can't be undone, so it runs here only, once quitting is under way.
   app.on('before-quit', () => {
     projects.beginQuit();
-    // A sync run is no session: nothing else ends it with the app.
-    for (const { dir } of projects.list()) projects.get(dir)?.todo.close();
     host.killAll();
   });
 }

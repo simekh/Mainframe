@@ -1,4 +1,5 @@
 import { For, Show } from 'solid-js';
+import { httpUrl } from '../../../shared/httpUrl';
 import type { RendererConfig, TaskView } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { cardAge, glyphOf, stateLabel } from '../board/lanes';
@@ -100,7 +101,7 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                 </span>
                 <Show when={task().card}>
                   {(card) => (
-                    <Show when={card().url}>
+                    <Show when={httpUrl(card().url)}>
                       {(url) => (
                         <button
                           class="p-card-link"

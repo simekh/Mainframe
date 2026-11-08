@@ -30,14 +30,14 @@ const view = (extra: Partial<TodoView> = {}): TodoView => ({
 });
 
 /** A task started from the card `cardId` of `sourceKind`: open while it has a session. */
-const task = (id: string, cardId: string, o: { open: boolean; createdAt?: number; sourceKind?: string }): TaskView => ({
+const task = (id: string, cardId: string, o: { open: boolean; sourceKind?: string }): TaskView => ({
   id,
   title: id,
   description: '',
   slug: id,
   branch: `worktree-${id}`,
   worktreePath: `/repo/.claude/worktrees/${id}`,
-  createdAt: o.createdAt ?? 0,
+  createdAt: 0,
   closedAt: o.open ? null : 1,
   card: { sourceKind: o.sourceKind ?? 'Tracker', id: cardId, number: null, url: null, labels: [], position: 0, urgent: false },
   session: o.open ? { id: `s-${id}`, startedWithPrompt: true } : null,
@@ -82,28 +82,20 @@ describe('todoItems', () => {
     expect(keys(view({ cards: [card('1'), card('3')] }), running)).toEqual(['card:1', 'card:3']);
     // The sync ran before the session moved its card: the card is back in the list, and stays hidden.
     expect(keys(view({ cards: [card('1'), card('2'), card('3')] }), running)).toEqual(['card:1', 'card:3']);
-    // Also beside a closed task of the same card.
-    expect(keys(view({ cards: [card('2')] }), [...running, task('t0', '2', { open: false })])).toEqual([]);
   });
 
-  it('a card whose task has closed offers Reopen of the newest such task', () => {
-    const tasks = [
-      task('older', '1', { open: false, createdAt: 10 }),
-      task('newest', '1', { open: false, createdAt: 30 }),
-      task('middle', '1', { open: false, createdAt: 20 }),
-    ];
-    const [item] = todoItems(view({ cards: [card('1')] }), tasks);
-    expect(item.action).toEqual({ kind: 'reopen', taskId: 'newest' });
+  it('a card whose task has closed offers Reopen of that task', () => {
+    const [item] = todoItems(view({ cards: [card('1')] }), [task('t1', '1', { open: false })]);
+    expect(item.action).toEqual({ kind: 'reopen', taskId: 't1' });
   });
 
-  it('a card for the owner has no Start, but a closed task of it offers Reopen of the newest, as any card does', () => {
+  it('a card for the owner has no Start, but a closed task of it offers Reopen, as any card does', () => {
     const items = todoItems(view({ cards: [card('1', { forOwner: true }), card('2', { forOwner: true })] }), [
-      task('older', '2', { open: false, createdAt: 10 }),
-      task('newest', '2', { open: false, createdAt: 30 }),
+      task('t2', '2', { open: false }),
     ]);
     expect(items.map((i) => [i.key, i.forOwner, i.action])).toEqual([
       ['card:1', true, null],
-      ['card:2', true, { kind: 'reopen', taskId: 'newest' }],
+      ['card:2', true, { kind: 'reopen', taskId: 't2' }],
     ]);
   });
 

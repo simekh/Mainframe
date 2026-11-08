@@ -14,6 +14,9 @@ const NEEDS_OWNER = {
   lists: 'Pick the to-do list, in the Todo panel',
 };
 
+/** What the Todo panel's question is about, to name it to the manager. */
+const ASKS_ABOUT = { tools: 'tools', lists: 'a list' };
+
 /** What the new-task dialog warns of, as a sentence; the dialog's own "Push … first" is for the owner to act on. */
 const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
   `${branch} has ${commitsThatArent(ahead)} on ${base}. New worktrees start from ${base}, so this task won't have ${ahead === 1 ? 'it' : 'them'}.`;
@@ -22,7 +25,7 @@ const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
 export function registerManagerTools(
   server: McpServer,
   tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck'>,
-  todo: Pick<TodoService, 'sync' | 'startItem'>,
+  todo: Pick<TodoService, 'sync' | 'startItem' | 'view'>,
 ): void {
   server.registerTool(
     'list_sessions',
@@ -67,6 +70,12 @@ export function registerManagerTools(
         "Syncs the Todo panel: a background run reads the owner's to-do list through their connector, and Mainframe shows it. Returns the number of cards, what the owner must do in the Todo panel first (allow the tools that read the list, or pick the list), or why it couldn't. Only when the owner asks.",
     },
     async () => {
+      // A run now would clear the question the owner is answering, and their Allow or Pick would find nothing to answer.
+      const { ask } = todo.view();
+      if (ask) {
+        const waiting = `The Todo panel is waiting for the owner: they must answer its question about ${ASKS_ABOUT[ask.kind]} before the list can sync.`;
+        return { content: [{ type: 'text' as const, text: waiting }] };
+      }
       try {
         const outcome = await todo.sync();
         if ('error' in outcome) return failure(outcome.error);

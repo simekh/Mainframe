@@ -37,7 +37,7 @@ export class NewerTodoError extends Error {
 
 /**
  * What `todo.json` says: an empty list when it is missing, and also when it cannot be used, in which case it is
- * kept aside as `.bad-<now>`. Throws `NewerTodoError` for one a newer Mainframe wrote.
+ * kept aside as `.bad-<now>` where it can be. Throws `NewerTodoError` for one a newer Mainframe wrote.
  */
 export function loadTodo(file: string, now: number, warn: (msg: string) => void): TodoRecord {
   let text: string;
@@ -68,9 +68,15 @@ export function saveTodo(file: string, record: TodoRecord): void {
   writeJsonAtomic(file, record);
 }
 
+/** A list Mainframe can sync again is no reason for a project not to open: a file that can't be set aside is only said. */
 function keepAside(file: string, now: number, warn: (msg: string) => void, why: string): TodoRecord {
   const aside = `${file}.bad-${now}`;
-  renameSync(file, aside);
+  try {
+    renameSync(file, aside);
+  } catch (err) {
+    warn(`Could not use ${file} (${why}), nor set it aside (${String(err)})`);
+    return emptyTodo();
+  }
   warn(`Could not use ${file} (${why}); kept it as ${aside}`);
   return emptyTodo();
 }

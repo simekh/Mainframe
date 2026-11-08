@@ -82,12 +82,19 @@ export default function TodoPanel(props: {
   const [checking, setChecking] = createSignal(false);
   // One start at a time, as in New task.
   const [starting, setStarting] = createSignal(false);
+  // Each ticket that opens numbers its start check, so one that comes back late never speaks for the ticket that has
+  // opened since, even the same item's.
+  let latestCheck = 0;
+  // What a Start from the list found may open that item's ticket only where it takes nothing from the owner: when no
+  // ticket is open, or the item's own is. Another item's ticket may hold what is being typed in it.
+  const ticketFreeFor = (key: string) => props.ticket === null || props.ticket === key;
 
   /**
    * Opens a ticket in place of the one open. One a Start opens says what that Start found; any other with a Start runs
    * the start check, so its Start warns as New task's does.
    */
   function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
+    const opening = ++latestCheck;
     setWarning(found?.warning ?? null);
     setStartError(found?.error ?? null);
     const target = itemByKey().get(key);
@@ -102,7 +109,7 @@ export default function TodoPanel(props: {
         return null;
       })
       .then((warns) => {
-        if (props.ticket !== key) return;
+        if (props.ticket !== key || opening !== latestCheck) return;
         setWarning(warns);
         setChecking(false);
       });
@@ -123,7 +130,12 @@ export default function TodoPanel(props: {
     try {
       if (check) {
         const warns = aheadOf(await window.mainframe.startCheck(project.dir));
-        if (warns) return openTicket(key, { warning: warns, error: null });
+        if (warns) {
+          if (ticketFreeFor(key)) return openTicket(key, { warning: warns, error: null });
+          // Not started, and still on the list with its Start: the ticket open meanwhile stays.
+          console.warn(`[todo] ${key} was not started for ${project.dir}: its start check warned (${warns.branch} is ahead of ${warns.base})`);
+          return;
+        }
       }
       if (item === 'new-note') {
         await startTask(project.dir, { title: o.note!.title, description: o.note!.text, noQuestions: o.noQuestions });
@@ -135,8 +147,10 @@ export default function TodoPanel(props: {
       // Another item's ticket stays, with what is typed in it.
       if (props.ticket === key) props.onTicketChange(null);
     } catch (err) {
-      if (item !== 'new-note' && !itemByKey().has(key)) {
-        // Its item has left the list, so there is no ticket to show the error in: a reopened one would close at once.
+      // Its item may have left the list, so there is no ticket to show the error in: a reopened one would close at once.
+      // Another item's ticket, open meanwhile, stays as it is.
+      const gone = item !== 'new-note' && !itemByKey().has(key);
+      if (gone || !ticketFreeFor(key)) {
         console.error(`[todo] could not start ${key} for ${project.dir}: ${errorMessage(err)}`);
       } else {
         openTicket(key, { warning: props.ticket === key ? warning() : null, error: errorMessage(err) });

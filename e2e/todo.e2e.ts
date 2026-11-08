@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
   box, card, cardIn, closeTask, ids, launches, openedLinks, repoAhead, syncLaunches, syncReply, terminalHasFocus, todoDir,
@@ -82,6 +83,28 @@ async function syncFirstTime(scope: Page | Locator, dataDir: string, answer: { c
   await scope.getByTestId('todo-confirm-tools').click();
   await expect(scope.getByTestId('todo-item')).toHaveCount(answer.cards.length);
 }
+
+/**
+ * Holds main's answers to the renderer's calls on `channel` until `releaseHeld`, and then answers each with `outcome`,
+ * as does every later call: a start check, or a start, slow enough for the owner to act in the meantime.
+ */
+const holdAnswers = (app: ElectronApplication, channel: string, outcome: { value: unknown } | { error: string }) =>
+  app.evaluate(
+    ({ ipcMain }, { channel, outcome }) => {
+      const held: Array<() => void> = [];
+      let released = false;
+      const answer = () => ('error' in outcome ? Promise.reject(new Error(outcome.error)) : Promise.resolve(outcome.value));
+      (globalThis as { releaseHeld?: () => void }).releaseHeld = () => {
+        released = true;
+        for (const release of held.splice(0)) release();
+      };
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel, () => (released ? answer() : new Promise((resolve) => held.push(() => resolve(answer())))));
+    },
+    { channel, outcome },
+  );
+
+const releaseHeld = (app: ElectronApplication) => app.evaluate(() => (globalThis as { releaseHeld?: () => void }).releaseHeld!());
 
 /** The row of the item with this key in the Todo panel's list. */
 const itemRow = (scope: Page | Locator, key: string) => scope.locator(`[data-testid=todo-item][data-key="${key}"]`);
@@ -387,11 +410,59 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await app.close();
 });
 
+test("a Start from the list whose check warns leaves the ticket the owner opened meanwhile, with its text, and the card on the list", async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const logs: string[] = [];
+  page.on('console', (message) => logs.push(`${message.type()}: ${message.text()}`));
+
+  // The start check is out while the owner begins a note.
+  await holdAnswers(app, IPC.startCheck, { value: { ahead: 1, branch: 'stage', base: 'origin/stage' } });
+  await itemRow(page, 'card:c128').getByTestId('todo-start').click();
+  await page.getByTestId('todo-add-note').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await ticket.getByLabel('Title').fill('Half a thought');
+  await releaseHeld(app);
+
+  // Its warning was logged, not shown: the note's ticket is still the one open, with its text.
+  await expect.poll(() => logs.filter((line) => line.startsWith('warning: [todo]') && line.includes('card:c128'))).toHaveLength(1);
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New note');
+  await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
+  await expect(itemRow(page, 'card:c128').getByTestId('todo-start')).toBeVisible();
+  expect(launches(dataDir)).toEqual([]);
+  await app.close();
+});
+
+test('a Start from the list that fails leaves the ticket the owner opened meanwhile, with its text, and logs why', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const logs: string[] = [];
+  page.on('console', (message) => logs.push(`${message.type()}: ${message.text()}`));
+
+  // The start is out while the owner begins a note.
+  await holdAnswers(app, IPC.startTodoItem, { error: 'The tracker went away' });
+  await itemRow(page, 'card:c128').getByTestId('todo-start').click();
+  await page.getByTestId('todo-add-note').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await ticket.getByLabel('Title').fill('Half a thought');
+  await releaseHeld(app);
+
+  await expect
+    .poll(() => logs.filter((line) => line.startsWith('error: [todo] could not start card:c128') && line.includes('The tracker went away')))
+    .toHaveLength(1);
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New note');
+  await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
+  await expect(ticket.getByTestId('ticket-error')).toHaveCount(0);
+  await expect(itemRow(page, 'card:c128').getByTestId('todo-start')).toBeVisible();
+  expect(launches(dataDir)).toEqual([]);
+  await app.close();
+});
+
 test("a task started from a card shows its number on the board, and the session panel's link opens the card", async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   const [search, exported] = CARDS.cards;
-  // The second card has neither a number nor a link.
-  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, { ...exported, number: null }] });
+  // The second card has no number, and a URL that is no web address: no link to open.
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, { ...exported, number: null, url: 'file:///etc/hosts' }] });
   const startFrom = async (key: string) => {
     const before = await ids(page);
     await itemRow(page, key).getByTestId('todo-start').click();
@@ -433,7 +504,8 @@ test("a task started from a card shows its number on the board, and the session 
 
 test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕, a press on the board and a second click close it; another card swaps in place', async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
-  await syncFirstTime(page, dataDir);
+  // The second card has a URL that is no web address, which the browser hand-off would not open.
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [CARDS.cards[0], { ...CARDS.cards[1], url: 'file:///etc/hosts' }] });
   const [search, exported] = [itemRow(page, 'card:c128'), itemRow(page, 'card:c131')];
   const ticket = page.getByTestId('ticket-panel');
   await expect(ticket).toHaveCount(0);
@@ -470,7 +542,7 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await link.click();
   await expect.poll(() => openedLinks(app)).toEqual(['https://tracker.example/c/128']);
 
-  // Another card swaps in place; it has no link without a URL.
+  // Another card swaps in place; it has no link to open, as its URL is no web address.
   await exported.click();
   await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#131 Export drops the last row');
   await expect(exported).toHaveAttribute('data-open', 'true');

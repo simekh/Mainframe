@@ -250,6 +250,58 @@ it("ends every project's sessions as Mainframe quits", async () => {
   }
 });
 
+it("stops every project's sync as Mainframe quits", async () => {
+  const acme = fakeProject({ tasks: ['t1'] });
+  const globex = fakeProject();
+  const { registry } = setup({ made: { [ACME]: () => acme, [GLOBEX]: () => globex } });
+  await registry.open(ACME);
+  await registry.open(GLOBEX);
+
+  registry.beginQuit();
+
+  expect(acme.cancelSync).toHaveBeenCalledOnce();
+  expect(globex.cancelSync).toHaveBeenCalledOnce();
+});
+
+it("a sync that won't stop doesn't keep the other projects' syncs running or their sessions unrecorded as Mainframe quits", async () => {
+  const acme = fakeProject({ tasks: ['t1'] });
+  const globex = fakeProject({ tasks: ['t2'] });
+  vi.mocked(acme.cancelSync).mockImplementation(() => {
+    throw new Error('stuck');
+  });
+  const { registry } = setup({ made: { [ACME]: () => acme, [GLOBEX]: () => globex } });
+  await registry.open(ACME);
+  await registry.open(GLOBEX);
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  registry.beginQuit();
+
+  // Its own sessions are recorded still, and so are the other project's, whose sync is stopped.
+  expect(acme.service.beginQuit).toHaveBeenCalledOnce();
+  expect(globex.cancelSync).toHaveBeenCalledOnce();
+  expect(globex.service.beginQuit).toHaveBeenCalledOnce();
+  expect(error).toHaveBeenCalledWith(`[todo] could not stop the sync of ${ACME}`, expect.any(Error));
+  error.mockRestore();
+});
+
+it("a sync that won't stop doesn't keep a closing project's sessions from ending", async () => {
+  const acme = fakeProject({ tasks: ['t1'], manager: ['m1'] });
+  vi.mocked(acme.cancelSync).mockImplementation(() => {
+    throw new Error('stuck');
+  });
+  const { registry, killed, host } = setup({ made: { [ACME]: () => acme } });
+  await registry.open(ACME);
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  await registry.close(ACME);
+
+  expect(killed).toEqual(['t1', 'm1']);
+  expect([...host]).toEqual([]);
+  expect(acme.release).toHaveBeenCalledOnce();
+  expect(error).toHaveBeenCalledWith(`[todo] could not stop the sync of ${ACME}`, expect.any(Error));
+  error.mockRestore();
+});
+
 it("records the other projects' sessions when one project's record fails", async () => {
   const acme = fakeProject({ tasks: ['t1'] });
   const globex = fakeProject({ tasks: ['t2'] });

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -71,6 +71,24 @@ it.each(['{', 'null', '{"version":1,"cards":"x","notes":[]}', '{"version":1,"car
     expect(warnings[0]).toContain('.bad-1000');
   },
 );
+
+it('a file it can neither use nor set aside is said, with both reasons, and the list starts empty', () => {
+  const file = join(folder(), 'todo.json');
+  writeFileSync(file, '{');
+  // The name it would be set aside under is a folder with something in it, so the rename fails.
+  mkdirSync(`${file}.bad-1000`);
+  writeFileSync(join(`${file}.bad-1000`, 'taken'), '');
+  const warnings: string[] = [];
+
+  expect(loadTodo(file, 1000, (m) => warnings.push(m))).toEqual(emptyTodo());
+
+  // Where it was.
+  expect(readFileSync(file, 'utf8')).toBe('{');
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain(file);
+  expect(warnings[0]).toContain('SyntaxError');
+  expect(warnings[0]).toContain('rename');
+});
 
 it('a file from a newer Mainframe throws NewerTodoError and is left as it is', () => {
   const dir = folder();
