@@ -14,6 +14,13 @@ const folder = () => removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-todo-
 
 const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project="${dir}"]`);
 
+/** Whether `locator` is what shows at its own centre, not something laid over it. */
+const isOnTop = (locator: Locator) =>
+  locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  });
+
 /** What the first sync answers: the connector that holds the list, and its tools that only read. */
 const TOOLS = { kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_list'] };
 
@@ -253,11 +260,7 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   const under = await box(page, 'manager-column');
   expect(floating.x).toBeLessThan(under.x + under.width);
   expect(under.x).toBeLessThan(floating.x + floating.width);
-  const onTop = await panel.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
-  });
-  expect(onTop).toBe(true);
+  expect(await isOnTop(panel)).toBe(true);
 
   // Its arrow puts it away and hands the focus to the Todo button, which brings it back.
   await page.getByTestId('todo-hide').click();
@@ -426,11 +429,7 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   expect(Math.abs(at.x - (panel.x + panel.width))).toBeLessThanOrEqual(1);
   const manager = await box(page, 'manager-column');
   expect(at.x).toBeLessThan(manager.x + manager.width);
-  const onTop = await ticket.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
-  });
-  expect(onTop).toBe(true);
+  expect(await isOnTop(ticket)).toBe(true);
 
   const link = ticket.getByTestId('ticket-link');
   await expect(link).toHaveText('Open in Tracker ↗');

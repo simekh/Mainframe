@@ -3,11 +3,12 @@ import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import StartCheckWarning from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
+import { openLinkLogged } from '../openLink';
 import ResumeIcon from '../panel/ResumeIcon';
 import { useProject } from '../projects/projectContext';
 import { isFocused } from '../projects/projectsStore';
-import { syncedAgo, type TodoItem } from './todoItems';
-import { deleteTodoNote, saveTodoNote, todoOf } from './todoStore';
+import { reopenTaskId, syncedAgo, type TodoItem } from './todoItems';
+import { todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click, as the Todo panel's don't: typing stays where it was.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -35,9 +36,12 @@ export default function TicketPanel(props: {
   const note = () => item()?.note ?? null;
   const isNote = () => props.item === 'new-note' || props.item.kind === 'note';
   const action = () => (props.item === 'new-note' ? { kind: 'start' as const } : props.item.action);
-  const reopenId = () => {
-    const a = action();
-    return a?.kind === 'reopen' ? a.taskId : null;
+  const reopenId = () => reopenTaskId(action());
+  // Where the card opens in its source: only for a card with a URL, from a source the last sync named.
+  const link = () => {
+    const url = card()?.url;
+    const source = view()?.source;
+    return url && source ? { url, kind: source.kind } : null;
   };
 
   const [title, setTitle] = createSignal(note()?.title ?? '');
@@ -54,14 +58,14 @@ export default function TicketPanel(props: {
   const save = () => {
     setNoteError(null);
     // The new note shows in the list once saved, which opens it from there.
-    saveTodoNote(project.dir, { id: note()?.id, title: title(), text: text() }).then(
+    window.mainframe.saveTodoNote(project.dir, { id: note()?.id, title: title(), text: text() }).then(
       () => props.item === 'new-note' && props.onClose(),
       (err: unknown) => setNoteError(errorMessage(err)),
     );
   };
   const remove = (id: string) => {
     setNoteError(null);
-    deleteTodoNote(project.dir, id).then(props.onClose, (err: unknown) => setNoteError(errorMessage(err)));
+    window.mainframe.deleteTodoNote(project.dir, id).then(props.onClose, (err: unknown) => setNoteError(errorMessage(err)));
   };
 
   let titleInput: HTMLInputElement | undefined;
@@ -147,25 +151,21 @@ export default function TicketPanel(props: {
           {(c) => (
             <>
               <h3 class="ticket-title">
-                <Show when={c().number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
+                <Show when={c().number}>{(number) => <span class="card-number">{number()} </span>}</Show>
                 {c().title}
               </h3>
-              <Show when={c().labels.length > 0 || (c().url && view()?.source)}>
+              <Show when={c().labels.length > 0 || link()}>
                 <div class="ticket-meta">
                   <For each={c().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
-                  <Show when={c().url ? view()?.source : undefined}>
-                    {(source) => (
+                  <Show when={link()}>
+                    {(l) => (
                       <button
                         class="ticket-link"
                         data-testid="ticket-link"
                         onMouseDown={keepFocus}
-                        onClick={() =>
-                          window.mainframe
-                            .openLink(c().url!)
-                            .catch((err: unknown) => console.error(`[todo] could not open ${c().url}: ${errorMessage(err)}`))
-                        }
+                        onClick={() => openLinkLogged(l().url, 'todo')}
                       >
-                        Open in {source().kind} ↗
+                        Open in {l().kind} ↗
                       </button>
                     )}
                   </Show>

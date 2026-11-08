@@ -450,11 +450,18 @@ button {
 /* An island like the manager's column, at the owner's width; after the manager in the page, it is
    laid out first. Pinned, it is on the session panel's floating layer, above the floating manager's:
    the manager slides away under it, and the session panel's float, after it, still covers it, unless
-   it holds a ticket (see `.todo-panel:has(> .ticket-panel)`). */
+   it floats itself or holds a ticket (the raised rule below). */
 .todo-panel {
   order: -2;
   margin: 8px 0 8px 8px;
   z-index: 5;
+}
+
+/* Raised: floating, it is over the floating manager and the manager's way back. Holding a ticket, it is raised even
+   when pinned, above the pinned manager's hide pill and way back, which would poke through the ticket. */
+.todo-panel[data-pinned='false'],
+.todo-panel:has(> .ticket-panel) {
+  z-index: 7;
 }
 
 /* Put away while pinned, it gives its room back. */
@@ -692,12 +699,6 @@ button {
   border-radius: inherit;
 }
 
-.todo-num {
-  color: var(--fg-subtle);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
 .todo-body {
   display: -webkit-box;
   margin: 0;
@@ -774,10 +775,8 @@ button {
 
 /* --- The ticket: a card or a note in full, joined to the Todo panel's right edge ---------------- */
 
-/* Squared where the ticket joins it. Holding the ticket, it is on the floating panel's layer even when pinned, above
-   the pinned manager's hide pill and way back, which would poke through the ticket. */
+/* Squared where the ticket joins it. */
 .todo-panel:has(> .ticket-panel) {
-  z-index: 7;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
@@ -837,16 +836,22 @@ button {
   gap: 4px;
 }
 
-.ticket-link {
-  margin-left: auto;
+/* The way to the live card: here, and in the session panel beside the branch (`.p-card-link`). */
+.ticket-link,
+.p-card-link {
   color: var(--accent);
   font-size: 12px;
   font-weight: 500;
 }
 
-.ticket-link:hover {
+.ticket-link:hover,
+.p-card-link:hover {
   color: var(--accent-hover);
   text-decoration: underline;
+}
+
+.ticket-link {
+  margin-left: auto;
 }
 
 /* As the source wrote it, line breaks and all. */
@@ -1314,7 +1319,7 @@ kbd {
   overflow-wrap: anywhere;
 }
 
-/* The to-do card's number, ahead of the title and quieter than it. */
+/* The to-do card's number, ahead of the title and quieter than it: on a task's card, in the Todo list and in the ticket. */
 .card-number {
   color: var(--fg-subtle);
   font-weight: 400;
@@ -1624,11 +1629,11 @@ kbd {
   top: 8px;
   bottom: 8px;
   margin: 0;
-  z-index: 5;
 }
 
 .side-panel[data-pinned='false'] {
   right: 8px;
+  z-index: 5;
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
@@ -1640,10 +1645,9 @@ kbd {
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* Over the floating manager, and over the manager's way back. */
+/* Over the floating manager, and over the manager's way back (raised above). */
 .todo-panel[data-pinned='false'] {
   left: 8px;
-  z-index: 7;
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
@@ -1972,20 +1976,13 @@ kbd {
   height: 12px;
 }
 
-/* The way to the live card, beside the branch it was started on. The padding gives the focus ring room around the words. */
+/* The way to the live card, beside the branch it was started on; its colour is `.ticket-link`'s. The padding gives the
+   focus ring room around the words. */
 .p-card-link {
   flex: none;
   margin: 0 -4px;
   padding: 2px 4px;
   border-radius: var(--radius-sm);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.p-card-link:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
 }
 
 .p-state {

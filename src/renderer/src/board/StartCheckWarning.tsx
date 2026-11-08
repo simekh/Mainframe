@@ -1,6 +1,9 @@
 import { commitsThatArent } from '../../../shared/commitsThatArent';
 import type { StartCheck } from '../../../shared/types';
 
+/** The check when it has something to warn of, which is when the main checkout is ahead of its base. */
+export const aheadOf = (check: StartCheck | null): StartCheck | null => (check && check.ahead > 0 ? check : null);
+
 /** What New task and the ticket say when the main checkout has commits that a new worktree won't have. */
 export default function StartCheckWarning(props: { check: StartCheck; testId: string }) {
   return (

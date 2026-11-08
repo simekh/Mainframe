@@ -122,6 +122,12 @@ export interface TodoNote {
   text: string;
 }
 
+/** A note as the owner saves it: without an `id` it is new. */
+export type TodoNoteDraft = { id?: string; title: string; text: string };
+
+/** A card or a note on the list, by its id. */
+export type TodoItemRef = { kind: 'card' | 'note'; id: string };
+
 export interface TodoListRef {
   name: string;
   board: string | null;

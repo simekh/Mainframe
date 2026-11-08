@@ -1,5 +1,5 @@
 import { createStore, produce, reconcile } from 'solid-js/store';
-import type { TodoNote, TodoView } from '../../../shared/types';
+import type { TodoView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 
 /** By project folder; a project is missing until its first view comes in. */
@@ -54,11 +54,3 @@ export function pickTodoList(dir: string, index: number): void {
 export function resetTodoSource(dir: string): void {
   window.mainframe.resetTodoSource(dir).catch(logged('set up the sync again', dir));
 }
-
-// The ticket says why these failed, so they reject.
-
-/** Adds a note, or changes the one with `id`. */
-export const saveTodoNote = (dir: string, note: { id?: string; title: string; text: string }): Promise<TodoNote> =>
-  window.mainframe.saveTodoNote(dir, note);
-
-export const deleteTodoNote = (dir: string, id: string): Promise<void> => window.mainframe.deleteTodoNote(dir, id);

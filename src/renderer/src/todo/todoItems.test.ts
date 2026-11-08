@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
-import { sourceLine, syncedAgo, syncedLine, todoItems } from './todoItems';
+import { reopenTaskId, sourceLine, syncedAgo, syncedLine, todoItems } from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -52,6 +52,7 @@ describe('todoItems', () => {
     expect(items[1]).toEqual({
       key: 'card:1',
       kind: 'card',
+      id: '1',
       title: 'Card 1',
       body: 'About 1',
       number: '#1',
@@ -64,6 +65,7 @@ describe('todoItems', () => {
     expect(items[2]).toEqual({
       key: 'note:a',
       kind: 'note',
+      id: 'a',
       title: 'Note a',
       body: 'Text a',
       number: null,
@@ -111,6 +113,14 @@ describe('todoItems', () => {
       ['card:1', { kind: 'start' }],
       ['card:2', { kind: 'start' }],
     ]);
+  });
+});
+
+describe('reopenTaskId', () => {
+  it('is the task of a Reopen, and nothing for a Start or no action', () => {
+    expect(reopenTaskId({ kind: 'reopen', taskId: 't1' })).toBe('t1');
+    expect(reopenTaskId({ kind: 'start' })).toBeNull();
+    expect(reopenTaskId(null)).toBeNull();
   });
 });
 

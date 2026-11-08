@@ -1,9 +1,11 @@
-import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
+import type { TaskView, TodoCard, TodoItemRef, TodoNote, TodoView } from '../../../shared/types';
 
 /** One row of the Todo panel's list: a synced card or one of the owner's notes. */
 export interface TodoItem {
   key: string; // `card:<id>` | `note:<id>`
-  kind: 'card' | 'note';
+  kind: TodoItemRef['kind'];
+  /** The card's or the note's own id. */
+  id: string;
   title: string;
   body: string;
   number: string | null;
@@ -21,18 +23,27 @@ export interface TodoItem {
  */
 export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
   const kind = view.source?.kind;
+  // The tasks started from a card of this source, by the card's id, each in the order of `tasks`.
+  const byCard = new Map<string, TaskView[]>();
+  for (const t of tasks) {
+    if (t.card === null || t.card.sourceKind !== kind) continue;
+    const own = byCard.get(t.card.id);
+    if (own) own.push(t);
+    else byCard.set(t.card.id, [t]);
+  }
   const cards = view.cards.flatMap((card): TodoItem[] => {
-    const own = tasks.filter((t) => t.card !== null && t.card.sourceKind === kind && t.card.id === card.id);
+    const own = byCard.get(card.id) ?? [];
     if (own.some((t) => t.session !== null)) return [];
     const newest = own.reduce<TaskView | null>((a, t) => (a && a.createdAt >= t.createdAt ? a : t), null);
-    const action = card.forOwner ? null : newest ? { kind: 'reopen' as const, taskId: newest.id } : { kind: 'start' as const };
+    const action: TodoItem['action'] = card.forOwner ? null : newest ? { kind: 'reopen', taskId: newest.id } : { kind: 'start' };
     const { id, title, description, number, labels, forOwner } = card;
-    return [{ key: `card:${id}`, kind: 'card', title, body: description, number, labels, forOwner, action, card, note: null }];
+    return [{ key: `card:${id}`, kind: 'card', id, title, body: description, number, labels, forOwner, action, card, note: null }];
   });
   const notes = view.notes.map(
     (note): TodoItem => ({
       key: `note:${note.id}`,
       kind: 'note',
+      id: note.id,
       title: note.title,
       body: note.text,
       number: null,
@@ -45,6 +56,9 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
   );
   return [...cards, ...notes];
 }
+
+/** The task a Reopen would reopen, for an item's `action`. */
+export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);
 
 /** Where the list comes from, as the last sync found it; nothing before the first. */
 export function sourceLine(view: TodoView): string {

@@ -79,7 +79,7 @@ export function cardAge(task: TaskView, s: SessionState | undefined, now: number
 export function laneOrder(tasks: TaskView[], sessions: Record<string, SessionState>): Record<Lane, TaskView[]> {
   const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], closed: [] };
   for (const task of tasks) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
-  const group = (t: TaskView) => (!t.card ? 2 : t.card.urgent ? 0 : 1);
+  const group = (t: TaskView) => (t.card?.urgent ? 0 : t.card ? 1 : 2);
   lanes['needs-you'].sort(
     (a, b) =>
       group(a) - group(b) || (a.card?.position ?? 0) - (b.card?.position ?? 0) || a.createdAt - b.createdAt,

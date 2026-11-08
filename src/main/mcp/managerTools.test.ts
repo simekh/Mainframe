@@ -41,15 +41,18 @@ function setup(
   const calls: string[] = [];
   const started: unknown[] = [];
   const startedItems: unknown[] = [];
-  registerManagerTools(server, {
-    reports: () => [REPORT],
-    startCheck: async () => (calls.push('startCheck'), overrides.check ?? null),
-    start: async (req) => {
-      calls.push('start');
-      started.push(req);
-      return overrides.start ? overrides.start(req) : VIEW;
+  registerManagerTools(
+    server,
+    {
+      reports: () => [REPORT],
+      startCheck: async () => (calls.push('startCheck'), overrides.check ?? null),
+      start: async (req) => {
+        calls.push('start');
+        started.push(req);
+        return overrides.start ? overrides.start(req) : VIEW;
+      },
     },
-    todo: {
+    {
       sync: async () => (calls.push('sync'), overrides.sync ? overrides.sync() : { cards: 0 }),
       startItem: async (item, opts) => {
         calls.push('startItem');
@@ -57,7 +60,7 @@ function setup(
         return overrides.startItem ? overrides.startItem() : VIEW;
       },
     },
-  });
+  );
   const call = (name: string, args?: unknown) => tools.get(name)!.handler(args);
   return { tools, calls, started, startedItems, call };
 }

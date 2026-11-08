@@ -135,14 +135,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
     // The manager's tools, on this project's tasks and to-do list. Its mcp.json carries this run's port and token to it.
-    const mcp = await startMcpServer((server) =>
-      registerManagerTools(server, {
-        reports: () => service.reports(),
-        startCheck: () => service.startCheck(),
-        start: (req) => service.start(req),
-        todo,
-      }),
-    );
+    const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo));
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,

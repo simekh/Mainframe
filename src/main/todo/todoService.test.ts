@@ -462,6 +462,10 @@ it('notes are added, edited and deleted, kept in todo.json, and a sync leaves th
   expect(t.todo().notes).toEqual([edited]);
   expect(t.make().view().notes).toEqual([edited]);
 
+  const changesAfterDelete = t.changes.length;
+  t.service.deleteNote('nope');
+  expect(t.changes).toHaveLength(changesAfterDelete);
+
   expect(() => t.service.saveNote({ title: '   ', text: 'No title' })).toThrow('A note needs a title');
   expect(() => t.service.saveNote({ id: 'nope', title: 'Title', text: '' })).toThrow('No note nope');
   expect(t.service.view().notes).toEqual([edited]);

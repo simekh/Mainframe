@@ -21,7 +21,8 @@ const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
 /** The tools the manager session has: to read the task sessions, to start one, and to sync the Todo panel. */
 export function registerManagerTools(
   server: McpServer,
-  deps: Pick<TaskService, 'reports' | 'start' | 'startCheck'> & { todo: Pick<TodoService, 'sync' | 'startItem'> },
+  tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck'>,
+  todo: Pick<TodoService, 'sync' | 'startItem'>,
 ): void {
   server.registerTool(
     'list_sessions',
@@ -29,7 +30,7 @@ export function registerManagerTools(
       description:
         "Every task session Mainframe runs for this project, with its title, branch, worktree, Claude session id, whether it runs, and its last reported state (working, idle, blocked, done, error; null before the first report) and message. Read a task's worktree and its git history to say what it is doing.",
     },
-    async () => text({ sessions: deps.reports() }),
+    async () => text({ sessions: tasks.reports() }),
   );
 
   server.registerTool(
@@ -46,11 +47,11 @@ export function registerManagerTools(
     },
     async ({ title, brief, noQuestions, cardId }) => {
       try {
-        const check = await deps.startCheck();
-        const task =
-          cardId === undefined
-            ? await deps.start({ title, description: brief, noQuestions: noQuestions ?? false })
-            : await deps.todo.startItem({ kind: 'card', id: cardId }, { noQuestions: noQuestions ?? false, brief });
+        const check = await tasks.startCheck();
+        const quiet = noQuestions ?? false;
+        const task = await (cardId === undefined
+          ? tasks.start({ title, description: brief, noQuestions: quiet })
+          : todo.startItem({ kind: 'card', id: cardId }, { noQuestions: quiet, brief }));
         const warning = check && check.ahead > 0 ? { warning: aheadWarning(check) } : {};
         return text({ taskId: task.id, title: task.title, branch: task.branch, ...warning });
       } catch (err) {
@@ -67,7 +68,7 @@ export function registerManagerTools(
     },
     async () => {
       try {
-        const outcome = await deps.todo.sync();
+        const outcome = await todo.sync();
         if ('error' in outcome) return failure(outcome.error);
         if ('ask' in outcome) return text({ needsOwner: NEEDS_OWNER[outcome.ask] });
         return text({ cards: outcome.cards });

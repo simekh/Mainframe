@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { RendererConfig } from '../shared/types';
+import type { RendererConfig, TodoItemRef, TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -82,11 +82,11 @@ export function registerIpc(
     await todoOf(dir).pickList(index);
   });
   ipcMain.handle(IPC.resetTodoSource, (_e, dir: string) => todoOf(dir).resetSource());
-  ipcMain.handle(IPC.saveTodoNote, (_e, dir: string, note: { id?: string; title: string; text: string }) => todoOf(dir).saveNote(note));
+  ipcMain.handle(IPC.saveTodoNote, (_e, dir: string, note: TodoNoteDraft) => todoOf(dir).saveNote(note));
   ipcMain.handle(IPC.deleteTodoNote, (_e, dir: string, id: string) => todoOf(dir).deleteNote(id));
   ipcMain.handle(
     IPC.startTodoItem,
-    (_e, dir: string, { item, noQuestions }: { item: { kind: 'card' | 'note'; id: string }; noQuestions: boolean }) =>
+    (_e, dir: string, { item, noQuestions }: { item: TodoItemRef; noQuestions: boolean }) =>
       todoOf(dir).startItem(item, { noQuestions }),
   );
 

@@ -4,6 +4,7 @@ import { now } from '../board/ageClock';
 import { cardAge, glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
 import { errorMessage } from '../bridgeError';
+import { openLinkLogged } from '../openLink';
 import { useProject } from '../projects/projectContext';
 import { closeTask, reopenTask, sessionOf, tasksOf, terminalOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
@@ -105,11 +106,7 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                           class="p-card-link"
                           data-testid="panel-card-link"
                           onMouseDown={keepFocus}
-                          onClick={() =>
-                            window.mainframe
-                              .openLink(url())
-                              .catch((err: unknown) => console.error(`[tasks] could not open ${url()}: ${errorMessage(err)}`))
-                          }
+                          onClick={() => openLinkLogged(url(), 'tasks')}
                         >
                           Open in {card().sourceKind} ↗
                         </button>

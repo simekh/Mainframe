@@ -3,7 +3,7 @@ import type { StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { useProject } from '../projects/projectContext';
 import { startTask } from '../tasksStore';
-import StartCheckWarning from './StartCheckWarning';
+import StartCheckWarning, { aheadOf } from './StartCheckWarning';
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
@@ -16,10 +16,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
   const [check, setCheck] = createSignal<StartCheck | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal(false);
-  const ahead = () => {
-    const c = check();
-    return c && c.ahead > 0 ? c : null;
-  };
+  const ahead = () => aheadOf(check());
 
   onMount(() => {
     dialog.showModal();

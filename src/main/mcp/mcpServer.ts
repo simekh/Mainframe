@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { localhostHostValidation, localhostOriginValidation, toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
+import { SYNC_TIMEOUT_MS } from '../todo/syncRun';
 
 const MCP_PATH = '/mcp';
 
@@ -56,8 +57,8 @@ export async function startMcpServer(
   };
 }
 
-/** How long `claude` waits on one of this server's tools, in ms: past the sync run's 5 minutes, which `sync_todo` waits out. */
-const TOOL_TIMEOUT_MS = 360_000;
+/** How long `claude` waits on one of this server's tools, in ms: a minute past the sync run's time limit, which `sync_todo` waits out. */
+const TOOL_TIMEOUT_MS = SYNC_TIMEOUT_MS + 60_000;
 
 /** The `--mcp-config` entry that has `claude` call this server, as `mainframe`. */
 export const mcpConfigJson = (url: string, token: string): string =>

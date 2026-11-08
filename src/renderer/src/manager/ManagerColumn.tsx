@@ -10,7 +10,7 @@ import ResumeIcon from '../panel/ResumeIcon';
 import { useProject } from '../projects/projectContext';
 import { sessionOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
-import { clampManagerWidth } from './managerPrefs';
+import { MANAGER_WIDTH } from './managerPrefs';
 import { managerOf, restartManager } from './managerStore';
 
 // Restart and the pin don't take the focus on click: Restart puts the cursor in the new terminal
@@ -27,6 +27,8 @@ export default function ManagerColumn(props: {
   config: RendererConfig | undefined;
   /** The width it shows; the edge reports where a drag or a key takes it. */
   width: number;
+  /** The widest it can be in the room the pane gives it, which the edge announces. */
+  maxWidth: number;
   onDrag(w: number): void;
   onDone(w: number): void;
   pinned: boolean;
@@ -149,8 +151,8 @@ export default function ManagerColumn(props: {
           grows="right"
           label="Manager width"
           testId="manager-resize"
-          min={clampManagerWidth(0, project.width())}
-          max={clampManagerWidth(Infinity, project.width())}
+          min={MANAGER_WIDTH.min}
+          max={props.maxWidth}
         />
       </aside>
 

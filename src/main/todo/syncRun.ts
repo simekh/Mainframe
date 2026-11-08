@@ -5,13 +5,16 @@ import { SYNC_ANSWER, SYNC_ANSWER_JSON, type SyncAnswer } from './todoSchema';
 /** A sync run is stopped after this long. */
 export const SYNC_TIMEOUT_MS = 5 * 60_000;
 
+/** The outcome a stopped sync's callers get: what `runClaude` rejects with for a run that was cancelled. */
+export const SYNC_STOPPED = 'The sync was stopped';
+
 /** The first sync finds the connector; later ones read the list (the one the owner picked, if there was a choice). */
 export type SyncStep = { kind: 'discover' } | { kind: 'read'; list: TodoListRef | null };
 
 /** A connector's tool: the only kind of tool the owner may confirm for a sync. */
 export const isMcpToolName = (name: string): boolean => /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$/.test(name);
 
-/** The background run of spec §11.4: no built-in tools, no questions, one structured answer. */
+/** The background run: no built-in tools, no questions, one structured answer. */
 export function syncArgv(claudeBin: string, settingsPath: string): string[] {
   return [
     claudeBin,
@@ -126,7 +129,7 @@ export function runClaude(o: {
   input: string;
   timeoutMs: number;
 }): { done: Promise<string>; cancel(): void } {
-  let cancel = () => {};
+  let cancel!: () => void;
   const done = new Promise<string>((resolve, reject) => {
     const child = spawn(o.argv[0], o.argv.slice(1), { cwd: o.cwd, env: o.env });
     let stdout = '';
@@ -147,7 +150,7 @@ export function runClaude(o: {
       () => stop(`The sync took longer than ${Math.round(o.timeoutMs / 60_000)} minutes and was stopped`),
       o.timeoutMs,
     );
-    cancel = () => stop('The sync was stopped');
+    cancel = () => stop(SYNC_STOPPED);
 
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
@@ -167,5 +170,5 @@ export function runClaude(o: {
     child.stdin.on('error', () => {});
     child.stdin.end(o.input);
   });
-  return { done, cancel: () => cancel() };
+  return { done, cancel };
 }

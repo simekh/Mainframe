@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
+import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
 import Chevron from '../panel/Chevron';
 import PinIcon from '../panel/PinIcon';
@@ -8,9 +9,9 @@ import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import TicketPanel from './TicketPanel';
-import { sourceLine, syncedLine, todoItems, type TodoItem } from './todoItems';
+import { reopenTaskId, sourceLine, syncedLine, todoItems, type TodoItem } from './todoItems';
 import { TODO_WIDTH } from './todoPrefs';
-import { confirmTodoTools, pickTodoList, resetTodoSource, saveTodoNote, syncTodo, todoOf } from './todoStore';
+import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -24,13 +25,11 @@ function SyncIcon() {
   );
 }
 
-const ahead = (check: StartCheck | null) => (check && check.ahead > 0 ? check : null);
-
 /**
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
  * asks of the owner, and the ticket of the item open. Pinned and out, it takes the pane's left edge and the manager
  * sits right of it; unpinned, it floats over the manager as that floats over the board. Its hide arrow calls
- * `onOpenChange(false)`, and the pane hands the focus to its Todo button.
+ * `onHide`, and the pane hands the focus to its Todo button.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
@@ -42,7 +41,7 @@ export default function TodoPanel(props: {
   pinned: boolean;
   onPinnedChange(pinned: boolean): void;
   open: boolean;
-  onOpenChange(open: boolean): void;
+  onHide(): void;
   /** The open ticket: an item's key, or `'new-note'`. The pane closes it too. */
   ticket: string | null;
   onTicketChange(ticket: string | null): void;
@@ -85,7 +84,7 @@ export default function TodoPanel(props: {
     if (!check) return;
     window.mainframe
       .startCheck(project.dir)
-      .then(ahead, (err: unknown) => {
+      .then(aheadOf, (err: unknown) => {
         console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`);
         return null;
       })
@@ -110,16 +109,15 @@ export default function TodoPanel(props: {
     const key = item === 'new-note' ? item : item.key;
     try {
       if (check) {
-        const warns = ahead(await window.mainframe.startCheck(project.dir));
+        const warns = aheadOf(await window.mainframe.startCheck(project.dir));
         if (warns) return openTicket(key, { warning: warns, error: null });
       }
       if (item === 'new-note') {
         await startTask(project.dir, { title: o.note!.title, description: o.note!.text, noQuestions: o.noQuestions });
       } else {
         // A note's edits are saved first, so its task starts from them.
-        if (o.note && item.note) await saveTodoNote(project.dir, { id: item.note.id, ...o.note });
-        const id = (item.card ?? item.note)!.id;
-        await startTodoItem(project.dir, { item: { kind: item.kind, id }, noQuestions: o.noQuestions });
+        if (o.note && item.note) await window.mainframe.saveTodoNote(project.dir, { id: item.note.id, ...o.note });
+        await startTodoItem(project.dir, { item: { kind: item.kind, id: item.id }, noQuestions: o.noQuestions });
       }
       // Another item's ticket stays, with what is typed in it.
       if (props.ticket === key) props.onTicketChange(null);
@@ -283,10 +281,7 @@ export default function TodoPanel(props: {
                   {(key) => {
                     // A row whose key leaves the list goes before this reads it again.
                     const item = () => itemByKey().get(key)!;
-                    const reopenId = () => {
-                      const action = item().action;
-                      return action?.kind === 'reopen' ? action.taskId : null;
-                    };
+                    const reopenId = () => reopenTaskId(item().action);
                     return (
                       <li
                         class="todo-item"
@@ -302,7 +297,7 @@ export default function TodoPanel(props: {
                           onMouseDown={keepFocus}
                           onClick={() => (props.ticket === key ? props.onTicketChange(null) : openTicket(key))}
                         >
-                          <Show when={item().number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
+                          <Show when={item().number}>{(number) => <span class="card-number">{number()} </span>}</Show>
                           {item().title}
                         </button>
                         <Show when={item().body}>
@@ -402,7 +397,7 @@ export default function TodoPanel(props: {
         data-testid="todo-hide"
         title="Hide Todo panel"
         aria-label="Hide Todo panel"
-        onClick={() => props.onOpenChange(false)}
+        onClick={() => props.onHide()}
       >
         <Chevron points="left" />
       </button>

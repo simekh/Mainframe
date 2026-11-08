@@ -169,18 +169,20 @@ describe('laneOrder', () => {
     urgent,
   });
 
+  /** An open task with its own session, from `card` when it has one. */
+  const withSession = (id: string, createdAt: number, card: TaskView['card'] = null) =>
+    task({ id, createdAt, card, session: { id: `s-${id}`, startedWithPrompt: true } });
+
   const idsOf = (tasks: TaskView[], sessions: Record<string, SessionState>, lane: keyof ReturnType<typeof laneOrder>) =>
     laneOrder(tasks, sessions)[lane].map((t) => t.id);
 
   it('Needs you puts urgent cards first, then other cards by their place in the list, then tasks without a card by age', () => {
-    const blocked = (id: string, createdAt: number, card: TaskView['card']) =>
-      task({ id, createdAt, card, session: { id: `s-${id}`, startedWithPrompt: true } });
     const tasks = [
-      blocked('loose-new', 30, null),
-      blocked('listed', 50, cardAt(1)),
-      blocked('urgent-second', 10, cardAt(5, true)),
-      blocked('loose-old', 10, null),
-      blocked('urgent-first', 60, cardAt(2, true)),
+      withSession('loose-new', 30),
+      withSession('listed', 50, cardAt(1)),
+      withSession('urgent-second', 10, cardAt(5, true)),
+      withSession('loose-old', 10),
+      withSession('urgent-first', 60, cardAt(2, true)),
     ];
     const sessions = Object.fromEntries(tasks.map((t) => [t.session!.id, state('blocked', { kind: 'question' })]));
     expect(idsOf(tasks, sessions, 'needs-you')).toEqual([
@@ -193,19 +195,15 @@ describe('laneOrder', () => {
   });
 
   it('cards at the same place in the list go by age', () => {
-    const blocked = (id: string, createdAt: number) =>
-      task({ id, createdAt, card: cardAt(3), session: { id: `s-${id}`, startedWithPrompt: true } });
-    const tasks = [blocked('newer', 20), blocked('older', 5)];
+    const tasks = [withSession('newer', 20, cardAt(3)), withSession('older', 5, cardAt(3))];
     const sessions = { 's-newer': state('done'), 's-older': state('done') };
     expect(idsOf(tasks, sessions, 'needs-you')).toEqual(['older', 'newer']);
   });
 
   it('Working and Closed keep their order whatever the cards', () => {
-    const working = (id: string, createdAt: number, card: TaskView['card']) =>
-      task({ id, createdAt, card, session: { id: `s-${id}`, startedWithPrompt: true } });
     const tasks = [
-      working('w-urgent', 20, cardAt(0, true)),
-      working('w-plain', 10, cardAt(9)),
+      withSession('w-urgent', 20, cardAt(0, true)),
+      withSession('w-plain', 10, cardAt(9)),
       closedTask({ id: 'c-old', createdAt: 10, card: cardAt(0, true) }),
       closedTask({ id: 'c-new', createdAt: 30, card: cardAt(5) }),
     ];

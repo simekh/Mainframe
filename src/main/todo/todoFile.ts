@@ -1,7 +1,6 @@
 import { mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as z from 'zod/v4';
-import type { TodoCard, TodoListRef, TodoNote, TodoSource } from '../../shared/types';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE } from './todoSchema';
 
@@ -9,27 +8,18 @@ import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE } from './todoSchema';
 const VERSION = 1;
 
 /** What `todo.json` holds for one project: the list as the last sync found it, and what the owner confirmed for it. */
-export interface TodoRecord {
-  version: 1;
-  /** The tools the owner confirmed the sync may read with. */
-  readTools?: { connector: string; tools: string[] };
-  /** The list the owner picked, where the sync found several. */
-  pickedList?: TodoListRef;
-  source?: TodoSource;
-  syncedAt?: number;
-  cards: TodoCard[];
-  notes: TodoNote[];
-}
-
 const RECORD = z.object({
   version: z.literal(VERSION),
+  /** The tools the owner confirmed the sync may read with. */
   readTools: z.object({ connector: z.string(), tools: z.array(z.string()) }).optional(),
+  /** The list the owner picked, where the sync found several. */
   pickedList: TODO_LIST_REF.optional(),
   source: TODO_SOURCE.optional(),
   syncedAt: z.number().optional(),
   cards: z.array(TODO_CARD),
   notes: z.array(TODO_NOTE),
 });
+export type TodoRecord = z.infer<typeof RECORD>;
 
 export const emptyTodo = (): TodoRecord => ({ version: VERSION, cards: [], notes: [] });
 

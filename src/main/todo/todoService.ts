@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TaskView, TodoAsk, TodoNote, TodoView } from '../../shared/types';
+import type { TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import {
   isMcpToolName,
   readSyncAnswer,
   runClaude,
+  SYNC_STOPPED,
   SYNC_TIMEOUT_MS,
   syncArgv,
   syncPrompt,
@@ -19,8 +20,6 @@ import type { SyncAnswer } from './todoSchema';
 
 const TODO_FILE = 'todo.json';
 const SETTINGS_FILE = 'sync-settings.json';
-/** What `runClaude` rejects with for a run that was cancelled. */
-const STOPPED = 'The sync was stopped';
 const UNASKED = "The sync run answered something Mainframe didn't ask for";
 
 export interface TodoServiceDeps {
@@ -120,7 +119,7 @@ export class TodoService {
     this.changed();
   }
 
-  saveNote(note: { id?: string; title: string; text: string }): TodoNote {
+  saveNote(note: TodoNoteDraft): TodoNote {
     this.writable();
     const title = note.title.trim();
     if (!title) throw new Error('A note needs a title');
@@ -137,12 +136,14 @@ export class TodoService {
   }
 
   deleteNote(id: string): void {
+    this.writable();
+    if (!this.record.notes.some((n) => n.id === id)) return;
     this.save({ ...this.record, notes: this.record.notes.filter((n) => n.id !== id) });
     this.changed();
   }
 
   /** Starts a task from a card or a note. A note leaves the list once its task has started. */
-  async startItem(item: { kind: 'card' | 'note'; id: string }, opts: { noQuestions: boolean; brief?: string }): Promise<TaskView> {
+  async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string }): Promise<TaskView> {
     if (item.kind === 'card') {
       const { source, cards } = this.record;
       const position = cards.findIndex((c) => c.id === item.id);
@@ -169,7 +170,7 @@ export class TodoService {
     const running = this.running;
     if (!running) return;
     running.cancel();
-    this.end(running, () => ({ error: STOPPED }));
+    this.end(running, () => ({ error: SYNC_STOPPED }));
   }
 
   private launch(step: SyncStep): Promise<SyncOutcome> {
@@ -193,10 +194,7 @@ export class TodoService {
 
     done.then(
       (stdout) => this.end(running, () => this.apply(step, readSyncAnswer(stdout))),
-      (err: Error) =>
-        this.end(running, () => {
-          throw err;
-        }),
+      (err: Error) => this.end(running, () => this.refuse(err.message)),
     );
     return outcome;
   }

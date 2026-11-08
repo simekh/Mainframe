@@ -95,15 +95,17 @@ export default function ProjectPane(props: {
   };
   let todoToggle!: HTMLButtonElement;
   // Its hide arrow hands the focus to the Todo button, so the keyboard never ends up in a hidden panel.
-  const setTodoOpenFromPanel = (open: boolean) => {
-    showTodo(open);
-    if (!open) todoToggle.focus();
+  const hideTodo = () => {
+    showTodo(false);
+    todoToggle.focus();
   };
 
-  const shownManagerWidth = () => clampManagerWidth(dragManagerWidth() ?? managerWidth(), width() - todoBeside());
+  // What the pinned Todo panel leaves of the pane is all the manager measures against.
+  const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside());
+  const shownManagerWidth = () => managerWidthIn(dragManagerWidth() ?? managerWidth());
   const keepManagerWidth = (w: number) => {
     setDragManagerWidth(null);
-    const kept = clampManagerWidth(w, width() - todoBeside());
+    const kept = managerWidthIn(w);
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
   };
@@ -208,6 +210,7 @@ export default function ProjectPane(props: {
         <ManagerColumn
           config={props.config}
           width={shownManagerWidth()}
+          maxWidth={managerWidthIn(Infinity)}
           onDrag={setDragManagerWidth}
           onDone={keepManagerWidth}
           pinned={managerPinned()}
@@ -225,7 +228,7 @@ export default function ProjectPane(props: {
           pinned={todoPrefs().pinned}
           onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
           open={todoOpen()}
-          onOpenChange={setTodoOpenFromPanel}
+          onHide={hideTodo}
           ticket={ticket()}
           onTicketChange={setTicket}
         />

@@ -9,7 +9,9 @@ import type {
   StartCheck,
   StatusEvent,
   TaskView,
+  TodoItemRef,
   TodoNote,
+  TodoNoteDraft,
   TodoView,
 } from './types';
 
@@ -94,10 +96,10 @@ export interface MainframeApi {
   /** Forgets the allowed tools and the picked list; the cards and notes stay. */
   resetTodoSource(dir: string): Promise<void>;
   /** Adds a note, or changes the one with `id`. */
-  saveTodoNote(dir: string, note: { id?: string; title: string; text: string }): Promise<TodoNote>;
+  saveTodoNote(dir: string, note: TodoNoteDraft): Promise<TodoNote>;
   deleteTodoNote(dir: string, id: string): Promise<void>;
   /** Starts a task from a card or a note. A note leaves the list once its task has started. */
-  startTodoItem(dir: string, req: { item: { kind: 'card' | 'note'; id: string }; noQuestions: boolean }): Promise<TaskView>;
+  startTodoItem(dir: string, req: { item: TodoItemRef; noQuestions: boolean }): Promise<TaskView>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;

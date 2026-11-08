@@ -13,7 +13,7 @@ interface Settings {
 
 const hook = (settings: string) => (JSON.parse(settings) as Settings).hooks.PreToolUse[0];
 
-it('syncArgv is the background run of spec §11.4, with the schema and the settings file', () => {
+it('syncArgv is the background run, with the schema and the settings file', () => {
   expect(syncArgv('/bin/claude', '/data/sync-settings.json')).toEqual([
     '/bin/claude',
     '-p',
