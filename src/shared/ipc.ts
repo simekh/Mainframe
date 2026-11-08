@@ -100,7 +100,7 @@ export interface MainframeApi {
   deleteTodoNote(dir: string, id: string): Promise<void>;
   /**
    * Starts a task from a card or a note. A note leaves the list once its task has started. A card marked for the owner
-   * starts only with `ownersCard`, which the ticket's Start anyway sets: the owner chose it.
+   * starts only with `ownersCard`, which only the ticket's Start anyway sets: the owner chose it.
    */
   startTodoItem(dir: string, req: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }): Promise<TaskView>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */

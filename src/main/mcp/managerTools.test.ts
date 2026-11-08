@@ -10,7 +10,7 @@ interface ToolResult {
   isError?: boolean;
 }
 interface Registered {
-  config: { description?: string; inputSchema?: { safeParse(value: unknown): { success: boolean } } };
+  config: { description?: string; inputSchema?: { safeParse(value: unknown): { success: boolean; data?: unknown } } };
   handler: (args?: unknown) => Promise<ToolResult>;
 }
 
@@ -102,11 +102,14 @@ it('start_task takes an optional cardId', () => {
   expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
 });
 
-it("start_task takes an optional ownerNamedIt, and its description says a card marked as the owner's starts only when the owner names it", () => {
+it("start_task's description says a card marked as the owner's never starts from here, and it takes no parameter to say otherwise", () => {
   const { config } = setup().tools.get('start_task')!;
-  expect(config.inputSchema!.safeParse({ title: 'Decide', brief: '', cardId: 'c1', ownerNamedIt: true }).success).toBe(true);
-  expect(config.inputSchema!.safeParse({ title: 'Decide', brief: '', cardId: 'c1', ownerNamedIt: 'yes' }).success).toBe(false);
-  expect(config.description).toContain("A card marked as the owner's starts only when the owner names it: never pick one yourself.");
+  expect(config.description).toContain("A card marked as the owner's never starts from here: the owner starts it from its ticket.");
+  expect(config.description).not.toContain('names it');
+  // An ownerNamedIt is no part of the input: the schema strips it.
+  const parsed = config.inputSchema!.safeParse({ title: 'Decide', brief: '', cardId: 'c1', ownerNamedIt: true });
+  expect(parsed.success).toBe(true);
+  expect(parsed.data).toStrictEqual({ title: 'Decide', brief: '', cardId: 'c1' });
 });
 
 it('start_task checks the start, then starts the task with the brief as its description and questions allowed', async () => {
@@ -163,8 +166,8 @@ it('start_task with a cardId starts from that card with the brief', async () => 
   expect(startedItems[1]).toEqual({ item: { kind: 'card', id: 'card-2' }, opts: { noQuestions: false, brief: '' } });
 });
 
-it("start_task refuses a card marked as the owner's unless the owner named it, and starts it with ownerNamedIt", async () => {
-  const refusal = '#119 is for the owner; start it only when the owner names it';
+it("start_task never starts a card marked as the owner's, not even when it is told the owner named it", async () => {
+  const refusal = "#119 is marked as the owner's; the owner starts it from its ticket with Start anyway";
   const { call, startedItems } = setup({
     startItem: (_item, opts) => (opts.ownersCard ? Promise.resolve(VIEW) : Promise.reject(new Error(refusal))),
   });
@@ -173,12 +176,14 @@ it("start_task refuses a card marked as the owner's unless the owner named it, a
   expect(refused.isError).toBe(true);
   expect(refused.content).toEqual([{ type: 'text', text: refusal }]);
 
-  const named = await call('start_task', { title: 'Decide', brief: 'The owner named it', cardId: '#119', ownerNamedIt: true });
-  expect(named.isError).toBeUndefined();
-  expect(json(named)).toStrictEqual({ taskId: 'task-1', title: 'Fix login', branch: 'worktree-fix-login' });
-  expect(startedItems).toEqual([
+  const insisted = await call('start_task', { title: 'Decide', brief: 'The owner named it', cardId: '#119', ownerNamedIt: true });
+  expect(insisted.isError).toBe(true);
+  expect(insisted.content).toEqual([{ type: 'text', text: refusal }]);
+
+  // What reaches the Todo service never carries the owner's choice: only the ticket's Start anyway sets it.
+  expect(startedItems).toStrictEqual([
     { item: { kind: 'card', id: '#119' }, opts: { noQuestions: false, brief: '' } },
-    { item: { kind: 'card', id: '#119' }, opts: { noQuestions: false, brief: 'The owner named it', ownersCard: true } },
+    { item: { kind: 'card', id: '#119' }, opts: { noQuestions: false, brief: 'The owner named it' } },
   ]);
 });
 

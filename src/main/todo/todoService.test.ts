@@ -613,11 +613,11 @@ it("a card whose id is asked for beats an earlier card whose number is the same"
   ]);
 });
 
-it('a card for the owner is not started unless the owner chose it, whether asked for by its id or by its number, and says so', async () => {
+it("a card marked as the owner's is not started unless the owner chose it, whether asked for by its id or by its number, and says so", async () => {
   const t = setup();
   const cards = [card('c7', { number: '#7', forOwner: true }), card('c8', { number: null, title: 'Decide', forOwner: true })];
   await synced(t, { ...CARDS_ANSWER, cards });
-  const refusal = (name: string) => `${name} is for the owner; start it only when the owner names it`;
+  const refusal = (name: string) => `${name} is marked as the owner's; the owner starts it from its ticket with Start anyway`;
 
   await expect(t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: false })).rejects.toThrow(refusal('#7'));
   await expect(t.service.startItem({ kind: 'card', id: '7' }, { noQuestions: false })).rejects.toThrow(refusal('#7'));

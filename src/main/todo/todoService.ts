@@ -148,8 +148,8 @@ export class TodoService {
   /**
    * Starts a task from a card or a note. A card is found by its id, or when none has that id, by its number as the
    * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A card
-   * marked for the owner is a hint, not a lock: it starts only with `ownersCard`, which the owner's own choice sets.
-   * A note leaves the list once its task has started.
+   * marked for the owner starts only with `ownersCard`, which only the ticket's Start anyway sets: the manager's tools
+   * never do. A note leaves the list once its task has started.
    */
   async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string; ownersCard?: boolean }): Promise<TaskView> {
     if (item.kind === 'card') {
@@ -160,7 +160,7 @@ export class TodoService {
       if (position < 0 || !source) throw new Error(`No card ${item.id} in the synced list; sync it again`);
       const card = cards[position];
       if (card.forOwner && !opts.ownersCard) {
-        throw new Error(`${card.number ?? card.title} is for the owner; start it only when the owner names it`);
+        throw new Error(`${card.number ?? card.title} is marked as the owner's; the owner starts it from its ticket with Start anyway`);
       }
       return this.deps.startTask({
         title: card.title,
