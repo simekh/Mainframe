@@ -62,7 +62,7 @@ describe('plainText', () => {
 });
 
 describe('safeHref', () => {
-  it.each(['http://example.com/a', 'https://example.com/x', 'https://example.com/x?y=1#z', 'mailto:me@example.com', 'HTTPS://EXAMPLE.COM/X'])(
+  it.each(['http://example.com/a', 'https://example.com/x', 'https://example.com/x?y=1#z', 'HTTPS://EXAMPLE.COM/X'])(
     'lets %s through as it is',
     (href) => {
       expect(safeHref(href)).toBe(href);
@@ -78,6 +78,8 @@ describe('safeHref', () => {
     'file:///etc/passwd',
     'ftp://example.com/x',
     'tel:+1555',
+    // The browser hand-off opens web pages only.
+    'mailto:me@example.com',
     '/relative/link',
     'relative/link',
     '#anchor',

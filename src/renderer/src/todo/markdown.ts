@@ -51,9 +51,9 @@ function textOf(token: Token): string {
 /** A card's text with its Markdown marks gone: what a reader sees, its blocks and lines run together by single spaces. */
 export const plainText = (text: string): string => blockText(cardTokens(text)).replace(/\s+/g, ' ').trim();
 
-const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+const SAFE_PROTOCOLS = new Set(['http:', 'https:']);
 
-/** The address of a link in a card, if it is one to follow: a web page or an email address, and nothing else. */
+/** The address of a link in a card, if it is one to follow: a web page, which is all the browser hand-off opens. */
 export function safeHref(href: string): string | null {
   try {
     return SAFE_PROTOCOLS.has(new URL(href).protocol) ? href : null;
