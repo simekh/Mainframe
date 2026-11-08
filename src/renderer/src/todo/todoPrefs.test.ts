@@ -37,7 +37,20 @@ describe('todoPrefs', () => {
     [1100, 100, 280],
     // 120 px are left at 900: the minimum wins.
     [900, 400, 280],
-  ])('in a %i px pane, %d px gives %i px', (paneWidth, width, want) => {
-    expect(clampTodoWidth(width, paneWidth)).toBe(want);
+  ])('pinned, in a %i px pane, %d px gives %i px', (paneWidth, width, want) => {
+    expect(clampTodoWidth(width, paneWidth, true)).toBe(want);
+  });
+
+  it.each([
+    // Floating, it takes no room: the pane keeps only a strip of board beside it, so it grows to its maximum in a
+    // 1400 px pane, whatever the manager takes there.
+    [1400, 2000, 480],
+    [1400, 400, 400],
+    [1400, 100, 280],
+    // 320 px are left at 400, and 220 at 300: the minimum wins.
+    [400, 2000, 320],
+    [300, 400, 280],
+  ])('floating, in a %i px pane, %d px gives %i px', (paneWidth, width, want) => {
+    expect(clampTodoWidth(width, paneWidth, false)).toBe(want);
   });
 });

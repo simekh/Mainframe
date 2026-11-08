@@ -131,6 +131,21 @@ test('a sync that fails says why and keeps the list', async () => {
   await app.close();
 });
 
+test('a sync that changes a card updates its row in place, and the other rows stay as they were', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  // Marks the rows the first sync built: a row built anew would drop the focus of a button in it.
+  const items = page.getByTestId('todo-item');
+  await items.evaluateAll((rows) => rows.forEach((row) => row.setAttribute('data-first-sync', '')));
+
+  const [search, exported] = CARDS.cards;
+  syncReply(dataDir, { ...CARDS, cards: [{ ...search, title: 'Search ignores accents and case' }, exported] });
+  await page.getByTestId('todo-sync').click();
+  await expect(items.first()).toContainText('Search ignores accents and case');
+  await expect(page.locator('[data-testid=todo-item][data-first-sync]')).toHaveCount(2);
+  await app.close();
+});
+
 test('two projects side by side keep their own lists', async () => {
   const [acme, globex] = [folder(), folder()];
   const { app, page, dataDir } = await launchApp({}, [acme, globex]);
@@ -154,8 +169,6 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   const project = folder();
   const first = await launchApp({}, project);
   const { page, dataDir } = first;
-  // Room for the Todo panel and the manager beside the board and the session panel at their own widths.
-  await setWindowWidth(first.app, page, 1700);
   const panel = page.getByTestId('todo-panel');
   const toggle = page.getByTestId('todo-toggle');
   const pin = page.getByTestId('todo-pin');
@@ -163,9 +176,17 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panel).toBeHidden();
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
+  // Floating, it takes no room: in the window as it opens, beside the pinned manager, it has its own width and can
+  // grow to its maximum.
   await toggle.click();
   await expect(panel).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('manager-column')).toHaveAttribute('data-pinned', 'true');
+  expect((await box(page, 'todo-panel')).width).toBe(320);
+  await expect(page.getByTestId('todo-resize')).toHaveAttribute('aria-valuemax', '480');
+
+  // Room for the Todo panel and the manager beside the board and the session panel at their own widths.
+  await setWindowWidth(first.app, page, 1700);
   await pin.click();
   await expect(panel).toHaveAttribute('data-pinned', 'true');
   await expect(pin).toHaveAttribute('aria-pressed', 'true');
@@ -231,5 +252,16 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await again.page.getByTestId('todo-toggle').click();
   await expect(panelAgain).toBeVisible();
   expect((await box(again.page, 'todo-panel')).width).toBe(304);
+  await again.page.getByTestId('todo-pin').click();
+  await expect(panelAgain).toHaveAttribute('data-pinned', 'true');
   await again.app.close();
+
+  // Pinned, it is out from the start.
+  const third = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, project);
+  const panelThird = third.page.getByTestId('todo-panel');
+  await expect(panelThird).toBeVisible();
+  await expect(panelThird).toHaveAttribute('data-pinned', 'true');
+  await expect(panelThird).toHaveAttribute('data-open', 'true');
+  await expect(third.page.getByTestId('todo-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await third.app.close();
 });

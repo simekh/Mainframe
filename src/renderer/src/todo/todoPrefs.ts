@@ -6,12 +6,14 @@ export const TODO_WIDTH = { default: 320, min: 280, max: 480 };
 const KEY = 'mainframe.todo';
 /** Each project's own: unpinned, it waits for the Todo button. */
 const DEFAULTS: PanelPrefs = { width: TODO_WIDTH.default, pinned: false };
-/** What the pane keeps beside the panel: the session panel's minimum and the board's room when pinned. */
-const BESIDE = MIN_WIDTH + BOARD_ROOM.pinned;
-
-/** The width the panel can take in `paneWidth`. The minimum wins when that is too narrow. */
-export function clampTodoWidth(width: number, paneWidth: number): number {
-  const max = Math.min(TODO_WIDTH.max, paneWidth - BESIDE);
+/**
+ * The width the panel can take in `paneWidth`. Pinned, it keeps the session panel's minimum and the board's room
+ * beside it, as the manager does; floating, it takes no room and keeps a strip of board, as the session panel's
+ * float does. The minimum wins when that is too narrow.
+ */
+export function clampTodoWidth(width: number, paneWidth: number, pinned: boolean): number {
+  const beside = pinned ? MIN_WIDTH + BOARD_ROOM.pinned : BOARD_ROOM.unpinned;
+  const max = Math.min(TODO_WIDTH.max, paneWidth - beside);
   return Math.round(Math.max(TODO_WIDTH.min, Math.min(width, max)));
 }
 

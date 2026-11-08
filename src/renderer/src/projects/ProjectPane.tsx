@@ -75,13 +75,16 @@ export default function ProjectPane(props: {
     setTodoPrefs(prefs);
     saveTodoPrefs(localStorage, dir, prefs);
   };
-  // Each column keeps the other's room beside the board. Where both can't have their width, the Todo panel gives way
-  // first, as the manager's terminal would reflow: it leaves room for the manager as wide as it would be alone.
-  const todoRoom = () => width() - (managerTakesRoom() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : 0);
-  const shownTodoWidth = () => clampTodoWidth(dragTodoWidth() ?? todoPrefs().width, todoRoom());
+  // Floating, the Todo panel takes no room and the pane is all it measures against. Pinned, it leaves room for the
+  // pinned manager as wide as that would be alone, and the manager takes what is left: where both can't have their
+  // width, the Todo panel gives way first.
+  const todoRoom = () =>
+    todoPrefs().pinned && managerTakesRoom() ? width() - clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : width();
+  const todoWidthIn = (w: number) => clampTodoWidth(w, todoRoom(), todoPrefs().pinned);
+  const shownTodoWidth = () => todoWidthIn(dragTodoWidth() ?? todoPrefs().width);
   const keepTodoWidth = (w: number) => {
     setDragTodoWidth(null);
-    keepTodoPrefs({ ...todoPrefs(), width: clampTodoWidth(w, todoRoom()) });
+    keepTodoPrefs({ ...todoPrefs(), width: todoWidthIn(w) });
   };
   const todoBeside = () => (todoOpen() && todoPrefs().pinned ? shownTodoWidth() : 0);
   let todoToggle!: HTMLButtonElement;
@@ -208,6 +211,7 @@ export default function ProjectPane(props: {
         {/* After the manager, for the same reason: it floats over the manager and the top bar. */}
         <TodoPanel
           width={shownTodoWidth()}
+          maxWidth={todoWidthIn(Infinity)}
           onDrag={setDragTodoWidth}
           onDone={keepTodoWidth}
           pinned={todoPrefs().pinned}

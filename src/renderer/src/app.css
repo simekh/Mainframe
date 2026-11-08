@@ -448,10 +448,12 @@ button {
 /* --- The Todo panel: the project's to-do list, at its pane's far left ------------------------ */
 
 /* An island like the manager's column, at the owner's width; after the manager in the page, it is
-   laid out first. */
+   laid out first. Pinned, it is on the session panel's floating layer, above the floating manager's:
+   the manager slides away under it, and the session panel's float, after it, still covers it. */
 .todo-panel {
   order: -2;
   margin: 8px 0 8px 8px;
+  z-index: 5;
 }
 
 /* Put away while pinned, it gives its room back. */
@@ -1370,9 +1372,11 @@ kbd {
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* Right of the pinned Todo panel, when it is out. */
+/* Right of the pinned Todo panel, when it is out, and a layer under it, so it slides away and back
+   under that panel: on one layer, the Todo panel's flex order would paint it first, under the manager. */
 .manager-column[data-pinned='false'] {
   left: calc(8px + var(--left-room, 0px));
+  z-index: 4;
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 

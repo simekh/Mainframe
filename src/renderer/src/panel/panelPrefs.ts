@@ -8,7 +8,7 @@ export const DEFAULT_PANEL_PREFS: PanelPrefs = { width: 640, pinned: true };
 
 /**
  * The session panel's key. Alone, it holds what every project shared before each kept its own; a project with none
- * of its own starts from it. Another island's key was never written alone, so a project starts from its defaults.
+ * of its own starts from it. Only the session panel has that: another island's project starts from its defaults.
  */
 const SHARED_KEY = 'mainframe.panel';
 export const MIN_WIDTH = 420;
@@ -27,7 +27,8 @@ export function loadPanelPrefs(
   { key = SHARED_KEY, defaults = DEFAULT_PANEL_PREFS }: { key?: string; defaults?: PanelPrefs } = {},
 ): PanelPrefs {
   try {
-    const saved: unknown = JSON.parse(storage.getItem(`${key}:${dir}`) ?? storage.getItem(key) ?? 'null');
+    const shared = key === SHARED_KEY ? storage.getItem(SHARED_KEY) : null;
+    const saved: unknown = JSON.parse(storage.getItem(`${key}:${dir}`) ?? shared ?? 'null');
     if (typeof saved !== 'object' || saved === null) return defaults;
     const { width, pinned } = saved as Record<string, unknown>;
     if (typeof width !== 'number' || !Number.isFinite(width) || typeof pinned !== 'boolean') return defaults;

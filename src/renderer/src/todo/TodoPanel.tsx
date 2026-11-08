@@ -6,7 +6,7 @@ import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
 import { tasksOf } from '../tasksStore';
 import { sourceLine, syncedLine, todoItems } from './todoItems';
-import { clampTodoWidth } from './todoPrefs';
+import { TODO_WIDTH } from './todoPrefs';
 import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
@@ -30,6 +30,8 @@ function SyncIcon() {
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
   width: number;
+  /** The widest it can be in the room the pane gives it, which the edge announces. */
+  maxWidth: number;
   onDrag(w: number): void;
   onDone(w: number): void;
   pinned: boolean;
@@ -39,9 +41,11 @@ export default function TodoPanel(props: {
 }) {
   const project = useProject();
   const view = () => todoOf(project.dir);
-  const items = createMemo(() => {
+  // The rows go by key, as todoItems builds new objects each time: a sync, or a task that opens or closes, updates a
+  // row in place, so a button in it keeps the focus.
+  const itemByKey = createMemo(() => {
     const v = view();
-    return v ? todoItems(v, tasksOf(project.dir).tasks) : [];
+    return new Map((v ? todoItems(v, tasksOf(project.dir).tasks) : []).map((item) => [item.key, item]));
   });
   const toolsAsk = () => {
     const ask = view()?.ask;
@@ -171,26 +175,30 @@ export default function TodoPanel(props: {
               </p>
             </Show>
             <ul class="todo-list" aria-label="To do">
-              <For each={items()}>
-                {(item) => (
-                  <li class="todo-item" data-testid="todo-item" data-key={item.key} data-for-owner={String(item.forOwner)}>
-                    <p class="todo-title">
-                      <Show when={item.number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
-                      {item.title}
-                    </p>
-                    <Show when={item.body}>
-                      <p class="todo-body">{item.body}</p>
-                    </Show>
-                    <Show when={item.kind === 'note' || item.labels.length > 0}>
-                      <div class="todo-labels">
-                        <Show when={item.kind === 'note'}>
-                          <span class="todo-label note">Note</span>
-                        </Show>
-                        <For each={item.labels}>{(label) => <span class="todo-label">{label}</span>}</For>
-                      </div>
-                    </Show>
-                  </li>
-                )}
+              <For each={[...itemByKey().keys()]}>
+                {(key) => {
+                  // A row whose key leaves the list goes before this reads it again.
+                  const item = () => itemByKey().get(key)!;
+                  return (
+                    <li class="todo-item" data-testid="todo-item" data-key={key} data-for-owner={String(item().forOwner)}>
+                      <p class="todo-title">
+                        <Show when={item().number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
+                        {item().title}
+                      </p>
+                      <Show when={item().body}>
+                        <p class="todo-body">{item().body}</p>
+                      </Show>
+                      <Show when={item().kind === 'note' || item().labels.length > 0}>
+                        <div class="todo-labels">
+                          <Show when={item().kind === 'note'}>
+                            <span class="todo-label note">Note</span>
+                          </Show>
+                          <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
+                        </div>
+                      </Show>
+                    </li>
+                  );
+                }}
               </For>
             </ul>
 
@@ -227,8 +235,8 @@ export default function TodoPanel(props: {
         grows="right"
         label="Todo width"
         testId="todo-resize"
-        min={clampTodoWidth(0, project.width())}
-        max={clampTodoWidth(Infinity, project.width())}
+        min={TODO_WIDTH.min}
+        max={props.maxWidth}
       />
     </aside>
   );

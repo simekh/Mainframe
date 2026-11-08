@@ -44,8 +44,10 @@ describe('panelPrefs', () => {
   it("another key and defaults leave the session panel's alone", () => {
     const storage = memoryStorage({ 'mainframe.panel': '{"width":700,"pinned":false}' });
     const other = { key: 'mainframe.other', defaults: { width: 300, pinned: true } };
-    // Nothing of its own: its defaults, never the session panel's shared prefs.
+    // Nothing of its own: its defaults, never the session panel's shared prefs, nor anything under its bare key.
     expect(loadPanelPrefs(storage, '/acme', other)).toEqual({ width: 300, pinned: true });
+    const bare = memoryStorage({ 'mainframe.other': '{"width":500,"pinned":false}' });
+    expect(loadPanelPrefs(bare, '/acme', other)).toEqual({ width: 300, pinned: true });
 
     savePanelPrefs(storage, '/acme', { width: 360, pinned: false }, 'mainframe.other');
     expect(storage.map.get('mainframe.other:/acme')).toBe('{"width":360,"pinned":false}');
