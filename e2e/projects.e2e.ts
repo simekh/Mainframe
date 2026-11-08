@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { cleanUp, launchApp } from './launch';
+import { cleanUp, launchApp, setWindowWidth } from './launch';
 import { launches, managerLaunches, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
@@ -27,7 +27,7 @@ async function rowButton(page: Page, dir: string, testId: string): Promise<Locat
   return row(page, dir).getByTestId(testId);
 }
 
-test('each open project has its own board and manager; the list shows one alone or puts one beside it', async () => {
+test('each open project has its own board and manager; the list shows one in place of another or puts one beside it', async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [acme, globex]);
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
@@ -90,7 +90,74 @@ test('a project off screen shows how many of its sessions need you, and Ctrl+Tab
 
   await page.keyboard.press('Control+Tab');
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(row(page, globex)).toHaveAttribute('data-focused', 'true');
   await expect(pane(page, globex).getByTestId('panel-title')).toHaveText('Question');
+  await expect(pane(page, globex).locator(`[data-testid=task-card][data-task-id="${id}"]`)).toHaveAttribute('data-selected', 'true');
+  await app.close();
+});
+
+/** The project of the element with the focus, and whether that is a task's terminal. */
+const cursor = (page: Page) =>
+  page.evaluate(() => ({
+    project: document.activeElement?.closest('[data-testid=project-pane]')?.getAttribute('data-project') ?? null,
+    inTask: document.activeElement?.closest('.well') != null,
+  }));
+
+test('a click in the list focuses a project and leaves the others on screen; Cmd+1 to Cmd+9 focus by place', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b, c]);
+  await (await rowButton(page, b, 'rail-beside')).click();
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'false');
+
+  // One on screen is focused where it is, and the other stays.
+  await row(page, a).getByTestId('rail-show').click();
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'false');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
+
+  // One off screen takes the focused one's place.
+  await row(page, c).getByTestId('rail-show').click();
+  await expect(pane(page, c)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, a)).toHaveAttribute('data-shown', 'false');
+  expect((await boxOf(pane(page, c))).x).toBeLessThan((await boxOf(pane(page, b))).x);
+
+  // A click in a pane focuses its project.
+  const id = await startIn(page, b, 'Selected');
+  await pane(page, b).locator(`[data-testid=task-card][data-task-id="${id}"]`).click();
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+
+  // Cmd+1 brings the list's first in place of b. Nothing selected there and no manager beside others:
+  // the cursor leaves b, so no typing lands there unseen.
+  await page.keyboard.press('Meta+1');
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
+  expect((await boxOf(pane(page, c))).x).toBeLessThan((await boxOf(pane(page, a))).x);
+  await expect.poll(() => cursor(page)).toEqual({ project: null, inTask: false });
+
+  // Cmd+2 brings b back, with the cursor in its selected task's terminal.
+  await page.keyboard.press('Meta+2');
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => cursor(page)).toEqual({ project: b, inTask: true });
+
+  await pane(page, c).getByTestId('board').click();
+  await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
+  await app.close();
+});
+
+test("each project's panel keeps its own pin", async () => {
+  const [acme, globex] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [acme, globex]);
+  await setWindowWidth(app, page, 1600);
+  const pinned = (dir: string) => pane(page, dir).getByTestId('side-panel');
+
+  await pane(page, acme).getByTestId('panel-pin').click();
+  await expect(pinned(acme)).toHaveAttribute('data-pinned', 'false');
+  await row(page, globex).getByTestId('rail-show').click();
+  await expect(pinned(globex)).toHaveAttribute('data-pinned', 'true');
+  await row(page, acme).getByTestId('rail-show').click();
+  await expect(pinned(acme)).toHaveAttribute('data-pinned', 'false');
   await app.close();
 });
 

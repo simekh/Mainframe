@@ -1,6 +1,5 @@
 import { createSignal, For, Show, type JSX } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
-import type { PanelPrefs } from '../panel/panelPrefs';
 import { dragDivider } from './layout';
 import ProjectPane from './ProjectPane';
 import { openProject, projectsStore, setLayout, weightOf } from './projectsStore';
@@ -16,8 +15,6 @@ const KEY_STEP = 16;
  */
 export default function Panes(props: {
   config: RendererConfig | undefined;
-  panelPrefs: PanelPrefs;
-  onPanelPrefs(prefs: PanelPrefs): void;
   managerWidth: number;
   onManagerDrag(w: number): void;
   onManagerDone(w: number, paneWidth: number): void;
@@ -107,8 +104,6 @@ export default function Panes(props: {
             shown={layout().shown.includes(project.dir)}
             config={props.config}
             style={paneStyle(project.dir)}
-            panelPrefs={props.panelPrefs}
-            onPanelPrefs={props.onPanelPrefs}
             managerWidth={props.managerWidth}
             onManagerDrag={props.onManagerDrag}
             onManagerDone={props.onManagerDone}

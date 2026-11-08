@@ -1,4 +1,4 @@
-/** The side panel's width and pin, as the owner left them. */
+/** A project's side panel's width and pin, as the owner left them. */
 export interface PanelPrefs {
   width: number;
   pinned: boolean;
@@ -6,7 +6,9 @@ export interface PanelPrefs {
 
 export const DEFAULT_PANEL_PREFS: PanelPrefs = { width: 640, pinned: true };
 
-const KEY = 'mainframe.panel';
+/** What every project shared before each kept its own; a project with none of its own starts from it. */
+const SHARED_KEY = 'mainframe.panel';
+const keyOf = (dir: string) => `${SHARED_KEY}:${dir}`;
 export const MIN_WIDTH = 420;
 /** What the pane keeps beside the panel: room for the board when pinned, a strip of it when not. */
 export const BOARD_ROOM = { pinned: 360, unpinned: 80 };
@@ -17,9 +19,9 @@ export function clampWidth(width: number, paneWidth: number, pinned: boolean): n
   return Math.round(Math.max(MIN_WIDTH, Math.min(width, max)));
 }
 
-export function loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs {
+export function loadPanelPrefs(storage: Pick<Storage, 'getItem'>, dir: string): PanelPrefs {
   try {
-    const saved: unknown = JSON.parse(storage.getItem(KEY) ?? 'null');
+    const saved: unknown = JSON.parse(storage.getItem(keyOf(dir)) ?? storage.getItem(SHARED_KEY) ?? 'null');
     if (typeof saved !== 'object' || saved === null) return DEFAULT_PANEL_PREFS;
     const { width, pinned } = saved as Record<string, unknown>;
     if (typeof width !== 'number' || !Number.isFinite(width) || typeof pinned !== 'boolean') return DEFAULT_PANEL_PREFS;
@@ -30,9 +32,9 @@ export function loadPanelPrefs(storage: Pick<Storage, 'getItem'>): PanelPrefs {
 }
 
 /** A storage that refuses the write (full, or turned off) leaves the prefs for this run only. */
-export function savePanelPrefs(storage: Pick<Storage, 'setItem'>, prefs: PanelPrefs): void {
+export function savePanelPrefs(storage: Pick<Storage, 'setItem'>, dir: string, prefs: PanelPrefs): void {
   try {
-    storage.setItem(KEY, JSON.stringify({ width: prefs.width, pinned: prefs.pinned }));
+    storage.setItem(keyOf(dir), JSON.stringify({ width: prefs.width, pinned: prefs.pinned }));
   } catch {
     // Nothing to do: the panel keeps working with what it has.
   }

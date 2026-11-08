@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bringOnScreen,
   DEFAULT_LAYOUT,
   dragDivider,
   fitLayout,
+  focusOn,
   loadLayout,
   saveLayout,
-  showOnly,
   toggleBeside,
   toggleManager,
   managerShown,
@@ -22,33 +21,47 @@ describe('fitLayout', () => {
 
   it('drops the projects that are no longer open, and what it kept for them', () => {
     const kept = layout({ shown: ['/a', '/gone'], weights: { '/a': 1, '/gone': 2 }, managerHidden: ['/gone'], managerBeside: ['/gone'] });
-    expect(fitLayout(kept, ['/a'])).toEqual(layout({ shown: ['/a'], weights: { '/a': 1 }, managerHidden: [], managerBeside: [] }));
+    expect(fitLayout(kept, ['/a'])).toEqual(
+      layout({ shown: ['/a'], weights: { '/a': 1 }, managerHidden: [], managerBeside: [], focused: '/a' }),
+    );
   });
 
   it('shows nothing while no project is open', () => {
     expect(fitLayout(layout({ shown: ['/a'] }), []).shown).toEqual([]);
   });
+
+  it('keeps the focus on a project on screen', () => {
+    expect(fitLayout(layout({ shown: ['/a', '/b'], focused: '/b' }), ['/a', '/b']).focused).toBe('/b');
+    expect(fitLayout(layout({ shown: ['/a', '/gone'], focused: '/gone' }), ['/a']).focused).toBe('/a');
+    expect(fitLayout(DEFAULT_LAYOUT, ['/a']).focused).toBe('/a');
+    expect(fitLayout(layout({ shown: ['/a'], focused: '/a' }), []).focused).toBeNull();
+  });
 });
 
 describe('the projects on screen', () => {
-  it('showOnly puts one project on screen in place of the others', () => {
-    expect(showOnly(layout({ shown: ['/a', '/b'] }), '/c').shown).toEqual(['/c']);
-  });
-
-  it('toggleBeside adds a project beside the others, and takes it away again', () => {
-    const two = toggleBeside(layout({ shown: ['/a'] }), '/b');
-    expect(two.shown).toEqual(['/a', '/b']);
-    expect(toggleBeside(two, '/a').shown).toEqual(['/b']);
+  it('toggleBeside adds a project beside the others and focuses it, and takes it away again', () => {
+    const two = toggleBeside(layout({ shown: ['/a'], focused: '/a' }), '/b');
+    expect(two).toMatchObject({ shown: ['/a', '/b'], focused: '/b' });
+    expect(toggleBeside(two, '/a')).toMatchObject({ shown: ['/b'], focused: '/b' });
+    // Taking the focused one away hands the focus to one still on screen.
+    expect(toggleBeside(two, '/b')).toMatchObject({ shown: ['/a'], focused: '/a' });
   });
 
   it('toggleBeside never takes the last project off screen', () => {
     expect(toggleBeside(layout({ shown: ['/a'] }), '/a').shown).toEqual(['/a']);
   });
 
-  it('bringOnScreen leaves a shown project where it is, and otherwise adds it, or shows it alone when one is on screen', () => {
-    expect(bringOnScreen(layout({ shown: ['/a', '/b'] }), '/b').shown).toEqual(['/a', '/b']);
-    expect(bringOnScreen(layout({ shown: ['/a', '/b'] }), '/c').shown).toEqual(['/a', '/b', '/c']);
-    expect(bringOnScreen(layout({ shown: ['/a'] }), '/c').shown).toEqual(['/c']);
+  it('focusOn focuses a project on screen where it is', () => {
+    expect(focusOn(layout({ shown: ['/a', '/b'], focused: '/a' }), '/b')).toMatchObject({ shown: ['/a', '/b'], focused: '/b' });
+  });
+
+  it("focusOn puts a project off screen in the focused one's place, at its width, and leaves the others", () => {
+    const two = layout({ shown: ['/a', '/b', '/c'], focused: '/b', weights: { '/a': 0.5, '/b': 1.5, '/c': 1 } });
+    const swapped = focusOn(two, '/d');
+    expect(swapped).toMatchObject({ shown: ['/a', '/d', '/c'], focused: '/d' });
+    expect(swapped.weights).toMatchObject({ '/a': 0.5, '/d': 1.5, '/c': 1 });
+    expect(focusOn(layout({ shown: ['/a'], focused: '/a' }), '/b')).toMatchObject({ shown: ['/b'], focused: '/b' });
+    expect(focusOn(DEFAULT_LAYOUT, '/a')).toMatchObject({ shown: ['/a'], focused: '/a' });
   });
 });
 
@@ -93,9 +106,21 @@ describe('loadLayout', () => {
 
   it('reads what saveLayout kept', () => {
     let kept: string | null = null;
-    const saved = layout({ shown: ['/a', '/b'], arrangement: 'grid', weights: { '/a': 1.5 }, managerHidden: ['/b'], managerBeside: ['/a'] });
+    const saved = layout({
+      shown: ['/a', '/b'],
+      arrangement: 'grid',
+      weights: { '/a': 1.5 },
+      managerHidden: ['/b'],
+      managerBeside: ['/a'],
+      focused: '/b',
+    });
     saveLayout({ setItem: (_k, v) => (kept = v) }, saved);
     expect(loadLayout(storage(kept))).toEqual(saved);
+  });
+
+  it('reads a layout saved before projects had a focus', () => {
+    const { focused: _none, ...before } = layout({ shown: ['/a'] });
+    expect(loadLayout(storage(JSON.stringify(before)))).toEqual(layout({ shown: ['/a'], focused: null }));
   });
 
   it.each([

@@ -19,17 +19,26 @@ describe('panelPrefs', () => {
     expect(clampWidth(700, 600, true)).toBe(420);
   });
 
-  it('prefs round-trip, and a bad stored value gives the defaults', () => {
+  it('each project keeps its own prefs, and a bad stored value gives the defaults', () => {
     const storage = memoryStorage();
-    savePanelPrefs(storage, { width: 812, pinned: false });
-    expect([...storage.map.keys()]).toEqual(['mainframe.panel']);
-    expect(loadPanelPrefs(storage)).toEqual({ width: 812, pinned: false });
+    savePanelPrefs(storage, '/acme', { width: 812, pinned: false });
+    savePanelPrefs(storage, '/globex', { width: 500, pinned: true });
+    expect(loadPanelPrefs(storage, '/acme')).toEqual({ width: 812, pinned: false });
+    expect(loadPanelPrefs(storage, '/globex')).toEqual({ width: 500, pinned: true });
 
     for (const bad of ['{', '{"width":"x"}']) {
-      expect(loadPanelPrefs(memoryStorage({ 'mainframe.panel': bad }))).toEqual(DEFAULT_PANEL_PREFS);
+      expect(loadPanelPrefs(memoryStorage({ 'mainframe.panel:/acme': bad }), '/acme')).toEqual(DEFAULT_PANEL_PREFS);
     }
-    expect(loadPanelPrefs(memoryStorage())).toEqual(DEFAULT_PANEL_PREFS);
+    expect(loadPanelPrefs(memoryStorage(), '/acme')).toEqual(DEFAULT_PANEL_PREFS);
     expect(DEFAULT_PANEL_PREFS).toEqual({ width: 640, pinned: true });
+  });
+
+  it('a project with none of its own starts from the prefs every project shared before', () => {
+    const storage = memoryStorage({ 'mainframe.panel': '{"width":700,"pinned":false}' });
+    expect(loadPanelPrefs(storage, '/acme')).toEqual({ width: 700, pinned: false });
+    savePanelPrefs(storage, '/acme', { width: 900, pinned: true });
+    expect(loadPanelPrefs(storage, '/acme')).toEqual({ width: 900, pinned: true });
+    expect(storage.map.get('mainframe.panel')).toBe('{"width":700,"pinned":false}');
   });
 
   it('a storage that refuses the write is ignored', () => {
@@ -38,6 +47,6 @@ describe('panelPrefs', () => {
         throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
       },
     };
-    expect(() => savePanelPrefs(full, { width: 700, pinned: true })).not.toThrow();
+    expect(() => savePanelPrefs(full, '/acme', { width: 700, pinned: true })).not.toThrow();
   });
 });

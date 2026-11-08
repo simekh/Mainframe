@@ -2,11 +2,12 @@ import { createSignal, For, Show } from 'solid-js';
 import { needsYouCount } from '../tasksStore';
 import {
   closeProject,
+  focusProject,
+  isFocused,
   isShown,
   openProject,
   projectsStore,
   setArrangement,
-  showOnlyProject,
   toggleBesideProject,
 } from './projectsStore';
 
@@ -14,9 +15,9 @@ import {
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /**
- * The open projects, at the window's left under the window buttons. A click shows a project alone;
- * Show beside adds it to the ones on screen. Each says how many of its sessions need the owner, so
- * one off screen still shows when it waits on them.
+ * The open projects, at the window's left under the window buttons. A click focuses a project, on
+ * screen in the focused one's place if it was off it; Show beside adds it to the ones on screen. Each
+ * says how many of its sessions need the owner, so one off screen still shows when it waits on them.
  */
 export default function ProjectRail() {
   /** The project whose close waits for the owner to confirm it. */
@@ -64,6 +65,7 @@ export default function ProjectRail() {
                 data-testid="rail-project"
                 data-project={project.dir}
                 data-shown={String(isShown(project.dir))}
+                data-focused={String(isFocused(project.dir))}
                 data-waiting={String(count() > 0)}
               >
                 <Show
@@ -74,9 +76,9 @@ export default function ProjectRail() {
                         class="rail-name"
                         data-testid="rail-show"
                         title={project.dir}
-                        aria-current={isShown(project.dir) ? 'true' : undefined}
+                        aria-current={isFocused(project.dir) ? 'true' : undefined}
                         onMouseDown={keepFocus}
-                        onClick={() => showOnlyProject(project.dir)}
+                        onClick={() => focusProject(project.dir)}
                       >
                         <i aria-hidden="true" />
                         <span class="rail-label">{project.name}</span>

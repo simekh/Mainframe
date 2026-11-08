@@ -2,9 +2,10 @@ import { batch } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import type { ProjectView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
-import { forgetManager, loadManager } from '../manager/managerStore';
-import { forgetTasks, loadTasks } from '../tasksStore';
-import { bringOnScreen, fitLayout, loadLayout, managerShown, saveLayout, showOnly, toggleBeside, toggleManager, type Layout } from './layout';
+import { forgetManager, loadManager, managerOf } from '../manager/managerStore';
+import { focusTerminalOf, forgetTasks, loadTasks, select, tasksOf, terminalOf } from '../tasksStore';
+import { getTerminal } from '../terminal/registry';
+import { fitLayout, focusOn, loadLayout, managerShown, saveLayout, toggleBeside, toggleManager, type Layout } from './layout';
 
 const [store, setStore] = createStore<{
   /** The open projects, in the order the owner opened them. */
@@ -17,6 +18,7 @@ const [store, setStore] = createStore<{
 export const projectsStore = store;
 
 export const isShown = (dir: string) => store.layout.shown.includes(dir);
+export const isFocused = (dir: string) => store.layout.focused === dir;
 export const managerHidden = (dir: string) => !managerShown(store.layout, dir);
 export const weightOf = (dir: string) => store.layout.weights[dir] ?? 1;
 
@@ -62,12 +64,36 @@ export async function loadProjects(): Promise<void> {
   if (!changed) setProjects(projects);
 }
 
-export const showOnlyProject = (dir: string) => setLayout(showOnly(store.layout, dir));
 export const toggleBesideProject = (dir: string) => setLayout(toggleBeside(store.layout, dir));
 export const toggleManagerOf = (dir: string) => setLayout(toggleManager(store.layout, dir));
 export const setArrangement = (arrangement: Layout['arrangement']) => setLayout({ ...store.layout, arrangement });
-/** Brings a project on screen that something needs seen: one just opened, or the next that needs the owner. */
-export const revealProject = (dir: string) => setLayout(bringOnScreen(store.layout, dir));
+
+/**
+ * Focuses the project: one just opened, the next that needs the owner, or the pane they work in. One
+ * off screen takes the focused one's place.
+ */
+export function revealProject(dir: string): void {
+  if (store.layout.focused !== dir) setLayout(focusOn(store.layout, dir));
+}
+
+/**
+ * Focuses the project from the list or Cmd+1 to Cmd+9, and puts the cursor where its typing goes: the
+ * selected task's terminal, brought out as Ctrl+Tab brings it, or else its manager's. With neither,
+ * the cursor leaves the project it was in, so no typing lands there unseen.
+ */
+export function focusProject(dir: string): void {
+  revealProject(dir);
+  const taskId = tasksOf(dir).selectedId;
+  const toTask = taskId !== null && terminalOf(dir, taskId) !== null;
+  if (toTask) select(dir, taskId);
+  const managerTerminal = managerShown(store.layout, dir) ? managerOf(dir)?.managerTerminal : null;
+  // Once Solid has put the pane and the panel on show: a hidden element can't take the focus.
+  queueMicrotask(() => {
+    if (toTask) focusTerminalOf(dir, taskId);
+    else if (managerTerminal) getTerminal(managerTerminal)?.focus();
+    else (document.activeElement as HTMLElement | null)?.blur();
+  });
+}
 
 /** Main asks for the folder and says itself why one can't open. */
 export const openProject = () => window.mainframe.openProject();

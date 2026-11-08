@@ -175,8 +175,9 @@ button {
   background: var(--hover);
 }
 
-/* On screen, it looks as the project's chip in its board's top bar does. */
-.rail-item[data-shown='true'] {
+/* The project the owner works in looks as the chip in its board's top bar does. The others on
+   screen keep their full-strength name; the ones off screen are muted. */
+.rail-item[data-focused='true'] {
   border-color: var(--island-border);
   background: var(--island);
 }
@@ -353,6 +354,22 @@ button {
 
 .project-pane[data-shown='false'] .panel-show {
   visibility: hidden;
+}
+
+/* The project the owner works in, beside others: framed round its islands like a focused terminal,
+   a step quieter, in the gap their margins leave. Its corners follow the islands' at that distance. */
+.project-pane::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: calc(var(--radius-lg) + 5px);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.project-pane[data-focused='true']::after {
+  opacity: 1;
 }
 
 /* Between two projects side by side: a drag or the arrow keys share the width between them. It
@@ -698,9 +715,11 @@ kbd {
   background: color-mix(in srgb, var(--fg) 7%, transparent);
 }
 
-/* The task shown beside the board. */
+/* The task shown beside the board: framed like its terminal, a step quieter, so it reads at a
+   glance which card the panel shows. Inset, so a lane's scroll edge never clips it. */
 .card[data-selected='true'] {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .card[data-selected='true']:hover {
@@ -1818,7 +1837,12 @@ kbd {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
+      box-shadow var(--motion-fast) var(--ease-out),
       color var(--motion-fast) var(--ease-out);
+  }
+
+  .project-pane::after {
+    transition: opacity var(--motion-fast) var(--ease-out);
   }
 
   .pane-heading svg {

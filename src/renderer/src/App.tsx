@@ -3,10 +3,9 @@ import { createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
 import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from './manager/managerPrefs';
 import { managerOf } from './manager/managerStore';
-import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { loadProjects, projectsStore, revealProject } from './projects/projectsStore';
+import { focusProject, loadProjects, projectsStore, revealProject } from './projects/projectsStore';
 import { jumpToNeedsYou, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
@@ -89,11 +88,6 @@ export default function App() {
     if (c.e2e) installE2eHooks();
     return c;
   });
-  const [panelPrefs, setPanelPrefs] = createSignal(loadPanelPrefs(localStorage));
-  const keepPanelPrefs = (prefs: PanelPrefs) => {
-    setPanelPrefs(prefs);
-    savePanelPrefs(localStorage, prefs);
-  };
   // The owner's width for the managers' columns, or the one an edge is dragged to. Each pane clamps
   // what it shows, and its session panel leaves it that much.
   const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
@@ -106,15 +100,21 @@ export default function App() {
   onMount(() => {
     loadProjects().catch((err: unknown) => console.error('[projects] could not list the open projects', err));
   });
-  onCleanup(installBoardShortcuts(window, jump));
+  onCleanup(
+    installBoardShortcuts(window, {
+      jump,
+      focusProject: (index) => {
+        const project = projectsStore.projects[index];
+        if (project) focusProject(project.dir);
+      },
+    }),
+  );
 
   return (
     <div class="app">
       <ProjectRail />
       <Panes
         config={config()}
-        panelPrefs={panelPrefs()}
-        onPanelPrefs={keepPanelPrefs}
         managerWidth={managerWidth()}
         onManagerDrag={setManagerWidth}
         onManagerDone={keepManagerWidth}

@@ -10,39 +10,48 @@ export interface Layout {
   managerHidden: string[];
   /** The projects whose manager column the owner showed beside other projects, where it starts hidden for want of room. */
   managerBeside: string[];
+  /** The project on screen the owner works in: the list and its pane mark it, and a project brought on screen takes its place. */
+  focused: string | null;
 }
 
-export const DEFAULT_LAYOUT: Layout = { shown: [], arrangement: 'columns', weights: {}, managerHidden: [], managerBeside: [] };
+export const DEFAULT_LAYOUT: Layout = { shown: [], arrangement: 'columns', weights: {}, managerHidden: [], managerBeside: [], focused: null };
 
 const KEY = 'mainframe.layout';
+
+/** The focus where it was if that project is still on screen, or else on the first one there. */
+const keepFocus = (layout: Layout): Layout =>
+  layout.focused !== null && layout.shown.includes(layout.focused) ? layout : { ...layout, focused: layout.shown[0] ?? null };
 
 /** The layout for the projects open now: what it kept for the others goes, and one project is always on screen. */
 export function fitLayout(layout: Layout, open: string[]): Layout {
   const isOpen = (dir: string) => open.includes(dir);
   const shown = layout.shown.filter(isOpen);
-  return {
+  return keepFocus({
     ...layout,
     shown: shown.length > 0 || open.length === 0 ? shown : [open[0]],
     weights: Object.fromEntries(Object.entries(layout.weights).filter(([dir]) => isOpen(dir))),
     managerHidden: layout.managerHidden.filter(isOpen),
     managerBeside: layout.managerBeside.filter(isOpen),
-  };
+  });
 }
 
-export function showOnly(layout: Layout, dir: string): Layout {
-  return { ...layout, shown: [dir] };
-}
-
-/** Puts the project beside the ones on screen, or takes it away; the last one stays. */
+/** Puts the project beside the ones on screen and focuses it, or takes it away; the last one stays. */
 export function toggleBeside(layout: Layout, dir: string): Layout {
-  if (!layout.shown.includes(dir)) return { ...layout, shown: [...layout.shown, dir] };
-  return layout.shown.length > 1 ? { ...layout, shown: layout.shown.filter((d) => d !== dir) } : layout;
+  if (!layout.shown.includes(dir)) return { ...layout, shown: [...layout.shown, dir], focused: dir };
+  return layout.shown.length > 1 ? keepFocus({ ...layout, shown: layout.shown.filter((d) => d !== dir) }) : layout;
 }
 
-/** A project that has to be seen: with one project on screen it takes its place, beside two or more it joins them. */
-export function bringOnScreen(layout: Layout, dir: string): Layout {
-  if (layout.shown.includes(dir)) return layout;
-  return layout.shown.length > 1 ? toggleBeside(layout, dir) : showOnly(layout, dir);
+/**
+ * Focuses the project. One off screen takes the focused project's place and width, so the panes on
+ * screen stay as the owner set them out.
+ */
+export function focusOn(layout: Layout, dir: string): Layout {
+  if (layout.shown.includes(dir)) return { ...layout, focused: dir };
+  const at = Math.max(0, layout.shown.indexOf(keepFocus(layout).focused ?? ''));
+  const replaced = layout.shown[at];
+  const weights = { ...layout.weights };
+  if (replaced !== undefined && weights[replaced] !== undefined) weights[dir] = weights[replaced];
+  return { ...layout, shown: layout.shown.toSpliced(at, 1, dir), weights, focused: dir };
 }
 
 const toggled = (list: string[], dir: string) => (list.includes(dir) ? list.filter((d) => d !== dir) : [...list, dir]);
@@ -81,7 +90,7 @@ export function loadLayout(storage: Pick<Storage, 'getItem'>): Layout {
   try {
     const saved = JSON.parse(storage.getItem(KEY) ?? 'null') as Record<string, unknown> | null;
     if (typeof saved !== 'object' || saved === null) return DEFAULT_LAYOUT;
-    const { shown, arrangement, weights, managerHidden, managerBeside } = saved;
+    const { shown, arrangement, weights, managerHidden, managerBeside, focused } = saved;
     const goodWeights =
       typeof weights === 'object' &&
       weights !== null &&
@@ -94,6 +103,8 @@ export function loadLayout(storage: Pick<Storage, 'getItem'>): Layout {
       weights: weights as Record<string, number>,
       managerHidden: managerHidden as string[],
       managerBeside: managerBeside as string[],
+      // Saved before projects had a focus, it has none; fitLayout puts it on one.
+      focused: typeof focused === 'string' ? focused : null,
     };
   } catch {
     return DEFAULT_LAYOUT;

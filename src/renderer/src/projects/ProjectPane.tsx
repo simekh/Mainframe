@@ -6,12 +6,12 @@ import NewTaskDialog from '../board/NewTaskDialog';
 import StatusGlyph from '../board/StatusGlyph';
 import ManagerColumn from '../manager/ManagerColumn';
 import { clampManagerWidth } from '../manager/managerPrefs';
-import { BOARD_ROOM, MIN_WIDTH, type PanelPrefs } from '../panel/panelPrefs';
+import { BOARD_ROOM, loadPanelPrefs, MIN_WIDTH, savePanelPrefs, type PanelPrefs } from '../panel/panelPrefs';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import { ProjectContext } from './projectContext';
-import { managerHidden, toggleManagerOf } from './projectsStore';
+import { isFocused, managerHidden, projectsStore, revealProject, toggleManagerOf } from './projectsStore';
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -27,9 +27,7 @@ export default function ProjectPane(props: {
   config: RendererConfig | undefined;
   /** Where it sits among the panes on screen. */
   style: JSX.CSSProperties;
-  /** The side panel's width and pin, and the manager column's width: the owner's, for every project. */
-  panelPrefs: PanelPrefs;
-  onPanelPrefs(prefs: PanelPrefs): void;
+  /** The manager column's width: the owner's, for every project. */
   managerWidth: number;
   onManagerDrag(w: number): void;
   onManagerDone(w: number, paneWidth: number): void;
@@ -49,15 +47,22 @@ export default function ProjectPane(props: {
   const selected = createMemo(() => tasks().tasks.find((t) => t.id === tasks().selectedId));
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const hideManager = () => managerHidden(dir);
+  // Framed while the owner works in it beside other projects; alone on screen, it needs no frame.
+  const framed = () => props.shown && isFocused(dir) && projectsStore.layout.shown.length > 1;
   // The pane clamps what the column shows, and the session panel leaves it that much.
   const shownManagerWidth = () => clampManagerWidth(props.managerWidth, width());
   const besideWidth = () => (hideManager() ? 0 : shownManagerWidth());
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
   const roomToPin = () => width() - besideWidth() - MIN_WIDTH >= BOARD_ROOM.pinned;
-  const panelPrefs = (): PanelPrefs => ({ ...props.panelPrefs, pinned: props.panelPrefs.pinned && roomToPin() });
-  const keepPanelPrefs = (prefs: PanelPrefs) =>
-    props.onPanelPrefs(roomToPin() ? prefs : { ...prefs, pinned: props.panelPrefs.pinned });
+  // The project's own width and pin, so pinning one project's panel leaves the others' as they are.
+  const [ownPanelPrefs, setOwnPanelPrefs] = createSignal(loadPanelPrefs(localStorage, dir));
+  const panelPrefs = (): PanelPrefs => ({ ...ownPanelPrefs(), pinned: ownPanelPrefs().pinned && roomToPin() });
+  const keepPanelPrefs = (prefs: PanelPrefs) => {
+    const kept = roomToPin() ? prefs : { ...prefs, pinned: ownPanelPrefs().pinned };
+    setOwnPanelPrefs(kept);
+    savePanelPrefs(localStorage, dir, kept);
+  };
   // Unpinned, a press on the board outside any card puts the panel away.
   const hideUnpinnedPanel = (e: MouseEvent) => {
     if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(dir, false);
@@ -77,9 +82,12 @@ export default function ProjectPane(props: {
         data-testid="project-pane"
         data-project={dir}
         data-shown={String(props.shown)}
+        data-focused={String(framed())}
         aria-hidden={props.shown ? undefined : 'true'}
         inert={!props.shown}
         style={props.style}
+        onPointerDown={() => revealProject(dir)}
+        onFocusIn={() => revealProject(dir)}
       >
         <ManagerColumn
           config={props.config}
