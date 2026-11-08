@@ -38,7 +38,7 @@ export const tasksOf = (dir: string): ProjectTasks => store.projects[dir] ?? NO_
 
 /** The projects whose tasks changed since their list was asked for. */
 const changed = new Set<string>();
-/** The projects with a New task start under way. The dialog allows one at a time. */
+/** The projects with a start under way, from New task or the Todo panel. Each allows one at a time. */
 const startPending = new Set<string>();
 
 function setTasks(dir: string, tasks: TaskView[]): void {
@@ -75,17 +75,24 @@ export function forgetTasks(dir: string): void {
   setStore('projects', produce((projects) => void delete projects[dir]));
 }
 
-/** Rejects with the reason the task couldn't start. */
-export async function startTask(dir: string, req: Parameters<MainframeApi['startTask']>[1]): Promise<void> {
+/** Selects the task `start` starts once it is on the board; rejects with the reason it couldn't start. */
+async function startAndSelect(dir: string, start: () => Promise<TaskView>): Promise<void> {
   startPending.add(dir);
   try {
-    const task = await window.mainframe.startTask(dir, req);
+    const task = await start();
     // Selected already, unless the reply came before the list.
     select(dir, task.id);
   } finally {
     startPending.delete(dir);
   }
 }
+
+export const startTask = (dir: string, req: Parameters<MainframeApi['startTask']>[1]): Promise<void> =>
+  startAndSelect(dir, () => window.mainframe.startTask(dir, req));
+
+/** Starts a task from a card or a note on the project's Todo list. */
+export const startTodoItem = (dir: string, req: Parameters<MainframeApi['startTodoItem']>[1]): Promise<void> =>
+  startAndSelect(dir, () => window.mainframe.startTodoItem(dir, req));
 
 export async function reopenTask(dir: string, id: string): Promise<void> {
   // Selected first, so the new session's terminal mounts on screen. A reopen that fails leaves

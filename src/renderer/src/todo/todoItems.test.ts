@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
-import { sourceLine, syncedLine, todoItems } from './todoItems';
+import { sourceLine, syncedAgo, syncedLine, todoItems } from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -142,5 +142,17 @@ describe('syncedLine', () => {
 
   it('reads Not synced yet before the first sync', () => {
     expect(syncedLine(view({ source: null, syncedAt: null }), at)).toBe('Not synced yet');
+  });
+});
+
+describe('syncedAgo', () => {
+  const at = 1_000_000_000_000;
+
+  it.each([
+    [0, 'just now'],
+    [12 * 60_000, '12 min ago'],
+    [3 * 3_600_000, '3 h ago'],
+  ])('%i ms after a sync it reads %s, for a line that names the sync itself', (since, want) => {
+    expect(syncedAgo(at, at + since)).toBe(want);
   });
 });

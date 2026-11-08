@@ -1,13 +1,16 @@
-import { createMemo, For, Match, Show, Switch } from 'solid-js';
+import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
+import { errorMessage } from '../bridgeError';
 import Chevron from '../panel/Chevron';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
-import { tasksOf } from '../tasksStore';
-import { sourceLine, syncedLine, todoItems } from './todoItems';
+import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
+import TicketPanel from './TicketPanel';
+import { sourceLine, syncedLine, todoItems, type TodoItem } from './todoItems';
 import { TODO_WIDTH } from './todoPrefs';
-import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
+import { confirmTodoTools, pickTodoList, resetTodoSource, saveTodoNote, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -21,11 +24,13 @@ function SyncIcon() {
   );
 }
 
+const ahead = (check: StartCheck | null) => (check && check.ahead > 0 ? check : null);
+
 /**
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
- * asks of the owner. Pinned and out, it takes the pane's left edge and the manager sits right of it; unpinned, it
- * floats over the manager as that floats over the board. Its hide arrow calls `onOpenChange(false)`, and the pane
- * hands the focus to its Todo button.
+ * asks of the owner, and the ticket of the item open. Pinned and out, it takes the pane's left edge and the manager
+ * sits right of it; unpinned, it floats over the manager as that floats over the board. Its hide arrow calls
+ * `onOpenChange(false)`, and the pane hands the focus to its Todo button.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
@@ -38,6 +43,9 @@ export default function TodoPanel(props: {
   onPinnedChange(pinned: boolean): void;
   open: boolean;
   onOpenChange(open: boolean): void;
+  /** The open ticket: an item's key, or `'new-note'`. The pane closes it too. */
+  ticket: string | null;
+  onTicketChange(ticket: string | null): void;
 }) {
   const project = useProject();
   const view = () => todoOf(project.dir);
@@ -47,6 +55,82 @@ export default function TodoPanel(props: {
     const v = view();
     return new Map((v ? todoItems(v, tasksOf(project.dir).tasks) : []).map((item) => [item.key, item]));
   });
+  // None while its item is off the list.
+  const ticketItem = (): TodoItem | 'new-note' | undefined =>
+    props.ticket === 'new-note' ? 'new-note' : props.ticket ? itemByKey().get(props.ticket) : undefined;
+
+  // What the open ticket's footer shows: they are set each time a ticket opens.
+  const [warning, setWarning] = createSignal<StartCheck | null>(null);
+  const [startError, setStartError] = createSignal<string | null>(null);
+  // One start at a time, as in New task.
+  const [starting, setStarting] = createSignal(false);
+
+  /**
+   * Opens a ticket in place of the one open. One a Start opens says what that Start found; any other runs the start
+   * check, so its Start warns as New task's does.
+   */
+  function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
+    setWarning(found?.warning ?? null);
+    setStartError(found?.error ?? null);
+    props.onTicketChange(key);
+    if (found) return;
+    window.mainframe.startCheck(project.dir).then(
+      (check) => props.ticket === key && setWarning(ahead(check)),
+      (err: unknown) => console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`),
+    );
+  }
+
+  /**
+   * Starts the item, or the new note as New task would, and closes the ticket; a failure shows in the item's ticket.
+   * From the list it runs the start check first, and a warning opens the ticket instead, whose Start goes ahead.
+   */
+  async function start(
+    item: TodoItem | 'new-note',
+    o: { noQuestions: boolean; note?: { title: string; text: string } },
+    check = false,
+  ): Promise<void> {
+    if (starting()) return;
+    setStarting(true);
+    const key = item === 'new-note' ? item : item.key;
+    try {
+      if (check) {
+        const warns = ahead(await window.mainframe.startCheck(project.dir));
+        if (warns) return openTicket(key, { warning: warns, error: null });
+      }
+      if (item === 'new-note') {
+        await startTask(project.dir, { title: o.note!.title, description: o.note!.text, noQuestions: o.noQuestions });
+      } else {
+        // A note's edits are saved first, so its task starts from them.
+        if (o.note && item.note) await saveTodoNote(project.dir, { id: item.note.id, ...o.note });
+        const id = (item.card ?? item.note)!.id;
+        await startTodoItem(project.dir, { item: { kind: item.kind, id }, noQuestions: o.noQuestions });
+      }
+      props.onTicketChange(null);
+    } catch (err) {
+      openTicket(key, { warning: props.ticket === key ? warning() : null, error: errorMessage(err) });
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  // As the board's Reopen; the card leaves the list, so its ticket goes.
+  const reopen = (taskId: string) => {
+    props.onTicketChange(null);
+    reopenTask(project.dir, taskId).catch((err: unknown) =>
+      console.error(`[tasks] could not reopen task ${taskId}: ${errorMessage(err)}`),
+    );
+  };
+
+  let aside!: HTMLElement;
+  let addNote!: HTMLButtonElement;
+  // A ticket that goes with the focus in it hands it to what opened it, while that is there: the keyboard never ends
+  // up nowhere.
+  const handBackFocus = (key: string) => {
+    if (!aside.querySelector('.ticket-panel')?.contains(document.activeElement)) return;
+    const opener =
+      key === 'new-note' ? addNote : aside.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] .todo-open`);
+    opener?.focus();
+  };
   const toolsAsk = () => {
     const ask = view()?.ask;
     return ask?.kind === 'tools' ? ask : undefined;
@@ -58,12 +142,14 @@ export default function TodoPanel(props: {
 
   return (
     <aside
+      ref={aside}
       class="todo-panel"
       data-testid="todo-panel"
       aria-label="Todo"
       data-pinned={String(props.pinned)}
       data-open={String(props.open)}
-      style={{ width: `${props.width}px` }}
+      // What the pane leaves right of the panel, its margin kept: the ticket is no wider.
+      style={{ width: `${props.width}px`, '--ticket-room': `${project.width() - props.width - 16}px` }}
     >
       <button
         class="panel-pin"
@@ -174,33 +260,87 @@ export default function TodoPanel(props: {
                 Sync reads your to-do list through the connector you use for it. Notes you add stay in Mainframe.
               </p>
             </Show>
-            <ul class="todo-list" aria-label="To do">
-              <For each={[...itemByKey().keys()]}>
-                {(key) => {
-                  // A row whose key leaves the list goes before this reads it again.
-                  const item = () => itemByKey().get(key)!;
-                  return (
-                    <li class="todo-item" data-testid="todo-item" data-key={key} data-for-owner={String(item().forOwner)}>
-                      <p class="todo-title">
-                        <Show when={item().number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
-                        {item().title}
-                      </p>
-                      <Show when={item().body}>
-                        <p class="todo-body">{item().body}</p>
-                      </Show>
-                      <Show when={item().kind === 'note' || item().labels.length > 0}>
-                        <div class="todo-labels">
-                          <Show when={item().kind === 'note'}>
-                            <span class="todo-label note">Note</span>
-                          </Show>
-                          <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
-                        </div>
-                      </Show>
-                    </li>
-                  );
-                }}
-              </For>
-            </ul>
+            <div class="todo-scroll">
+              <ul class="todo-list" aria-label="To do">
+                <For each={[...itemByKey().keys()]}>
+                  {(key) => {
+                    // A row whose key leaves the list goes before this reads it again.
+                    const item = () => itemByKey().get(key)!;
+                    const reopenId = () => {
+                      const action = item().action;
+                      return action?.kind === 'reopen' ? action.taskId : null;
+                    };
+                    return (
+                      <li
+                        class="todo-item"
+                        data-testid="todo-item"
+                        data-key={key}
+                        data-for-owner={String(item().forOwner)}
+                        data-open={String(props.ticket === key)}
+                      >
+                        {/* Stretched over the row, so a click anywhere opens its ticket, and a second one closes it. */}
+                        <button
+                          class="todo-open"
+                          aria-expanded={props.ticket === key}
+                          onMouseDown={keepFocus}
+                          onClick={() => (props.ticket === key ? props.onTicketChange(null) : openTicket(key))}
+                        >
+                          <Show when={item().number}>{(number) => <span class="todo-num">{number()} </span>}</Show>
+                          {item().title}
+                        </button>
+                        <Show when={item().body}>
+                          <p class="todo-body">{item().body}</p>
+                        </Show>
+                        {/* A note always has its Start. */}
+                        <Show when={item().action || item().labels.length > 0}>
+                          <div class="todo-row">
+                            <Show when={item().kind === 'note'}>
+                              <span class="todo-label note">Note</span>
+                            </Show>
+                            <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
+                            <Switch>
+                              <Match when={reopenId()}>
+                                {(taskId) => (
+                                  <button
+                                    class="card-act"
+                                    data-testid="todo-reopen"
+                                    aria-label={`Reopen ${item().title}`}
+                                    onMouseDown={keepFocus}
+                                    onClick={() => reopen(taskId())}
+                                  >
+                                    Reopen
+                                  </button>
+                                )}
+                              </Match>
+                              <Match when={item().action?.kind === 'start'}>
+                                <button
+                                  class="card-act"
+                                  data-testid="todo-start"
+                                  aria-label={`Start ${item().title}`}
+                                  onMouseDown={keepFocus}
+                                  onClick={() => void start(item(), { noQuestions: false }, true)}
+                                >
+                                  Start
+                                </button>
+                              </Match>
+                            </Switch>
+                          </div>
+                        </Show>
+                      </li>
+                    );
+                  }}
+                </For>
+              </ul>
+              <button
+                class="todo-add"
+                data-testid="todo-add-note"
+                ref={addNote}
+                onMouseDown={keepFocus}
+                onClick={() => openTicket('new-note')}
+              >
+                + Add note
+              </button>
+            </div>
 
             <Show when={v().setUp}>
               <div class="todo-foot">
@@ -215,6 +355,28 @@ export default function TodoPanel(props: {
               </div>
             </Show>
           </>
+        )}
+      </Show>
+
+      {/* Keyed, so another item mounts a ticket of its own. */}
+      <Show when={props.ticket} keyed>
+        {(key) => (
+          <Show when={ticketItem()}>
+            {(item) => {
+              onCleanup(() => handBackFocus(key));
+              return (
+                <TicketPanel
+                  item={item()}
+                  warning={warning()}
+                  error={startError()}
+                  starting={starting()}
+                  onClose={() => props.onTicketChange(null)}
+                  onStart={(o) => void start(item(), o)}
+                  onReopen={reopen}
+                />
+              );
+            }}
+          </Show>
         )}
       </Show>
 

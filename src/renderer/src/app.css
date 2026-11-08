@@ -613,23 +613,31 @@ button {
   text-wrap: pretty;
 }
 
-/* The cards in the source's order, then the notes; the list scrolls under the header. */
-.todo-list {
+/* The cards in the source's order, then the notes, then Add note; they scroll under the header. */
+.todo-scroll {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 0;
   padding: 8px;
-  list-style: none;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* As the board's cards: a faint fill, no border. */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* As the board's cards: a faint fill, no border, and a click anywhere opens it. */
 .todo-item {
+  position: relative;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -639,17 +647,43 @@ button {
   background: color-mix(in srgb, var(--fg) 4.5%, transparent);
 }
 
+.todo-item:hover {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+
+.todo-item:has(.todo-open:focus-visible) {
+  box-shadow: 0 0 0 1px var(--border-focus);
+}
+
+/* The card whose ticket is open reaches through the list's padding to the panel's edge, where the ticket starts:
+   the two read as one piece. */
+.todo-item[data-open='true'] {
+  margin-right: -8px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* A card for the owner rather than for a session: greyed. */
 .todo-item[data-for-owner='true'] {
   opacity: 0.55;
 }
 
-.todo-title {
-  margin: 0;
+.todo-open {
   color: var(--fg);
   font-weight: 500;
   line-height: 18px;
+  text-align: left;
   overflow-wrap: anywhere;
+  outline: none;
+}
+
+.todo-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 .todo-num {
@@ -670,11 +704,13 @@ button {
   overflow-wrap: anywhere;
 }
 
-/* As the source names them, all alike. */
-.todo-labels {
+/* The labels, as the source names them, all alike, and Start or Reopen at the row's end, above the open button. */
+.todo-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
+  min-height: 24px;
 }
 
 .todo-label {
@@ -695,6 +731,25 @@ button {
   color: var(--fg-subtle);
 }
 
+/* Under the last item. Outlined in dashes as the Note mark is: what it adds is Mainframe's own. */
+.todo-add {
+  flex: none;
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.todo-add:hover {
+  border-color: var(--fg-subtle);
+  background: var(--hover);
+  color: var(--fg);
+}
+
 /* Quiet, at the panel's foot: it undoes an allow or a pick that was wrong. */
 .todo-foot {
   flex: none;
@@ -709,6 +764,198 @@ button {
 .todo-reset:hover {
   color: var(--fg);
   text-decoration: underline;
+}
+
+/* --- The ticket: a card or a note in full, joined to the Todo panel's right edge ---------------- */
+
+/* Squared where the ticket joins it. Holding the ticket, it is on the floating panel's layer even when pinned, above
+   the pinned manager's hide pill and way back, which would poke through the ticket. */
+.todo-panel:has(> .ticket-panel) {
+  z-index: 7;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Over the board and the manager, never pushing them aside, at the Todo panel's full height: the panel's right
+   border is the seam between them. Under that panel's resize edge and hide pill, which straddle the seam. A step
+   lighter than the island, so the card reads as lifted out of the list. */
+.ticket-panel {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: calc(100% + 1px);
+  z-index: 3;
+  width: min(360px, var(--ticket-room));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--island-border);
+  border-left: 0;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  background: color-mix(in srgb, var(--bg-elevated) 50%, var(--task-container-bg));
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+  overflow-wrap: anywhere;
+}
+
+.ticket-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The card, or the note's fields; it scrolls, and the footer stays at the foot. */
+.ticket-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+  user-select: text;
+}
+
+/* Clear of the ✕. */
+.ticket-title {
+  margin: 0;
+  padding: 2px 32px 0 0;
+  font: 600 15px/1.35 var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+/* The labels, and the way to the live card at the row's end. */
+.ticket-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.ticket-link {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ticket-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* As the source wrote it, line breaks and all. */
+.ticket-desc {
+  margin: 0;
+  color: var(--fg-muted);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.ticket-checklist h4 {
+  margin: 0 0 5px;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ticket-checklist ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-checklist label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--fg-muted);
+  line-height: 18px;
+}
+
+/* Read-only, so drawn as the source's boxes rather than greyed as a disabled control: ticked in green when done. */
+.ticket-checklist input {
+  flex: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin: 2.5px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.ticket-checklist input:checked {
+  border-color: var(--success);
+  background: var(--success)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none' stroke='%23080c10' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 5.3l1.9 1.9 3.8-4.2'/%3E%3C/svg%3E")
+    center / 9px no-repeat;
+}
+
+.ticket-checklist input:checked + span {
+  color: var(--fg-subtle);
+}
+
+/* Last in the card, under its copy: how old that copy is. */
+.ticket-synced {
+  margin: auto 0 0;
+  padding-top: 4px;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+.ticket-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ticket-field > span {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.ticket-note-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Away from Save: it can't be undone. */
+.ticket-delete {
+  margin-left: auto;
+}
+
+/* What a Start would miss, why the last one failed, and Start. */
+.ticket-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.ticket-noq {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.ticket-noq input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 /* --- The board's column: the top bar over the board ---------------------------------------- */
@@ -1406,6 +1653,7 @@ kbd {
 .side-panel,
 .manager-column,
 .todo-panel,
+.ticket-panel,
 .resize-edge {
   -webkit-app-region: no-drag;
 }
@@ -1547,8 +1795,10 @@ kbd {
   height: 10px;
 }
 
-/* At the panel's top right, whatever it holds: a title bar lays out its row beside it. */
-.panel-pin {
+/* At the panel's top right, whatever it holds: a title bar lays out its row beside it. The ticket's ✕ sits as the
+   islands' pins do. */
+.panel-pin,
+.ticket-close {
   position: absolute;
   top: 10px;
   right: 8px;
@@ -1562,7 +1812,8 @@ kbd {
   color: var(--fg-subtle);
 }
 
-.panel-pin:hover:not(:disabled) {
+.panel-pin:hover:not(:disabled),
+.ticket-close:hover {
   background: var(--hover);
   border-color: var(--border-subtle);
   color: var(--fg);
@@ -1997,7 +2248,8 @@ kbd {
   color: var(--fg-subtle);
 }
 
-.nt code {
+.nt code,
+.ticket-foot code {
   font: 12px var(--font-mono);
   color: var(--fg-muted);
 }
@@ -2019,7 +2271,9 @@ kbd {
 }
 
 .nt input[type='text'],
-.nt textarea {
+.nt textarea,
+.ticket-field input,
+.ticket-field textarea {
   width: 100%;
   margin: 0;
   padding: 9px 11px;
@@ -2030,13 +2284,16 @@ kbd {
   font: 14px/1.5 var(--font-ui);
 }
 
-.nt textarea {
+.nt textarea,
+.ticket-field textarea {
   resize: vertical;
   min-height: 88px;
 }
 
 .nt input[type='text']:focus,
-.nt textarea:focus {
+.nt textarea:focus,
+.ticket-field input:focus,
+.ticket-field textarea:focus {
   outline: none;
   border-color: var(--border-focus);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
@@ -2073,7 +2330,8 @@ kbd {
 .nt-warn,
 .nt-error,
 .manager-error,
-.todo-error {
+.todo-error,
+.ticket-error {
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -2092,7 +2350,8 @@ kbd {
 
 .nt-error,
 .manager-error,
-.todo-error {
+.todo-error,
+.ticket-error {
   background: color-mix(in srgb, var(--error) 9%, transparent);
   color: var(--error);
   user-select: text;
@@ -2141,7 +2400,10 @@ kbd {
   .tb-btn,
   .panel-pin,
   .pane-heading,
-  .todo-pick {
+  .todo-pick,
+  .todo-item,
+  .todo-add,
+  .ticket-close {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),

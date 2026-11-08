@@ -55,9 +55,13 @@ export function sourceLine(view: TodoView): string {
 
 /** How long ago the list was synced. */
 export function syncedLine(view: TodoView, now: number): string {
-  if (view.syncedAt === null) return 'Not synced yet';
-  const minutes = Math.floor((now - view.syncedAt) / 60_000);
-  if (minutes < 1) return 'Synced just now';
-  if (minutes < 60) return `Synced ${minutes} min ago`;
-  return `Synced ${Math.floor(minutes / 60)} h ago`;
+  return view.syncedAt === null ? 'Not synced yet' : `Synced ${syncedAgo(view.syncedAt, now)}`;
+}
+
+/** How long ago `syncedAt` was, for a line that names the sync itself. */
+export function syncedAgo(syncedAt: number, now: number): string {
+  const minutes = Math.floor((now - syncedAt) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)} h ago`;
 }

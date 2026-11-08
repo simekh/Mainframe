@@ -1,9 +1,9 @@
 import { createSignal, onMount, Show } from 'solid-js';
-import { commitsThatArent } from '../../../shared/commitsThatArent';
 import type { StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { useProject } from '../projects/projectContext';
 import { startTask } from '../tasksStore';
+import StartCheckWarning from './StartCheckWarning';
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
@@ -117,18 +117,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             menu.
           </span>
         </div>
-        <Show when={ahead()}>
-          {(c) => (
-            <div class="nt-warn" data-testid="start-check-warning">
-              <strong>
-                <code>{c().branch}</code> has {commitsThatArent(c().ahead)} on <code>{c().base}</code>.
-              </strong>{' '}
-              New worktrees start from <code>{c().base}</code>, so this task won't have {c().ahead === 1 ? 'it' : 'them'}.
-              Push{' '}
-              <code>{c().branch}</code> first, or start anyway.
-            </div>
-          )}
-        </Show>
+        <Show when={ahead()}>{(c) => <StartCheckWarning check={c()} testId="start-check-warning" />}</Show>
         <Show when={error()}>
           {(message) => (
             <p class="nt-error" role="alert">

@@ -1,9 +1,11 @@
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
-import { box, launches, syncLaunches, syncReply, todoDir } from './tasks';
+import {
+  box, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, todoDir,
+} from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -26,7 +28,15 @@ const CARDS = {
       title: 'Search ignores accents',
       description: 'Searching for "creme" finds nothing.\nIt should find "crème" too.',
       labels: ['UI'],
-      checklists: [],
+      checklists: [
+        {
+          name: 'Done when',
+          items: [
+            { text: 'Accents fold in search', done: true },
+            { text: 'A test covers it', done: false },
+          ],
+        },
+      ],
       url: 'https://tracker.example/c/128',
       forOwner: false,
       urgent: false,
@@ -46,15 +56,25 @@ const CARDS = {
 };
 
 /** The project's first sync, as the owner makes it: Sync, allow the tools it asks about, and the cards show. */
-async function syncFirstTime(scope: Page | Locator, dataDir: string): Promise<void> {
+async function syncFirstTime(scope: Page | Locator, dataDir: string, answer: { cards: unknown[] } = CARDS): Promise<void> {
   syncReply(dataDir, TOOLS);
   await scope.getByTestId('todo-toggle').click();
   await scope.getByTestId('todo-sync').click();
   await expect(scope.getByTestId('todo-confirm-tools')).toBeVisible();
-  syncReply(dataDir, CARDS);
+  syncReply(dataDir, answer);
   await scope.getByTestId('todo-confirm-tools').click();
-  await expect(scope.getByTestId('todo-item')).toHaveCount(2);
+  await expect(scope.getByTestId('todo-item')).toHaveCount(answer.cards.length);
 }
+
+/** The row of the item with this key in the Todo panel's list. */
+const itemRow = (scope: Page | Locator, key: string) => scope.locator(`[data-testid=todo-item][data-key="${key}"]`);
+
+/** The project's tasks as main keeps them: the title and description each started with. */
+const taskBriefs = (page: Page) =>
+  page.evaluate(async () => {
+    const [{ dir }] = await window.mainframe.listProjects();
+    return (await window.mainframe.listTasks(dir)).map(({ title, description }) => ({ title, description }));
+  });
 
 test('Sync finds the connector and asks to allow its read tools; allowed, it shows the list, and the list is kept across a restart', async () => {
   const project = folder();
@@ -162,6 +182,18 @@ test('two projects side by side keep their own lists', async () => {
   await expect(other.getByTestId('todo-item')).toHaveCount(0);
   await expect(pane(page, acme).getByTestId('todo-item')).toHaveCount(2);
   await expect(pane(page, acme).getByText('Tracker · Shop · To do', { exact: true })).toBeVisible();
+
+  // Each pane has its own ticket, and Esc closes the one in the project the owner works in.
+  await itemRow(pane(page, acme), 'card:c128').click();
+  await pane(page, globex).getByTestId('todo-add-note').click();
+  const [acmeTicket, globexTicket] = [acme, globex].map((dir) => pane(page, dir).getByTestId('ticket-panel'));
+  await expect(acmeTicket.getByRole('heading', { level: 3 })).toHaveText('#128 Search ignores accents');
+  await expect(globexTicket.getByLabel('Title')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(globexTicket).toHaveCount(0);
+  await expect(acmeTicket).toBeVisible();
+  // The focus was in the ticket that went: it goes back to what opened it.
+  await expect(pane(page, globex).getByTestId('todo-add-note')).toBeFocused();
   await app.close();
 });
 
@@ -264,4 +296,248 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panelThird).toHaveAttribute('data-open', 'true');
   await expect(third.page.getByTestId('todo-toggle')).toHaveAttribute('aria-pressed', 'true');
   await third.app.close();
+});
+
+test('Start on a card starts its task at once: under Working, selected; its prompt names the card and asks the session to read it first; the card leaves the list, and comes back with Reopen once the task closes', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const items = page.getByTestId('todo-item');
+  const search = itemRow(page, 'card:c128');
+  const start = search.getByTestId('todo-start');
+  await expect(start).toHaveAccessibleName('Start Search ignores accents');
+  await start.click();
+
+  // On the content: fake-claude creates its file before it writes the arguments.
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('read the live card with your Tracker connector');
+  const prompt = launches(dataDir)[0].args.at(-1)!;
+  expect(prompt).toContain('Task: #128 Search ignores accents');
+  expect(prompt).toContain('https://tracker.example/c/128');
+  const [id] = await ids(page);
+  await expect(cardIn(page, 'working', id)).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('panel-title')).toHaveText('Search ignores accents');
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveAttribute('data-key', 'card:c131');
+
+  // Closed, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
+  await closeTask(page, id);
+  await expect(items).toHaveCount(2);
+  await expect(search.getByTestId('todo-start')).toHaveCount(0);
+  await expect(search.getByTestId('todo-reopen')).toHaveAccessibleName('Reopen Search ignores accents');
+  await search.click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
+  await ticket.getByTestId('ticket-reopen').click();
+  await expect.poll(() => launches(dataDir).length).toBe(2);
+  expect(launches(dataDir)[1].args).toContain('--resume');
+  await expect(ticket).toHaveCount(0);
+  await expect(items).toHaveCount(1);
+
+  await closeTask(page, id);
+  await search.getByTestId('todo-reopen').click();
+  await expect.poll(() => launches(dataDir).length).toBe(3);
+  await expect(items).toHaveCount(1);
+  await expect(ticket).toHaveCount(0);
+  await expect.poll(() => ids(page)).toEqual([id]);
+  await app.close();
+});
+
+test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕, a press on the board and a second click close it; another card swaps in place', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const [search, exported] = [itemRow(page, 'card:c128'), itemRow(page, 'card:c131')];
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket).toHaveCount(0);
+
+  await search.click();
+  await expect(search).toHaveAttribute('data-open', 'true');
+  await expect(exported).not.toHaveAttribute('data-open', 'true');
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#128 Search ignores accents');
+  await expect(ticket.getByText('UI', { exact: true })).toBeVisible();
+  // The description keeps its line breaks.
+  expect(await ticket.getByText('Searching for "creme" finds nothing.', { exact: false }).innerText()).toBe(
+    'Searching for "creme" finds nothing.\nIt should find "crème" too.',
+  );
+  const checklist = ticket.getByRole('list', { name: 'Done when' });
+  await expect(ticket.getByText('Done when', { exact: true })).toBeVisible();
+  await expect(checklist.getByRole('checkbox', { name: 'Accents fold in search' })).toBeChecked();
+  await expect(checklist.getByRole('checkbox', { name: 'A test covers it' })).not.toBeChecked();
+  await expect(checklist.getByRole('checkbox', { name: 'A test covers it' })).toBeDisabled();
+  await expect(ticket.getByText('The card as of the last sync, just now')).toBeVisible();
+  await expect(ticket.getByTestId('ticket-start')).toHaveText('Start');
+  await expect(ticket.getByTestId('ticket-no-questions')).not.toBeChecked();
+  await expect(ticket.getByTestId('ticket-warning')).toHaveCount(0);
+
+  // Joined to the Todo panel's right edge, and over the manager.
+  const panel = await box(page, 'todo-panel');
+  const at = await box(page, 'ticket-panel');
+  expect(Math.abs(at.x - (panel.x + panel.width))).toBeLessThanOrEqual(1);
+  const manager = await box(page, 'manager-column');
+  expect(at.x).toBeLessThan(manager.x + manager.width);
+  const onTop = await ticket.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  });
+  expect(onTop).toBe(true);
+
+  const link = ticket.getByTestId('ticket-link');
+  await expect(link).toHaveText('Open in Tracker ↗');
+  await link.click();
+  await expect.poll(() => openedLinks(app)).toEqual(['https://tracker.example/c/128']);
+
+  // Another card swaps in place; it has no link without a URL.
+  await exported.click();
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#131 Export drops the last row');
+  await expect(exported).toHaveAttribute('data-open', 'true');
+  await expect(search).not.toHaveAttribute('data-open', 'true');
+  await expect(ticket.getByTestId('ticket-link')).toHaveCount(0);
+  expect(await box(page, 'ticket-panel')).toEqual(at);
+
+  // A second click on the open card closes it, as Esc and ✕ do.
+  await exported.click();
+  await expect(ticket).toHaveCount(0);
+  await expect(exported).not.toHaveAttribute('data-open', 'true');
+  await search.click();
+  await page.keyboard.press('Escape');
+  await expect(ticket).toHaveCount(0);
+  await search.click();
+  await ticket.getByTestId('ticket-close').click();
+  await expect(ticket).toHaveCount(0);
+
+  // The Todo panel going away takes it along; back, the panel shows no ticket.
+  await search.click();
+  await page.getByTestId('todo-hide').click();
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-panel')).toBeVisible();
+  await expect(ticket).toHaveCount(0);
+
+  // Pinned, the Todo panel stays put when the board is pressed; the ticket goes.
+  await page.getByTestId('todo-pin').click();
+  await search.click();
+  await expect(ticket).toBeVisible();
+  const board = await box(page, 'board');
+  await page.getByTestId('board').click({ position: { x: board.width - 40, y: board.height - 40 } });
+  await expect(ticket).toHaveCount(0);
+  await expect(page.getByTestId('todo-panel')).toBeVisible();
+  expect(launches(dataDir)).toEqual([]);
+  await app.close();
+});
+
+test('a start the check warns about opens the ticket with the warning, and Start anyway starts it', async () => {
+  const ahead = repo();
+  writeFileSync(join(ahead, 'local.txt'), 'local\n');
+  git('-C', ahead, 'add', 'local.txt');
+  git('-C', ahead, 'commit', '-m', 'local');
+  const { app, page, dataDir } = await launchApp({}, ahead);
+  await syncFirstTime(page, dataDir);
+
+  await itemRow(page, 'card:c128').getByTestId('todo-start').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#128 Search ignores accents');
+  // The New task dialog's warning, word for word.
+  await expect(ticket.getByTestId('ticket-warning')).toHaveText(
+    "stage has 1 commit that isn't on origin/stage. New worktrees start from origin/stage, so this task won't have it. Push stage first, or start anyway.",
+  );
+  expect(launches(dataDir)).toEqual([]);
+
+  const start = ticket.getByTestId('ticket-start');
+  await expect(start).toHaveText('Start anyway');
+  await ticket.getByTestId('ticket-no-questions').check();
+  await start.click();
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('No questions on this task');
+  expect(launches(dataDir)[0].args.at(-1)).toContain('Task: #128 Search ignores accents');
+  await expect(ticket).toHaveCount(0);
+  await expect(page.getByTestId('todo-item')).toHaveCount(1);
+
+  // A ticket opened by a click warns as well.
+  await itemRow(page, 'card:c131').click();
+  await expect(ticket.getByTestId('ticket-warning')).toBeVisible();
+  await expect(start).toHaveText('Start anyway');
+  await app.close();
+});
+
+test('a note is added, edited, kept across a restart, and started as a task, which takes it off the list', async () => {
+  const project = folder();
+  const first = await launchApp({}, project);
+  const ticket = first.page.getByTestId('ticket-panel');
+  await first.page.getByTestId('todo-toggle').click();
+  await first.page.getByTestId('todo-add-note').click();
+  await expect(ticket.getByLabel('Title')).toBeFocused();
+  await expect(ticket.getByTestId('note-delete')).toHaveCount(0);
+  await ticket.getByLabel('Title').fill('Tidy the flags');
+  await ticket.getByLabel('Text').fill('Remove the old flags.\nKeep the new ones.');
+  await ticket.getByTestId('note-save').click();
+  const items = first.page.getByTestId('todo-item');
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Tidy the flags');
+  await expect(items.first()).toContainText('Note');
+  await expect(ticket).toHaveCount(0);
+
+  await items.first().click();
+  await expect(ticket.getByLabel('Title')).toHaveValue('Tidy the flags');
+  await expect(ticket.getByLabel('Text')).toHaveValue('Remove the old flags.\nKeep the new ones.');
+  await ticket.getByLabel('Title').fill('Tidy the feature flags');
+  await ticket.getByTestId('note-save').click();
+  await expect(items.first()).toContainText('Tidy the feature flags');
+
+  // Delete note takes it away.
+  await first.page.getByTestId('todo-add-note').click();
+  await ticket.getByLabel('Title').fill('Scratch');
+  await ticket.getByTestId('note-save').click();
+  await expect(items).toHaveCount(2);
+  await items.nth(1).click();
+  await ticket.getByTestId('note-delete').click();
+  await expect(items).toHaveCount(1);
+  await expect(ticket).toHaveCount(0);
+  await first.app.close();
+
+  const { app, page, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir }, project);
+  const again = page.getByTestId('todo-item');
+  await page.getByTestId('todo-toggle').click();
+  await expect(again).toHaveCount(1);
+  await expect(again.first()).toContainText('Tidy the feature flags');
+
+  // Start saves the edits first, and the note leaves the list once its task has started.
+  await again.first().click();
+  await page.getByTestId('ticket-panel').getByLabel('Text').fill('Remove the old flags.');
+  await page.getByTestId('ticket-start').click();
+  await expect.poll(() => taskBriefs(page)).toEqual([{ title: 'Tidy the feature flags', description: 'Remove the old flags.' }]);
+  await expect(again).toHaveCount(0);
+  await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
+  await expect(page.getByTestId('panel-title')).toHaveText('Tidy the feature flags');
+  expect(launches(dataDir)).toHaveLength(1);
+
+  // A new note's Start starts a task as New task does, and keeps no note.
+  await page.getByTestId('todo-add-note').click();
+  await page.getByTestId('ticket-panel').getByLabel('Title').fill('Write the changelog');
+  await page.getByTestId('ticket-panel').getByLabel('Text').fill('For the next release.');
+  await page.getByTestId('ticket-start').click();
+  await expect.poll(() => taskBriefs(page)).toEqual([
+    { title: 'Tidy the feature flags', description: 'Remove the old flags.' },
+    { title: 'Write the changelog', description: 'For the next release.' },
+  ]);
+  await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
+  await expect(again).toHaveCount(0);
+  await expect(page.getByTestId('panel-title')).toHaveText('Write the changelog');
+  await app.close();
+});
+
+test('a card for the owner opens its ticket but offers no Start', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  const [search, exported] = CARDS.cards;
+  const forOwner = { ...exported, id: 'c119', number: '#119', title: 'Decide on the refund window', labels: ['Decision'], forOwner: true };
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, forOwner] });
+
+  const owner = itemRow(page, 'card:c119');
+  await expect(owner).toHaveAttribute('data-for-owner', 'true');
+  await expect(owner.getByTestId('todo-start')).toHaveCount(0);
+  await expect(owner.getByTestId('todo-reopen')).toHaveCount(0);
+  await owner.click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#119 Decide on the refund window');
+  await expect(ticket.getByText('Decision', { exact: true })).toBeVisible();
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-reopen')).toHaveCount(0);
+  await app.close();
 });

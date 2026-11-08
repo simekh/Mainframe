@@ -87,10 +87,16 @@ export default function ProjectPane(props: {
     keepTodoPrefs({ ...todoPrefs(), width: todoWidthIn(w) });
   };
   const todoBeside = () => (todoOpen() && todoPrefs().pinned ? shownTodoWidth() : 0);
+  // The ticket open beside the Todo panel: an item's key, or 'new-note'. It goes with the panel.
+  const [ticket, setTicket] = createSignal<string | null>(null);
+  const showTodo = (open: boolean) => {
+    setTodoOpen(open);
+    if (!open) setTicket(null);
+  };
   let todoToggle!: HTMLButtonElement;
   // Its hide arrow hands the focus to the Todo button, so the keyboard never ends up in a hidden panel.
   const setTodoOpenFromPanel = (open: boolean) => {
-    setTodoOpen(open);
+    showTodo(open);
     if (!open) todoToggle.focus();
   };
 
@@ -113,12 +119,14 @@ export default function ProjectPane(props: {
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // A press on the board outside any card puts away the panel, the manager and the Todo panel that float over it.
+  // A press on the board outside any card puts away the panel, the manager and the Todo panel that float over it,
+  // and the ticket, pinned panel or not.
   const hideUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
     if (!managerPinned()) setManagerOpen(false);
     if (!todoPrefs().pinned) setTodoOpen(false);
+    setTicket(null);
   };
   const closeDialog = () => {
     setDialogOpen(false);
@@ -162,7 +170,7 @@ export default function ProjectPane(props: {
               aria-pressed={todoOpen() ? 'true' : 'false'}
               title={todoOpen() ? 'Hide the Todo panel' : 'Show the Todo panel'}
               onMouseDown={keepFocus}
-              onClick={() => setTodoOpen(!todoOpen())}
+              onClick={() => showTodo(!todoOpen())}
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
                 <path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" />
@@ -218,6 +226,8 @@ export default function ProjectPane(props: {
           onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
           open={todoOpen()}
           onOpenChange={setTodoOpenFromPanel}
+          ticket={ticket()}
+          onTicketChange={setTicket}
         />
 
         <SidePanel
