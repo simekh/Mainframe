@@ -40,6 +40,7 @@ export class ProjectRegistry<P extends RegisteredProject> {
   private readonly projects = new Map<string, P>();
   private readonly opening = new Map<string, Promise<void>>();
   private readonly closing = new Map<string, Promise<void>>();
+  private quitting = false;
 
   constructor(private readonly deps: ProjectRegistryDeps<P>) {}
 
@@ -83,12 +84,16 @@ export class ProjectRegistry<P extends RegisteredProject> {
   }
 
   beginQuit(): void {
+    this.quitting = true;
     for (const [dir, project] of this.projects) recordWhereSessionsWere(dir, project);
   }
 
   private async openNow(dir: string): Promise<void> {
-    await this.closing.get(dir);
+    // The close's own caller hears why it failed; its sessions have ended either way.
+    await this.closing.get(dir)?.catch(() => undefined);
     const project = await this.deps.open(dir);
+    // Too late to start: its tasks stay as recorded, to come back at the next start.
+    if (this.quitting) return project.release();
     this.projects.set(dir, project);
     this.changed();
     project.start();

@@ -18,19 +18,22 @@ const DIGIT = /^Digit([1-9])$/;
  * Ctrl+W stays with the terminal, where it deletes the word before the cursor.
  *
  * A capture-phase listener, so the terminal never sees the key. A matched key is always swallowed,
- * even when it has nothing to do; every other key passes through untouched. Returns the function
- * that removes the listener.
+ * even when it has nothing to do; every other key passes through untouched. Nothing happens while a
+ * modal dialog is open: it blocks what lies behind it, and the pane it sits in must stay on screen.
+ * Returns the function that removes the listener.
  */
 export function installBoardShortcuts(target: Window, actions: BoardActions): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     const digit = DIGIT.exec(e.code);
     const cmdAlone = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    if (e.key === 'Tab' && e.ctrlKey && !e.metaKey && !e.altKey) actions.jump(e.shiftKey ? -1 : 1);
-    else if (digit && cmdAlone) actions.focusProject(Number(digit[1]) - 1);
-    else if (e.key === 'w' && cmdAlone) actions.closePane();
+    let act: () => void;
+    if (e.key === 'Tab' && e.ctrlKey && !e.metaKey && !e.altKey) act = () => actions.jump(e.shiftKey ? -1 : 1);
+    else if (digit && cmdAlone) act = () => actions.focusProject(Number(digit[1]) - 1);
+    else if (e.key === 'w' && cmdAlone) act = () => actions.closePane();
     else return;
     e.preventDefault();
     e.stopPropagation();
+    if (!target.document.querySelector('dialog:modal')) act();
   };
   target.addEventListener('keydown', onKeyDown, true);
   return () => target.removeEventListener('keydown', onKeyDown, true);

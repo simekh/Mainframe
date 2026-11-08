@@ -184,6 +184,36 @@ it('opens a project that is closing only once its sessions have ended', async ()
   expect(second.start).toHaveBeenCalledOnce();
 });
 
+it('opens a project again when its close failed to let go of the rest; the close says why', async () => {
+  const first = fakeProject({ tasks: ['t1'] });
+  const second = fakeProject();
+  const projects = [first, second];
+  vi.mocked(first.release).mockRejectedValue(new Error('the server would not close'));
+  const { registry } = setup({ made: { [ACME]: () => projects.shift()! }, exitMs: 30 });
+  await registry.open(ACME);
+
+  const closed = expect(registry.close(ACME)).rejects.toThrow('the server would not close');
+  await registry.open(ACME);
+  await closed;
+
+  expect(registry.get(ACME)).toBe(second);
+  expect(second.start).toHaveBeenCalledOnce();
+});
+
+it('starts no project still opening as Mainframe quits, so its tasks stay as recorded', async () => {
+  const acme = fakeProject({ tasks: ['t1'] });
+  const { registry, changes } = setup({ made: { [ACME]: () => acme } });
+
+  const opening = registry.open(ACME);
+  registry.beginQuit();
+  await opening;
+
+  expect(acme.start).not.toHaveBeenCalled();
+  expect(acme.release).toHaveBeenCalledOnce();
+  expect(registry.list()).toEqual([]);
+  expect(changes).toEqual([]);
+});
+
 it('closing a project that is not open does nothing', async () => {
   const { registry, changes } = setup();
   await registry.close(ACME);

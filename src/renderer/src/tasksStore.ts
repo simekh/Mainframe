@@ -146,11 +146,9 @@ export const needsYouCount = (dir: string) => needsYou(dir).length;
 /**
  * Selects the task `step` places from the one selected last in the Needs you lanes of every open
  * project, in the order `dirs` lists them and each board's order, and puts the cursor in its terminal.
- * `reveal` brings its project on screen first. Nothing happens while nothing needs the owner, or while
- * a modal dialog is open: it blocks what lies behind it.
+ * `reveal` brings its project on screen first. Nothing happens while nothing needs the owner.
  */
 export function jumpToNeedsYou(step: 1 | -1, dirs: string[], reveal: (dir: string) => void): void {
-  if (document.querySelector('dialog:modal')) return;
   const queue = dirs.flatMap((dir) => needsYou(dir).map((t) => ({ dir, id: t.id })));
   const id = nextNeedsYou(
     queue.map((t) => t.id),

@@ -4,10 +4,12 @@ import { installBoardShortcuts } from './shortcuts';
 type Handler = (e: KeyboardEvent) => void;
 type Mods = Partial<Record<'ctrlKey' | 'shiftKey' | 'metaKey' | 'altKey', boolean>>;
 
-/** A window that only records its keydown listener, and where it was put. */
+/** A window that only records its keydown listener, and where it was put, and may show a modal dialog. */
 function fakeWindow() {
   const listeners = new Set<{ handler: Handler; capture: boolean }>();
+  let modal = false;
   const target = {
+    document: { querySelector: (selector: string) => (selector === 'dialog:modal' && modal ? {} : null) },
     addEventListener: (type: string, handler: Handler, capture: boolean) => {
       expect(type).toBe('keydown');
       listeners.add({ handler, capture });
@@ -23,7 +25,8 @@ function fakeWindow() {
     for (const l of [...listeners]) l.handler(e);
     return e;
   };
-  return { target: target as unknown as Window, listeners, press };
+  const openModal = () => void (modal = true);
+  return { target: target as unknown as Window, listeners, press, openModal };
 }
 
 const install = (w: ReturnType<typeof fakeWindow>) => {
@@ -69,6 +72,18 @@ describe('installBoardShortcuts', () => {
     // By the character, as macOS's own shortcuts go: W sits elsewhere on some layouts.
     swallowed(w.press('w', { metaKey: true }, 'KeyZ'));
     expect(actions.closePane).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing while a modal dialog is open, as it blocks what lies behind it, and the key goes no further', () => {
+    const w = fakeWindow();
+    const { actions } = install(w);
+    w.openModal();
+    swallowed(w.press('Tab', { ctrlKey: true }));
+    swallowed(w.press('1', { metaKey: true }, 'Digit1'));
+    swallowed(w.press('w', { metaKey: true }, 'KeyW'));
+    expect(actions.jump).not.toHaveBeenCalled();
+    expect(actions.focusProject).not.toHaveBeenCalled();
+    expect(actions.closePane).not.toHaveBeenCalled();
   });
 
   it('listens in the capture phase, so the terminal never sees the key', () => {

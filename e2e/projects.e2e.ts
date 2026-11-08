@@ -165,6 +165,16 @@ test("Cmd+W takes the focused project's pane off screen and leaves it open; the 
   await (await rowButton(page, c, 'rail-beside')).click();
   await row(page, b).getByTestId('rail-show').click();
 
+  // Not while a dialog in it is open: it would go off screen, still blocking the window.
+  await pane(page, b).getByTestId('new-task').click();
+  const title = pane(page, b).getByTestId('new-task-title');
+  await expect(title).toBeFocused();
+  await page.keyboard.press('Meta+w');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
+  await expect(title).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(title).toHaveCount(0);
+
   // The focus goes to the neighbour before it.
   await page.keyboard.press('Meta+w');
   await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
