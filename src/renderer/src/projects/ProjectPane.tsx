@@ -12,6 +12,8 @@ import { BOARD_ROOM, loadPanelPrefs, MIN_WIDTH, savePanelPrefs, type PanelPrefs 
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
+import TodoPanel from '../todo/TodoPanel';
+import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
 import { ProjectContext } from './projectContext';
 import { isFocused, isManagerShown, isShown, jump, projectsStore, revealProject, toggleManagerOf } from './projectsStore';
 
@@ -54,13 +56,6 @@ export default function ProjectPane(props: {
   // The width while the edge is dragged, this pane's alone: the others take the one kept once the
   // pointer lets go, rather than laying themselves out at every move.
   const [dragManagerWidth, setDragManagerWidth] = createSignal<number | null>(null);
-  const shownManagerWidth = () => clampManagerWidth(dragManagerWidth() ?? managerWidth(), width());
-  const keepManagerWidth = (w: number) => {
-    setDragManagerWidth(null);
-    const kept = clampManagerWidth(w, width());
-    setManagerWidth(kept);
-    saveManagerWidth(localStorage, kept);
-  };
   // The project's own pin, as the panel's is. Unpinned, the manager floats over the board and takes no room.
   const [managerPinned, setManagerPinned] = createSignal(loadManagerPinned(localStorage, dir));
   const keepManagerPinned = (pinned: boolean) => {
@@ -70,7 +65,40 @@ export default function ProjectPane(props: {
   const setManagerOpen = (open: boolean) => {
     if (open !== showManager()) toggleManagerOf(dir);
   };
-  const besideWidth = () => (showManager() && managerPinned() ? shownManagerWidth() : 0);
+  const managerTakesRoom = () => showManager() && managerPinned();
+
+  // The Todo panel's own width and pin; pinned, it is out from the start, and unpinned it waits for the Todo button.
+  const [todoPrefs, setTodoPrefs] = createSignal(loadTodoPrefs(localStorage, dir));
+  const [todoOpen, setTodoOpen] = createSignal(todoPrefs().pinned);
+  const [dragTodoWidth, setDragTodoWidth] = createSignal<number | null>(null);
+  const keepTodoPrefs = (prefs: PanelPrefs) => {
+    setTodoPrefs(prefs);
+    saveTodoPrefs(localStorage, dir, prefs);
+  };
+  // Each column keeps the other's room beside the board. Where both can't have their width, the Todo panel gives way
+  // first, as the manager's terminal would reflow: it leaves room for the manager as wide as it would be alone.
+  const todoRoom = () => width() - (managerTakesRoom() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : 0);
+  const shownTodoWidth = () => clampTodoWidth(dragTodoWidth() ?? todoPrefs().width, todoRoom());
+  const keepTodoWidth = (w: number) => {
+    setDragTodoWidth(null);
+    keepTodoPrefs({ ...todoPrefs(), width: clampTodoWidth(w, todoRoom()) });
+  };
+  const todoBeside = () => (todoOpen() && todoPrefs().pinned ? shownTodoWidth() : 0);
+  let todoToggle!: HTMLButtonElement;
+  // Its hide arrow hands the focus to the Todo button, so the keyboard never ends up in a hidden panel.
+  const setTodoOpenFromPanel = (open: boolean) => {
+    setTodoOpen(open);
+    if (!open) todoToggle.focus();
+  };
+
+  const shownManagerWidth = () => clampManagerWidth(dragManagerWidth() ?? managerWidth(), width() - todoBeside());
+  const keepManagerWidth = (w: number) => {
+    setDragManagerWidth(null);
+    const kept = clampManagerWidth(w, width() - todoBeside());
+    setManagerWidth(kept);
+    saveManagerWidth(localStorage, kept);
+  };
+  const besideWidth = () => (managerTakesRoom() ? shownManagerWidth() : 0) + todoBeside();
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
   const roomToPin = () => width() - besideWidth() - MIN_WIDTH >= BOARD_ROOM.pinned;
@@ -82,11 +110,12 @@ export default function ProjectPane(props: {
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // A press on the board outside any card puts away the panel and the manager that float over it.
+  // A press on the board outside any card puts away the panel, the manager and the Todo panel that float over it.
   const hideUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
     if (!managerPinned()) setManagerOpen(false);
+    if (!todoPrefs().pinned) setTodoOpen(false);
   };
   const closeDialog = () => {
     setDialogOpen(false);
@@ -106,7 +135,8 @@ export default function ProjectPane(props: {
         data-focused={String(framed())}
         aria-hidden={shown() ? undefined : 'true'}
         inert={!shown()}
-        style={props.style}
+        // What the pinned Todo panel takes at the pane's left, its margin with it: the floating manager and its way back sit right of it.
+        style={{ ...props.style, '--left-room': `${todoBeside() ? todoBeside() + 8 : 0}px` }}
         onPointerDown={() => revealProject(dir)}
         onFocusIn={() => revealProject(dir)}
       >
@@ -122,6 +152,21 @@ export default function ProjectPane(props: {
               <i aria-hidden="true" />
               <span>{props.project.name}</span>
             </span>
+            <button
+              class="tb-toggle"
+              data-testid="todo-toggle"
+              ref={todoToggle}
+              aria-pressed={todoOpen() ? 'true' : 'false'}
+              title={todoOpen() ? 'Hide the Todo panel' : 'Show the Todo panel'}
+              onMouseDown={keepFocus}
+              onClick={() => setTodoOpen(!todoOpen())}
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" />
+                <path d="M2.75 4.5h.01M2.75 8h.01M2.75 11.5h.01" stroke-width="2" />
+              </svg>
+              <span>Todo</span>
+            </button>
             <button
               class="tb-toggle"
               data-testid="manager-toggle"
@@ -158,6 +203,17 @@ export default function ProjectPane(props: {
           onPinnedChange={keepManagerPinned}
           open={showManager()}
           onOpenChange={setManagerOpen}
+        />
+
+        {/* After the manager, for the same reason: it floats over the manager and the top bar. */}
+        <TodoPanel
+          width={shownTodoWidth()}
+          onDrag={setDragTodoWidth}
+          onDone={keepTodoWidth}
+          pinned={todoPrefs().pinned}
+          onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
+          open={todoOpen()}
+          onOpenChange={setTodoOpenFromPanel}
         />
 
         <SidePanel

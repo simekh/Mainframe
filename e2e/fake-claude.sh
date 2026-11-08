@@ -2,6 +2,13 @@
 # Stands in for `claude` in e2e tests: records its working directory and arguments, then becomes
 # a plain shell so the terminal tests can type into it.
 if [ -n "$FAKE_CLAUDE_LOG_DIR" ]; then printf '%s\0' "$PWD" "$@" > "$FAKE_CLAUDE_LOG_DIR/$$.argv"; fi
+# A sync is a `claude -p` run: it records the prompt it reads on stdin, and prints what the test put in
+# sync-reply.json as its answer (nothing without one, which Mainframe reads as a failed run).
+if [ "$1" = "-p" ]; then
+  cat > "$FAKE_CLAUDE_LOG_DIR/$$.stdin"
+  if [ -f "$FAKE_CLAUDE_LOG_DIR/sync-reply.json" ]; then cat "$FAKE_CLAUDE_LOG_DIR/sync-reply.json"; fi
+  exit 0
+fi
 # What Mainframe's SessionStart hook does once Claude Code has begun the conversation: it writes
 # session-start.json beside the --settings file, naming the conversation, how it began and its transcript.
 # Reopen resumes the id it holds; the manager only if the chat was saved, when it began or was cleared. This

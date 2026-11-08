@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
@@ -123,26 +123,51 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 /** The conversation a launch began. */
 export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 
-function allLaunches(dataDir: string): Array<{ cwd: string; args: string[] }> {
-  const dir = join(dataDir, 'fake-claude');
+const fakeLogDir = (dataDir: string) => join(dataDir, 'fake-claude');
+
+/** Each launch's file, `<pid>.argv`, with what it recorded: its working directory and its arguments. */
+function allLaunches(dataDir: string): Array<{ file: string; cwd: string; args: string[] }> {
+  const dir = fakeLogDir(dataDir);
   return readdirSync(dir)
     .filter((name) => name.endsWith('.argv'))
     .map((name) => join(dir, name))
     .sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs)
     .map((file) => {
       const [cwd, ...args] = readFileSync(file, 'utf8').split('\0').slice(0, -1);
-      return { cwd, args };
+      return { file, cwd, args };
     });
 }
 
+/** A sync is a `claude -p` run; sessions are interactive. */
+const isSync = (launch: { args: string[] }) => launch.args[0] === '-p';
 /** Only the manager's launches carry a role prompt. */
 const isManager = (launch: { args: string[] }) => launch.args.includes('--append-system-prompt');
 
-/** The tasks' launches in this data folder, oldest first: the manager, which starts with the app, is left out. */
-export const launches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isManager(launch));
+const sessionLaunches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isSync(launch));
+
+/** The tasks' launches in this data folder, oldest first: the manager, which starts with the app, and the syncs are left out. */
+export const launches = (dataDir: string) => sessionLaunches(dataDir).filter((launch) => !isManager(launch));
 
 /** The manager's launches in this data folder, oldest first. */
-export const managerLaunches = (dataDir: string) => allLaunches(dataDir).filter(isManager);
+export const managerLaunches = (dataDir: string) => sessionLaunches(dataDir).filter(isManager);
+
+/** The sync runs in this data folder, oldest first, each with the prompt it read on stdin. */
+export const syncLaunches = (dataDir: string) =>
+  allLaunches(dataDir)
+    .filter(isSync)
+    .map((launch) => ({ ...launch, stdin: readFileSync(launch.file.replace(/\.argv$/, '.stdin'), 'utf8') }));
+
+/** What the next sync runs print: `answer` as their structured output, as `claude -p` prints it. */
+export function syncReply(dataDir: string, answer: unknown): void {
+  const printed = { type: 'result', subtype: 'success', is_error: false, result: '', structured_output: answer };
+  writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), JSON.stringify(printed));
+}
+
+/** The Todo folder in this data folder, where an e2e run's one synced project keeps its list and the sync's settings. */
+export function todoDir(dataDir: string): string {
+  const [key] = readdirSync(join(dataDir, 'todo'));
+  return join(dataDir, 'todo', key);
+}
 
 /** The manager's folder in this data folder, where an e2e run's one project has its manager. */
 export function managerDir(dataDir: string): string {

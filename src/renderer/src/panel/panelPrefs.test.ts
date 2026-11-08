@@ -41,6 +41,19 @@ describe('panelPrefs', () => {
     expect(storage.map.get('mainframe.panel')).toBe('{"width":700,"pinned":false}');
   });
 
+  it("another key and defaults leave the session panel's alone", () => {
+    const storage = memoryStorage({ 'mainframe.panel': '{"width":700,"pinned":false}' });
+    const other = { key: 'mainframe.other', defaults: { width: 300, pinned: true } };
+    // Nothing of its own: its defaults, never the session panel's shared prefs.
+    expect(loadPanelPrefs(storage, '/acme', other)).toEqual({ width: 300, pinned: true });
+
+    savePanelPrefs(storage, '/acme', { width: 360, pinned: false }, 'mainframe.other');
+    expect(storage.map.get('mainframe.other:/acme')).toBe('{"width":360,"pinned":false}');
+    expect(loadPanelPrefs(storage, '/acme', other)).toEqual({ width: 360, pinned: false });
+    expect(loadPanelPrefs(storage, '/acme')).toEqual({ width: 700, pinned: false });
+    expect(loadPanelPrefs(memoryStorage({ 'mainframe.other:/acme': '{' }), '/acme', other)).toEqual({ width: 300, pinned: true });
+  });
+
   it('a storage that refuses the write is ignored', () => {
     const full = {
       setItem: () => {

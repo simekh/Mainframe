@@ -5,6 +5,7 @@ import { errorMessage } from '../bridgeError';
 import { forgetManager, loadManager, managerOf } from '../manager/managerStore';
 import { focusTerminalOf, forgetTasks, jumpToNeedsYou, loadTasks, select, tasksOf, terminalOf } from '../tasksStore';
 import { getTerminal } from '../terminal/registry';
+import { forgetTodo, loadTodo } from '../todo/todoStore';
 import { fitLayout, focusOn, loadLayout, managerShown, saveLayout, toggleBeside, toggleManager, type Layout } from './layout';
 
 const [store, setStore] = createStore<{
@@ -43,11 +44,13 @@ function setProjects(projects: ProjectView[]): void {
     for (const dir of before.filter((d) => !dirs.includes(d))) {
       forgetTasks(dir);
       forgetManager(dir);
+      forgetTodo(dir);
     }
   });
   for (const dir of dirs.filter((d) => !before.includes(d))) {
     void load('tasks', dir, loadTasks(dir));
     void load('manager', dir, loadManager(dir));
+    void load('Todo list', dir, loadTodo(dir));
   }
 }
 

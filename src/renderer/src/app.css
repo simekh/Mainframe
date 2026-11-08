@@ -445,6 +445,270 @@ button {
   text-wrap: wrap;
 }
 
+/* --- The Todo panel: the project's to-do list, at its pane's far left ------------------------ */
+
+/* An island like the manager's column, at the owner's width; after the manager in the page, it is
+   laid out first. */
+.todo-panel {
+  order: -2;
+  margin: 8px 0 8px 8px;
+}
+
+/* Put away while pinned, it gives its room back. */
+.todo-panel[data-pinned='true'][data-open='false'] {
+  display: none;
+}
+
+/* The tab strip is the island's title bar, laid out as the manager's, and a drag region up to the
+   pin: its one tab sits on the manager's title line, and Sync just left of the pin. */
+.todo-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  min-width: 0;
+  margin-right: var(--panel-pin-room);
+  padding: 6px 0 4px 16px;
+  -webkit-app-region: drag;
+}
+
+/* The tab on show, marked under its name without moving it off that line. */
+.todo-tab {
+  position: relative;
+  margin: 0;
+  font: 600 17px/1.3 var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+.todo-tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -5px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+/* A drag region takes no clicks of its own. */
+.todo-sync {
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+/* Motion means working, as on the board's glyphs. */
+.todo-sync:disabled svg {
+  animation: glyph-spin 0.9s linear infinite;
+}
+
+/* Where the list comes from, in the row under the title; a long name gives way first, and when it
+   was synced keeps the row's right edge. Before the first sync, that line is all the row holds. */
+.todo-source-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.todo-synced {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+.todo-source-name + .todo-synced {
+  margin-left: auto;
+}
+
+/* What Sync needs the owner to say before it goes on. The one place the panel asks for trust, so
+   the one place it raises its voice: tinted, with the window's one filled button. */
+.todo-ask {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 8px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--fg-muted);
+}
+
+.todo-ask p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.todo-ask strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* The tools by their full names, which the owner checks before allowing them. */
+.todo-tools {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todo-tools code {
+  display: block;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: 12px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* One per list the sync found: its name, then its board. */
+.todo-pick {
+  align-self: stretch;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-weight: 500;
+  text-align: left;
+}
+
+.todo-pick:hover {
+  background: var(--hover);
+  border-color: var(--border);
+}
+
+.todo-pick-board {
+  color: var(--fg-subtle);
+  font-weight: 400;
+}
+
+/* It can name the Todo file by its full path. */
+.todo-panel .todo-error {
+  flex: none;
+  margin: 8px 8px 0;
+  overflow-wrap: anywhere;
+}
+
+/* Before the first list or note: what Sync does, and where notes go. */
+.todo-empty {
+  flex: none;
+  max-width: 36ch;
+  margin: 0;
+  padding: 14px 16px 0;
+  color: var(--fg-subtle);
+  text-wrap: pretty;
+}
+
+/* The cards in the source's order, then the notes; the list scrolls under the header. */
+.todo-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+/* As the board's cards: a faint fill, no border. */
+.todo-item {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--fg) 4.5%, transparent);
+}
+
+/* A card for the owner rather than for a session: greyed. */
+.todo-item[data-for-owner='true'] {
+  opacity: 0.55;
+}
+
+.todo-title {
+  margin: 0;
+  color: var(--fg);
+  font-weight: 500;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.todo-num {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-body {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+/* As the source names them, all alike. */
+.todo-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.todo-label {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+/* Mainframe's own mark, not a label from the source: outlined, not filled. */
+.todo-label.note {
+  padding: 0 5px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--fg-subtle);
+}
+
+/* Quiet, at the panel's foot: it undoes an allow or a pick that was wrong. */
+.todo-foot {
+  flex: none;
+  padding: 4px 16px 10px;
+}
+
+.todo-reset {
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+.todo-reset:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
 /* --- The board's column: the top bar over the board ---------------------------------------- */
 
 /* The rest of the pane, between the manager's column and the pinned panel; unpinned, the panel
@@ -1067,9 +1331,10 @@ kbd {
 
 /* --- The side panel: the selected session, the window's full height ------------------------- */
 
-/* An island: the side panel, and the manager's column on the board's other side. */
+/* An island: the side panel, and the manager's column and the Todo panel on the board's other side. */
 .side-panel,
-.manager-column {
+.manager-column,
+.todo-panel {
   /* What a row along the island's top leaves its pin: 8 px in, 28 px wide, 6 px apart. */
   --panel-pin-room: 42px;
   position: relative;
@@ -1091,7 +1356,8 @@ kbd {
 /* Unpinned, each floats over its own edge of the board and slides away while it isn't open. It
    hides by moving and then turning invisible, never by changing size, so the terminals keep theirs. */
 .side-panel[data-pinned='false'],
-.manager-column[data-pinned='false'] {
+.manager-column[data-pinned='false'],
+.todo-panel[data-pinned='false'] {
   position: absolute;
   top: 8px;
   bottom: 8px;
@@ -1104,8 +1370,16 @@ kbd {
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
+/* Right of the pinned Todo panel, when it is out. */
 .manager-column[data-pinned='false'] {
+  left: calc(8px + var(--left-room, 0px));
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Over the floating manager, and over the manager's way back. */
+.todo-panel[data-pinned='false'] {
   left: 8px;
+  z-index: 7;
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
@@ -1115,7 +1389,8 @@ kbd {
   visibility: hidden;
 }
 
-.manager-column[data-pinned='false'][data-open='false'] {
+.manager-column[data-pinned='false'][data-open='false'],
+.todo-panel[data-pinned='false'][data-open='false'] {
   transform: translateX(calc(-100% - 24px));
   visibility: hidden;
 }
@@ -1126,6 +1401,7 @@ kbd {
    again. */
 .side-panel,
 .manager-column,
+.todo-panel,
 .resize-edge {
   -webkit-app-region: no-drag;
 }
@@ -1198,8 +1474,9 @@ kbd {
   display: inline-flex;
 }
 
-/* The manager's, pinned or not, on its right edge: it can be put away either way. */
-.manager-column .panel-hide {
+/* The manager's and the Todo panel's, pinned or not, on their right edge: they can be put away either way. */
+.manager-column .panel-hide,
+.todo-panel .panel-hide {
   display: inline-flex;
   left: auto;
   right: -8px;
@@ -1230,14 +1507,19 @@ kbd {
   opacity: 0;
 }
 
-/* The manager's, on the pane's left edge. */
+/* The manager's, on the pane's left edge, or right of the pinned Todo panel when it is out. */
 .manager-column + .panel-show {
   right: auto;
-  left: 0;
+  left: var(--left-room, 0px);
   padding: 10px 2px 10px 0;
   border: 1px solid var(--border);
   border-left: 0;
   border-radius: 0 999px 999px 0;
+}
+
+/* Beside the pinned Todo panel, below the hide pill that overhangs that panel's edge. */
+.project-pane:has(> .todo-panel[data-pinned='true'][data-open='true']) .manager-column + .panel-show {
+  top: calc(50% + 56px);
 }
 
 /* Visible at once, so it can take the focus; it fades in once the island has slid out. As visible
@@ -1786,7 +2068,8 @@ kbd {
 
 .nt-warn,
 .nt-error,
-.manager-error {
+.manager-error,
+.todo-error {
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -1804,7 +2087,8 @@ kbd {
 }
 
 .nt-error,
-.manager-error {
+.manager-error,
+.todo-error {
   background: color-mix(in srgb, var(--error) 9%, transparent);
   color: var(--error);
   user-select: text;
@@ -1827,14 +2111,16 @@ kbd {
 @media (prefers-reduced-motion: no-preference) {
   /* Out at once; hidden only once it has slid away. */
   .side-panel[data-pinned='false'],
-  .manager-column[data-pinned='false'] {
+  .manager-column[data-pinned='false'],
+  .todo-panel[data-pinned='false'] {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 0s;
   }
 
   .side-panel[data-pinned='false'][data-open='false'],
-  .manager-column[data-pinned='false'][data-open='false'] {
+  .manager-column[data-pinned='false'][data-open='false'],
+  .todo-panel[data-pinned='false'][data-open='false'] {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 220ms;
@@ -1850,7 +2136,8 @@ kbd {
   .btn,
   .tb-btn,
   .panel-pin,
-  .pane-heading {
+  .pane-heading,
+  .todo-pick {
     transition:
       background-color var(--motion-fast) var(--ease-out),
       border-color var(--motion-fast) var(--ease-out),
@@ -1867,10 +2154,11 @@ kbd {
   }
 }
 
-/* Without motion the ring's bright quarter still sets it apart from the resting glyphs, and the
-   suggestion ring stays as it rests. */
+/* Without motion the ring's bright quarter still sets it apart from the resting glyphs, the
+   suggestion ring stays as it rests, and Syncing… says in words what the turning arrows show. */
 @media (prefers-reduced-motion: reduce) {
   .g-spin,
+  .todo-sync:disabled svg,
   .card[data-suggestion='true']::before,
   .card[data-suggestion='true']::after {
     animation: none;
