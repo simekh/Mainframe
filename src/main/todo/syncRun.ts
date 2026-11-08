@@ -101,7 +101,13 @@ export function syncPrompt(step: SyncStep): string {
   ].join('\n\n');
 }
 
-/** What a run printed, as its answer. Throws an Error whose message is for the panel. */
+/**
+ * What a run printed, as its answer. Throws an Error whose message is for the panel.
+ *
+ * An answer counts however the run ended: it can answer and then end oddly. Without one, the message says how the run
+ * ended, then the CLI's own reasons (`errors`), else the run's last words (`result`), which alone would read as if
+ * Mainframe said them. Claude Code can also take an answer back (after a model switch); the run then ends without one.
+ */
 export function readSyncAnswer(stdout: string): SyncAnswer {
   let printed: unknown;
   try {
@@ -110,10 +116,15 @@ export function readSyncAnswer(stdout: string): SyncAnswer {
     printed = null;
   }
   if (typeof printed !== 'object' || printed === null) throw new Error("The sync run printed something Mainframe can't read");
-  const { is_error, subtype, result, structured_output } = printed as Record<string, unknown>;
-  const said = typeof result === 'string' && result !== '' ? result : undefined;
-  if (is_error === true || subtype !== 'success') throw new Error(said ?? `The sync run stopped (${String(subtype)})`);
-  if (structured_output === undefined || structured_output === null) throw new Error(said ?? 'The sync run gave no answer');
+  const { is_error, subtype, num_turns, errors, result, structured_output } = printed as Record<string, unknown>;
+  if (structured_output === undefined || structured_output === null) {
+    const ended = is_error === true && subtype === 'success' ? 'error' : String(subtype);
+    const how = typeof num_turns === 'number' ? `${ended}, ${num_turns} turns` : ended;
+    const reasons = Array.isArray(errors) ? errors.filter((e) => typeof e === 'string' && e !== '').join('; ') : '';
+    const said = reasons || (typeof result === 'string' ? result : '');
+    const shown = said.length > 300 ? `${said.slice(0, 300)}…` : said;
+    throw new Error(`The sync run ended without an answer (${how})${shown ? `: ${shown}` : ''}`);
+  }
   const answer = SYNC_ANSWER.safeParse(structured_output);
   if (!answer.success) throw new Error("The sync run's answer didn't have the shape Mainframe asked for");
   return answer.data;

@@ -143,25 +143,55 @@ describe('readSyncAnswer', () => {
   });
 
   it.each([
+    ['an error', { is_error: true }],
+    ['a subtype other than success', { subtype: 'error_during_execution' }],
+  ])('keeps a valid answer from a run that ended with %s', (_what, ending) => {
+    // A run can answer and then end oddly, e.g. after a message that came in late; the answer still counts.
+    expect(readSyncAnswer(result({ ...ending, structured_output: answered }))).toEqual(answered);
+  });
+
+  it.each([
     ['output that is not JSON', 'Loading…', "The sync run printed something Mainframe can't read"],
     ['JSON that is not an object', 'null', "The sync run printed something Mainframe can't read"],
     [
+      // Claude Code can take back an answer (after a model switch) and end so; its reason is in `errors`, while
+      // `result` holds the run's own last words.
+      'an answer taken back, with the CLI’s reason',
+      result({
+        is_error: true,
+        subtype: 'error_max_structured_output_retries',
+        num_turns: 9,
+        errors: ['The structured output was retracted'],
+        result: 'The Todo read was already finished and submitted before this message arrived.',
+      }),
+      'The sync run ended without an answer (error_max_structured_output_retries, 9 turns): The structured output was retracted',
+    ],
+    [
       'an error with a message',
       result({ is_error: true, result: 'Your credit balance is too low' }),
-      'Your credit balance is too low',
+      'The sync run ended without an answer (error): Your credit balance is too low',
     ],
     [
       'an error with an empty message',
-      result({ is_error: true, subtype: 'error_during_execution', result: '' }),
-      'The sync run stopped (error_during_execution)',
+      result({ is_error: true, subtype: 'error_during_execution', result: '', errors: [] }),
+      'The sync run ended without an answer (error_during_execution)',
     ],
     [
       'a subtype other than success, with no message',
-      result({ subtype: 'error_max_budget_usd' }),
-      'The sync run stopped (error_max_budget_usd)',
+      result({ subtype: 'error_max_budget_usd', num_turns: 3 }),
+      'The sync run ended without an answer (error_max_budget_usd, 3 turns)',
     ],
-    ['no structured output, with a message', result({ result: 'I could not do that' }), 'I could not do that'],
-    ['no structured output, with no message', result({ result: '' }), 'The sync run gave no answer'],
+    [
+      'no structured output, with a message',
+      result({ result: 'I stopped here.', num_turns: 9 }),
+      'The sync run ended without an answer (success, 9 turns): I stopped here.',
+    ],
+    ['no structured output, with no message', result({ result: '' }), 'The sync run ended without an answer (success)'],
+    [
+      'a message over 300 characters',
+      result({ result: 'x'.repeat(301) }),
+      `The sync run ended without an answer (success): ${'x'.repeat(300)}…`,
+    ],
     [
       'an answer of the wrong shape',
       result({ structured_output: { kind: 'cards', cards: 'none' } }),
