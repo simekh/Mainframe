@@ -63,12 +63,15 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
 export const visibleItems = (items: TodoItem[], hideMine: boolean): TodoItem[] =>
   hideMine ? items.filter((item) => !item.forOwner) : items;
 
-/**
- * Whether the item's ticket has a Start: any item with a Start of its own, and a card marked for the owner that has no
- * task yet, which only the owner starts, from that ticket.
- */
-export const startsFromTicket = (item: TodoItem): boolean =>
-  item.action?.kind === 'start' || (item.forOwner && item.action === null);
+/** Whether the item's ticket has a Start: any item that does not offer Reopen, a card for the owner with no task too. */
+export const startsFromTicket = (item: TodoItem): boolean => item.action?.kind !== 'reopen';
+
+/** What a ticket's Start hands the Todo panel: the choice of no questions, a note's edits, and the owner's own start of their card. */
+export interface StartOptions {
+  noQuestions: boolean;
+  note?: { title: string; text: string };
+  ownersCard?: boolean;
+}
 
 /** The task a Reopen would reopen, for an item's `action`. */
 export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);

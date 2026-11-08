@@ -12,6 +12,15 @@ export function repo(): string {
   return main;
 }
 
+/** A repo from `repo()` one commit ahead of its origin, which the start check warns of; removed after the test. */
+export function repoAhead(): string {
+  const main = repo();
+  writeFileSync(join(main, 'local.txt'), 'local\n');
+  git('-C', main, 'add', 'local.txt');
+  git('-C', main, 'commit', '-m', 'local');
+  return main;
+}
+
 export function git(...args: string[]): void {
   execFileSync('git', args, { stdio: 'pipe' });
 }

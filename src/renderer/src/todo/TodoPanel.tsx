@@ -10,7 +10,9 @@ import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
 import TicketPanel from './TicketPanel';
-import { reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type TodoItem } from './todoItems';
+import {
+  reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
+} from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
 import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
@@ -112,7 +114,7 @@ export default function TodoPanel(props: {
    */
   async function start(
     item: TodoItem | 'new-note',
-    o: { noQuestions: boolean; note?: { title: string; text: string }; ownersCard?: boolean },
+    o: StartOptions,
     check = false,
   ): Promise<void> {
     if (starting()) return;
@@ -382,7 +384,7 @@ export default function TodoPanel(props: {
               </ul>
               {/* Hiding left no row, not even a note. */}
               <Show when={shownItems().length === 0 && allItems().length > 0}>
-                <p class="todo-empty">Every card on the list is one of yours.</p>
+                <p class="todo-all-mine">Every card on the list is one of yours.</p>
               </Show>
               <button
                 class="todo-add"

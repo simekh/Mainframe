@@ -158,9 +158,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
         }
       },
       cancelSync: () => todo.close(),
-      release: async () => {
-        await mcp.close();
-      },
+      release: () => mcp.close(),
     };
     return project;
   }

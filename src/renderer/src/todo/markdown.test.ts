@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Tokens } from 'marked';
-import { cardTokens, plainText, safeHref } from './markdown';
+import { cardTokens, plainText } from './markdown';
 
 describe('cardTokens', () => {
   it('turns a single newline into a line break, as trackers show them', () => {
@@ -58,36 +58,5 @@ describe('plainText', () => {
   it('is empty for no text, or only blanks', () => {
     expect(plainText('')).toBe('');
     expect(plainText('  \n \n')).toBe('');
-  });
-});
-
-describe('safeHref', () => {
-  it.each(['http://example.com/a', 'https://example.com/x', 'https://example.com/x?y=1#z', 'HTTPS://EXAMPLE.COM/X'])(
-    'lets %s through as it is',
-    (href) => {
-      expect(safeHref(href)).toBe(href);
-    },
-  );
-
-  it.each([
-    'javascript:alert(1)',
-    'JaVaScRiPt:alert(1)',
-    ' javascript:alert(1)',
-    'java\nscript:alert(1)',
-    'data:text/html,<b>x</b>',
-    'file:///etc/passwd',
-    'ftp://example.com/x',
-    'tel:+1555',
-    // The browser hand-off opens web pages only.
-    'mailto:me@example.com',
-    '/relative/link',
-    'relative/link',
-    '#anchor',
-    '//example.com/x',
-    'http://',
-    'https://exa mple.com',
-    '',
-  ])('turns %j away', (href) => {
-    expect(safeHref(href)).toBeNull();
   });
 });

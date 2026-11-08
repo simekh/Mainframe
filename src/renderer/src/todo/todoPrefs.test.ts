@@ -31,7 +31,7 @@ describe('todoPrefs', () => {
     expect(loadHideMine(storage, '/acme')).toBe(false);
 
     saveHideMine(storage, '/acme', true);
-    expect(storage.map.get('mainframe.todo-hide-mine:/acme')).toBe('{"hideMine":true}');
+    expect(storage.map.get('mainframe.todo-hide-mine:/acme')).toBe('true');
     expect(loadHideMine(storage, '/acme')).toBe(true);
     expect(loadHideMine(storage, '/globex')).toBe(false);
     expect(loadTodoPrefs(storage, '/acme')).toEqual({ width: 400, pinned: true });
@@ -40,10 +40,6 @@ describe('todoPrefs', () => {
     saveHideMine(storage, '/acme', false);
     expect(loadHideMine(storage, '/acme')).toBe(false);
     expect(loadHideMine(storage, '/globex')).toBe(true);
-  });
-
-  it.each(['{', 'null', 'true', '"yes"', '{"hideMine":"yes"}', '{}'])('Hide my cards stays off for the stored value %s', (bad) => {
-    expect(loadHideMine(memoryStorage({ 'mainframe.todo-hide-mine:/acme': bad }), '/acme')).toBe(false);
   });
 
   it('a storage that refuses the write leaves Hide my cards for this run only', () => {

@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, ids, launches, openedLinks, repoAhead, syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -60,6 +60,16 @@ const CARDS = {
       urgent: false,
     },
   ],
+};
+
+/** A card the sync marked as the owner's, which has no Start in the list. */
+const OWNER_CARD = {
+  ...CARDS.cards[1],
+  id: 'c119',
+  number: '#119',
+  title: 'Decide on the refund window',
+  labels: ['Decision'],
+  forOwner: true,
 };
 
 /** The project's first sync, as the owner makes it: Sync, allow the tools it asks about, and the cards show. */
@@ -510,11 +520,7 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
 });
 
 test('a start the check warns about opens the ticket with the warning, and Start anyway starts it', async () => {
-  const ahead = repo();
-  writeFileSync(join(ahead, 'local.txt'), 'local\n');
-  git('-C', ahead, 'add', 'local.txt');
-  git('-C', ahead, 'commit', '-m', 'local');
-  const { app, page, dataDir } = await launchApp({}, ahead);
+  const { app, page, dataDir } = await launchApp({}, repoAhead());
   await syncFirstTime(page, dataDir);
 
   await itemRow(page, 'card:c128').getByTestId('todo-start').click();
@@ -613,9 +619,8 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
 
 test("a card for the owner has no Start in the list; its ticket says it is marked as yours and Start anyway starts it, and a closed one offers Reopen", async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
-  const [search, exported] = CARDS.cards;
-  const forOwner = { ...exported, id: 'c119', number: '#119', title: 'Decide on the refund window', labels: ['Decision'], forOwner: true };
-  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, forOwner] });
+  const [search] = CARDS.cards;
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, OWNER_CARD] });
 
   const owner = itemRow(page, 'card:c119');
   await expect(owner).toHaveAttribute('data-for-owner', 'true');
@@ -661,13 +666,8 @@ test("a card for the owner has no Start in the list; its ticket says it is marke
 });
 
 test("a card for the owner whose start the check warns about shows the warning above the same Start anyway", async () => {
-  const ahead = repo();
-  writeFileSync(join(ahead, 'local.txt'), 'local\n');
-  git('-C', ahead, 'add', 'local.txt');
-  git('-C', ahead, 'commit', '-m', 'local');
-  const { app, page, dataDir } = await launchApp({}, ahead);
-  const forOwner = { ...CARDS.cards[1], id: 'c119', number: '#119', title: 'Decide on the refund window', forOwner: true };
-  await syncFirstTime(page, dataDir, { ...CARDS, cards: [forOwner] });
+  const { app, page, dataDir } = await launchApp({}, repoAhead());
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [OWNER_CARD] });
 
   await itemRow(page, 'card:c119').click();
   const ticket = page.getByTestId('ticket-panel');
@@ -687,8 +687,7 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   const project = folder();
   const first = await launchApp({}, project);
   const { page, dataDir } = first;
-  const [search, exported] = CARDS.cards;
-  const forOwner = { ...exported, id: 'c119', number: '#119', title: 'Decide on the refund window', labels: ['Decision'], forOwner: true };
+  const [search] = CARDS.cards;
   const items = page.getByTestId('todo-item');
   const hide = page.getByTestId('todo-hide-mine');
 
@@ -696,7 +695,7 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   await syncFirstTime(page, dataDir);
   await expect(hide).toHaveCount(0);
 
-  syncReply(dataDir, { ...CARDS, cards: [search, forOwner] });
+  syncReply(dataDir, { ...CARDS, cards: [search, OWNER_CARD] });
   await page.getByTestId('todo-sync').click();
   await expect(hide).toBeVisible();
   await expect(hide).toHaveText('Hide my cards');
@@ -724,14 +723,14 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   await expect(switchAgain).toContainText('1 hidden');
 
   // A list of nothing but the owner's cards says so, and the switch stays, so it can be turned off.
-  syncReply(dataDir, { ...CARDS, cards: [forOwner] });
+  syncReply(dataDir, { ...CARDS, cards: [OWNER_CARD] });
   await again.page.getByTestId('todo-sync').click();
   await expect(again.page.getByText('Every card on the list is one of yours.')).toBeVisible();
   await expect(list).toHaveCount(0);
   await expect(switchAgain).toContainText('1 hidden');
   await expect(again.page.getByTestId('todo-add-note')).toBeVisible();
 
-  syncReply(dataDir, { ...CARDS, cards: [search, forOwner] });
+  syncReply(dataDir, { ...CARDS, cards: [search, OWNER_CARD] });
   await again.page.getByTestId('todo-sync').click();
   await expect(list).toHaveCount(1);
   await expect(again.page.getByText('Every card on the list is one of yours.')).toHaveCount(0);
@@ -753,7 +752,7 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
     '- Open **Search**',
     '- Type `creme`',
     '',
-    'See [the report](https://example.com/x) for more.',
+    'See [the report](https://example.com/x) for more, or [a bad one](javascript:window.__pwned=1).',
     '',
     '<img src=x onerror="window.__pwned=1">',
   ].join('\n');
@@ -762,18 +761,21 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
   // The row: what a reader sees, with no `**`, no backticks and no `#`.
   const row = itemRow(page, 'card:c128');
   await expect(row.locator('.todo-body')).toHaveText(
-    'Steps to reproduce Open Search Type creme See the report for more. <img src=x onerror="window.__pwned=1">',
+    'Steps to reproduce Open Search Type creme See the report for more, or a bad one. <img src=x onerror="window.__pwned=1">',
   );
 
   await row.click();
   const ticket = page.getByTestId('ticket-panel');
-  const desc = ticket.locator('.ticket-desc');
+  const desc = ticket.locator('.md');
   await expect(desc.getByRole('heading', { name: 'Steps to reproduce' })).toBeVisible();
   await expect(desc.locator('li')).toHaveText(['Open Search', 'Type creme']);
   await expect(desc.locator('strong')).toHaveText('Search');
   await expect(desc.locator('code')).toHaveText('creme');
 
-  // A link opens in the owner's browser, as Open in Tracker does, and the window itself goes nowhere.
+  // A web link opens in the owner's browser, as Open in Tracker does, and the window itself goes nowhere. Any other
+  // address is text, not a link.
+  await expect(desc.getByRole('link')).toHaveCount(1);
+  await expect(desc.getByText('a bad one')).toBeVisible();
   await desc.getByRole('link', { name: 'the report' }).click();
   await expect.poll(() => openedLinks(app)).toEqual(['https://example.com/x']);
   await expect(ticket).toBeVisible();

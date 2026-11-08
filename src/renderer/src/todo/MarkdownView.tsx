@@ -1,8 +1,9 @@
 import type { MarkedToken, Token } from 'marked';
-import { createMemo, type JSX } from 'solid-js';
+import type { JSX } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
+import { httpUrl } from '../../../shared/httpUrl';
 import { openLinkLogged } from '../openLink';
-import { cardTokens, safeHref } from './markdown';
+import { cardTokens } from './markdown';
 
 const renderAll = (tokens: Token[]): JSX.Element => tokens.map(renderToken);
 
@@ -24,11 +25,12 @@ function Link(props: { href: string; children: JSX.Element }) {
 
 /**
  * One token as elements. Card text comes from anyone who can write on the board, and this renderer can reach
- * `window.mainframe`: so every piece of text is a text node and none is HTML, a link opens only where `safeHref` allows,
- * and an image is never loaded.
+ * `window.mainframe`: so every piece of text is a text node and none is HTML, a link opens only where `httpUrl` allows
+ * (the check main makes again before it opens one), and an image is never loaded.
  */
 function renderToken(token: Token): JSX.Element {
-  // Marked's own union of tokens: `Token` also admits an extension's, of which there are none.
+  // Marked's own union of tokens, so the switch below is checked to cover each: `Token` also admits an extension's,
+  // of which there are none.
   const t = token as MarkedToken;
   switch (t.type) {
     case 'heading':
@@ -90,7 +92,7 @@ function renderToken(token: Token): JSX.Element {
     case 'link':
     case 'image': {
       // An image is never loaded: its alt text stands for it. Either is a link only where the address is one to follow.
-      const href = safeHref(t.href);
+      const href = httpUrl(t.href);
       return href ? <Link href={href}>{renderAll(t.tokens)}</Link> : renderAll(t.tokens);
     }
     case 'html':
@@ -103,15 +105,10 @@ function renderToken(token: Token): JSX.Element {
     case 'space':
     case 'def':
       return null;
-    default:
-      return token.raw;
   }
 }
 
 /** A card's description, set as the Markdown it is written in. */
 export default function Markdown(props: { text: string }) {
-  // Memos by value: a sync that leaves the text as it was doesn't read it again.
-  const text = createMemo(() => props.text);
-  const tokens = createMemo(() => cardTokens(text()));
-  return <div class="md">{renderAll(tokens())}</div>;
+  return <div class="md">{renderAll(cardTokens(props.text))}</div>;
 }

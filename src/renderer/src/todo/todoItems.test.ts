@@ -118,14 +118,12 @@ describe('todoItems', () => {
 });
 
 describe('startsFromTicket', () => {
-  const only = (view_: TodoView, tasks: TaskView[] = []) => todoItems(view_, tasks)[0];
+  const only = (cards: TodoCard[], tasks: TaskView[] = []) => todoItems(view({ cards }), tasks)[0];
 
-  it("is so for a card for a session, a note, and a card for the owner with no task, and not for one that offers Reopen", () => {
-    expect(startsFromTicket(only(view({ cards: [card('1')] })))).toBe(true);
-    expect(startsFromTicket(only(view({ notes: [note('a')] })))).toBe(true);
-    expect(startsFromTicket(only(view({ cards: [card('1', { forOwner: true })] })))).toBe(true);
-    expect(startsFromTicket(only(view({ cards: [card('1')] }), [task('t', '1', { open: false })]))).toBe(false);
-    expect(startsFromTicket(only(view({ cards: [card('1', { forOwner: true })] }), [task('t', '1', { open: false })]))).toBe(false);
+  it("is so for a card with a Start and for a card for the owner with no task, and not for one that offers Reopen", () => {
+    expect(startsFromTicket(only([card('1')]))).toBe(true);
+    expect(startsFromTicket(only([card('1', { forOwner: true })]))).toBe(true);
+    expect(startsFromTicket(only([card('1')], [task('t', '1', { open: false })]))).toBe(false);
   });
 });
 

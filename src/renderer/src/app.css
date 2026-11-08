@@ -671,9 +671,14 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-/* The line that says hiding left nothing, in the list where the rows were: it keeps the rows' own inset. */
-.todo-scroll > .todo-empty {
+/* Hiding left no row, not even a note: the line that says so, in the list where the rows were, at the rows' own inset. */
+.todo-all-mine {
+  flex: none;
+  max-width: 36ch;
+  margin: 0;
   padding: 2px 4px 0;
+  color: var(--fg-subtle);
+  text-wrap: pretty;
 }
 
 .todo-list {
@@ -896,20 +901,19 @@ button {
   margin-left: auto;
 }
 
-/* The card's description: its colour and its leading; `.md` sets what its Markdown holds. */
-.ticket-desc {
-  margin: 0;
+/* A card's Markdown in the ticket, in the ticket's own type and colours and spaced tightly: the panel is narrow, and
+   the card's title stays its one large line, so the headings go no bigger than the text. */
+.md {
   color: var(--fg-muted);
   line-height: 1.55;
 }
 
-/* A card's Markdown in the ticket, in the ticket's own type and colours and spaced tightly: the panel is narrow, and
-   the card's title stays its one large line, so the headings go no bigger than the text. */
 .md > :first-child {
   margin-top: 0;
 }
 
-.md > :last-child {
+.md > :last-child,
+.md blockquote > :last-child {
   margin-bottom: 0;
 }
 
@@ -982,16 +986,14 @@ button {
 /* A task's box is drawn as the checklists' are, in the bullet's place; a done one reads quieter, as theirs do. */
 .md .md-task {
   position: relative;
-  margin-left: -18px;
-  padding-left: 18px;
   list-style: none;
 }
 
+/* Out in the bullets' gutter; with the checklists' 2.5 px of margin above it, 3.5 px from the line's top. */
 .md .md-task > input {
   position: absolute;
-  top: 3.5px;
-  left: 0;
-  margin: 0;
+  top: 1px;
+  left: -18px;
 }
 
 .md .md-task:has(> input:checked) {
@@ -999,11 +1001,15 @@ button {
 }
 
 .md code {
+  color: var(--fg);
+  font: 12px var(--font-mono);
+}
+
+/* A chip among the words; a code block is the box itself. */
+.md :not(pre) > code {
   padding: 1px 5px;
   border-radius: var(--radius-xs);
   background: var(--bg-input);
-  color: var(--fg);
-  font: 12px var(--font-mono);
 }
 
 .md pre {
@@ -1016,20 +1022,13 @@ button {
 }
 
 .md pre code {
-  padding: 0;
-  background: none;
   line-height: 1.5;
-  white-space: pre;
 }
 
 .md blockquote {
   padding-left: 10px;
   border-left: 2px solid var(--border);
   color: var(--fg-subtle);
-}
-
-.md blockquote > :last-child {
-  margin-bottom: 0;
 }
 
 .md hr {

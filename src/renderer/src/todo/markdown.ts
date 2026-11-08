@@ -11,7 +11,8 @@ const inlineText = (tokens: Token[]) => tokens.map(textOf).join('');
 const blockText = (tokens: Token[]) => tokens.map(textOf).join(' ');
 
 function textOf(token: Token): string {
-  // Marked's own union of tokens: `Token` also admits an extension's, of which there are none.
+  // Marked's own union of tokens, so the switch below is checked to cover each: `Token` also admits an extension's,
+  // of which there are none.
   const t = token as MarkedToken;
   switch (t.type) {
     case 'blockquote':
@@ -43,21 +44,8 @@ function textOf(token: Token): string {
     case 'hr':
     case 'space':
       return '';
-    default:
-      return token.raw;
   }
 }
 
 /** A card's text with its Markdown marks gone: what a reader sees, its blocks and lines run together by single spaces. */
 export const plainText = (text: string): string => blockText(cardTokens(text)).replace(/\s+/g, ' ').trim();
-
-const SAFE_PROTOCOLS = new Set(['http:', 'https:']);
-
-/** The address of a link in a card, if it is one to follow: a web page, which is all the browser hand-off opens. */
-export function safeHref(href: string): string | null {
-  try {
-    return SAFE_PROTOCOLS.has(new URL(href).protocol) ? href : null;
-  } catch {
-    return null;
-  }
-}
