@@ -5,7 +5,9 @@ import { glyphOf, stateLabel } from '../board/lanes';
 import NewTaskDialog from '../board/NewTaskDialog';
 import StatusGlyph from '../board/StatusGlyph';
 import ManagerColumn from '../manager/ManagerColumn';
-import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from '../manager/managerPrefs';
+import {
+  clampManagerWidth, loadManagerPinned, loadManagerWidth, saveManagerPinned, saveManagerWidth,
+} from '../manager/managerPrefs';
 import { BOARD_ROOM, loadPanelPrefs, MIN_WIDTH, savePanelPrefs, type PanelPrefs } from '../panel/panelPrefs';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
@@ -55,7 +57,16 @@ export default function ProjectPane(props: {
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
   };
-  const besideWidth = () => (showManager() ? shownManagerWidth() : 0);
+  // The project's own pin, as the panel's is. Unpinned, the manager floats over the board and takes no room.
+  const [managerPinned, setManagerPinned] = createSignal(loadManagerPinned(localStorage, dir));
+  const keepManagerPinned = (pinned: boolean) => {
+    setManagerPinned(pinned);
+    saveManagerPinned(localStorage, dir, pinned);
+  };
+  const setManagerOpen = (open: boolean) => {
+    if (open !== showManager()) toggleManagerOf(dir);
+  };
+  const besideWidth = () => (showManager() && managerPinned() ? shownManagerWidth() : 0);
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
   const roomToPin = () => width() - besideWidth() - MIN_WIDTH >= BOARD_ROOM.pinned;
@@ -67,9 +78,11 @@ export default function ProjectPane(props: {
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // Unpinned, a press on the board outside any card puts the panel away.
-  const hideUnpinnedPanel = (e: MouseEvent) => {
-    if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(dir, false);
+  // A press on the board outside any card puts away the panel and the manager that float over it.
+  const hideUnpinned = (e: MouseEvent) => {
+    if ((e.target as Element).closest('[data-testid=task-card]')) return;
+    if (!panelPrefs().pinned) setPanelOpen(dir, false);
+    if (!managerPinned()) setManagerOpen(false);
   };
   const closeDialog = () => {
     setDialogOpen(false);
@@ -93,14 +106,6 @@ export default function ProjectPane(props: {
         onPointerDown={() => revealProject(dir)}
         onFocusIn={() => revealProject(dir)}
       >
-        <ManagerColumn
-          config={props.config}
-          width={shownManagerWidth()}
-          hidden={!showManager()}
-          onDrag={setManagerWidth}
-          onDone={keepManagerWidth}
-        />
-
         <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>
           <header class="topbar">
             <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>
@@ -133,10 +138,23 @@ export default function ProjectPane(props: {
               <span>Next that needs you</span>
             </button>
           </header>
-          <div class="board" data-testid="board" onMouseDown={hideUnpinnedPanel}>
+          <div class="board" data-testid="board" onMouseDown={hideUnpinned}>
             <Board />
           </div>
         </section>
+
+        {/* Laid out left of the board, but after it in the page: macOS carves the top bar's drag region
+            only for what comes after it, and the unpinned column floats over the top bar. */}
+        <ManagerColumn
+          config={props.config}
+          width={shownManagerWidth()}
+          onDrag={setManagerWidth}
+          onDone={keepManagerWidth}
+          pinned={managerPinned()}
+          onPinnedChange={keepManagerPinned}
+          open={showManager()}
+          onOpenChange={setManagerOpen}
+        />
 
         <SidePanel
           label="Selected session"

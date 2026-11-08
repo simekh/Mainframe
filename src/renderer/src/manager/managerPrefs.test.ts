@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { clampManagerWidth, loadManagerWidth, MANAGER_WIDTH, saveManagerWidth } from './managerPrefs';
+import {
+  clampManagerWidth, loadManagerPinned, loadManagerWidth, MANAGER_WIDTH, saveManagerPinned, saveManagerWidth,
+} from './managerPrefs';
 
 /** A Storage stand-in over a plain map. */
 function memoryStorage(entries: Record<string, string> = {}) {
@@ -41,6 +43,19 @@ describe('managerPrefs', () => {
     expect(MANAGER_WIDTH).toEqual({ default: 400, min: 320, max: 640 });
   });
 
+  it("each project keeps its own pin, pinned until the owner unpins it, and a bad stored value pins it", () => {
+    const storage = memoryStorage();
+    expect(loadManagerPinned(storage, '/a')).toBe(true);
+    saveManagerPinned(storage, '/a', false);
+    expect(Object.fromEntries(storage.map)).toEqual({ 'mainframe.manager:/a': '{"pinned":false}' });
+    expect(loadManagerPinned(storage, '/a')).toBe(false);
+    expect(loadManagerPinned(storage, '/b')).toBe(true);
+
+    for (const bad of ['{', 'null', '{"pinned":"no"}']) {
+      expect(loadManagerPinned(memoryStorage({ 'mainframe.manager:/a': bad }), '/a')).toBe(true);
+    }
+  });
+
   it('a storage that refuses the write is ignored', () => {
     const full = {
       setItem: () => {
@@ -48,5 +63,6 @@ describe('managerPrefs', () => {
       },
     };
     expect(() => saveManagerWidth(full, 500)).not.toThrow();
+    expect(() => saveManagerPinned(full, '/a', false)).not.toThrow();
   });
 });

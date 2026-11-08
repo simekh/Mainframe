@@ -96,6 +96,18 @@ test('a project off screen shows how many of its sessions need you, and Ctrl+Tab
   await app.close();
 });
 
+test('the way back to a manager put away shows on screen only', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b, c]);
+  await (await rowButton(page, b, 'rail-beside')).click();
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'false');
+  // Beside others, every manager starts put away, the one off screen too.
+  await expect(pane(page, a).getByTestId('manager-show')).toBeVisible();
+  await expect(pane(page, b).getByTestId('manager-show')).toBeVisible();
+  await expect(pane(page, c).getByTestId('manager-show')).toBeHidden();
+  await app.close();
+});
+
 /** The project of the element with the focus, and whether that is a task's terminal. */
 const cursor = (page: Page) =>
   page.evaluate(() => ({

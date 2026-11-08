@@ -31,3 +31,25 @@ export function saveManagerWidth(storage: Pick<Storage, 'setItem'>, width: numbe
     // Nothing to do: the column keeps working with what it has.
   }
 }
+
+/** Each project's own pin: pinning one project's manager leaves the others' as they are. */
+const pinKeyOf = (dir: string) => `${KEY}:${dir}`;
+
+/** Whether the project's manager is pinned beside the board; until the owner unpins it, it is. */
+export function loadManagerPinned(storage: Pick<Storage, 'getItem'>, dir: string): boolean {
+  try {
+    const saved: unknown = JSON.parse(storage.getItem(pinKeyOf(dir)) ?? 'null');
+    return (saved as Record<string, unknown> | null)?.pinned !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** A storage that refuses the write leaves the pin for this run only. */
+export function saveManagerPinned(storage: Pick<Storage, 'setItem'>, dir: string, pinned: boolean): void {
+  try {
+    storage.setItem(pinKeyOf(dir), JSON.stringify({ pinned }));
+  } catch {
+    // Nothing to do: the column keeps working with what it has.
+  }
+}

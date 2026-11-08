@@ -1,6 +1,8 @@
 import { createSignal, Show, type JSX } from 'solid-js';
 import { useProject } from '../projects/projectContext';
+import Chevron from './Chevron';
 import { clampWidth, type PanelPrefs } from './panelPrefs';
+import PinIcon from './PinIcon';
 import ResizeEdge from './ResizeEdge';
 
 // The pin doesn't take focus on click, so typing stays in the terminal.
@@ -93,17 +95,7 @@ export default function SidePanel(props: {
           aria-label="Hide panel"
           onClick={hide}
         >
-          <svg
-            viewBox="0 0 10 10"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3.5 2 6.5 5l-3 3" />
-          </svg>
+          <Chevron points="right" />
         </button>
         <button
           class="panel-pin"
@@ -115,18 +107,7 @@ export default function SidePanel(props: {
           onMouseDown={keepFocus}
           onClick={togglePin}
         >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linejoin="round"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <path d="M6 2.5h4l-.5 4 2 2v1.5h-7V8.5l2-2-.5-4Z" />
-            <path d="M8 10v3.5" />
-          </svg>
+          <PinIcon />
         </button>
         {props.children}
         <Show when={props.empty}>
@@ -148,17 +129,7 @@ export default function SidePanel(props: {
         onClick={show}
       >
         {props.badge}
-        <svg
-          viewBox="0 0 10 10"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M6.5 2 3.5 5l3 3" />
-        </svg>
+        <Chevron points="left" />
       </button>
     </>
   );

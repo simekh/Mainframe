@@ -213,20 +213,101 @@ test('the manager column sits left of the board, and its top strip holds the win
   expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
   expect((await strip.boundingBox())!.height).toBe(46);
   // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
-  // out of it in that order. None starts within its first 90 px, where the window buttons are.
+  // out of it in that order. None starts within its first 90 px, where the window buttons are. Over
+  // it by a pixel or more: the text in the row under it reaches a tenth of one up into it.
   const starts = await strip.evaluate((bar) => {
     const s = bar.getBoundingClientRect();
     return [...document.querySelectorAll('*')]
       .filter((el) => bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
       .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
       .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.left < s.right && s.left < r.right && r.top < s.bottom && s.top < r.bottom)
+      .filter((r) => r.left < s.right && s.left < r.right && r.top <= s.bottom - 1 && s.top <= r.bottom - 1)
       .map((r) => r.left - s.left);
   });
   expect(Math.min(...starts)).toBeGreaterThanOrEqual(90);
 
   // The board's top bar no longer makes room for them.
   expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
+  await app.close();
+});
+
+test("the manager's arrow puts it away, and the pill at the pane's left edge brings it back", async () => {
+  const { app, page } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const column = page.getByTestId('manager-column');
+  const toggle = page.getByTestId('manager-toggle');
+  const show = page.getByTestId('manager-show');
+  await expect(column).toHaveAttribute('data-pinned', 'true');
+  await expect(show).toBeHidden();
+  const pinned = await box(page, 'manager-column');
+
+  await page.getByTestId('manager-hide').click();
+  await expect(column).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  // Pinned, it gives its room back to the board.
+  expect((await box(page, 'board')).x).toBeLessThan(pinned.x + 100);
+  await expect(show).toBeFocused();
+  expect(Math.abs((await box(page, 'manager-show')).x - (await box(page, 'project-pane')).x)).toBeLessThanOrEqual(1);
+
+  await show.click();
+  await expect(column).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('manager-hide')).toBeFocused();
+  await expect(show).toBeHidden();
+  await app.close();
+});
+
+test('unpinned, the manager floats over the board, a press on the board puts it away, and its terminal keeps its size', async () => {
+  const first = await launchApp();
+  const { page, dataDir } = first;
+  // Room on the board right of the floating column.
+  await setWindowWidth(first.app, page, 1600);
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const size = (await managerTermSize(page))!;
+  const column = page.getByTestId('manager-column');
+  const pin = page.getByTestId('manager-pin');
+
+  await pin.click();
+  await expect(column).toHaveAttribute('data-pinned', 'false');
+  await expect(pin).toHaveAttribute('aria-pressed', 'false');
+  await expect(column).toHaveAttribute('data-open', 'true');
+  // Over the board, which starts under it.
+  const floating = await box(page, 'manager-column');
+  const board = await box(page, 'board');
+  expect(board.x).toBeLessThan(floating.x + floating.width);
+  // macOS hit-tests the top bar's drag region natively, whatever lies over it: the column carves
+  // itself out of it as a no-drag element after it in the page.
+  const carved = await column.evaluate((el) => {
+    const topbar = el.closest('[data-testid=project-pane]')!.querySelector('.topbar')!;
+    const after = Boolean(topbar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return [getComputedStyle(el).getPropertyValue('-webkit-app-region'), after];
+  });
+  expect(carved).toEqual(['no-drag', true]);
+  expect(await managerTermSize(page)).toEqual(size);
+
+  // The bottom of the board, right of the column.
+  await page.getByTestId('board').click({ position: { x: floating.x + floating.width - board.x + 40, y: board.height - 40 } });
+  await expect(column).toHaveAttribute('data-open', 'false');
+  await expect(column).toBeHidden();
+  // A hidden manager that comes to need the owner shows from its way back.
+  const show = page.getByTestId('manager-show');
+  await sendManagerLine(page, report('blocked:kind=question'));
+  await expect(show.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
+  await expect(show).toHaveAccessibleName('Show manager, Needs input');
+
+  await show.click();
+  await expect(column).toBeVisible();
+  await expect(page.getByTestId('manager-hide')).toBeFocused();
+  await page.getByTestId('manager-hide').click();
+  await expect(column).toBeHidden();
+  await expect(show).toBeFocused();
+  expect(await managerTermSize(page)).toEqual(size);
+  await expectSessionSize(size, (line) => sendManagerLine(page, line), () => managerScreen(page));
+  await first.app.close();
+
+  // The pin is the project's, kept for the next start.
+  const { app, page: again } = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
+  await expect(again.getByTestId('manager-column')).toHaveAttribute('data-pinned', 'false');
   await app.close();
 });
 
@@ -310,7 +391,8 @@ test("dragging the manager's edge resizes it, keeps the width, and its terminal 
   const handle = page.getByTestId('manager-resize');
   const edge = await box(page, 'manager-resize');
   const x = edge.x + edge.width / 2;
-  const y = edge.y + edge.height / 2;
+  // Above the hide pill, which sits on the edge's middle.
+  const y = edge.y + edge.height / 4;
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + 80, y, { steps: 8 });
