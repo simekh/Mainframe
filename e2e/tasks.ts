@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
@@ -171,6 +171,19 @@ export function syncReply(dataDir: string, answer: unknown): void {
   const printed = { type: 'result', subtype: 'success', is_error: false, result: '', structured_output: answer };
   writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), JSON.stringify(printed));
 }
+
+/** From now until `releaseSyncs`, a sync run waits without replying, until it is stopped. */
+export const holdSyncs = (dataDir: string) => writeFileSync(join(fakeLogDir(dataDir), 'sync-hold'), '');
+
+export const releaseSyncs = (dataDir: string) => rmSync(join(fakeLogDir(dataDir), 'sync-hold'), { force: true });
+
+const syncMarks = (dataDir: string, ext: string) => readdirSync(fakeLogDir(dataDir)).filter((name) => name.endsWith(ext)).length;
+
+/** How many sync runs are waiting, held. Stopping one before it waits could find it before it can record the stop. */
+export const heldSyncs = (dataDir: string) => syncMarks(dataDir, '.holding');
+
+/** How many sync runs got SIGTERM, which is how Mainframe stops one. */
+export const stoppedSyncs = (dataDir: string) => syncMarks(dataDir, '.sigterm');
 
 /** The Todo folder in this data folder, where an e2e run's one synced project keeps its list and the sync's settings. */
 export function todoDir(dataDir: string): string {

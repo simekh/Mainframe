@@ -14,7 +14,7 @@ import {
   reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
 } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
-import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
+import { cancelTodoSync, confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -24,6 +24,14 @@ function SyncIcon() {
     <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M11.5 7A4.5 4.5 0 0 1 3.6 9.9M2.5 7a4.5 4.5 0 0 1 7.9-2.9" />
       <path d="M10.6 1.6v2.6H8M3.4 12.4V9.8H6" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
     </svg>
   );
 }
@@ -210,20 +218,21 @@ export default function TodoPanel(props: {
         <PinIcon />
       </button>
       {/* One tab for now, and Sync beside the pin, as the session panel's title bar holds its buttons: the row
-          under it keeps its width for the source's name. */}
+          under it keeps its width for the source's name. While a sync runs, the same button, kept so that it keeps
+          the focus, is its Stop, and the row under it says Syncing…. */}
       <div class="todo-tabs">
         <h2 class="todo-tab">Todo</h2>
         <Show when={view()}>
           {(v) => (
             <button
               class="btn todo-sync"
-              data-testid="todo-sync"
-              disabled={v().syncing}
+              data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
+              aria-label={v().syncing ? 'Stop the sync' : undefined}
               onMouseDown={keepFocus}
-              onClick={() => syncTodo(project.dir)}
+              onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
             >
-              <SyncIcon />
-              {v().syncing ? 'Syncing…' : 'Sync'}
+              {v().syncing ? <StopIcon /> : <SyncIcon />}
+              {v().syncing ? 'Stop' : 'Sync'}
             </button>
           )}
         </Show>
@@ -241,7 +250,12 @@ export default function TodoPanel(props: {
                   </span>
                 )}
               </Show>
-              <span class="todo-synced">{syncedLine(v(), now())}</span>
+              <span class="todo-synced">
+                <Show when={v().syncing} fallback={syncedLine(v(), now())}>
+                  <SyncIcon />
+                  Syncing…
+                </Show>
+              </span>
             </div>
 
             <Switch>

@@ -3,10 +3,18 @@
 # a plain shell so the terminal tests can type into it.
 if [ -n "$FAKE_CLAUDE_LOG_DIR" ]; then printf '%s\0' "$PWD" "$@" > "$FAKE_CLAUDE_LOG_DIR/$$.argv"; fi
 # A sync is a `claude -p` run: it records the prompt it reads on stdin, and prints what the test put in
-# sync-reply.json as its answer (nothing without one, which Mainframe reads as a failed run).
+# sync-reply.json as its answer (nothing without one, which Mainframe reads as a failed run). While
+# sync-hold is in the folder, it waits instead of replying, and records that it waits in <pid>.holding.
+# Mainframe stops a run with SIGTERM: it is recorded in <pid>.sigterm, after the run has printed its
+# reply as it went, like a run that answers just as it is stopped.
 if [ "$1" = "-p" ]; then
   cat > "$FAKE_CLAUDE_LOG_DIR/$$.stdin"
-  if [ -f "$FAKE_CLAUDE_LOG_DIR/sync-reply.json" ]; then cat "$FAKE_CLAUDE_LOG_DIR/sync-reply.json"; fi
+  reply() { if [ -f "$FAKE_CLAUDE_LOG_DIR/sync-reply.json" ]; then cat "$FAKE_CLAUDE_LOG_DIR/sync-reply.json"; fi; }
+  trap 'reply; : > "$FAKE_CLAUDE_LOG_DIR/$$.sigterm"; exit 143' TERM
+  if [ -f "$FAKE_CLAUDE_LOG_DIR/sync-hold" ]; then : > "$FAKE_CLAUDE_LOG_DIR/$$.holding"; fi
+  # `wait` returns as soon as the signal comes, which a foreground sleep would put off.
+  while [ -f "$FAKE_CLAUDE_LOG_DIR/sync-hold" ]; do sleep 0.05 & wait $!; done
+  reply
   exit 0
 fi
 # What Mainframe's SessionStart hook does once Claude Code has begun the conversation: it writes

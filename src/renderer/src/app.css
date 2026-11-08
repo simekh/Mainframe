@@ -502,15 +502,10 @@ button {
   background: var(--accent);
 }
 
-/* A drag region takes no clicks of its own. */
+/* A drag region takes no clicks of its own. While a sync runs this is its Stop, the same width as Sync. */
 .todo-sync {
   margin-left: auto;
   -webkit-app-region: no-drag;
-}
-
-/* Motion means working, as on the board's glyphs. */
-.todo-sync:disabled svg {
-  animation: glyph-spin 0.9s linear infinite;
 }
 
 /* Where the list comes from, in the row under the title; a long name gives way first, and when it
@@ -523,7 +518,17 @@ button {
 
 .todo-synced {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--fg-subtle);
+}
+
+/* While a sync runs the line says Syncing…, and motion means working, as on the board's glyphs. */
+.todo-synced svg {
+  width: 11px;
+  height: 11px;
+  animation: glyph-spin 0.9s linear infinite;
 }
 
 .todo-source-name + .todo-synced {
@@ -2670,7 +2675,7 @@ kbd {
    suggestion ring stays as it rests, and Syncing… says in words what the turning arrows show. */
 @media (prefers-reduced-motion: reduce) {
   .g-spin,
-  .todo-sync:disabled svg,
+  .todo-synced svg,
   .card[data-suggestion='true']::before,
   .card[data-suggestion='true']::after {
     animation: none;

@@ -75,6 +75,8 @@ export function registerIpc(
   ipcMain.handle(IPC.syncTodo, async (_e, dir: string) => {
     await todoOf(dir).sync();
   });
+  // Not `close()`, which refuses every later sync.
+  ipcMain.handle(IPC.cancelTodoSync, (_e, dir: string) => todoOf(dir).cancel());
   ipcMain.handle(IPC.confirmTodoTools, async (_e, dir: string) => {
     await todoOf(dir).confirmTools();
   });

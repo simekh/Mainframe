@@ -178,7 +178,7 @@ export class TodoService {
     return task;
   }
 
-  /** Stops a running sync, which then ends with an error: nothing it answers is kept. */
+  /** Stops a running sync: its callers get the stopped outcome, the view shows no error, and nothing the run answers is kept. */
   cancel(): void {
     const running = this.running;
     if (!running) return;

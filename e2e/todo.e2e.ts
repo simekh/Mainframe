@@ -5,7 +5,8 @@ import { test, expect, type ElectronApplication, type Locator, type Page } from 
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, ids, launches, openedLinks, repoAhead, syncLaunches, syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, launches, openedLinks, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches,
+  syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -190,6 +191,53 @@ test('a sync that fails says why and keeps the list', async () => {
   await expect(page.getByTestId('todo-reset')).toHaveCount(0);
   await expect(page.getByTestId('todo-error')).toHaveCount(0);
   await expect(page.getByTestId('todo-item')).toHaveCount(2);
+  await app.close();
+});
+
+test('Stop ends a running sync quietly: the list stays, a reply from the stopped run changes nothing, and Sync starts a fresh run', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const panel = page.getByTestId('todo-panel');
+  const items = page.getByTestId('todo-item');
+  const [search, exported] = CARDS.cards;
+
+  // The second sync waits without replying. What the reply file holds is what that run prints as it is stopped.
+  holdSyncs(dataDir);
+  syncReply(dataDir, { ...CARDS, cards: [{ ...search, id: 'c999', number: '#999', title: 'From the stopped run' }] });
+  await page.getByTestId('todo-sync').click();
+  const stop = page.getByTestId('todo-stop-sync');
+  await expect(stop).toHaveText('Stop');
+  await expect(stop).toHaveAttribute('aria-label', 'Stop the sync');
+  await expect(stop).toBeEnabled();
+  await expect(page.getByTestId('todo-sync')).toHaveCount(0);
+  await expect(panel.getByText('Syncing…')).toBeVisible();
+  await expect.poll(() => heldSyncs(dataDir)).toBe(1);
+
+  await stop.click();
+
+  // Quiet: Sync is back, no error shows, and the list and its synced time are as they were.
+  await expect(page.getByTestId('todo-sync')).toHaveText('Sync');
+  await expect(page.getByTestId('todo-sync')).toBeEnabled();
+  await expect(page.getByTestId('todo-stop-sync')).toHaveCount(0);
+  await expect(page.getByTestId('todo-error')).toHaveCount(0);
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText('Search ignores accents');
+  await expect(panel.getByText('Synced just now')).toBeVisible();
+
+  // The run got SIGTERM, and printed its reply as it went: the list is still as it was.
+  await expect.poll(() => stoppedSyncs(dataDir)).toBe(1);
+  await expect(items).toHaveCount(2);
+  await expect(panel.getByText('From the stopped run')).toHaveCount(0);
+  await expect(page.getByTestId('todo-error')).toHaveCount(0);
+
+  // Sync after a Stop starts a fresh run.
+  releaseSyncs(dataDir);
+  syncReply(dataDir, { ...CARDS, cards: [{ ...search, title: 'Search ignores accents and case' }, exported] });
+  await page.getByTestId('todo-sync').click();
+  await expect(items.first()).toContainText('Search ignores accents and case');
+  await expect(items).toHaveCount(2);
+  await expect(page.getByTestId('todo-sync')).toHaveText('Sync');
+  expect(syncLaunches(dataDir)).toHaveLength(4);
   await app.close();
 });
 
