@@ -86,8 +86,8 @@ export function registerIpc(
   ipcMain.handle(IPC.deleteTodoNote, (_e, dir: string, id: string) => todoOf(dir).deleteNote(id));
   ipcMain.handle(
     IPC.startTodoItem,
-    (_e, dir: string, { item, noQuestions }: { item: TodoItemRef; noQuestions: boolean }) =>
-      todoOf(dir).startItem(item, { noQuestions }),
+    (_e, dir: string, { item, noQuestions, ownersCard }: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }) =>
+      todoOf(dir).startItem(item, { noQuestions, ownersCard }),
   );
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.

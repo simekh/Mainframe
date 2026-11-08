@@ -37,21 +37,25 @@ export function registerManagerTools(
     'start_task',
     {
       description:
-        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task; the brief is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added.",
+        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task; the brief is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added. A card marked as the owner's starts only when the owner names it: never pick one yourself.",
       inputSchema: z.object({
         title: z.string().min(1).max(200),
         brief: z.string().max(20000),
         noQuestions: z.boolean().optional(),
         cardId: z.string().optional(),
+        ownerNamedIt: z
+          .boolean()
+          .optional()
+          .describe("Set only when the owner named this card themselves; a card marked as the owner's is refused without it."),
       }),
     },
-    async ({ title, brief, noQuestions, cardId }) => {
+    async ({ title, brief, noQuestions, cardId, ownerNamedIt }) => {
       try {
         const check = await tasks.startCheck();
         const quiet = noQuestions ?? false;
         const task = await (cardId === undefined
           ? tasks.start({ title, description: brief, noQuestions: quiet })
-          : todo.startItem({ kind: 'card', id: cardId }, { noQuestions: quiet, brief }));
+          : todo.startItem({ kind: 'card', id: cardId }, { noQuestions: quiet, brief, ownersCard: ownerNamedIt }));
         const warning = check && check.ahead > 0 ? { warning: aheadWarning(check) } : {};
         return text({ taskId: task.id, title: task.title, branch: task.branch, ...warning });
       } catch (err) {

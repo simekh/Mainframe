@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
-import { reopenTaskId, sourceLine, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
+import { reopenTaskId, sourceLine, startsFromTicket, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -96,13 +96,14 @@ describe('todoItems', () => {
     expect(item.action).toEqual({ kind: 'reopen', taskId: 'newest' });
   });
 
-  it('a card for the owner offers nothing', () => {
+  it('a card for the owner has no Start, but a closed task of it offers Reopen of the newest, as any card does', () => {
     const items = todoItems(view({ cards: [card('1', { forOwner: true }), card('2', { forOwner: true })] }), [
-      task('t2', '2', { open: false }),
+      task('older', '2', { open: false, createdAt: 10 }),
+      task('newest', '2', { open: false, createdAt: 30 }),
     ]);
     expect(items.map((i) => [i.key, i.forOwner, i.action])).toEqual([
       ['card:1', true, null],
-      ['card:2', true, null],
+      ['card:2', true, { kind: 'reopen', taskId: 'newest' }],
     ]);
   });
 
@@ -113,6 +114,18 @@ describe('todoItems', () => {
       ['card:2', { kind: 'reopen', taskId: 't2' }],
       ['card:3', { kind: 'start' }],
     ]);
+  });
+});
+
+describe('startsFromTicket', () => {
+  const only = (view_: TodoView, tasks: TaskView[] = []) => todoItems(view_, tasks)[0];
+
+  it("is so for a card for a session, a note, and a card for the owner with no task, and not for one that offers Reopen", () => {
+    expect(startsFromTicket(only(view({ cards: [card('1')] })))).toBe(true);
+    expect(startsFromTicket(only(view({ notes: [note('a')] })))).toBe(true);
+    expect(startsFromTicket(only(view({ cards: [card('1', { forOwner: true })] })))).toBe(true);
+    expect(startsFromTicket(only(view({ cards: [card('1')] }), [task('t', '1', { open: false })]))).toBe(false);
+    expect(startsFromTicket(only(view({ cards: [card('1', { forOwner: true })] }), [task('t', '1', { open: false })]))).toBe(false);
   });
 });
 

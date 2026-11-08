@@ -613,16 +613,65 @@ it("a card whose id is asked for beats an earlier card whose number is the same"
   ]);
 });
 
-it('a card for the owner is not started, whether asked for by its id or by its number, and says so', async () => {
+it('a card for the owner is not started unless the owner chose it, whether asked for by its id or by its number, and says so', async () => {
   const t = setup();
   const cards = [card('c7', { number: '#7', forOwner: true }), card('c8', { number: null, title: 'Decide', forOwner: true })];
   await synced(t, { ...CARDS_ANSWER, cards });
+  const refusal = (name: string) => `${name} is for the owner; start it only when the owner names it`;
 
-  await expect(t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: false })).rejects.toThrow('#7 is for the owner, not for a task');
-  await expect(t.service.startItem({ kind: 'card', id: '7' }, { noQuestions: false })).rejects.toThrow('#7 is for the owner, not for a task');
+  await expect(t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: false })).rejects.toThrow(refusal('#7'));
+  await expect(t.service.startItem({ kind: 'card', id: '7' }, { noQuestions: false })).rejects.toThrow(refusal('#7'));
   // Without a number, the title stands in.
-  await expect(t.service.startItem({ kind: 'card', id: 'c8' }, { noQuestions: false })).rejects.toThrow('Decide is for the owner, not for a task');
+  await expect(t.service.startItem({ kind: 'card', id: 'c8' }, { noQuestions: false })).rejects.toThrow(refusal('Decide'));
+  // Said not to be, it is refused as when it is not said at all.
+  await expect(t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: false, ownersCard: false })).rejects.toThrow(refusal('#7'));
   expect(t.starts).toEqual([]);
+});
+
+it("a card for the owner starts when the owner chose it, with the card ref any card has", async () => {
+  const t = setup();
+  const cards = [card('c7', { number: '#7', forOwner: true, labels: ['Decision'], urgent: true }), card('c9', { number: '#9', labels: ['Decision'], urgent: true })];
+  await synced(t, { ...CARDS_ANSWER, cards });
+
+  const started = await t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: true, brief: 'Take it from here', ownersCard: true });
+  await t.service.startItem({ kind: 'card', id: '9' }, { noQuestions: true, brief: 'Take it from here' });
+
+  expect(started).toBe(TASK);
+  expect(t.starts).toStrictEqual([
+    {
+      title: 'Card c7',
+      description: 'Take it from here',
+      noQuestions: true,
+      card: { sourceKind: 'Tracker', id: 'c7', number: '#7', url: 'https://tracker.example/c/c7', labels: ['Decision'], position: 0, urgent: true },
+    },
+    {
+      title: 'Card c9',
+      description: 'Take it from here',
+      noQuestions: true,
+      card: { sourceKind: 'Tracker', id: 'c9', number: '#9', url: 'https://tracker.example/c/c9', labels: ['Decision'], position: 1, urgent: true },
+    },
+  ]);
+  // By its number too.
+  await t.service.startItem({ kind: 'card', id: '#7' }, { noQuestions: false, ownersCard: true });
+  expect(t.starts[2].card?.id).toBe('c7');
+});
+
+it("the owner's choice changes nothing for a card for an agent or a note", async () => {
+  const t = setup();
+  await synced(t);
+  const note = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks' });
+  const other = t.service.saveNote({ title: 'Oil the hinge', text: 'It squeaks' });
+
+  await t.service.startItem({ kind: 'card', id: 'c2' }, { noQuestions: false });
+  await t.service.startItem({ kind: 'card', id: 'c2' }, { noQuestions: false, ownersCard: true });
+  expect(t.starts[1]).toStrictEqual(t.starts[0]);
+
+  await t.service.startItem({ kind: 'note', id: note.id }, { noQuestions: false });
+  await t.service.startItem({ kind: 'note', id: other.id }, { noQuestions: false, ownersCard: true });
+  expect(t.starts.slice(2)).toStrictEqual([
+    { title: 'Fix the gate', description: 'It sticks', noQuestions: false },
+    { title: 'Oil the hinge', description: 'It squeaks', noQuestions: false },
+  ]);
 });
 
 it('a note starts a task with its title and text, then leaves the list; a start that fails keeps it', async () => {

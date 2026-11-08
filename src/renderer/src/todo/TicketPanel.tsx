@@ -8,7 +8,7 @@ import ResumeIcon from '../panel/ResumeIcon';
 import { useProject } from '../projects/projectContext';
 import { isFocused } from '../projects/projectsStore';
 import Markdown from './MarkdownView';
-import { reopenTaskId, syncedAgo, type TodoItem } from './todoItems';
+import { reopenTaskId, startsFromTicket, syncedAgo, type TodoItem } from './todoItems';
 import { todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click, as the Todo panel's don't: typing stays where it was.
@@ -27,7 +27,7 @@ export default function TicketPanel(props: {
   /** A start is under way in the project, or the ticket's start check: Start waits for it. */
   starting: boolean;
   onClose(): void;
-  onStart(o: { noQuestions: boolean; note?: { title: string; text: string } }): void;
+  onStart(o: { noQuestions: boolean; note?: { title: string; text: string }; ownersCard?: boolean }): void;
   onReopen(taskId: string): void;
 }) {
   const project = useProject();
@@ -38,6 +38,9 @@ export default function TicketPanel(props: {
   const isNote = () => props.item === 'new-note' || props.item.kind === 'note';
   const action = () => (props.item === 'new-note' ? { kind: 'start' as const } : props.item.action);
   const reopenId = () => reopenTaskId(action());
+  // A card marked for the owner that has no task: its Start is the owner's own choice, as Start anyway.
+  const ownersStart = () => item()?.forOwner === true && action() === null;
+  const startable = () => props.item === 'new-note' || startsFromTicket(props.item);
   // Where the card opens in its source: only for a card with a URL, from a source the last sync named.
   const link = () => {
     const url = card()?.url;
@@ -217,8 +220,11 @@ export default function TicketPanel(props: {
             </footer>
           )}
         </Match>
-        <Match when={action()?.kind === 'start'}>
+        <Match when={startable()}>
           <footer class="ticket-foot">
+            <Show when={ownersStart()}>
+              <p class="ticket-owner-note">This card is marked as yours.</p>
+            </Show>
             <Show when={props.warning}>{(check) => <StartCheckWarning check={check()} testId="ticket-warning" />}</Show>
             <Show when={props.error}>
               {(message) => (
@@ -230,12 +236,12 @@ export default function TicketPanel(props: {
             <div class="ticket-actions">
               <button
                 class="btn primary"
-                data-testid="ticket-start"
+                data-testid={ownersStart() ? 'ticket-start-owner' : 'ticket-start'}
                 disabled={props.starting || (isNote() && !title().trim())}
                 onMouseDown={keepFocus}
-                onClick={() => props.onStart({ noQuestions: noQuestions(), note: fields() })}
+                onClick={() => props.onStart({ noQuestions: noQuestions(), note: fields(), ownersCard: ownersStart() })}
               >
-                {props.warning ? 'Start anyway' : 'Start'}
+                {ownersStart() || props.warning ? 'Start anyway' : 'Start'}
               </button>
               <label class="ticket-noq">
                 <input

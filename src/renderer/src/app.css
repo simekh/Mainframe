@@ -1152,6 +1152,13 @@ button {
   border-top: 1px solid var(--border-subtle);
 }
 
+/* What the owner's choice is about, above the one button: as quiet as the card's own sync note. */
+.ticket-owner-note {
+  margin: 0;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
 .ticket-actions {
   display: flex;
   flex-wrap: wrap;

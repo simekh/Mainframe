@@ -147,10 +147,11 @@ export class TodoService {
 
   /**
    * Starts a task from a card or a note. A card is found by its id, or when none has that id, by its number as the
-   * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A note
-   * leaves the list once its task has started.
+   * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A card
+   * marked for the owner is a hint, not a lock: it starts only with `ownersCard`, which the owner's own choice sets.
+   * A note leaves the list once its task has started.
    */
-  async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string }): Promise<TaskView> {
+  async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string; ownersCard?: boolean }): Promise<TaskView> {
     if (item.kind === 'card') {
       const { source, cards } = this.record;
       const bare = (s: string) => s.replace(/^#/, '');
@@ -158,7 +159,9 @@ export class TodoService {
       if (position < 0) position = cards.findIndex((c) => c.number !== null && bare(c.number) === bare(item.id));
       if (position < 0 || !source) throw new Error(`No card ${item.id} in the synced list; sync it again`);
       const card = cards[position];
-      if (card.forOwner) throw new Error(`${card.number ?? card.title} is for the owner, not for a task`);
+      if (card.forOwner && !opts.ownersCard) {
+        throw new Error(`${card.number ?? card.title} is for the owner; start it only when the owner names it`);
+      }
       return this.deps.startTask({
         title: card.title,
         description: opts.brief ?? '',

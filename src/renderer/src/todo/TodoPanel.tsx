@@ -10,7 +10,7 @@ import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
 import TicketPanel from './TicketPanel';
-import { reopenTaskId, sourceLine, syncedLine, todoItems, visibleItems, type TodoItem } from './todoItems';
+import { reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type TodoItem } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
 import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
@@ -88,7 +88,8 @@ export default function TodoPanel(props: {
   function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
     setWarning(found?.warning ?? null);
     setStartError(found?.error ?? null);
-    const check = !found && (key === 'new-note' || itemByKey().get(key)?.action?.kind === 'start');
+    const target = itemByKey().get(key);
+    const check = !found && (key === 'new-note' || (target !== undefined && startsFromTicket(target)));
     setChecking(check);
     props.onTicketChange(key);
     if (!check) return;
@@ -111,7 +112,7 @@ export default function TodoPanel(props: {
    */
   async function start(
     item: TodoItem | 'new-note',
-    o: { noQuestions: boolean; note?: { title: string; text: string } },
+    o: { noQuestions: boolean; note?: { title: string; text: string }; ownersCard?: boolean },
     check = false,
   ): Promise<void> {
     if (starting()) return;
@@ -127,7 +128,7 @@ export default function TodoPanel(props: {
       } else {
         // A note's edits are saved first, so its task starts from them.
         if (o.note && item.note) await window.mainframe.saveTodoNote(project.dir, { id: item.note.id, ...o.note });
-        await startTodoItem(project.dir, { item: { kind: item.kind, id: item.id }, noQuestions: o.noQuestions });
+        await startTodoItem(project.dir, { item: { kind: item.kind, id: item.id }, noQuestions: o.noQuestions, ownersCard: o.ownersCard });
       }
       // Another item's ticket stays, with what is typed in it.
       if (props.ticket === key) props.onTicketChange(null);

@@ -11,7 +11,7 @@ export interface TodoItem {
   number: string | null;
   labels: string[];
   forOwner: boolean;
-  /** Start; Reopen of the newest closed task that has this card; none for a card for the owner. */
+  /** Start; Reopen of the newest closed task that has this card; none for a card for the owner that has no task. */
   action: { kind: 'start' } | { kind: 'reopen'; taskId: string } | null;
   card: TodoCard | null;
   note: TodoNote | null;
@@ -35,7 +35,9 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
     const own = byCard.get(card.id) ?? [];
     if (own.some((t) => t.session !== null)) return [];
     const newest = own.reduce<TaskView | null>((a, t) => (a && a.createdAt >= t.createdAt ? a : t), null);
-    const action: TodoItem['action'] = card.forOwner ? null : newest ? { kind: 'reopen', taskId: newest.id } : { kind: 'start' };
+    // A card marked for the owner has no Start in the list, though a task of it that closed can be reopened. The owner
+    // starts it from its ticket.
+    const action: TodoItem['action'] = newest ? { kind: 'reopen', taskId: newest.id } : card.forOwner ? null : { kind: 'start' };
     const { id, title, description, number, labels, forOwner } = card;
     return [{ key: `card:${id}`, kind: 'card', id, title, body: description, number, labels, forOwner, action, card, note: null }];
   });
@@ -60,6 +62,13 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
 /** The items the list shows: with `hideMine`, every card for the owner is left out; notes and the cards for sessions stay. */
 export const visibleItems = (items: TodoItem[], hideMine: boolean): TodoItem[] =>
   hideMine ? items.filter((item) => !item.forOwner) : items;
+
+/**
+ * Whether the item's ticket has a Start: any item with a Start of its own, and a card marked for the owner that has no
+ * task yet, which only the owner starts, from that ticket.
+ */
+export const startsFromTicket = (item: TodoItem): boolean =>
+  item.action?.kind === 'start' || (item.forOwner && item.action === null);
 
 /** The task a Reopen would reopen, for an item's `action`. */
 export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);

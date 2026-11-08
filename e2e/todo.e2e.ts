@@ -611,7 +611,7 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await app.close();
 });
 
-test('a card for the owner opens its ticket but offers no Start', async () => {
+test("a card for the owner has no Start in the list; its ticket says it is marked as yours and Start anyway starts it, and a closed one offers Reopen", async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   const [search, exported] = CARDS.cards;
   const forOwner = { ...exported, id: 'c119', number: '#119', title: 'Decide on the refund window', labels: ['Decision'], forOwner: true };
@@ -625,9 +625,61 @@ test('a card for the owner opens its ticket but offers no Start', async () => {
   const ticket = page.getByTestId('ticket-panel');
   await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('#119 Decide on the refund window');
   await expect(ticket.getByText('Decision', { exact: true })).toBeVisible();
-  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
-  await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
   await expect(ticket.getByTestId('ticket-reopen')).toHaveCount(0);
+
+  // The footer every card has, with one quiet line above the one button.
+  await expect(ticket.getByText('This card is marked as yours.')).toBeVisible();
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  const startAnyway = ticket.getByTestId('ticket-start-owner');
+  await expect(startAnyway).toHaveText('Start anyway');
+  await expect(ticket.getByTestId('ticket-no-questions')).not.toBeChecked();
+  await expect(ticket.getByTestId('ticket-warning')).toHaveCount(0);
+  expect(launches(dataDir)).toEqual([]);
+
+  // It starts the task as the ticket's Start does: under Working and selected, the choice of no questions kept, the
+  // ticket closed, the card off the list.
+  await ticket.getByTestId('ticket-no-questions').check();
+  await startAnyway.click();
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('No questions on this task');
+  expect(launches(dataDir)[0].args.at(-1)).toContain('Task: #119 Decide on the refund window');
+  const [id] = await ids(page);
+  await expect(cardIn(page, 'working', id)).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('panel-title')).toHaveText('Decide on the refund window');
+  await expect(ticket).toHaveCount(0);
+  await expect(owner).toHaveCount(0);
+
+  // Closed, it comes back greyed with Reopen, in the list and in its ticket, and still no Start.
+  await closeTask(page, id);
+  await expect(owner.getByTestId('todo-reopen')).toHaveAccessibleName('Reopen Decide on the refund window');
+  await expect(owner.getByTestId('todo-start')).toHaveCount(0);
+  await expect(owner).toHaveAttribute('data-for-owner', 'true');
+  await owner.click();
+  await expect(ticket.getByTestId('ticket-reopen')).toBeVisible();
+  await expect(ticket.getByTestId('ticket-start-owner')).toHaveCount(0);
+  await expect(ticket.getByText('This card is marked as yours.')).toHaveCount(0);
+  await app.close();
+});
+
+test("a card for the owner whose start the check warns about shows the warning above the same Start anyway", async () => {
+  const ahead = repo();
+  writeFileSync(join(ahead, 'local.txt'), 'local\n');
+  git('-C', ahead, 'add', 'local.txt');
+  git('-C', ahead, 'commit', '-m', 'local');
+  const { app, page, dataDir } = await launchApp({}, ahead);
+  const forOwner = { ...CARDS.cards[1], id: 'c119', number: '#119', title: 'Decide on the refund window', forOwner: true };
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [forOwner] });
+
+  await itemRow(page, 'card:c119').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket.getByTestId('ticket-warning')).toBeVisible();
+  await expect(ticket.getByText('This card is marked as yours.')).toBeVisible();
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-start-owner')).toHaveText('Start anyway');
+  expect(launches(dataDir)).toEqual([]);
+
+  await ticket.getByTestId('ticket-start-owner').click();
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Task: #119 Decide on the refund window');
+  await expect(ticket).toHaveCount(0);
   await app.close();
 });
 
