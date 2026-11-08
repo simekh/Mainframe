@@ -20,13 +20,13 @@ export interface TodoItem {
 /**
  * The list as the panel shows it: the cards in the source's order, then the notes. A card is hidden while a task
  * started from it is open, even when a sync brings it back before that task has moved it: Start would refuse it.
+ * A task matches its card on the card's id alone: the source's name is each sync's own answer.
  */
 export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
-  const kind = view.source?.kind;
-  // The tasks started from a card of this source, by the card's id, each in the order of `tasks`.
+  // The tasks started from a card, by the card's id, each in the order of `tasks`.
   const byCard = new Map<string, TaskView[]>();
   for (const t of tasks) {
-    if (t.card === null || t.card.sourceKind !== kind) continue;
+    if (t.card === null) continue;
     const own = byCard.get(t.card.id);
     if (own) own.push(t);
     else byCard.set(t.card.id, [t]);

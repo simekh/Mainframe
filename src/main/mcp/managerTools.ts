@@ -28,7 +28,7 @@ export function registerManagerTools(
     'list_sessions',
     {
       description:
-        "Every task session Mainframe runs for this project, with its title, branch, worktree, Claude session id, whether it runs, and its last reported state (working, idle, blocked, done, error; null before the first report) and message. Read a task's worktree and its git history to say what it is doing.",
+        "Every task session Mainframe runs for this project, with its title, branch, worktree, Claude session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, and the card it was started from (number and URL; null for none). Read a task's worktree and its git history to say what it is doing.",
     },
     async () => text({ sessions: tasks.reports() }),
   );
@@ -37,7 +37,7 @@ export function registerManagerTools(
     'start_task',
     {
       description:
-        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task; the brief is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id), the task starts from that card, and the brief is what the owner added.",
+        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task; the brief is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added.",
       inputSchema: z.object({
         title: z.string().min(1).max(200),
         brief: z.string().max(20000),

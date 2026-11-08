@@ -106,12 +106,12 @@ describe('todoItems', () => {
     ]);
   });
 
-  it('a task matches a card only from the same source', () => {
-    const elsewhere = [task('t1', '1', { open: true, sourceKind: 'Other' }), task('t2', '2', { open: false, sourceKind: 'Other' })];
-    const items = todoItems(view({ cards: [card('1'), card('2')] }), elsewhere);
+  it("a task matches its card whatever name the latest sync gave the source", () => {
+    const renamed = [task('t1', '1', { open: true, sourceKind: 'Tracker Issues' }), task('t2', '2', { open: false, sourceKind: 'Tracker Issues' })];
+    const items = todoItems(view({ cards: [card('1'), card('2'), card('3')] }), renamed);
     expect(items.map((i) => [i.key, i.action])).toEqual([
-      ['card:1', { kind: 'start' }],
-      ['card:2', { kind: 'start' }],
+      ['card:2', { kind: 'reopen', taskId: 't2' }],
+      ['card:3', { kind: 'start' }],
     ]);
   });
 });

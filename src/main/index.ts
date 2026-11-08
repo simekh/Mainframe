@@ -157,8 +157,10 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
           console.error(`[manager] could not start the manager of ${dir}`, err);
         }
       },
+      cancelSync: () => todo.cancel(),
       release: async () => {
-        // First: the manager may be waiting on a sync through the server that closes next.
+        // Again, and first: a manager that outlasted its hangup may have asked for a sync, through the server that
+        // closes next, after the close began.
         todo.cancel();
         await mcp.close();
       },

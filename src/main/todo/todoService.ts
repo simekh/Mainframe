@@ -142,11 +142,15 @@ export class TodoService {
     this.changed();
   }
 
-  /** Starts a task from a card or a note. A note leaves the list once its task has started. */
+  /**
+   * Starts a task from a card or a note. A card is found by its id or by its number as the list shows it, with or
+   * without a leading #; the first match wins. A note leaves the list once its task has started.
+   */
   async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string }): Promise<TaskView> {
     if (item.kind === 'card') {
       const { source, cards } = this.record;
-      const position = cards.findIndex((c) => c.id === item.id);
+      const bare = (s: string) => s.replace(/^#/, '');
+      const position = cards.findIndex((c) => c.id === item.id || (c.number !== null && bare(c.number) === bare(item.id)));
       if (position < 0 || !source) throw new Error(`No card ${item.id} in the synced list; sync it again`);
       const card = cards[position];
       return this.deps.startTask({

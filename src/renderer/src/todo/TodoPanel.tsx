@@ -122,7 +122,12 @@ export default function TodoPanel(props: {
       // Another item's ticket stays, with what is typed in it.
       if (props.ticket === key) props.onTicketChange(null);
     } catch (err) {
-      openTicket(key, { warning: props.ticket === key ? warning() : null, error: errorMessage(err) });
+      if (item !== 'new-note' && !itemByKey().has(key)) {
+        // Its item has left the list, so there is no ticket to show the error in: a reopened one would close at once.
+        console.error(`[todo] could not start ${key} for ${project.dir}: ${errorMessage(err)}`);
+      } else {
+        openTicket(key, { warning: props.ticket === key ? warning() : null, error: errorMessage(err) });
+      }
     } finally {
       setStarting(false);
     }

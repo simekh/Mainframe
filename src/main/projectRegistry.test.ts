@@ -22,7 +22,7 @@ function fakeSessions(ids: string[]) {
 type Fake = RegisteredProject & { service: ReturnType<typeof fakeSessions>; manager: ReturnType<typeof fakeSessions> };
 
 function fakeProject({ tasks = [] as string[], manager = [] as string[] } = {}): Fake {
-  return { service: fakeSessions(tasks), manager: fakeSessions(manager), start: vi.fn(), release: vi.fn(async () => {}) };
+  return { service: fakeSessions(tasks), manager: fakeSessions(manager), start: vi.fn(), cancelSync: vi.fn(), release: vi.fn(async () => {}) };
 }
 
 /**
@@ -127,6 +127,21 @@ it('closes a project: its sessions end as they do at Quit, then it lets go of th
   expect(registry.list().map((p) => p.dir)).toEqual([GLOBEX]);
   expect(remembered()).toEqual([GLOBEX]);
   expect(changes.at(-1)).toEqual([{ dir: GLOBEX, name: 'globex' }]);
+});
+
+it("stops the project's sync as its close begins, while its sessions still run", async () => {
+  const acme = fakeProject({ tasks: ['t1'], manager: ['m1'] });
+  const globex = fakeProject();
+  const { registry, host } = setup({ made: { [ACME]: () => acme, [GLOBEX]: () => globex }, exitMs: 20 });
+  await registry.open(ACME);
+  await registry.open(GLOBEX);
+  const running: string[][] = [];
+  vi.mocked(acme.cancelSync).mockImplementation(() => running.push([...host]));
+
+  await registry.close(ACME);
+
+  expect(running).toEqual([['t1', 'm1']]);
+  expect(globex.cancelSync).not.toHaveBeenCalled();
 });
 
 it('kills outright a session that outlasts the hangup, so none runs on beside the one a reopen starts', async () => {

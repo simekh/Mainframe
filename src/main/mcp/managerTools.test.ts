@@ -26,6 +26,7 @@ const REPORT: SessionReport = {
   running: true,
   state: 'working',
   msg: null,
+  card: { number: '#128', url: 'https://tracker.example/c/128' },
 };
 
 /** The tools, registered through a fake server that records `registerTool`, and what they were given. */
@@ -76,10 +77,12 @@ it('registers list_sessions, start_task and sync_todo, and nothing else, each wi
   for (const tool of tools.values()) expect(tool.config.description).toMatch(/\w/);
 });
 
-it('list_sessions takes no input and returns the reports as JSON', async () => {
+it("list_sessions takes no input and returns the reports as JSON, each with its task's card", async () => {
   const { tools, call } = setup();
   expect(tools.get('list_sessions')!.config.inputSchema).toBeUndefined();
-  expect(json(await call('list_sessions'))).toEqual({ sessions: [REPORT] });
+  const result = json(await call('list_sessions'));
+  expect(result).toEqual({ sessions: [REPORT] });
+  expect(result.sessions[0].card).toEqual({ number: '#128', url: 'https://tracker.example/c/128' });
 });
 
 it('start_task takes a title of 1 to 200 characters, a brief of up to 20000 and an optional noQuestions', () => {

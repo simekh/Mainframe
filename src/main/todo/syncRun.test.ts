@@ -68,6 +68,12 @@ describe('syncSettings', () => {
     expect(JSON.parse(settings)).not.toHaveProperty('permissions');
   });
 
+  it("switches hooks on, so the owner's or the repo's disableAllHooks can't turn the guard off", () => {
+    for (const allow of [[], ['mcp__tracker__get_list']]) {
+      expect(JSON.parse(syncSettings(allow))).toHaveProperty('disableAllHooks', false);
+    }
+  });
+
   it("the hook's command exits 2 and says why", () => {
     const { type, command } = hook(syncSettings([])).hooks[0];
     expect(type).toBe('command');

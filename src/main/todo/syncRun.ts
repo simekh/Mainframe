@@ -45,12 +45,14 @@ const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
  * The run's `--settings`, as JSON text. A PreToolUse hook blocks every tool but the answer's own and the confirmed
  * ones (it exits 2 before any allow rule is read, so it also blocks what the owner's own settings allow), and those
- * are allowed here because `dontAsk` would deny them.
+ * are allowed here because `dontAsk` would deny them. `--settings` outranks the owner's and the project's settings, so
+ * `disableAllHooks` is set to false: with it true there, the guard would never run.
  */
 export function syncSettings(allowTools: string[]): string {
   const letThrough = ['StructuredOutput', ...allowTools.map(escapeRegExp)].join('|');
   return JSON.stringify({
     ...(allowTools.length > 0 ? { permissions: { allow: allowTools } } : {}),
+    disableAllHooks: false,
     hooks: {
       PreToolUse: [
         {

@@ -39,6 +39,8 @@ export interface SessionReport {
   state: ProgramState | null;
   /** The `msg` of that report; null when it had none. */
   msg: string | null;
+  /** The card the task was started from; null for a task that has none. */
+  card: Pick<TaskCardRef, 'number' | 'url'> | null;
 }
 
 /** One `claude` process of a task, held with its launch spec until it exits. */
@@ -83,6 +85,7 @@ export class TaskService {
         running: running !== undefined,
         state: status?.state ?? null,
         msg: status?.msg ?? null,
+        card: task.card ? { number: task.card.number, url: task.card.url } : null,
       };
     });
   }
@@ -98,8 +101,8 @@ export class TaskService {
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug, or both take the same card.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
     if (req.card) {
-      const { sourceKind, id } = req.card;
-      const other = this.mine().find((t) => t.open && t.card?.sourceKind === sourceKind && t.card.id === id);
+      const { id } = req.card;
+      const other = this.mine().find((t) => t.open && t.card?.id === id);
       if (other) throw new Error(`${req.card.number ?? title} is already open as the task "${other.title}"`);
     }
     // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.

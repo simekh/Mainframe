@@ -174,14 +174,23 @@ it('two starts of a card at once start one task', async () => {
   expect(readState()).toHaveLength(1);
 });
 
-it("only an open task in this project with the card's source and id refuses it", async () => {
+it("only an open task in this project with the card's id refuses it", async () => {
   const { root, stateFile, service, make } = setup();
   await service.start({ ...NEW_TASK, card: CARD });
 
   await expect(service.start({ ...NEW_TASK, title: 'Other card', card: { ...CARD, id: 'c129' } })).resolves.toBeDefined();
-  await expect(service.start({ ...NEW_TASK, title: 'Other source', card: { ...CARD, sourceKind: 'Other tracker' } })).resolves.toBeDefined();
   const globex = make(new TaskRecords(stateFile, 1000, () => {}), join(root, 'Globex'));
   await expect(globex.start({ ...NEW_TASK, title: 'Other project', card: CARD })).resolves.toBeDefined();
+});
+
+it("a second start of a card is refused whatever name the latest sync gave its source", async () => {
+  const { service, readState } = setup();
+  await service.start({ ...NEW_TASK, card: CARD });
+
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: { ...CARD, sourceKind: 'Tracker Issues' } })).rejects.toThrow(
+    '#128 is already open as the task "Fix login"',
+  );
+  expect(readState()).toHaveLength(1);
 });
 
 it('a card whose task has closed can start again', async () => {
@@ -980,7 +989,7 @@ it("changedFiles asks git about the task's worktree", async () => {
 it('reports lists every task oldest first: a running one with its last state and message, a closed one as not running', async () => {
   const { service, projectDir, readState, statuses } = setup();
   const first = await service.start({ ...NEW_TASK, title: 'First' });
-  const second = await service.start({ ...NEW_TASK, title: 'Second' });
+  const second = await service.start({ ...NEW_TASK, title: 'Second', card: CARD });
   statuses.set(first.session!.id, { id: '', state: 'blocked', msg: 'Run rm -rf build?', updatedAt: 1 });
   statuses.set(second.session!.id, { id: '', state: 'working', updatedAt: 1 });
   service.close(second.id);
@@ -999,6 +1008,7 @@ it('reports lists every task oldest first: a running one with its last state and
       running: true,
       state: 'blocked',
       msg: 'Run rm -rf build?',
+      card: null,
     },
     {
       taskId: second.id,
@@ -1011,6 +1021,7 @@ it('reports lists every task oldest first: a running one with its last state and
       running: false,
       state: null,
       msg: null,
+      card: { number: '#128', url: 'https://tracker.example/c/128' },
     },
   ]);
 });

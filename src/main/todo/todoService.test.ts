@@ -506,6 +506,36 @@ it('a card starts a task with its title, the brief and its card', async () => {
   await expect(t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false })).rejects.toThrow('#c1 is already open');
 });
 
+it("a card also starts by its number as the list shows it, with or without the #, as by its id", async () => {
+  const t = setup();
+  const cards = [card('x9f', { number: '#131' }), card('x1a', { number: '7' }), card('x2b', { number: null })];
+  await synced(t, { ...CARDS_ANSWER, cards });
+  const ref = (id: string, number: string | null, position: number): TaskCardRef => ({
+    sourceKind: 'Tracker',
+    id,
+    number,
+    url: `https://tracker.example/c/${id}`,
+    labels: [],
+    position,
+    urgent: false,
+  });
+
+  for (const asked of ['x9f', '#131', '131']) await t.service.startItem({ kind: 'card', id: asked }, { noQuestions: false });
+  expect(t.starts.map((s) => s.card)).toStrictEqual([ref('x9f', '#131', 0), ref('x9f', '#131', 0), ref('x9f', '#131', 0)]);
+
+  // A number the service shows without the #: either way finds it.
+  for (const asked of ['7', '#7']) await t.service.startItem({ kind: 'card', id: asked }, { noQuestions: false });
+  expect(t.starts.slice(3).map((s) => s.card)).toStrictEqual([ref('x1a', '7', 1), ref('x1a', '7', 1)]);
+
+  // Only one leading # is dropped, and a card without a number has none to match.
+  for (const asked of ['#999', '##131', 'null', '']) {
+    await expect(t.service.startItem({ kind: 'card', id: asked }, { noQuestions: false })).rejects.toThrow(
+      `No card ${asked} in the synced list; sync it again`,
+    );
+  }
+  expect(t.starts).toHaveLength(5);
+});
+
 it('a note starts a task with its title and text, then leaves the list; a start that fails keeps it', async () => {
   const t = setup();
   const keep = t.service.saveNote({ title: 'Keep me', text: 'Stays' });
