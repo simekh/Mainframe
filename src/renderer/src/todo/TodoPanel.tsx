@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { errorMessage } from '../bridgeError';
@@ -58,30 +58,46 @@ export default function TodoPanel(props: {
   // None while its item is off the list.
   const ticketItem = (): TodoItem | 'new-note' | undefined =>
     props.ticket === 'new-note' ? 'new-note' : props.ticket ? itemByKey().get(props.ticket) : undefined;
+  // A ticket whose item left the list another way (a sync dropped the card, the manager started it) closes, rather
+  // than come back unasked with the item.
+  createEffect(() => {
+    if (props.ticket && ticketItem() === undefined) props.onTicketChange(null);
+  });
 
   // What the open ticket's footer shows: they are set each time a ticket opens.
   const [warning, setWarning] = createSignal<StartCheck | null>(null);
   const [startError, setStartError] = createSignal<string | null>(null);
+  // Its start check is under way: its Start waits, so it never starts without the warning.
+  const [checking, setChecking] = createSignal(false);
   // One start at a time, as in New task.
   const [starting, setStarting] = createSignal(false);
 
   /**
-   * Opens a ticket in place of the one open. One a Start opens says what that Start found; any other runs the start
-   * check, so its Start warns as New task's does.
+   * Opens a ticket in place of the one open. One a Start opens says what that Start found; any other with a Start runs
+   * the start check, so its Start warns as New task's does.
    */
   function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
     setWarning(found?.warning ?? null);
     setStartError(found?.error ?? null);
+    const check = !found && (key === 'new-note' || itemByKey().get(key)?.action?.kind === 'start');
+    setChecking(check);
     props.onTicketChange(key);
-    if (found) return;
-    window.mainframe.startCheck(project.dir).then(
-      (check) => props.ticket === key && setWarning(ahead(check)),
-      (err: unknown) => console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`),
-    );
+    if (!check) return;
+    window.mainframe
+      .startCheck(project.dir)
+      .then(ahead, (err: unknown) => {
+        console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`);
+        return null;
+      })
+      .then((warns) => {
+        if (props.ticket !== key) return;
+        setWarning(warns);
+        setChecking(false);
+      });
   }
 
   /**
-   * Starts the item, or the new note as New task would, and closes the ticket; a failure shows in the item's ticket.
+   * Starts the item, or the new note as New task would, and closes its ticket; a failure shows in the item's ticket.
    * From the list it runs the start check first, and a warning opens the ticket instead, whose Start goes ahead.
    */
   async function start(
@@ -105,7 +121,8 @@ export default function TodoPanel(props: {
         const id = (item.card ?? item.note)!.id;
         await startTodoItem(project.dir, { item: { kind: item.kind, id }, noQuestions: o.noQuestions });
       }
-      props.onTicketChange(null);
+      // Another item's ticket stays, with what is typed in it.
+      if (props.ticket === key) props.onTicketChange(null);
     } catch (err) {
       openTicket(key, { warning: props.ticket === key ? warning() : null, error: errorMessage(err) });
     } finally {
@@ -369,7 +386,7 @@ export default function TodoPanel(props: {
                   item={item()}
                   warning={warning()}
                   error={startError()}
-                  starting={starting()}
+                  starting={starting() || checking()}
                   onClose={() => props.onTicketChange(null)}
                   onStart={(o) => void start(item(), o)}
                   onReopen={reopen}

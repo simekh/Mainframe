@@ -22,7 +22,7 @@ export default function TicketPanel(props: {
   warning: StartCheck | null;
   /** Why the last Start of this item failed. */
   error: string | null;
-  /** A start is under way in the project: Start waits for it. */
+  /** A start is under way in the project, or the ticket's start check: Start waits for it. */
   starting: boolean;
   onClose(): void;
   onStart(o: { noQuestions: boolean; note?: { title: string; text: string } }): void;

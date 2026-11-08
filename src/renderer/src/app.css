@@ -449,7 +449,8 @@ button {
 
 /* An island like the manager's column, at the owner's width; after the manager in the page, it is
    laid out first. Pinned, it is on the session panel's floating layer, above the floating manager's:
-   the manager slides away under it, and the session panel's float, after it, still covers it. */
+   the manager slides away under it, and the session panel's float, after it, still covers it, unless
+   it holds a ticket (see `.todo-panel:has(> .ticket-panel)`). */
 .todo-panel {
   order: -2;
   margin: 8px 0 8px 8px;
@@ -663,6 +664,11 @@ button {
   border-bottom-right-radius: 0;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Open and focused, it keeps its accent bar inside the focus ring. */
+.todo-item[data-open='true']:has(.todo-open:focus-visible) {
+  box-shadow: inset 2px 0 0 var(--accent), 0 0 0 1px var(--border-focus);
 }
 
 /* A card for the owner rather than for a session: greyed. */

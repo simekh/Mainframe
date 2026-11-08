@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, todoDir,
+  box, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -304,8 +304,13 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   const items = page.getByTestId('todo-item');
   const search = itemRow(page, 'card:c128');
   const start = search.getByTestId('todo-start');
+  const ticket = page.getByTestId('ticket-panel');
   await expect(start).toHaveAccessibleName('Start Search ignores accents');
-  await start.click();
+  // A note being written stays open through another item's Start, here pressed from the keyboard.
+  await page.getByTestId('todo-add-note').click();
+  await ticket.getByLabel('Title').fill('Half a thought');
+  await start.focus();
+  await page.keyboard.press('Enter');
 
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('read the live card with your Tracker connector');
@@ -317,6 +322,10 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await expect(page.getByTestId('panel-title')).toHaveText('Search ignores accents');
   await expect(items).toHaveCount(1);
   await expect(items.first()).toHaveAttribute('data-key', 'card:c131');
+  // Typing goes to the started task's terminal, as after New task; the note keeps its text.
+  await expect.poll(() => terminalHasFocus(page)).toBe(true);
+  await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
+  await ticket.getByTestId('ticket-close').click();
 
   // Closed, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
   await closeTask(page, id);
@@ -324,7 +333,6 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await expect(search.getByTestId('todo-start')).toHaveCount(0);
   await expect(search.getByTestId('todo-reopen')).toHaveAccessibleName('Reopen Search ignores accents');
   await search.click();
-  const ticket = page.getByTestId('ticket-panel');
   await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
   await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
   await ticket.getByTestId('ticket-reopen').click();
@@ -402,6 +410,17 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await expect(ticket).toHaveCount(0);
   await search.click();
   await ticket.getByTestId('ticket-close').click();
+  await expect(ticket).toHaveCount(0);
+
+  // A sync that drops the open card takes its ticket along, and the card coming back doesn't bring it.
+  await search.click();
+  syncReply(dataDir, { ...CARDS, cards: [CARDS.cards[1]] });
+  await page.getByTestId('todo-sync').click();
+  await expect(search).toHaveCount(0);
+  await expect(ticket).toHaveCount(0);
+  syncReply(dataDir, CARDS);
+  await page.getByTestId('todo-sync').click();
+  await expect(search).toHaveCount(1);
   await expect(ticket).toHaveCount(0);
 
   // The Todo panel going away takes it along; back, the panel shows no ticket.
@@ -500,11 +519,13 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   // Start saves the edits first, and the note leaves the list once its task has started.
   await again.first().click();
   await page.getByTestId('ticket-panel').getByLabel('Text').fill('Remove the old flags.');
-  await page.getByTestId('ticket-start').click();
+  await page.getByTestId('ticket-start').focus();
+  await page.keyboard.press('Enter');
   await expect.poll(() => taskBriefs(page)).toEqual([{ title: 'Tidy the feature flags', description: 'Remove the old flags.' }]);
   await expect(again).toHaveCount(0);
   await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
   await expect(page.getByTestId('panel-title')).toHaveText('Tidy the feature flags');
+  await expect.poll(() => terminalHasFocus(page)).toBe(true);
   expect(launches(dataDir)).toHaveLength(1);
 
   // A new note's Start starts a task as New task does, and keeps no note.
@@ -519,6 +540,7 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
   await expect(again).toHaveCount(0);
   await expect(page.getByTestId('panel-title')).toHaveText('Write the changelog');
+  await expect.poll(() => terminalHasFocus(page)).toBe(true);
   await app.close();
 });
 
