@@ -58,7 +58,16 @@ export default function TaskCard(props: {
         onClick={() => select(project.dir, props.task.id)}
       >
         <StatusGlyph glyph={glyph()} label={label().text} />
-        <span class="card-name">{props.task.title}</span>
+        <span class="card-name">
+          <Show when={props.task.card?.number}>
+            {(number) => (
+              <span class="card-number" data-testid="task-card-number">
+                {number()}{' '}
+              </span>
+            )}
+          </Show>
+          {props.task.title}
+        </span>
       </button>
       <p class="card-meta">
         <span class="card-project">

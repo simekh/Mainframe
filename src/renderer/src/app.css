@@ -1314,6 +1314,13 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+/* The to-do card's number, ahead of the title and quieter than it. */
+.card-number {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Centres the 12 px glyph lane on the title's first 18 px line. */
 .card-title > .glyph {
   margin-top: 3px;
@@ -1963,6 +1970,22 @@ kbd {
   flex: none;
   width: 12px;
   height: 12px;
+}
+
+/* The way to the live card, beside the branch it was started on. The padding gives the focus ring room around the words. */
+.p-card-link {
+  flex: none;
+  margin: 0 -4px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.p-card-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
 }
 
 .p-state {

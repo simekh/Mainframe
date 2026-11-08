@@ -71,11 +71,19 @@ export function cardAge(task: TaskView, s: SessionState | undefined, now: number
   return `${Math.floor(minutes / 60)} h`;
 }
 
-/** Each lane's tasks in board order. Open lanes go oldest first (to-do order until plan 2b). */
+/**
+ * Each lane's tasks in board order. Needs you follows the to-do list: tasks whose card is urgent, then
+ * the other tasks with a card, each by the card's place in the list, then tasks without a card, oldest
+ * first. Ties go oldest first. Working goes oldest first and Closed newest first.
+ */
 export function laneOrder(tasks: TaskView[], sessions: Record<string, SessionState>): Record<Lane, TaskView[]> {
   const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], closed: [] };
   for (const task of tasks) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
-  lanes['needs-you'].sort((a, b) => a.createdAt - b.createdAt);
+  const group = (t: TaskView) => (!t.card ? 2 : t.card.urgent ? 0 : 1);
+  lanes['needs-you'].sort(
+    (a, b) =>
+      group(a) - group(b) || (a.card?.position ?? 0) - (b.card?.position ?? 0) || a.createdAt - b.createdAt,
+  );
   lanes.working.sort((a, b) => a.createdAt - b.createdAt);
   lanes.closed.sort((a, b) => b.createdAt - a.createdAt);
   return lanes;

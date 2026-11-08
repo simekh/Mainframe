@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, git, ids, launches, openedLinks, repo, syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -347,6 +347,50 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await expect(items).toHaveCount(1);
   await expect(ticket).toHaveCount(0);
   await expect.poll(() => ids(page)).toEqual([id]);
+  await app.close();
+});
+
+test("a task started from a card shows its number on the board, and the session panel's link opens the card", async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  const [search, exported] = CARDS.cards;
+  // The second card has neither a number nor a link.
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [search, { ...exported, number: null }] });
+  const startFrom = async (key: string) => {
+    const before = await ids(page);
+    await itemRow(page, key).getByTestId('todo-start').click();
+    await expect.poll(async () => (await ids(page)).length).toBe(before.length + 1);
+    return (await ids(page)).find((id) => !before.includes(id))!;
+  };
+  const searchId = await startFrom('card:c128');
+  const exportedId = await startFrom('card:c131');
+
+  // The number comes before the title, and the title's first letter is on the number's line.
+  const number = card(page, searchId).getByTestId('task-card-number');
+  await expect(number).toHaveText('#128');
+  const name = card(page, searchId).locator('.card-name');
+  await expect(name).toHaveText('#128 Search ignores accents');
+  const sameLine = await number.evaluate((el) => {
+    const letter = document.createRange();
+    letter.setStart(el.nextSibling!, 0);
+    letter.setEnd(el.nextSibling!, 1);
+    return Math.abs(letter.getBoundingClientRect().top - el.getBoundingClientRect().top) < 4;
+  });
+  expect(sameLine).toBe(true);
+  await expect(card(page, exportedId).getByTestId('task-card-number')).toHaveCount(0);
+
+  // The started task is on show, and its card has no link to open.
+  await expect(page.getByTestId('panel-title')).toHaveText('Export drops the last row');
+  await expect(page.getByTestId('panel-card-link')).toHaveCount(0);
+
+  // The link opens the card and leaves the focus in the terminal.
+  await card(page, searchId).locator('.card-title').click();
+  await expect(page.getByTestId('panel-title')).toHaveText('Search ignores accents');
+  await expect.poll(() => terminalHasFocus(page)).toBe(true);
+  const link = page.getByTestId('panel-card-link');
+  await expect(link).toHaveText('Open in Tracker ↗');
+  await link.click();
+  await expect.poll(() => openedLinks(app)).toEqual(['https://tracker.example/c/128']);
+  expect(await terminalHasFocus(page)).toBe(true);
   await app.close();
 });
 

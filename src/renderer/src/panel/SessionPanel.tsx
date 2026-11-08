@@ -97,6 +97,26 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                   </svg>
                   <span data-testid="panel-branch">{task().branch}</span>
                 </span>
+                <Show when={task().card}>
+                  {(card) => (
+                    <Show when={card().url}>
+                      {(url) => (
+                        <button
+                          class="p-card-link"
+                          data-testid="panel-card-link"
+                          onMouseDown={keepFocus}
+                          onClick={() =>
+                            window.mainframe
+                              .openLink(url())
+                              .catch((err: unknown) => console.error(`[tasks] could not open ${url()}: ${errorMessage(err)}`))
+                          }
+                        >
+                          Open in {card().sourceKind} ↗
+                        </button>
+                      )}
+                    </Show>
+                  )}
+                </Show>
                 <span class="p-state" data-testid="panel-state">
                   <span class={`label tone-${labelOf(task()).tone}`}>
                     {labelOf(task()).text}

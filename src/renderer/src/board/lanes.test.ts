@@ -158,6 +158,61 @@ describe('laneOrder', () => {
     expect(ids('working')).toEqual(['w1', 'w2']);
     expect(ids('closed')).toEqual(['c2', 'c1']);
   });
+
+  const cardAt = (position: number, urgent = false): TaskView['card'] => ({
+    sourceKind: 'Tracker',
+    id: `c${position}`,
+    number: `#${position}`,
+    url: null,
+    labels: [],
+    position,
+    urgent,
+  });
+
+  const idsOf = (tasks: TaskView[], sessions: Record<string, SessionState>, lane: keyof ReturnType<typeof laneOrder>) =>
+    laneOrder(tasks, sessions)[lane].map((t) => t.id);
+
+  it('Needs you puts urgent cards first, then other cards by their place in the list, then tasks without a card by age', () => {
+    const blocked = (id: string, createdAt: number, card: TaskView['card']) =>
+      task({ id, createdAt, card, session: { id: `s-${id}`, startedWithPrompt: true } });
+    const tasks = [
+      blocked('loose-new', 30, null),
+      blocked('listed', 50, cardAt(1)),
+      blocked('urgent-second', 10, cardAt(5, true)),
+      blocked('loose-old', 10, null),
+      blocked('urgent-first', 60, cardAt(2, true)),
+    ];
+    const sessions = Object.fromEntries(tasks.map((t) => [t.session!.id, state('blocked', { kind: 'question' })]));
+    expect(idsOf(tasks, sessions, 'needs-you')).toEqual([
+      'urgent-first',
+      'urgent-second',
+      'listed',
+      'loose-old',
+      'loose-new',
+    ]);
+  });
+
+  it('cards at the same place in the list go by age', () => {
+    const blocked = (id: string, createdAt: number) =>
+      task({ id, createdAt, card: cardAt(3), session: { id: `s-${id}`, startedWithPrompt: true } });
+    const tasks = [blocked('newer', 20), blocked('older', 5)];
+    const sessions = { 's-newer': state('done'), 's-older': state('done') };
+    expect(idsOf(tasks, sessions, 'needs-you')).toEqual(['older', 'newer']);
+  });
+
+  it('Working and Closed keep their order whatever the cards', () => {
+    const working = (id: string, createdAt: number, card: TaskView['card']) =>
+      task({ id, createdAt, card, session: { id: `s-${id}`, startedWithPrompt: true } });
+    const tasks = [
+      working('w-urgent', 20, cardAt(0, true)),
+      working('w-plain', 10, cardAt(9)),
+      closedTask({ id: 'c-old', createdAt: 10, card: cardAt(0, true) }),
+      closedTask({ id: 'c-new', createdAt: 30, card: cardAt(5) }),
+    ];
+    const sessions = { 's-w-urgent': state('working'), 's-w-plain': state('working') };
+    expect(idsOf(tasks, sessions, 'working')).toEqual(['w-plain', 'w-urgent']);
+    expect(idsOf(tasks, sessions, 'closed')).toEqual(['c-new', 'c-old']);
+  });
 });
 
 describe('nextNeedsYou', () => {
