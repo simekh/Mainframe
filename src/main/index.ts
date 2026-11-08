@@ -157,11 +157,8 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
           console.error(`[manager] could not start the manager of ${dir}`, err);
         }
       },
-      cancelSync: () => todo.cancel(),
+      cancelSync: () => todo.close(),
       release: async () => {
-        // Again, and first: a manager that outlasted its hangup may have asked for a sync, through the server that
-        // closes next, after the close began.
-        todo.cancel();
         await mcp.close();
       },
     };
@@ -206,7 +203,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   app.on('before-quit', () => {
     projects.beginQuit();
     // A sync run is no session: nothing else ends it with the app.
-    for (const { dir } of projects.list()) projects.get(dir)?.todo.cancel();
+    for (const { dir } of projects.list()) projects.get(dir)?.todo.close();
     host.killAll();
   });
 }

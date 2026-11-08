@@ -54,6 +54,8 @@ export class TodoService {
   private readonly newer: string | null = null;
   private record: TodoRecord;
   private running: Running | null = null;
+  /** Once the project's close or the app's quit has begun, for good: no sync starts after it. */
+  private closed = false;
   // What the sync last said: not kept in the file, so a restart starts without them.
   private ask: TodoAsk | null = null;
   private error: string | null = null;
@@ -88,6 +90,7 @@ export class TodoService {
 
   /** Reads the list with a background run. A call while one runs gets that run's outcome. */
   sync(): Promise<SyncOutcome> {
+    if (this.closed) return Promise.reject(new Error('The project is closing'));
     if (this.running) return this.running.outcome;
     if (this.newer) return Promise.reject(new Error(this.newer));
     const { readTools, pickedList } = this.record;
@@ -143,16 +146,19 @@ export class TodoService {
   }
 
   /**
-   * Starts a task from a card or a note. A card is found by its id or by its number as the list shows it, with or
-   * without a leading #; the first match wins. A note leaves the list once its task has started.
+   * Starts a task from a card or a note. A card is found by its id, or when none has that id, by its number as the
+   * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A note
+   * leaves the list once its task has started.
    */
   async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string }): Promise<TaskView> {
     if (item.kind === 'card') {
       const { source, cards } = this.record;
       const bare = (s: string) => s.replace(/^#/, '');
-      const position = cards.findIndex((c) => c.id === item.id || (c.number !== null && bare(c.number) === bare(item.id)));
+      let position = cards.findIndex((c) => c.id === item.id);
+      if (position < 0) position = cards.findIndex((c) => c.number !== null && bare(c.number) === bare(item.id));
       if (position < 0 || !source) throw new Error(`No card ${item.id} in the synced list; sync it again`);
       const card = cards[position];
+      if (card.forOwner) throw new Error(`${card.number ?? card.title} is for the owner, not for a task`);
       return this.deps.startTask({
         title: card.title,
         description: opts.brief ?? '',
@@ -175,6 +181,12 @@ export class TodoService {
     if (!running) return;
     running.cancel();
     this.end(running, () => ({ error: SYNC_STOPPED }));
+  }
+
+  /** As the project's close or the app's quit begins: stops a running sync as `cancel` does, and refuses every later one. */
+  close(): void {
+    this.closed = true;
+    this.cancel();
   }
 
   private launch(step: SyncStep): Promise<SyncOutcome> {
@@ -236,6 +248,13 @@ export class TodoService {
     }
     const { source, cards } = answer;
     if (answer.kind !== 'cards' || !source || !cards) return this.refuse(UNASKED);
+    // The panel keys a row by its card's id, and a task's card guard matches by it.
+    if (cards.some((c) => c.id.trim() === '')) return this.refuse('The sync gave a card no id; sync again');
+    const seen = new Set<string>();
+    for (const { id } of cards) {
+      if (seen.has(id)) return this.refuse(`The sync gave two cards the id ${id}; sync again`);
+      seen.add(id);
+    }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
     return { cards: cards.length };
   }

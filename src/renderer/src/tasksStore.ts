@@ -38,15 +38,18 @@ export const tasksOf = (dir: string): ProjectTasks => store.projects[dir] ?? NO_
 
 /** The projects whose tasks changed since their list was asked for. */
 const changed = new Set<string>();
-/** The projects with a start under way, from New task or the Todo panel. Each allows one at a time. */
-const startPending = new Set<string>();
+/**
+ * How many starts each project has under way. New task and the Todo panel each allow one at a time, so a project
+ * may have two; the list that brings a task selects it until the last has finished.
+ */
+const startPending = new Map<string, number>();
 
 function setTasks(dir: string, tasks: TaskView[]): void {
   batch(() => {
     if (!store.projects[dir]) setStore('projects', dir, noTasks());
     // The list that brings a started task selects it in the batch that adds its terminal, so the
     // terminal mounts on screen and its session starts at the size it shows.
-    const started = startPending.has(dir) ? addedTask(unwrap(store.projects[dir].tasks), tasks) : null;
+    const started = (startPending.get(dir) ?? 0) > 0 ? addedTask(unwrap(store.projects[dir].tasks), tasks) : null;
     // Keyed, so cards and terminals stay mounted across changes.
     setStore('projects', dir, 'tasks', reconcile(tasks, { key: 'id' }));
     setStore('projects', dir, 'terminals', updateTerminals(unwrap(store.projects[dir].terminals), tasks));
@@ -77,13 +80,15 @@ export function forgetTasks(dir: string): void {
 
 /** Selects the task `start` starts once it is on the board; rejects with the reason it couldn't start. */
 async function startAndSelect(dir: string, start: () => Promise<TaskView>): Promise<void> {
-  startPending.add(dir);
+  startPending.set(dir, (startPending.get(dir) ?? 0) + 1);
   try {
     const task = await start();
     // Selected already, unless the reply came before the list.
     select(dir, task.id);
   } finally {
-    startPending.delete(dir);
+    const left = startPending.get(dir)! - 1;
+    if (left > 0) startPending.set(dir, left);
+    else startPending.delete(dir);
   }
 }
 

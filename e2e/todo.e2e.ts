@@ -98,7 +98,9 @@ test('Sync finds the connector and asks to allow its read tools; allowed, it sho
   // The first run reads nothing: it names the connector and the tools that would read the list.
   const allow = panel.getByTestId('todo-confirm-tools');
   await expect(allow).toHaveText('Allow and sync');
-  await expect(panel.getByText('Sync reads your to-do list in Tracker with these tools, which only read:')).toBeVisible();
+  await expect(
+    panel.getByText('Sync wants to read your to-do list in Tracker with these tools. Allow them only if none of them can change it:'),
+  ).toBeVisible();
   await expect(panel.locator('code')).toHaveText(['mcp__tracker__get_list']);
   await expect(panel.getByTestId('todo-reset')).toHaveCount(0);
   const [discover] = syncLaunches(dataDir);

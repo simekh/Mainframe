@@ -102,8 +102,12 @@ export class TaskService {
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
     if (req.card) {
       const { id } = req.card;
-      const other = this.mine().find((t) => t.open && t.card?.id === id);
-      if (other) throw new Error(`${req.card.number ?? title} is already open as the task "${other.title}"`);
+      // A card has one task for good: a closed one is reopened, never started again. An open one is the one to name.
+      const had = this.mine().filter((t) => t.card?.id === id);
+      const other = had.find((t) => t.open) ?? had[0];
+      const name = req.card.number ?? title;
+      if (other?.open) throw new Error(`${name} is already open as the task "${other.title}"`);
+      if (other) throw new Error(`${name} already has the task "${other.title}"; reopen it instead`);
     }
     // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.
     const taken = new Set(

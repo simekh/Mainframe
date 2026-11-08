@@ -334,6 +334,26 @@ it.each([
   expect(t.service.view()).toEqual({ ...kept, error: message });
 });
 
+it.each([
+  ['an empty id', [card('c1'), card('')], 'The sync gave a card no id; sync again'],
+  ['an id of blanks', [card('   '), card('c2')], 'The sync gave a card no id; sync again'],
+  ['a repeated id', [card('c1'), card('c2'), card('c1', { title: 'Again' })], 'The sync gave two cards the id c1; sync again'],
+  ['two ids repeated', [card('c1'), card('c2'), card('c2'), card('c1')], 'The sync gave two cards the id c2; sync again'],
+])('a cards answer with %s is refused whole, and the earlier cards stay', async (_what, cards, message) => {
+  const t = setup();
+  await synced(t);
+  const kept = readFileSync(t.file, 'utf8');
+  const keptView = t.service.view();
+
+  const pending = t.service.sync();
+  t.last().answer({ kind: 'cards', source: SOURCE, cards });
+
+  expect(await pending).toEqual({ error: message });
+  expect(t.service.view()).toEqual({ ...keptView, error: message });
+  expect(t.service.view().cards).toEqual(CARDS);
+  expect(readFileSync(t.file, 'utf8')).toBe(kept);
+});
+
 it('a second Sync while one runs joins it', async () => {
   const t = setup();
 
@@ -412,6 +432,47 @@ it('cancel stops the run, and an answer that comes after changes nothing', async
   expect(t.service.view()).toEqual(keptView);
   expect(readFileSync(t.file, 'utf8')).toBe(kept);
   expect(t.changes).toHaveLength(changesAtCancel);
+});
+
+it('close stops a running sync, and no sync starts after it, whoever asks', async () => {
+  const t = setup();
+  await synced(t, LISTS_ANSWER);
+  const running = t.service.sync();
+  const run = t.last();
+  const launched = t.calls.length;
+
+  t.service.close();
+
+  expect(run.cancelled).toBe(true);
+  expect(await running).toEqual({ error: 'The sync was stopped' });
+  expect(t.service.view().syncing).toBe(false);
+
+  await expect(t.service.sync()).rejects.toThrow('The project is closing');
+  expect(t.calls).toHaveLength(launched);
+  expect(t.service.view().syncing).toBe(false);
+
+  // Whatever the stopped run answers later, and a second close, change nothing.
+  run.answer({ kind: 'cards', source: SOURCE, cards: [card('c9')] });
+  await flush();
+  t.service.close();
+  expect(t.service.view().cards).toEqual([]);
+});
+
+it('an ask that was waiting cannot be answered once the project is closing: nothing launches', async () => {
+  const tools = setup();
+  const first = tools.service.sync();
+  tools.last().answer(TOOLS_ANSWER);
+  await first;
+  tools.service.close();
+  await expect(tools.service.confirmTools()).rejects.toThrow('The project is closing');
+  expect(tools.calls).toHaveLength(1);
+
+  const lists = setup();
+  await synced(lists, LISTS_ANSWER);
+  const launched = lists.calls.length;
+  lists.service.close();
+  await expect(lists.service.pickList(1)).rejects.toThrow('The project is closing');
+  expect(lists.calls).toHaveLength(launched);
 });
 
 it('an answer from a stopped run does not touch the sync that replaced it', async () => {
@@ -534,6 +595,34 @@ it("a card also starts by its number as the list shows it, with or without the #
     );
   }
   expect(t.starts).toHaveLength(5);
+});
+
+it("a card whose id is asked for beats an earlier card whose number is the same", async () => {
+  const t = setup();
+  // A's number is what B's id spells; the id is the exact name, so B it is.
+  const cards = [card('901', { number: '#42', title: 'Card A' }), card('42', { number: '#7', title: 'Card B' })];
+  await synced(t, { ...CARDS_ANSWER, cards });
+
+  await t.service.startItem({ kind: 'card', id: '42' }, { noQuestions: false });
+  await t.service.startItem({ kind: 'card', id: '#42' }, { noQuestions: false });
+
+  expect(t.starts.map((s) => [s.title, s.card?.id, s.card?.position])).toStrictEqual([
+    ['Card B', '42', 1],
+    // With no id of that name, the number is looked up.
+    ['Card A', '901', 0],
+  ]);
+});
+
+it('a card for the owner is not started, whether asked for by its id or by its number, and says so', async () => {
+  const t = setup();
+  const cards = [card('c7', { number: '#7', forOwner: true }), card('c8', { number: null, title: 'Decide', forOwner: true })];
+  await synced(t, { ...CARDS_ANSWER, cards });
+
+  await expect(t.service.startItem({ kind: 'card', id: 'c7' }, { noQuestions: false })).rejects.toThrow('#7 is for the owner, not for a task');
+  await expect(t.service.startItem({ kind: 'card', id: '7' }, { noQuestions: false })).rejects.toThrow('#7 is for the owner, not for a task');
+  // Without a number, the title stands in.
+  await expect(t.service.startItem({ kind: 'card', id: 'c8' }, { noQuestions: false })).rejects.toThrow('Decide is for the owner, not for a task');
+  expect(t.starts).toEqual([]);
 });
 
 it('a note starts a task with its title and text, then leaves the list; a start that fails keeps it', async () => {

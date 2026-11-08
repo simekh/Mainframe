@@ -222,7 +222,8 @@ export default function TodoPanel(props: {
                 {(ask) => (
                   <div class="todo-ask">
                     <p>
-                      Sync reads your to-do list in <strong>{ask().connector}</strong> with these tools, which only read:
+                      Sync wants to read your to-do list in <strong>{ask().connector}</strong> with these tools. Allow them only if none of
+                      them can change it:
                     </p>
                     <ul class="todo-tools">
                       <For each={ask().tools}>

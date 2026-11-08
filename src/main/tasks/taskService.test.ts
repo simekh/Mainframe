@@ -174,7 +174,7 @@ it('two starts of a card at once start one task', async () => {
   expect(readState()).toHaveLength(1);
 });
 
-it("only an open task in this project with the card's id refuses it", async () => {
+it("a task of another card, or of another project, doesn't refuse a start", async () => {
   const { root, stateFile, service, make } = setup();
   await service.start({ ...NEW_TASK, card: CARD });
 
@@ -193,15 +193,35 @@ it("a second start of a card is refused whatever name the latest sync gave its s
   expect(readState()).toHaveLength(1);
 });
 
-it('a card whose task has closed can start again', async () => {
-  const { service } = setup();
+it('a start of a card whose task has closed is refused, and says to reopen it', async () => {
+  const { service, readState, changes } = setup();
   const first = await service.start({ ...NEW_TASK, card: CARD });
   service.close(first.id);
   service.onSessionExit(first.session!.id);
+  const before = changes.length;
 
-  const second = await service.start({ ...NEW_TASK, card: CARD });
-  expect(second.card).toEqual(CARD);
-  expect(second.id).not.toBe(first.id);
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow(
+    '#128 already has the task "Fix login"; reopen it instead',
+  );
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: { ...CARD, number: null } })).rejects.toThrow(
+    'Again already has the task "Fix login"; reopen it instead',
+  );
+  expect(readState()).toHaveLength(1);
+  expect(service.sessionIds()).toEqual([]);
+  expect(changes.length).toBe(before);
+});
+
+it('a card with an open task and a closed one, as older data has, is refused as open', async () => {
+  const { stateFile, make } = setup();
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  const service = make(records);
+  const first = await service.start({ ...NEW_TASK, card: CARD });
+  service.close(first.id);
+  service.onSessionExit(first.session!.id);
+  // A second task of the card, from before a card had only one: it comes after the closed one.
+  records.all.push({ ...records.all[0], id: 'older', title: 'Older', slug: 'older', open: true, closedAt: null });
+
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow('#128 is already open as the task "Older"');
 });
 
 it('start picks a slug that no task, worktree branch or worktree folder has taken', async () => {
