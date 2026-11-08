@@ -12,6 +12,7 @@ const task = (over: Partial<TaskView> = {}): TaskView => ({
   worktreePath: '/p/.claude/worktrees/fix-login',
   createdAt: 0,
   closedAt: null,
+  card: null,
   session: { id: 's1', startedWithPrompt: true },
   ...over,
 });

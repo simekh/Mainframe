@@ -1,5 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { TaskCardRef } from '../../shared/types';
+import { TASK_CARD_REF } from '../todo/todoSchema';
 
 export interface TaskRecord {
   id: string;
@@ -29,6 +31,8 @@ export interface TaskRecord {
    * Read only while midTurn. Records kept before it was saved lack it: false.
    */
   askAgain?: boolean;
+  /** The to-do card the task was started from. Tasks that weren't, and those kept before it was saved, lack it. */
+  card?: TaskCardRef;
 }
 
 /** The version of `state.json` this build writes and reads. */
@@ -60,7 +64,8 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof t.open === 'boolean' &&
     (t.noQuestions === undefined || typeof t.noQuestions === 'boolean') &&
     (t.midTurn === undefined || typeof t.midTurn === 'boolean') &&
-    (t.askAgain === undefined || typeof t.askAgain === 'boolean')
+    (t.askAgain === undefined || typeof t.askAgain === 'boolean') &&
+    (t.card === undefined || TASK_CARD_REF.safeParse(t.card).success)
   );
 }
 

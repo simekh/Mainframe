@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskView } from '../../shared/types';
+import type { ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
@@ -91,12 +91,17 @@ export class TaskService {
     return this.deps.git.startCheck(this.deps.projectDir);
   }
 
-  async start(req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView> {
+  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef }): Promise<TaskView> {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
 
-    // Everything after this await is synchronous, so two starts at once cannot pick the same slug.
+    // Everything after this await is synchronous, so two starts at once cannot pick the same slug, or both take the same card.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
+    if (req.card) {
+      const { sourceKind, id } = req.card;
+      const other = this.mine().find((t) => t.open && t.card?.sourceKind === sourceKind && t.card.id === id);
+      if (other) throw new Error(`${req.card.number ?? title} is already open as the task "${other.title}"`);
+    }
     // Lowercased, as slugs are: the Mac's file system and git's loose refs ignore case.
     const taken = new Set(
       [MANAGER_SLUG, ...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
@@ -117,6 +122,7 @@ export class TaskService {
       closedAt: null,
       open: true,
       noQuestions: req.noQuestions,
+      ...(req.card && { card: req.card }),
     };
 
     const argv = this.startArgvOf(task, writeHookSettings(this.taskDir(task.id)));
@@ -286,6 +292,7 @@ export class TaskService {
         description: task.description,
         branch: task.branch,
         noQuestions: task.noQuestions ?? false,
+        card: task.card,
       }),
     });
   }
@@ -301,6 +308,7 @@ export class TaskService {
       worktreePath: task.worktreePath,
       createdAt: task.createdAt,
       closedAt: task.closedAt,
+      card: task.card ?? null,
       session: running ? { id: running.id, startedWithPrompt: running.startedWithPrompt } : null,
     };
   }

@@ -88,6 +88,16 @@ it('midTurn and askAgain load as saved, and a task kept before them loads withou
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
 
+it("keeps a task's card", () => {
+  const file = join(folder(), 'state.json');
+  const card = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
+  const tasks = [TASK, { ...TASK, id: 't2', card }, { ...TASK, id: 't3', card: { ...card, number: null, url: null, labels: [], urgent: false } }];
+  saveTasks(file, tasks);
+  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
+});
+
+const CARD = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: null, labels: [], position: 0, urgent: false };
+
 it.each([
   ['a list instead of an object', '[]'],
   ['no version', JSON.stringify({ tasks: [] })],
@@ -99,6 +109,9 @@ it.each([
   ['a task whose noQuestions is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, noQuestions: 'no' }] })],
   ['a task whose midTurn is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: 'yes' }] })],
   ['a task whose askAgain is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: true, askAgain: 1 }] })],
+  ['a task whose card is null', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: null }] })],
+  ['a task whose card lacks a field', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, position: undefined } }] })],
+  ['a task whose card has labels that are not a list', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, labels: 'UI' } }] })],
 ])('a file with %s is kept aside', (_what, text) => {
   const file = join(folder(), 'state.json');
   writeFileSync(file, text);

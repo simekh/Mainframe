@@ -19,6 +19,29 @@ it('leaves out an empty description', () => {
   expect(openingPrompt({ ...t, description: '  \n' })).toBe(brief + 'Task: Fix login\n\n' + tail);
 });
 
+it("a card's prompt names it, asks the session to read the live card first and mark it in progress, and puts the owner's words after it", () => {
+  const card = { sourceKind: 'Tracker', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI', 'Backend'] };
+  expect(openingPrompt({ ...t, description: 'web only', card })).toBe(
+    brief +
+      'Task: #128 Fix login\n\n' +
+      "This task is a card on the owner's to-do list in Tracker, labelled UI, Backend: https://tracker.example/c/128\n\n" +
+      'Before you plan, read the live card with your Tracker connector: it is your brief, and it may have changed since Mainframe last synced it. ' +
+      "If you can't read it, ask me. Then mark the card as in progress the way this repo's CLAUDE.md says, or else by moving it to its board's " +
+      'in-progress list or status, if it has one.\n\n' +
+      'From the owner: web only\n\n' +
+      tail,
+  );
+});
+
+it('a card without a number, a URL or labels reads cleanly', () => {
+  const card = { sourceKind: 'Tracker', number: null, url: null, labels: [] };
+  const prompt = openingPrompt({ ...t, description: '', card });
+  expect(prompt).toContain('\n\nTask: Fix login\n\n');
+  expect(prompt).toContain("\n\nThis task is a card on the owner's to-do list in Tracker.\n\n");
+  expect(prompt).not.toContain('From the owner');
+  expect(prompt.endsWith('\n\n' + tail)).toBe(true);
+});
+
 it('passes on no-questions mode', () => {
   expect(openingPrompt({ ...t, description: '', noQuestions: true })).toBe(
     brief + 'Task: Fix login\n\n' + tail + '\n\n' +

@@ -72,6 +72,8 @@ export interface TaskView {
   createdAt: number;
   /** When its last session ended; null while one runs. Closed cards show their age from it. */
   closedAt: number | null;
+  /** The to-do card the task was started from; null for a task that wasn't. */
+  card: TaskCardRef | null;
   /** The running `claude` process; null when the task is closed. */
   session: { id: string; startedWithPrompt: boolean } | null;
 }

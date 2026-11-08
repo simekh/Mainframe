@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
-import type { ChangedFile, ProgramState, ProgramStatus, TaskView } from '../../shared/types';
+import type { ChangedFile, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
@@ -120,6 +120,79 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
   expect(prompt).toBe(openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+});
+
+const CARD: TaskCardRef = {
+  sourceKind: 'Tracker',
+  id: 'c128',
+  number: '#128',
+  url: 'https://tracker.example/c/128',
+  labels: ['UI'],
+  position: 2,
+  urgent: false,
+};
+
+it("a task started from a card keeps it, shows it, and its launch carries the card's prompt", async () => {
+  const { service, readState } = setup();
+  const view = await service.start({ ...NEW_TASK, card: CARD });
+
+  expect(view.card).toEqual(CARD);
+  expect(service.list()[0].card).toEqual(CARD);
+  expect(readState()[0].card).toEqual(CARD);
+  expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
+    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+  );
+});
+
+it('a task started without a card has none', async () => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+
+  expect(view.card).toBeNull();
+  expect(readState()[0]).not.toHaveProperty('card');
+});
+
+it('a second start of a card whose task is open is refused, and says which task has it', async () => {
+  const { service, readState, changes } = setup();
+  await service.start({ ...NEW_TASK, card: CARD });
+  const before = changes.length;
+
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow('#128 is already open as the task "Fix login"');
+  await expect(service.start({ ...NEW_TASK, title: 'Again', card: { ...CARD, number: null } })).rejects.toThrow(
+    'Again is already open as the task "Fix login"',
+  );
+  expect(readState()).toHaveLength(1);
+  expect(service.sessionIds()).toHaveLength(1);
+  expect(changes.length).toBe(before);
+});
+
+it('two starts of a card at once start one task', async () => {
+  const { service, readState } = setup();
+  const results = await Promise.allSettled([service.start({ ...NEW_TASK, card: CARD }), service.start({ ...NEW_TASK, card: CARD })]);
+
+  expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+  expect(readState()).toHaveLength(1);
+});
+
+it("only an open task in this project with the card's source and id refuses it", async () => {
+  const { root, stateFile, service, make } = setup();
+  await service.start({ ...NEW_TASK, card: CARD });
+
+  await expect(service.start({ ...NEW_TASK, title: 'Other card', card: { ...CARD, id: 'c129' } })).resolves.toBeDefined();
+  await expect(service.start({ ...NEW_TASK, title: 'Other source', card: { ...CARD, sourceKind: 'Other tracker' } })).resolves.toBeDefined();
+  const globex = make(new TaskRecords(stateFile, 1000, () => {}), join(root, 'Globex'));
+  await expect(globex.start({ ...NEW_TASK, title: 'Other project', card: CARD })).resolves.toBeDefined();
+});
+
+it('a card whose task has closed can start again', async () => {
+  const { service } = setup();
+  const first = await service.start({ ...NEW_TASK, card: CARD });
+  service.close(first.id);
+  service.onSessionExit(first.session!.id);
+
+  const second = await service.start({ ...NEW_TASK, card: CARD });
+  expect(second.card).toEqual(CARD);
+  expect(second.id).not.toBe(first.id);
 });
 
 it('start picks a slug that no task, worktree branch or worktree folder has taken', async () => {
@@ -728,6 +801,19 @@ it('reopen of a task whose first launch never began a conversation starts one, w
       settingsPath: join(taskDir(view.id), 'settings.json'),
       prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
     }),
+  );
+});
+
+it('a reopen that must begin the conversation again keeps the card in its prompt', async () => {
+  const { service } = setup();
+  const view = await service.start({ ...NEW_TASK, card: CARD });
+  // claude was missing or quit at once: SessionStart never fired.
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(reopened.card).toEqual(CARD);
+  expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
+    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 

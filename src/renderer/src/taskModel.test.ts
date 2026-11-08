@@ -13,6 +13,7 @@ const task = (id: string, sessionId: string | null): TaskView => ({
   worktreePath: `/p/.claude/worktrees/${id}`,
   createdAt: 0,
   closedAt: sessionId ? null : 5,
+  card: null,
   session: sessionId ? { id: sessionId, startedWithPrompt: true } : null,
 });
 
