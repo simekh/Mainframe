@@ -241,3 +241,63 @@ Start, on a card or in the ticket panel, starts the session directly from the ca
 - Where the synced list, the notes and the manager's record are stored.
 - How e2e tests drive the manager. For example, the fake `claude` can call the MCP tools directly.
 - Exact copy, sizes and motion, within the mockups and the app's current look.
+
+## 11. Part 2 updates, 2026-11-08
+
+Part 1 (the manager) is built. Before planning part 2, the owner confirmed this design still holds, with three changes made since 2026-11-06: Mainframe became project-agnostic, it runs several projects at once, and the manager got a pin and a hide arrow. Where this section and §1 to §10 disagree, this section wins.
+
+### 11.1 Project-agnostic
+
+- **No label means anything to Mainframe.** The sync run marks each card `forOwner` (shown greyed, no Start) and `urgent` (first in Needs you) by what this repo's `CLAUDE.md` says about cards like it. With nothing there, it marks neither. This replaces the "You" and "Blocker" rules in §5.1 and §7. Labels show as the source names them, all alike **(owner: "those would have to come from the project or the connector")**.
+- **"Open in Trello ↗" becomes "Open in <source> ↗"**, with the source's name as the run reports it (§5.4, and the session panel's header link in §3).
+- **The opening prompt names no list.** It asks the session to mark its card as in progress the way this repo's `CLAUDE.md` says, or else by moving it to its board's in-progress list or status if it has one (§6).
+- For Damela, the owner adds those conventions to Damela's `CLAUDE.md` ("You" cards are the owner's, "Blocker" cards come first, started cards move to In Progress). Mainframe ships none of them.
+
+### 11.2 Several projects at once
+
+- Each project pane has its own Todo panel, ticket panel, Todo button (in its top bar), synced list, notes, confirmed read tools, picked list and Sync.
+- Syncs of different projects may run at the same time. Each runs in its project's folder, so it reads that project's `CLAUDE.md`.
+- The data folder keeps one Todo file per project, as it keeps one manager folder per project.
+
+### 11.3 The Todo panel beside the manager's pin and arrow
+
+- Left to right, as before: **[Todo panel, pinned and out] [manager column] [board] [session panel]**.
+- The Todo panel has a pin and a hide arrow, as the manager has.
+  - **Pinned and out,** it takes the pane's far left. The manager, pinned or floating, and the manager's way-back pill sit to its right.
+  - **Unpinned,** it floats over the pane's left edge, above the floating manager.
+- **It opens from the Todo button only.** The handle on the window's left edge (§3) is dropped, because the manager's way-back pill sits on that edge **(designer's call)**.
+- A press on the board puts away the unpinned Todo panel and the ticket panel, as it puts away the other unpinned islands.
+- At start, a pinned Todo panel is out, and an unpinned one waits for the Todo button **(designer's call)**.
+
+### 11.4 Sync, as verified on 2026-11-08 with Claude Code 2.1.319
+
+- **The run:**
+  - `claude -p --model haiku --no-session-persistence --tools "" --disable-slash-commands --permission-mode dontAsk --permission-prompts none --settings <file> --output-format json --json-schema <schema> --max-budget-usd 1`
+  - It runs in the project's folder, with its prompt on stdin.
+  - What was checked:
+    - `haiku` is the fast model.
+    - The owner's connectors (claude.ai and user-configured) load.
+    - The project's `CLAUDE.md` loads.
+    - `--no-session-persistence` keeps the run out of `--resume` and agent view.
+- **Only the confirmed read tools run:**
+  - The connectors load only with the user's settings, which carry the owner's own allow rules (`--setting-sources` without `user` drops every connector).
+  - So the run's `--settings` registers a PreToolUse hook whose matcher, `^(?!(StructuredOutput|<confirmed tools>)$)`, matches every other tool. The hook exits with code 2, which blocks the call before any allow rule is read.
+  - The same file allows the confirmed tools, which `dontAsk` would otherwise deny.
+  - Seen working:
+    - an allowed tool was blocked when the matcher left it out, and ran when it was included;
+    - `StructuredOutput` is the tool that carries the answer.
+  - This keeps §5.3's "every other tool is denied, including tools the owner's own settings allow".
+- **The answer is the run's structured output, not a call to a "Set the Todo list" tool.** It carries the same contents, and the run needs no MCP server or token **(builder's call, within §10)**. It is one of:
+  - `tools`: the connector, and the full names of its tools that only read;
+  - `lists`: the candidate lists, when several could be the to-do list;
+  - `cards`: the source and the cards;
+  - `none`: a message saying why there is nothing.
+- **The first sync runs in steps:**
+  1. A run with no tools reports the connector and its read tools.
+  2. The owner confirms them in the panel, which starts a sync with those tools.
+  3. That sync returns the cards, or the candidate lists for the owner to pick from, after which it syncs again.
+
+  Mainframe keeps the confirmed tools and the picked list for the project. **"Set up again"** forgets both, so a wrong confirmation or pick can be undone **(designer's call)**.
+- **Confirmed tools must be MCP tools** (`mcp__<server>__<tool>`). An answer naming any other tool is refused.
+- **A run is stopped** after 5 minutes, or when its project closes or Mainframe quits **(designer's call)**.
+- **The manager's Sync tool runs without a permission prompt.** It changes nothing outside Mainframe **(designer's call)**.
