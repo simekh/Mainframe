@@ -18,8 +18,8 @@ import { isFocused, isManagerShown, isShown, jump, projectsStore, revealProject,
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
-// The owner's width for the managers' columns, one for every project, or the one an edge is dragged
-// to. Each pane clamps what it shows, and its session panel leaves it that much.
+// The owner's width for the managers' columns, one for every project. Each pane clamps what it shows,
+// and its session panel leaves it that much.
 const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
 
 /**
@@ -51,8 +51,12 @@ export default function ProjectPane(props: {
   const showManager = () => isManagerShown(dir);
   // Framed while the owner works in it beside other projects; alone on screen, it needs no frame.
   const framed = () => isFocused(dir) && projectsStore.layout.shown.length > 1;
-  const shownManagerWidth = () => clampManagerWidth(managerWidth(), width());
+  // The width while the edge is dragged, this pane's alone: the others take the one kept once the
+  // pointer lets go, rather than laying themselves out at every move.
+  const [dragManagerWidth, setDragManagerWidth] = createSignal<number | null>(null);
+  const shownManagerWidth = () => clampManagerWidth(dragManagerWidth() ?? managerWidth(), width());
   const keepManagerWidth = (w: number) => {
+    setDragManagerWidth(null);
     const kept = clampManagerWidth(w, width());
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
@@ -148,7 +152,7 @@ export default function ProjectPane(props: {
         <ManagerColumn
           config={props.config}
           width={shownManagerWidth()}
-          onDrag={setManagerWidth}
+          onDrag={setDragManagerWidth}
           onDone={keepManagerWidth}
           pinned={managerPinned()}
           onPinnedChange={keepManagerPinned}

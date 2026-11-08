@@ -1194,13 +1194,13 @@ kbd {
   color: var(--fg-muted);
 }
 
-.side-panel[data-pinned='false'] .panel-hide,
-.manager-column .panel-hide {
+.side-panel[data-pinned='false'] .panel-hide {
   display: inline-flex;
 }
 
 /* The manager's, pinned or not, on its right edge: it can be put away either way. */
 .manager-column .panel-hide {
+  display: inline-flex;
   left: auto;
   right: -8px;
 }
@@ -1240,11 +1240,11 @@ kbd {
   border-radius: 0 999px 999px 0;
 }
 
-/* Visible at once, so it can take the focus; it fades in once the island has slid out. Only on
-   screen: visible, it would show through the hidden pane it is in. */
-.project-pane[data-shown='true'] > .side-panel[data-pinned='false'][data-open='false'] + .panel-show,
-.project-pane[data-shown='true'] > .manager-column[data-open='false'] + .panel-show {
-  visibility: visible;
+/* Visible at once, so it can take the focus; it fades in once the island has slid out. As visible
+   as its pane: one off screen keeps it hidden. */
+.side-panel[data-pinned='false'][data-open='false'] + .panel-show,
+.manager-column[data-open='false'] + .panel-show {
+  visibility: inherit;
   opacity: 1;
 }
 
