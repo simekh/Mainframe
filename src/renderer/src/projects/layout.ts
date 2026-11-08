@@ -35,10 +35,16 @@ export function fitLayout(layout: Layout, open: string[]): Layout {
   });
 }
 
-/** Puts the project beside the ones on screen and focuses it, or takes it away; the last one stays. */
+/**
+ * Puts the project beside the ones on screen and focuses it, or takes it away; the last one stays.
+ * Taken away while focused, it hands the focus to its neighbour, the one before it if it has one.
+ */
 export function toggleBeside(layout: Layout, dir: string): Layout {
-  if (!layout.shown.includes(dir)) return { ...layout, shown: [...layout.shown, dir], focused: dir };
-  return layout.shown.length > 1 ? keepFocus({ ...layout, shown: layout.shown.filter((d) => d !== dir) }) : layout;
+  const at = layout.shown.indexOf(dir);
+  if (at < 0) return { ...layout, shown: [...layout.shown, dir], focused: dir };
+  if (layout.shown.length < 2) return layout;
+  const shown = layout.shown.toSpliced(at, 1);
+  return { ...layout, shown, focused: layout.focused === dir ? shown[Math.max(0, at - 1)] : layout.focused };
 }
 
 /**

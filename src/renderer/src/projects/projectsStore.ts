@@ -95,6 +95,17 @@ export function focusProject(dir: string): void {
   });
 }
 
+/**
+ * Takes the focused project off screen, as Cmd+W does; it stays open, its sessions running. The
+ * neighbour that takes the focus takes the cursor too. The last one on screen stays.
+ */
+export function closeFocusedPane(): void {
+  const { focused, shown } = store.layout;
+  if (focused === null || shown.length < 2) return;
+  toggleBesideProject(focused);
+  if (store.layout.focused !== null) focusProject(store.layout.focused);
+}
+
 /** Main asks for the folder and says itself why one can't open. */
 export const openProject = () => window.mainframe.openProject();
 

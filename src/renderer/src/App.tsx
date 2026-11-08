@@ -5,7 +5,7 @@ import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from './manager
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { focusProject, loadProjects, projectsStore, revealProject } from './projects/projectsStore';
+import { closeFocusedPane, focusProject, loadProjects, projectsStore, revealProject } from './projects/projectsStore';
 import { jumpToNeedsYou, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
@@ -107,6 +107,7 @@ export default function App() {
         const project = projectsStore.projects[index];
         if (project) focusProject(project.dir);
       },
+      closePane: closeFocusedPane,
     }),
   );
 

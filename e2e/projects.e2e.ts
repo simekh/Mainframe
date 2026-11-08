@@ -146,6 +146,31 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await app.close();
 });
 
+test("Cmd+W takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  await (await rowButton(page, b, 'rail-beside')).click();
+  await (await rowButton(page, c, 'rail-beside')).click();
+  await row(page, b).getByTestId('rail-show').click();
+
+  // The focus goes to the neighbour before it.
+  await page.keyboard.press('Meta+w');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(page.getByTestId('rail-project')).toHaveCount(3);
+  expect(openProjects(dataDir)).toEqual([a, b, c]);
+
+  // Alone on screen, c shows its manager, and the cursor goes there.
+  await page.keyboard.press('Meta+w');
+  await expect(pane(page, a)).toHaveAttribute('data-shown', 'false');
+  await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => cursor(page)).toEqual({ project: c, inTask: false });
+
+  await page.keyboard.press('Meta+w');
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'true');
+  await app.close();
+});
+
 test("each project's panel keeps its own pin", async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({}, [acme, globex]);

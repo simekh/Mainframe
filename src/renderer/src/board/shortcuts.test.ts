@@ -27,7 +27,7 @@ function fakeWindow() {
 }
 
 const install = (w: ReturnType<typeof fakeWindow>) => {
-  const actions = { jump: vi.fn(), focusProject: vi.fn() };
+  const actions = { jump: vi.fn(), focusProject: vi.fn(), closePane: vi.fn() };
   return { actions, remove: installBoardShortcuts(w.target, actions) };
 };
 
@@ -62,13 +62,22 @@ describe('installBoardShortcuts', () => {
     expect(actions.focusProject).toHaveBeenCalledTimes(3);
   });
 
+  it("Cmd+W takes the focused project's pane off screen, and the key goes no further", () => {
+    const w = fakeWindow();
+    const { actions } = install(w);
+    swallowed(w.press('w', { metaKey: true }, 'KeyW'));
+    // By the character, as macOS's own shortcuts go: W sits elsewhere on some layouts.
+    swallowed(w.press('w', { metaKey: true }, 'KeyZ'));
+    expect(actions.closePane).toHaveBeenCalledTimes(2);
+  });
+
   it('listens in the capture phase, so the terminal never sees the key', () => {
     const w = fakeWindow();
     install(w);
     expect([...w.listeners].map((l) => l.capture)).toEqual([true]);
   });
 
-  it('every other key passes through untouched, Cmd+Tab, Option+Tab and Cmd+0 included', () => {
+  it('every other key passes through untouched, Cmd+Tab, Option+Tab, Cmd+0 and Ctrl+W included', () => {
     const w = fakeWindow();
     const { actions } = install(w);
     const others = [
@@ -86,9 +95,14 @@ describe('installBoardShortcuts', () => {
       w.press('1', { metaKey: true, altKey: true }, 'Digit1'),
       w.press('1', { metaKey: true, ctrlKey: true }, 'Digit1'),
       w.press('1', { metaKey: true }, 'Numpad1'),
+      // Ctrl+W deletes the word before the cursor in the terminal.
+      w.press('w', { ctrlKey: true }, 'KeyW'),
+      w.press('W', { metaKey: true, shiftKey: true }, 'KeyW'),
+      w.press('w', { metaKey: true, altKey: true }, 'KeyW'),
     ];
     expect(actions.jump).not.toHaveBeenCalled();
     expect(actions.focusProject).not.toHaveBeenCalled();
+    expect(actions.closePane).not.toHaveBeenCalled();
     for (const e of others) {
       expect(e.preventDefault).not.toHaveBeenCalled();
       expect(e.stopPropagation).not.toHaveBeenCalled();
@@ -102,7 +116,9 @@ describe('installBoardShortcuts', () => {
     expect(w.listeners.size).toBe(0);
     w.press('Tab', { ctrlKey: true });
     w.press('1', { metaKey: true }, 'Digit1');
+    w.press('w', { metaKey: true }, 'KeyW');
     expect(actions.jump).not.toHaveBeenCalled();
     expect(actions.focusProject).not.toHaveBeenCalled();
+    expect(actions.closePane).not.toHaveBeenCalled();
   });
 });

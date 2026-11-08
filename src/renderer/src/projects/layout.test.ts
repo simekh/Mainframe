@@ -43,8 +43,15 @@ describe('the projects on screen', () => {
     const two = toggleBeside(layout({ shown: ['/a'], focused: '/a' }), '/b');
     expect(two).toMatchObject({ shown: ['/a', '/b'], focused: '/b' });
     expect(toggleBeside(two, '/a')).toMatchObject({ shown: ['/b'], focused: '/b' });
-    // Taking the focused one away hands the focus to one still on screen.
     expect(toggleBeside(two, '/b')).toMatchObject({ shown: ['/a'], focused: '/a' });
+  });
+
+  it('toggleBeside hands the focus of the one it takes away to its neighbour, the one before it if it has one', () => {
+    const three = layout({ shown: ['/a', '/b', '/c'] });
+    expect(toggleBeside({ ...three, focused: '/c' }, '/c').focused).toBe('/b');
+    expect(toggleBeside({ ...three, focused: '/b' }, '/b').focused).toBe('/a');
+    expect(toggleBeside({ ...three, focused: '/a' }, '/a').focused).toBe('/b');
+    expect(toggleBeside({ ...three, focused: '/a' }, '/c').focused).toBe('/a');
   });
 
   it('toggleBeside never takes the last project off screen', () => {
