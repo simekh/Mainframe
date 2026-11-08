@@ -8,6 +8,7 @@ import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
+import { plainText } from './markdown';
 import TicketPanel from './TicketPanel';
 import { reopenTaskId, sourceLine, syncedLine, todoItems, visibleItems, type TodoItem } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
@@ -312,6 +313,11 @@ export default function TodoPanel(props: {
                     // A row whose key leaves the list goes before this reads it again.
                     const item = () => itemByKey().get(key)!;
                     const reopenId = () => reopenTaskId(item().action);
+                    // What the row shows of its text: a card's as a reader sees it, a note's as typed. Memos by value, so a
+                    // sync that leaves the text as it was doesn't read it again.
+                    const body = createMemo(() => item().body);
+                    const isCard = createMemo(() => item().kind === 'card');
+                    const preview = createMemo(() => (isCard() ? plainText(body()) : body()));
                     return (
                       <li
                         class="todo-item"
@@ -330,8 +336,8 @@ export default function TodoPanel(props: {
                           <Show when={item().number}>{(number) => <span class="card-number">{number()} </span>}</Show>
                           {item().title}
                         </button>
-                        <Show when={item().body}>
-                          <p class="todo-body">{item().body}</p>
+                        <Show when={preview()}>
+                          <p class="todo-body">{preview()}</p>
                         </Show>
                         {/* A note always has its Start. */}
                         <Show when={item().action || item().labels.length > 0}>

@@ -7,6 +7,7 @@ import { openLinkLogged } from '../openLink';
 import ResumeIcon from '../panel/ResumeIcon';
 import { useProject } from '../projects/projectContext';
 import { isFocused } from '../projects/projectsStore';
+import Markdown from './MarkdownView';
 import { reopenTaskId, syncedAgo, type TodoItem } from './todoItems';
 import { todoOf } from './todoStore';
 
@@ -172,7 +173,9 @@ export default function TicketPanel(props: {
                 </div>
               </Show>
               <Show when={c().description}>
-                <p class="ticket-desc">{c().description}</p>
+                <div class="ticket-desc">
+                  <Markdown text={c().description} />
+                </div>
               </Show>
               <For each={c().checklists}>
                 {(list) => (

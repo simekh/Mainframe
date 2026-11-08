@@ -692,3 +692,44 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   await expect(itemRow(again.page, 'card:c119')).toBeVisible();
   await again.app.close();
 });
+
+test("a card's description shows its Markdown in the ticket, never as HTML, and its row previews the text without the marks", async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  const description = [
+    '## Steps to reproduce',
+    '',
+    '- Open **Search**',
+    '- Type `creme`',
+    '',
+    'See [the report](https://example.com/x) for more.',
+    '',
+    '<img src=x onerror="window.__pwned=1">',
+  ].join('\n');
+  await syncFirstTime(page, dataDir, { ...CARDS, cards: [{ ...CARDS.cards[0], description }] });
+
+  // The row: what a reader sees, with no `**`, no backticks and no `#`.
+  const row = itemRow(page, 'card:c128');
+  await expect(row.locator('.todo-body')).toHaveText(
+    'Steps to reproduce Open Search Type creme See the report for more. <img src=x onerror="window.__pwned=1">',
+  );
+
+  await row.click();
+  const ticket = page.getByTestId('ticket-panel');
+  const desc = ticket.locator('.ticket-desc');
+  await expect(desc.getByRole('heading', { name: 'Steps to reproduce' })).toBeVisible();
+  await expect(desc.locator('li')).toHaveText(['Open Search', 'Type creme']);
+  await expect(desc.locator('strong')).toHaveText('Search');
+  await expect(desc.locator('code')).toHaveText('creme');
+
+  // A link opens in the owner's browser, as Open in Tracker does, and the window itself goes nowhere.
+  await desc.getByRole('link', { name: 'the report' }).click();
+  await expect.poll(() => openedLinks(app)).toEqual(['https://example.com/x']);
+  await expect(ticket).toBeVisible();
+
+  // The text of an image tag shows as text: no image is made, and nothing it carries runs.
+  await expect(desc.getByText('<img src=x onerror="window.__pwned=1">', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('todo-panel').locator('img')).toHaveCount(0);
+  await expect(ticket.locator('img')).toHaveCount(0);
+  expect(await page.evaluate(() => (globalThis as { __pwned?: unknown }).__pwned)).toBeUndefined();
+  await app.close();
+});

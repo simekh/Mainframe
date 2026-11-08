@@ -896,12 +896,173 @@ button {
   margin-left: auto;
 }
 
-/* As the source wrote it, line breaks and all. */
+/* The card's description: its colour and its leading; `.md` sets what its Markdown holds. */
 .ticket-desc {
   margin: 0;
   color: var(--fg-muted);
   line-height: 1.55;
-  white-space: pre-wrap;
+}
+
+/* A card's Markdown in the ticket, in the ticket's own type and colours and spaced tightly: the panel is narrow, and
+   the card's title stays its one large line, so the headings go no bigger than the text. */
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md blockquote,
+.md .md-table {
+  margin: 0 0 8px;
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 12px 0 4px;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.md h3 {
+  font-size: 14px;
+}
+
+.md strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.md del {
+  color: var(--fg-subtle);
+}
+
+.md a {
+  color: var(--accent);
+  cursor: default;
+  text-decoration: none;
+}
+
+.md a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.md ul,
+.md ol {
+  padding-left: 18px;
+}
+
+.md li + li {
+  margin-top: 2px;
+}
+
+.md li::marker {
+  color: var(--fg-subtle);
+}
+
+.md li > p {
+  margin: 0;
+}
+
+.md li > ul,
+.md li > ol {
+  margin: 2px 0 0;
+}
+
+/* A task's box is drawn as the checklists' are, in the bullet's place; a done one reads quieter, as theirs do. */
+.md .md-task {
+  position: relative;
+  margin-left: -18px;
+  padding-left: 18px;
+  list-style: none;
+}
+
+.md .md-task > input {
+  position: absolute;
+  top: 3.5px;
+  left: 0;
+  margin: 0;
+}
+
+.md .md-task:has(> input:checked) {
+  color: var(--fg-subtle);
+}
+
+.md code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: 12px var(--font-mono);
+}
+
+.md pre {
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.md pre code {
+  padding: 0;
+  background: none;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.md blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--fg-subtle);
+}
+
+.md blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.md hr {
+  height: 0;
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* A wide table scrolls within the panel instead of widening it. */
+.md-table {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.md th,
+.md td {
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  background: color-mix(in srgb, var(--fg) 4.5%, transparent);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .ticket-checklist h4 {
@@ -929,7 +1090,8 @@ button {
 }
 
 /* Read-only, so drawn as the source's boxes rather than greyed as a disabled control: ticked in green when done. */
-.ticket-checklist input {
+.ticket-checklist input,
+.md-task > input {
   flex: none;
   appearance: none;
   width: 13px;
@@ -939,7 +1101,8 @@ button {
   border-radius: 3px;
 }
 
-.ticket-checklist input:checked {
+.ticket-checklist input:checked,
+.md-task > input:checked {
   border-color: var(--success);
   background: var(--success)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none' stroke='%23080c10' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 5.3l1.9 1.9 3.8-4.2'/%3E%3C/svg%3E")
