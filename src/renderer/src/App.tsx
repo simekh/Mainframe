@@ -1,12 +1,11 @@
 import type { Terminal } from '@xterm/xterm';
-import { createResource, createSignal, onCleanup, onMount } from 'solid-js';
+import { createResource, onCleanup, onMount } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
-import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from './manager/managerPrefs';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { closeFocusedPane, focusProject, loadProjects, projectsStore, revealProject } from './projects/projectsStore';
-import { jumpToNeedsYou, tasksStore, terminalOf } from './tasksStore';
+import { closeFocusedPane, focusProject, jump, loadProjects, projectsStore } from './projects/projectsStore';
+import { tasksOf, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
@@ -19,16 +18,12 @@ import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
 
 const termOf = (sessionId: string | null) => (sessionId ? getTerminal(sessionId) : undefined);
-/** The project the task belongs to: no two projects share a task id. */
-const dirOfTask = (taskId: string) =>
-  Object.keys(tasksStore.projects).find((dir) => tasksStore.projects[dir].tasks.some((t) => t.id === taskId));
-const terminalIdOf = (taskId: string) => {
-  const dir = dirOfTask(taskId);
-  return dir ? terminalOf(dir, taskId) : null;
-};
+/** The task's terminal, in whichever project has it: no two projects share a task id. */
+const terminalIdOf = (taskId: string) =>
+  Object.keys(tasksStore.projects).map((dir) => terminalOf(dir, taskId)).find((id) => id !== null) ?? null;
 const terminalOfTask = (taskId: string) => termOf(terminalIdOf(taskId));
-/** The manager's terminal of the project, or of the first one open. */
-const managerTerminalOf = (dir?: string) => termOf(managerOf(dir ?? projectsStore.projects[0]?.dir ?? '')?.managerTerminal ?? null);
+/** The first open project's manager's terminal. */
+const managerTerminal = () => termOf(managerOf(projectsStore.projects[0]?.dir ?? '')?.managerTerminal ?? null);
 
 function textOf(term: Terminal | undefined): string {
   const buffer = term?.buffer.active;
@@ -43,11 +38,11 @@ const sizeOf = (term: Terminal | undefined) => (term ? { cols: term.cols, rows: 
 function installE2eHooks(): void {
   const firstSpawns = new Map<string, { cols: number; rows: number }>();
   window.__mainframeE2E = {
-    taskIds: () => projectsStore.projects.flatMap((p) => tasksStore.projects[p.dir]?.tasks.map((t) => t.id) ?? []),
+    taskIds: () => projectsStore.projects.flatMap((p) => tasksOf(p.dir).tasks.map((t) => t.id)),
     screenText: (taskId) => textOf(terminalOfTask(taskId)),
     termSize: (taskId) => sizeOf(terminalOfTask(taskId)),
-    managerScreen: (dir) => textOf(managerTerminalOf(dir)),
-    managerTermSize: (dir) => sizeOf(managerTerminalOf(dir)),
+    managerScreen: () => textOf(managerTerminal()),
+    managerTermSize: () => sizeOf(managerTerminal()),
     cell: (taskId, row, col) => {
       const cell = terminalOfTask(taskId)?.buffer.active.getLine(row)?.getCell(col);
       if (!cell) return null;
@@ -74,13 +69,6 @@ function installE2eHooks(): void {
   };
 }
 
-const jump = (step: 1 | -1) =>
-  jumpToNeedsYou(
-    step,
-    projectsStore.projects.map((p) => p.dir),
-    revealProject,
-  );
-
 export default function App() {
   // Terminals render only once the config is here, so waiting for the font here covers them all.
   const [config] = createResource(async () => {
@@ -88,15 +76,6 @@ export default function App() {
     if (c.e2e) installE2eHooks();
     return c;
   });
-  // The owner's width for the managers' columns, or the one an edge is dragged to. Each pane clamps
-  // what it shows, and its session panel leaves it that much.
-  const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
-  const keepManagerWidth = (w: number, paneWidth: number) => {
-    const kept = clampManagerWidth(w, paneWidth);
-    setManagerWidth(kept);
-    saveManagerWidth(localStorage, kept);
-  };
-
   onMount(() => {
     loadProjects().catch((err: unknown) => console.error('[projects] could not list the open projects', err));
   });
@@ -114,13 +93,7 @@ export default function App() {
   return (
     <div class="app">
       <ProjectRail />
-      <Panes
-        config={config()}
-        managerWidth={managerWidth()}
-        onManagerDrag={setManagerWidth}
-        onManagerDone={keepManagerWidth}
-        onJump={() => jump(1)}
-      />
+      <Panes config={config()} />
     </div>
   );
 }

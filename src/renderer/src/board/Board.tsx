@@ -23,13 +23,14 @@ export default function Board() {
   const orderKey = createMemo(() => LANES.map(({ lane }) => order()[lane].map((t) => t.id).join(',')).join('|'));
 
   // Solid runs computations before it updates the DOM and effects after: the cards are measured
-  // where they were in one and moved from there in the other.
+  // where they were in one and moved from there in the other. Off screen nothing moves: a flying
+  // card is drawn over the whole window, over the projects on screen.
   let before = new Map<string, CardSpot>();
   createComputed(
     on(
       orderKey,
       () => {
-        before = snapshotCards(root);
+        if (project.shown()) before = snapshotCards(root);
       },
       { defer: true },
     ),
@@ -37,7 +38,9 @@ export default function Board() {
   createEffect(
     on(
       orderKey,
-      () => playCardMoves(root, before, window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+      () => {
+        if (project.shown()) playCardMoves(root, before, window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      },
       { defer: true },
     ),
   );

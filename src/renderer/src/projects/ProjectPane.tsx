@@ -5,16 +5,20 @@ import { glyphOf, stateLabel } from '../board/lanes';
 import NewTaskDialog from '../board/NewTaskDialog';
 import StatusGlyph from '../board/StatusGlyph';
 import ManagerColumn from '../manager/ManagerColumn';
-import { clampManagerWidth } from '../manager/managerPrefs';
+import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from '../manager/managerPrefs';
 import { BOARD_ROOM, loadPanelPrefs, MIN_WIDTH, savePanelPrefs, type PanelPrefs } from '../panel/panelPrefs';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import { ProjectContext } from './projectContext';
-import { isFocused, managerHidden, projectsStore, revealProject, toggleManagerOf } from './projectsStore';
+import { isFocused, isManagerShown, isShown, jump, projectsStore, revealProject, toggleManagerOf } from './projectsStore';
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
+
+// The owner's width for the managers' columns, one for every project, or the one an edge is dragged
+// to. Each pane clamps what it shows, and its session panel leaves it that much.
+const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
 
 /**
  * One open project: its manager's column, its board and its session panel. Every open project has
@@ -23,17 +27,12 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
  */
 export default function ProjectPane(props: {
   project: ProjectView;
-  shown: boolean;
   config: RendererConfig | undefined;
   /** Where it sits among the panes on screen. */
   style: JSX.CSSProperties;
-  /** The manager column's width: the owner's, for every project. */
-  managerWidth: number;
-  onManagerDrag(w: number): void;
-  onManagerDone(w: number, paneWidth: number): void;
-  onJump(): void;
 }) {
   const dir = props.project.dir;
+  const shown = () => isShown(dir);
   let root!: HTMLDivElement;
   const [width, setWidth] = createSignal(window.innerWidth);
   onMount(() => {
@@ -46,12 +45,16 @@ export default function ProjectPane(props: {
   const tasks = () => tasksOf(dir);
   const selected = createMemo(() => tasks().tasks.find((t) => t.id === tasks().selectedId));
   const [dialogOpen, setDialogOpen] = createSignal(false);
-  const hideManager = () => managerHidden(dir);
+  const showManager = () => isManagerShown(dir);
   // Framed while the owner works in it beside other projects; alone on screen, it needs no frame.
-  const framed = () => props.shown && isFocused(dir) && projectsStore.layout.shown.length > 1;
-  // The pane clamps what the column shows, and the session panel leaves it that much.
-  const shownManagerWidth = () => clampManagerWidth(props.managerWidth, width());
-  const besideWidth = () => (hideManager() ? 0 : shownManagerWidth());
+  const framed = () => isFocused(dir) && projectsStore.layout.shown.length > 1;
+  const shownManagerWidth = () => clampManagerWidth(managerWidth(), width());
+  const keepManagerWidth = (w: number) => {
+    const kept = clampManagerWidth(w, width());
+    setManagerWidth(kept);
+    saveManagerWidth(localStorage, kept);
+  };
+  const besideWidth = () => (showManager() ? shownManagerWidth() : 0);
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
   const roomToPin = () => width() - besideWidth() - MIN_WIDTH >= BOARD_ROOM.pinned;
@@ -75,16 +78,16 @@ export default function ProjectPane(props: {
   };
 
   return (
-    <ProjectContext.Provider value={{ dir, name: props.project.name, shown: () => props.shown, width }}>
+    <ProjectContext.Provider value={{ dir, name: props.project.name, shown, width }}>
       <div
         class="project-pane"
         ref={root}
         data-testid="project-pane"
         data-project={dir}
-        data-shown={String(props.shown)}
+        data-shown={String(shown())}
         data-focused={String(framed())}
-        aria-hidden={props.shown ? undefined : 'true'}
-        inert={!props.shown}
+        aria-hidden={shown() ? undefined : 'true'}
+        inert={!shown()}
         style={props.style}
         onPointerDown={() => revealProject(dir)}
         onFocusIn={() => revealProject(dir)}
@@ -92,9 +95,9 @@ export default function ProjectPane(props: {
         <ManagerColumn
           config={props.config}
           width={shownManagerWidth()}
-          hidden={hideManager()}
-          onDrag={props.onManagerDrag}
-          onDone={(w) => props.onManagerDone(w, width())}
+          hidden={!showManager()}
+          onDrag={setManagerWidth}
+          onDone={keepManagerWidth}
         />
 
         <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>
@@ -112,8 +115,8 @@ export default function ProjectPane(props: {
             <button
               class="tb-toggle"
               data-testid="manager-toggle"
-              aria-pressed={hideManager() ? 'false' : 'true'}
-              title={hideManager() ? 'Show the manager' : 'Hide the manager'}
+              aria-pressed={showManager() ? 'true' : 'false'}
+              title={showManager() ? 'Hide the manager' : 'Show the manager'}
               onMouseDown={keepFocus}
               onClick={() => toggleManagerOf(dir)}
             >
@@ -123,7 +126,7 @@ export default function ProjectPane(props: {
               </svg>
               <span>Manager</span>
             </button>
-            <button class="tb-jump" data-testid="jump-next" title="Next session that needs you" onMouseDown={keepFocus} onClick={props.onJump}>
+            <button class="tb-jump" data-testid="jump-next" title="Next session that needs you" onMouseDown={keepFocus} onClick={() => jump(1)}>
               <kbd>Ctrl</kbd>
               <kbd>Tab</kbd>
               <span>Next that needs you</span>

@@ -3,7 +3,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import type { ProjectView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { forgetManager, loadManager, managerOf } from '../manager/managerStore';
-import { focusTerminalOf, forgetTasks, loadTasks, select, tasksOf, terminalOf } from '../tasksStore';
+import { focusTerminalOf, forgetTasks, jumpToNeedsYou, loadTasks, select, tasksOf, terminalOf } from '../tasksStore';
 import { getTerminal } from '../terminal/registry';
 import { fitLayout, focusOn, loadLayout, managerShown, saveLayout, toggleBeside, toggleManager, type Layout } from './layout';
 
@@ -19,7 +19,7 @@ export const projectsStore = store;
 
 export const isShown = (dir: string) => store.layout.shown.includes(dir);
 export const isFocused = (dir: string) => store.layout.focused === dir;
-export const managerHidden = (dir: string) => !managerShown(store.layout, dir);
+export const isManagerShown = (dir: string) => managerShown(store.layout, dir);
 export const weightOf = (dir: string) => store.layout.weights[dir] ?? 1;
 
 let changed = false;
@@ -86,7 +86,7 @@ export function focusProject(dir: string): void {
   const taskId = tasksOf(dir).selectedId;
   const toTask = taskId !== null && terminalOf(dir, taskId) !== null;
   if (toTask) select(dir, taskId);
-  const managerTerminal = managerShown(store.layout, dir) ? managerOf(dir)?.managerTerminal : null;
+  const managerTerminal = isManagerShown(dir) ? managerOf(dir)?.managerTerminal : null;
   // Once Solid has put the pane and the panel on show: a hidden element can't take the focus.
   queueMicrotask(() => {
     if (toTask) focusTerminalOf(dir, taskId);
@@ -94,6 +94,14 @@ export function focusProject(dir: string): void {
     else (document.activeElement as HTMLElement | null)?.blur();
   });
 }
+
+/** Ctrl+Tab and the board's button: the next session that needs the owner, in any open project. */
+export const jump = (step: 1 | -1) =>
+  jumpToNeedsYou(
+    step,
+    store.projects.map((p) => p.dir),
+    revealProject,
+  );
 
 /**
  * Takes the focused project off screen, as Cmd+W does; it stays open, its sessions running. The

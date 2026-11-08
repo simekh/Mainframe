@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import { needsYouCount } from '../tasksStore';
 import {
   closeProject,
@@ -58,7 +58,9 @@ export default function ProjectRail() {
       <ul class="rail-list">
         <For each={projectsStore.projects}>
           {(project) => {
-            const count = () => needsYouCount(project.dir);
+            const count = createMemo(() => needsYouCount(project.dir));
+            // On screen beside others, so its button takes it off; the last one on screen stays.
+            const beside = () => isShown(project.dir) && several();
             return (
               <li
                 class="rail-item"
@@ -66,7 +68,6 @@ export default function ProjectRail() {
                 data-project={project.dir}
                 data-shown={String(isShown(project.dir))}
                 data-focused={String(isFocused(project.dir))}
-                data-waiting={String(count() > 0)}
               >
                 <Show
                   when={confirming() === project.dir}
@@ -91,10 +92,10 @@ export default function ProjectRail() {
                       <button
                         class="rail-act"
                         data-testid="rail-beside"
-                        aria-pressed={isShown(project.dir) && several() ? 'true' : 'false'}
+                        aria-pressed={beside() ? 'true' : 'false'}
                         aria-label={`Show ${project.name} beside the others`}
-                        title={isShown(project.dir) && several() ? 'Take off screen' : 'Show beside'}
-                        disabled={isShown(project.dir) && !several()}
+                        title={beside() ? 'Take off screen' : 'Show beside'}
+                        disabled={isShown(project.dir) && !beside()}
                         onMouseDown={keepFocus}
                         onClick={() => toggleBesideProject(project.dir)}
                       >

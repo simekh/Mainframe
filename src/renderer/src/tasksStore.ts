@@ -137,10 +137,11 @@ export function focusTerminalOf(dir: string, taskId: string): void {
   if (sessionId) getTerminal(sessionId)?.focus();
 }
 
+/** The project's tasks in its Needs you lane, in board order. */
+const needsYou = (dir: string) => laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'];
+
 /** How many of the project's tasks wait in its Needs you lane. */
-export function needsYouCount(dir: string): number {
-  return laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'].length;
-}
+export const needsYouCount = (dir: string) => needsYou(dir).length;
 
 /**
  * Selects the task `step` places from the one selected last in the Needs you lanes of every open
@@ -150,7 +151,7 @@ export function needsYouCount(dir: string): number {
  */
 export function jumpToNeedsYou(step: 1 | -1, dirs: string[], reveal: (dir: string) => void): void {
   if (document.querySelector('dialog:modal')) return;
-  const queue = dirs.flatMap((dir) => laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'].map((t) => ({ dir, id: t.id })));
+  const queue = dirs.flatMap((dir) => needsYou(dir).map((t) => ({ dir, id: t.id })));
   const id = nextNeedsYou(
     queue.map((t) => t.id),
     store.lastSelected,

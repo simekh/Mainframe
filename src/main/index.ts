@@ -101,7 +101,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
 
-  const projects: ProjectRegistry<Project> = new ProjectRegistry<Project>({
+  const projects = new ProjectRegistry<Project>({
     dataDir: config.dataDir,
     open: makeProject,
     kill: (sessionId) => host.kill(sessionId),

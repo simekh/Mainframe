@@ -18,21 +18,22 @@ export const DEFAULT_LAYOUT: Layout = { shown: [], arrangement: 'columns', weigh
 
 const KEY = 'mainframe.layout';
 
-/** The focus where it was if that project is still on screen, or else on the first one there. */
-const keepFocus = (layout: Layout): Layout =>
-  layout.focused !== null && layout.shown.includes(layout.focused) ? layout : { ...layout, focused: layout.shown[0] ?? null };
-
-/** The layout for the projects open now: what it kept for the others goes, and one project is always on screen. */
+/**
+ * The layout for the projects open now: what it kept for the others goes, one project is always on
+ * screen, and the focus stays where it was if that one still is, or goes to the first.
+ */
 export function fitLayout(layout: Layout, open: string[]): Layout {
   const isOpen = (dir: string) => open.includes(dir);
-  const shown = layout.shown.filter(isOpen);
-  return keepFocus({
+  const kept = layout.shown.filter(isOpen);
+  const shown = kept.length > 0 || open.length === 0 ? kept : [open[0]];
+  return {
     ...layout,
-    shown: shown.length > 0 || open.length === 0 ? shown : [open[0]],
+    shown,
     weights: Object.fromEntries(Object.entries(layout.weights).filter(([dir]) => isOpen(dir))),
     managerHidden: layout.managerHidden.filter(isOpen),
     managerBeside: layout.managerBeside.filter(isOpen),
-  });
+    focused: layout.focused !== null && shown.includes(layout.focused) ? layout.focused : (shown[0] ?? null),
+  };
 }
 
 /**
@@ -53,7 +54,8 @@ export function toggleBeside(layout: Layout, dir: string): Layout {
  */
 export function focusOn(layout: Layout, dir: string): Layout {
   if (layout.shown.includes(dir)) return { ...layout, focused: dir };
-  const at = Math.max(0, layout.shown.indexOf(keepFocus(layout).focused ?? ''));
+  // With no focus on screen, the first takes it.
+  const at = Math.max(0, layout.shown.indexOf(layout.focused ?? ''));
   const replaced = layout.shown[at];
   const weights = { ...layout.weights };
   if (replaced !== undefined && weights[replaced] !== undefined) weights[dir] = weights[replaced];
