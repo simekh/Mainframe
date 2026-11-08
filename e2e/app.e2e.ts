@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -33,21 +33,21 @@ test('opened again on the same data folder, Mainframe quits and its tasks keep r
   await app.close();
 });
 
-test('Open Project… remembers the picked folder and restarts Mainframe on it', async () => {
-  const { app, dataDir } = await launchApp();
+test('Open Project… opens the picked folder beside the open one and shows it, without a restart', async () => {
+  const { app, page, dataDir } = await launchApp();
+  const projectsFile = join(dataDir, 'projects.json');
+  const [first] = JSON.parse(readFileSync(projectsFile, 'utf8')).open;
   const picked = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-project-')));
-  const relaunched = join(dataDir, 'relaunched');
-  // The dialog answers with the folder, and the restart only leaves a mark: a real one would start
-  // a Mainframe this test doesn't control. Main looks both up at each call.
-  await app.evaluate(({ app: main, dialog, Menu }, { folder, mark }) => {
+  // Main looks the dialog up at each call.
+  await app.evaluate(({ dialog, Menu }, folder) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-    main.relaunch = () => process.getBuiltinModule('node:fs').writeFileSync(mark, '');
     Menu.getApplicationMenu()!.getMenuItemById('open-project')!.click();
-  }, { folder: picked, mark: relaunched });
+  }, picked);
 
-  await app.waitForEvent('close');
-  expect(existsSync(relaunched)).toBe(true);
-  expect(JSON.parse(readFileSync(join(dataDir, 'projects.json'), 'utf8'))).toEqual({ version: 1, open: [picked] });
+  await expect(page.getByTestId('rail-project')).toHaveCount(2);
+  await expect(page.locator(`[data-testid=project-pane][data-project="${picked}"]`)).toHaveAttribute('data-shown', 'true');
+  expect(JSON.parse(readFileSync(projectsFile, 'utf8'))).toEqual({ version: 1, open: [first, picked] });
+  await app.close();
 });
 
 test('Open Project… says why it could not open the folder', async () => {

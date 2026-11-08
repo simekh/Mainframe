@@ -7,15 +7,17 @@ import * as pty from 'node-pty';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
-import { registerIpc } from './ipc';
+import { registerIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
-import { chooseProject, openProject } from './projects';
+import { ProjectRegistry } from './projectRegistry';
+import { chooseProjects } from './projects';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
+import { TaskRecords } from './tasks/taskStore';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 
@@ -76,8 +78,8 @@ async function pickProjectFolder(win?: BrowserWindow): Promise<string | undefine
   return canceled ? undefined : filePaths[0];
 }
 
-/** Throws when Mainframe can't start; nothing that can throw comes after the window opens. */
-async function start(config: AppConfig, projectDir: string): Promise<void> {
+/** Throws when Mainframe can't start; a project that can't open is said and left out. */
+async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
@@ -92,50 +94,87 @@ async function start(config: AppConfig, projectDir: string): Promise<void> {
   });
   // Before the window: a state.json it can't use stops the start here, with no window left
   // waiting for handlers that never come.
+  const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
   let win: BrowserWindow | undefined;
   // Exits keep arriving while the app quits, after the window has gone.
   const toWindow = (channel: string, payload: unknown) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   };
-  const service = new TaskService({
-    projectDir,
+
+  const projects: ProjectRegistry<Project> = new ProjectRegistry<Project>({
     dataDir: config.dataDir,
-    claudeBin: config.claudeBin,
-    git: gitQueries,
+    open: makeProject,
     kill: (sessionId) => host.kill(sessionId),
-    status: (sessionId) => host.status(sessionId),
-    onChange: (tasks) => toWindow(IPC.tasksChanged, tasks),
+    running: (sessionId) => host.has(sessionId),
+    onChange: (list) => toWindow(IPC.projectsChanged, list),
   });
-  // The manager's tools, on the tasks. Its mcp.json carries this run's port and token to it.
-  const mcp = await startMcpServer((server) => registerManagerTools(server, service));
-  const manager = new ManagerService({
-    projectDir,
-    dataDir: config.dataDir,
-    claudeBin: config.claudeBin,
-    mcpConfig: mcpConfigJson(mcp.url, mcp.token),
-    onChange: (view) => toWindow(IPC.managerChanged, view),
-  });
+
+  async function makeProject(dir: string): Promise<Project> {
+    // Only while it is the project open on its folder: a closed one's last exits change nothing on screen.
+    const send = (channel: string, payload: unknown) => {
+      if (projects.get(dir) === project) toWindow(channel, payload);
+    };
+    const service = new TaskService({
+      projectDir: dir,
+      dataDir: config.dataDir,
+      records,
+      claudeBin: config.claudeBin,
+      git: gitQueries,
+      kill: (sessionId) => host.kill(sessionId),
+      status: (sessionId) => host.status(sessionId),
+      onChange: (tasks) => send(IPC.tasksChanged, { dir, tasks }),
+    });
+    // The manager's tools, on this project's tasks. Its mcp.json carries this run's port and token to it.
+    const mcp = await startMcpServer((server) => registerManagerTools(server, service));
+    const manager = new ManagerService({
+      projectDir: dir,
+      dataDir: config.dataDir,
+      claudeBin: config.claudeBin,
+      mcpConfig: mcpConfigJson(mcp.url, mcp.token),
+      onChange: (view) => send(IPC.managerChanged, { dir, view }),
+    });
+    const project: Project = {
+      service,
+      manager,
+      start: () => {
+        // A list asked for before this finishes gets the tasks as they are; the changes follow.
+        service.restore().catch((err: unknown) => console.error(`[tasks] could not restore the tasks of ${dir}`, err));
+        // Logged, never thrown: the tasks run on without the manager.
+        try {
+          manager.start();
+        } catch (err) {
+          console.error(`[manager] could not start the manager of ${dir}`, err);
+        }
+      },
+      release: () => mcp.close(),
+    };
+    return project;
+  }
+
+  for (const dir of projectDirs) {
+    await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
+  }
+
   const shown = createWindow();
   win = shown;
-  const onOpenProject = () =>
-    openProject({
-      dataDir: config.dataDir,
-      current: projectDir,
-      pick: () => pickProjectFolder(shown),
-      restart: () => {
-        app.relaunch();
-        app.quit();
-      },
-    }).catch((err: unknown) =>
-      dialog.showErrorBox('Mainframe could not open the project', err instanceof Error ? err.message : String(err)),
-    );
-  Menu.setApplicationMenu(buildMenu(onOpenProject));
+  // The project picked is brought on screen, whether it opens now or was open already.
+  const openPicked = async () => {
+    try {
+      const dir = await pickProjectFolder(shown);
+      if (dir === undefined) return;
+      await projects.open(dir);
+      toWindow(IPC.showProject, dir);
+    } catch (err) {
+      dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
+    }
+  };
+  Menu.setApplicationMenu(buildMenu(() => void openPicked()));
   registerIpc(
     toWindow,
-    service,
-    manager,
+    projects,
+    openPicked,
     host,
-    { inputBatchMs: config.inputBatchMs, e2e: config.e2e, projectName: basename(projectDir) },
+    { inputBatchMs: config.inputBatchMs, e2e: config.e2e },
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
     // Looked up at each call, so an e2e run can stand in for the browser.
     (url) => shell.openExternal(url),
@@ -146,30 +185,14 @@ async function start(config: AppConfig, projectDir: string): Promise<void> {
     if (shown.isMinimized()) shown.restore();
     shown.focus();
   });
-  // A list asked for before this finishes gets the tasks as they are; the changes follow.
-  service.restore().catch((err: unknown) => console.error('[tasks] could not restore the tasks', err));
-  // Logged, never thrown: the tasks run on without the manager.
-  try {
-    manager.start();
-  } catch (err) {
-    console.error('[manager] could not start the manager', err);
-  }
   // beginQuit can't be undone, so it runs here only, once quitting is under way.
   app.on('before-quit', () => {
-    // Logged, never thrown: the sessions must still be ended.
-    try {
-      service.beginQuit();
-    } catch (err) {
-      console.error('[tasks] could not record where the sessions were as the app quit', err);
-    }
-    try {
-      manager.beginQuit();
-    } catch (err) {
-      console.error("[manager] could not record where the manager's turn was as the app quit", err);
-    }
+    projects.beginQuit();
     host.killAll();
   });
 }
+
+const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const config = readConfig();
 
@@ -184,14 +207,14 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     try {
       if (config instanceof Error) throw config;
-      const projectDir = await chooseProject({ dataDir: config.dataDir, pick: () => pickProjectFolder(), warn: console.warn });
-      if (projectDir === undefined) {
+      const projectDirs = await chooseProjects({ dataDir: config.dataDir, pick: () => pickProjectFolder(), warn: console.warn });
+      if (projectDirs.length === 0) {
         app.quit();
         return;
       }
-      await start(config, projectDir);
+      await start(config, projectDirs);
     } catch (err) {
-      dialog.showErrorBox('Mainframe could not start', err instanceof Error ? err.message : String(err));
+      dialog.showErrorBox('Mainframe could not start', messageOf(err));
       app.quit();
     }
   });

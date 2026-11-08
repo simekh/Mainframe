@@ -6,7 +6,7 @@ import type { GitQueries } from '../git';
 import type { ChangedFile, ProgramState, ProgramStatus, TaskView } from '../../shared/types';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { openingPrompt } from './openingPrompt';
-import type { TaskRecord } from './taskStore';
+import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
 
 const cleanup: string[] = [];
@@ -38,10 +38,13 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
   let counter = 0;
   const newId = () => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
 
-  const make = () =>
+  const stateFile = join(dataDir, 'state.json');
+  /** A service as a new run of the app makes it: it reads state.json afresh, unless it is handed the run's records. */
+  const make = (records = new TaskRecords(stateFile, 1000, (msg) => warnings.push(msg)), dir = projectDir) =>
     new TaskService({
-      projectDir,
+      projectDir: dir,
       dataDir,
+      records,
       claudeBin: 'claude',
       git,
       kill: (id) => killed.push(id),
@@ -52,7 +55,6 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
       warn: (msg) => warnings.push(msg),
     });
 
-  const stateFile = join(dataDir, 'state.json');
   const readState = (): TaskRecord[] => JSON.parse(readFileSync(stateFile, 'utf8')).tasks;
   const taskDir = (taskId: string) => join(dataDir, 'tasks', taskId);
   /** What the SessionStart hook leaves once claude has begun the task's conversation. */
@@ -60,7 +62,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
     writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
 
   return {
-    projectDir, dataDir, stateFile, make, service: make(), killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
+    root, projectDir, dataDir, stateFile, make, service: make(), killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
   };
 }
 
@@ -795,6 +797,21 @@ it('tasks of other projects are kept and not listed', async () => {
   expect(service.list()).toEqual([]);
 });
 
+it("two projects open in one run keep each other's tasks in state.json", async () => {
+  const { root, stateFile, make, readState } = setup();
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  const acme = make(records);
+  const globex = make(records, join(root, 'Globex'));
+
+  const a = await acme.start(NEW_TASK);
+  const g = await globex.start({ ...NEW_TASK, title: 'Ship it' });
+  acme.close(a.id);
+
+  expect(readState().map((t) => [t.id, t.open])).toEqual([[a.id, false], [g.id, true]]);
+  expect(acme.list().map((t) => t.id)).toEqual([a.id]);
+  expect(globex.list().map((t) => t.id)).toEqual([g.id]);
+});
+
 it('a task of another project is unknown to every call', async () => {
   const { service, stateFile, make, killed, changes } = setup();
   const view = await service.start(NEW_TASK);
@@ -891,4 +908,15 @@ it('reports lists every task oldest first: a running one with its last state and
       msg: null,
     },
   ]);
+});
+
+it('names the sessions it runs, and owns only those', async () => {
+  const { service } = setup();
+  const a = await service.start(NEW_TASK);
+  const b = await service.start({ ...NEW_TASK, title: 'Ship it' });
+  service.onSessionExit(b.session!.id);
+
+  expect(service.sessionIds()).toEqual([a.session!.id]);
+  expect(service.owns(a.session!.id)).toBe(true);
+  expect(service.owns(b.session!.id)).toBe(false);
 });

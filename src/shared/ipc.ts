@@ -3,6 +3,7 @@ import type {
   ClipboardPaste,
   ManagerView,
   PtyDataEvent,
+  ProjectView,
   PtyExitEvent,
   RendererConfig,
   StartCheck,
@@ -12,6 +13,11 @@ import type {
 
 export const IPC = {
   getConfig: 'app:get-config',
+  listProjects: 'projects:list',
+  openProject: 'projects:open',
+  closeProject: 'projects:close',
+  projectsChanged: 'projects:changed',
+  showProject: 'projects:show',
   listTasks: 'tasks:list',
   startCheck: 'tasks:start-check',
   startTask: 'tasks:start',
@@ -34,23 +40,37 @@ export const IPC = {
   openLink: 'shell:open-link',
 } as const;
 
-/** What the preload exposes to the renderer as `window.mainframe`. */
+/**
+ * What the preload exposes to the renderer as `window.mainframe`. The task and manager calls and
+ * events name their project by its folder (`ProjectView.dir`); the PTY ones need only the session id,
+ * which no two projects share.
+ */
 export interface MainframeApi {
   getConfig(): Promise<RendererConfig>;
-  listTasks(): Promise<TaskView[]>;
-  startCheck(): Promise<StartCheck | null>;
-  startTask(req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
-  reopenTask(taskId: string): Promise<TaskView>;
-  closeTask(taskId: string): void;
+  /** The open projects, in the order the owner opened them. */
+  listProjects(): Promise<ProjectView[]>;
+  /** Asks for a folder and opens it as a project; main says why when it can't. */
+  openProject(): Promise<void>;
+  /** Ends the project's sessions as Quit does, so they come back when it opens again. */
+  closeProject(dir: string): Promise<void>;
+  /** Every change to the open projects, with the whole list. */
+  onProjects(cb: (projects: ProjectView[]) => void): () => void;
+  /** A project the owner just opened, or picked again while it was open, to bring on screen. */
+  onShowProject(cb: (dir: string) => void): () => void;
+  listTasks(dir: string): Promise<TaskView[]>;
+  startCheck(dir: string): Promise<StartCheck | null>;
+  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
+  reopenTask(dir: string, taskId: string): Promise<TaskView>;
+  closeTask(dir: string, taskId: string): void;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
-  changedFiles(taskId: string): Promise<ChangedFile[] | null>;
-  /** Every change to the tasks, with the whole list. */
-  onTasks(cb: (tasks: TaskView[]) => void): () => void;
-  getManager(): Promise<ManagerView>;
+  changedFiles(dir: string, taskId: string): Promise<ChangedFile[] | null>;
+  /** Every change to a project's tasks, with its whole list. */
+  onTasks(cb: (e: { dir: string; tasks: TaskView[] }) => void): () => void;
+  getManager(dir: string): Promise<ManagerView>;
   /** Launches the manager again, carrying on its chat, unless it runs; rejects with why it couldn't. */
-  restartManager(): Promise<ManagerView>;
-  /** Every change to the manager's session. */
-  onManager(cb: (view: ManagerView) => void): () => void;
+  restartManager(dir: string): Promise<ManagerView>;
+  /** Every change to a project's manager session. */
+  onManager(cb: (e: { dir: string; view: ManagerView }) => void): () => void;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;

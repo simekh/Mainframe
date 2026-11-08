@@ -2,10 +2,12 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { commitsThatArent } from '../../../shared/commitsThatArent';
 import type { StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
+import { useProject } from '../projects/projectContext';
 import { startTask } from '../tasksStore';
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
-export default function NewTaskDialog(props: { projectName: string; onClose: () => void }) {
+export default function NewTaskDialog(props: { onClose: () => void }) {
+  const project = useProject();
   let dialog!: HTMLDialogElement;
   let titleInput!: HTMLInputElement;
   const [title, setTitle] = createSignal('');
@@ -22,7 +24,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
   onMount(() => {
     dialog.showModal();
     titleInput.focus();
-    window.mainframe.startCheck().then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
+    window.mainframe.startCheck(project.dir).then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
   });
 
   // Esc waits for a start under way, so a failure still has the dialog to show in.
@@ -35,7 +37,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
     setStarting(true);
     setError(null);
     try {
-      await startTask({ title: title(), description: description(), noQuestions: noQuestions() });
+      await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions() });
       dialog.close();
     } catch (err) {
       setError(errorMessage(err));
@@ -60,7 +62,7 @@ export default function NewTaskDialog(props: { projectName: string; onClose: () 
       >
         <h2 id="nt-heading">New task</h2>
         <p class="nt-sub">
-          Starts Claude Code in a new worktree of {props.projectName}
+          Starts Claude Code in a new worktree of {project.name}
           <Show when={check()}>
             {(c) => (
               <>

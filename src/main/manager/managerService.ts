@@ -72,6 +72,11 @@ export class ManagerService {
     return this.session?.id === sessionId;
   }
 
+  /** Its running session, as a list: none, or the one. */
+  sessionIds(): string[] {
+    return this.session ? [this.session.id] : [];
+  }
+
   /** Launches the manager unless it runs. Throws for a `manager.json` from a newer Mainframe. */
   start(): ManagerView {
     if (this.session) return this.view();

@@ -4,6 +4,7 @@ import type { RendererConfig } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
+import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
 import type { SessionHost } from './pty/sessionHost';
 import type { TaskService } from './tasks/taskService';
 
@@ -13,14 +14,18 @@ export interface ClipboardDeps {
   newImagePath: () => string;
 }
 
-/** What a session's launch, reports and end go to: the manager for its own, the tasks for the rest. */
-type SessionOwner = Pick<TaskService, 'launchSpec' | 'noteStatus' | 'onSessionExit'>;
+/** An open project: its tasks and its manager. */
+export interface Project extends RegisteredProject {
+  service: TaskService;
+  manager: ManagerService;
+}
 
 export function registerIpc(
   /** Sends to the window, unless it has gone. */
   send: (channel: string, payload: unknown) => void,
-  service: TaskService,
-  manager: ManagerService,
+  projects: ProjectRegistry<Project>,
+  /** Asks for a folder and opens it; says why itself when it can't. */
+  openPicked: () => Promise<void>,
   host: SessionHost,
   rendererConfig: RendererConfig,
   clipboardDeps: ClipboardDeps,
@@ -28,27 +33,37 @@ export function registerIpc(
 ): void {
   ipcMain.handle(IPC.getConfig, () => rendererConfig);
 
+  ipcMain.handle(IPC.listProjects, () => projects.list());
+  ipcMain.handle(IPC.openProject, () => openPicked());
+  ipcMain.handle(IPC.closeProject, (_e, dir: string) => projects.close(dir));
+
+  const projectOf = (dir: string): Project => {
+    const project = projects.get(dir);
+    if (!project) throw new Error(`The project ${dir} is not open`);
+    return project;
+  };
+  const tasksOf = (dir: string) => projectOf(dir).service;
+  const managerOf = (dir: string) => projectOf(dir).manager;
+
   // Rejections reach the renderer's invoke, which shows them.
-  ipcMain.handle(IPC.listTasks, () => service.list());
-  ipcMain.handle(IPC.startCheck, () => service.startCheck());
-  ipcMain.handle(IPC.startTask, (_e, req: Parameters<TaskService['start']>[0]) => service.start(req));
-  ipcMain.handle(IPC.reopenTask, (_e, taskId: string) => service.reopen(taskId));
-  ipcMain.handle(IPC.changedFiles, (_e, taskId: string) => service.changedFiles(taskId));
-  ipcMain.on(IPC.closeTask, (_e, taskId: string) => {
+  ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
+  ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
+  ipcMain.handle(IPC.startTask, (_e, dir: string, req: Parameters<TaskService['start']>[0]) => tasksOf(dir).start(req));
+  ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
+  ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
+  ipcMain.on(IPC.closeTask, (_e, dir: string, taskId: string) => {
     try {
-      service.close(taskId);
+      tasksOf(dir).close(taskId);
     } catch (err) {
       console.error(`[tasks] could not close task ${taskId}`, err);
     }
   });
 
-  ipcMain.handle(IPC.getManager, () => manager.view());
-  ipcMain.handle(IPC.restartManager, () => manager.start());
-
-  const ownerOf = (sessionId: string): SessionOwner => (manager.owns(sessionId) ? manager : service);
+  ipcMain.handle(IPC.getManager, (_e, dir: string) => managerOf(dir).view());
+  ipcMain.handle(IPC.restartManager, (_e, dir: string) => managerOf(dir).start());
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
-  const sessionEnded = (owner: SessionOwner, sessionId: string) => {
+  const sessionEnded = (owner: TaskService | ManagerService, sessionId: string) => {
     try {
       owner.onSessionExit(sessionId);
     } catch (err) {
@@ -67,7 +82,8 @@ export function registerIpc(
       send(IPC.status, { sessionId, status: host.status(sessionId) });
       return;
     }
-    const owner = ownerOf(sessionId);
+    const owner = projects.ownerOf(sessionId);
+    if (!owner) throw new Error(`Unknown session ${sessionId}`);
     try {
       host.spawn(sessionId, { ...owner.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),

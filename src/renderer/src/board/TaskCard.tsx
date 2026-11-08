@@ -3,7 +3,8 @@ import { onCleanup, Show } from 'solid-js';
 import type { TaskView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import type { SessionState } from '../taskModel';
-import { isSuggesting, reopenTask, select, tasksStore } from '../tasksStore';
+import { useProject } from '../projects/projectContext';
+import { isSuggesting, reopenTask, select, tasksOf } from '../tasksStore';
 import { focusCardWhenShown } from './cardMoves';
 import { cardActivity, cardAge, glyphOf, stateLabel, type Lane } from './lanes';
 import StatusGlyph from './StatusGlyph';
@@ -18,15 +19,15 @@ export default function TaskCard(props: {
   /** The lane it is shown in. */
   lane: Lane;
   now: number;
-  projectName: string;
 }) {
   const glyph = () => glyphOf(props.task, props.session);
   const label = () => stateLabel(props.task, props.session);
   const activity = () => cardActivity(props.task, props.session);
-  const selected = () => props.task.id === tasksStore.selectedId;
+  const project = useProject();
+  const selected = () => props.task.id === tasksOf(project.dir).selectedId;
   const suggesting = () => isSuggesting(props.task);
   const reopen = () =>
-    reopenTask(props.task.id).catch((err: unknown) =>
+    reopenTask(project.dir, props.task.id).catch((err: unknown) =>
       console.error(`[tasks] could not reopen task ${props.task.id}: ${errorMessage(err)}`),
     );
 
@@ -54,7 +55,7 @@ export default function TaskCard(props: {
         aria-current={selected() ? 'true' : undefined}
         aria-description={suggesting() ? 'Claude Code has a suggestion for you' : undefined}
         onMouseDown={keepFocus}
-        onClick={() => select(props.task.id)}
+        onClick={() => select(project.dir, props.task.id)}
       >
         <StatusGlyph glyph={glyph()} label={label().text} />
         <span class="card-name">{props.task.title}</span>
@@ -62,7 +63,7 @@ export default function TaskCard(props: {
       <p class="card-meta">
         <span class="card-project">
           <i aria-hidden="true" />
-          <span>{props.projectName}</span>
+          <span>{project.name}</span>
         </span>
         <span class="card-age" data-testid="task-age">
           {cardAge(props.task, props.session, props.now)}
@@ -84,7 +85,7 @@ export default function TaskCard(props: {
                 data-testid="answer"
                 aria-label={`Answer ${props.task.title}`}
                 onMouseDown={keepFocus}
-                onClick={() => select(props.task.id)}
+                onClick={() => select(project.dir, props.task.id)}
               >
                 Answer
               </button>

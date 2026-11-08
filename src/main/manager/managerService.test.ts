@@ -347,3 +347,12 @@ it('a manager.json from a newer Mainframe is left as it is: start throws, and ne
   expect(existsSync(t.file('mcp.json'))).toBe(false);
   expect(t.warnings).toEqual([]);
 });
+
+it('names its one session while it runs, and none once it has ended', () => {
+  const { service } = setup();
+  expect(service.sessionIds()).toEqual([]);
+  const { session } = service.start();
+  expect(service.sessionIds()).toEqual([session!.id]);
+  service.onSessionExit(session!.id);
+  expect(service.sessionIds()).toEqual([]);
+});

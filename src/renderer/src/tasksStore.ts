@@ -1,86 +1,114 @@
 import { batch } from 'solid-js';
-import { createStore, reconcile, unwrap } from 'solid-js/store';
+import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import type { MainframeApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
 import { laneOrder, nextNeedsYou } from './board/lanes';
 import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
 import { getTerminal } from './terminal/registry';
 
-const [store, setStore] = createStore<{
+/** One open project's tasks, as its board and its session panel show them. */
+export interface ProjectTasks {
   tasks: TaskView[];
-  /** By session id. */
+  terminals: TerminalEntry[];
+  selectedId: string | null;
+  /** Whether the unpinned panel is out; the pinned one always is. It comes out once a task is selected. */
+  panelOpen: boolean;
+}
+
+/** Each project's own, so no two share an array the store would change in place. */
+const noTasks = (): ProjectTasks => ({ tasks: [], terminals: [], selectedId: null, panelOpen: false });
+/** What `tasksOf` reads for a project whose list hasn't come in; never stored. */
+const NO_TASKS: ProjectTasks = Object.freeze(noTasks());
+
+const [store, setStore] = createStore<{
+  /** By project folder. */
+  projects: Record<string, ProjectTasks>;
+  /** By session id, which no two projects share. */
   sessions: Record<string, SessionState>;
   /** The sessions whose screen shows a Claude Code suggestion, by session id; read off the screen, so never a lane's input. */
   suggesting: Record<string, boolean>;
-  terminals: TerminalEntry[];
-  selectedId: string | null;
-  /** Whether the unpinned panel is out; the pinned one always is. */
-  panelOpen: boolean;
-}>({ tasks: [], sessions: {}, suggesting: {}, terminals: [], selectedId: null, panelOpen: true });
+  /** The task selected last, in whichever project: where Ctrl+Tab goes on from. */
+  lastSelected: string | null;
+}>({ projects: {}, sessions: {}, suggesting: {}, lastSelected: null });
 
 export const tasksStore = store;
 
-let changed = false;
-/** Whether a New task start is under way. The dialog allows one at a time. */
-let startPending = false;
+/** The project's tasks; none before its first list comes in. */
+export const tasksOf = (dir: string): ProjectTasks => store.projects[dir] ?? NO_TASKS;
 
-function setTasks(tasks: TaskView[]): void {
+/** The projects whose tasks changed since their list was asked for. */
+const changed = new Set<string>();
+/** The projects with a New task start under way. The dialog allows one at a time. */
+const startPending = new Set<string>();
+
+function setTasks(dir: string, tasks: TaskView[]): void {
   batch(() => {
+    if (!store.projects[dir]) setStore('projects', dir, noTasks());
     // The list that brings a started task selects it in the batch that adds its terminal, so the
     // terminal mounts on screen and its session starts at the size it shows.
-    const started = startPending ? addedTask(unwrap(store.tasks), tasks) : null;
+    const started = startPending.has(dir) ? addedTask(unwrap(store.projects[dir].tasks), tasks) : null;
     // Keyed, so cards and terminals stay mounted across changes.
-    setStore('tasks', reconcile(tasks, { key: 'id' }));
-    setStore('terminals', updateTerminals(unwrap(store.terminals), tasks));
-    if (started) select(started);
+    setStore('projects', dir, 'tasks', reconcile(tasks, { key: 'id' }));
+    setStore('projects', dir, 'terminals', updateTerminals(unwrap(store.projects[dir].terminals), tasks));
+    if (started) select(dir, started);
   });
 }
 
-window.mainframe.onTasks((tasks) => {
-  changed = true;
-  setTasks(tasks);
+window.mainframe.onTasks(({ dir, tasks }) => {
+  changed.add(dir);
+  setTasks(dir, tasks);
 });
 
 window.mainframe.onStatus((e) => {
   setStore('sessions', e.sessionId, nextSessionState(store.sessions[e.sessionId], e.status, Date.now()));
 });
 
-export async function loadTasks(): Promise<void> {
-  const tasks = await window.mainframe.listTasks();
+export async function loadTasks(dir: string): Promise<void> {
+  const tasks = await window.mainframe.listTasks(dir);
   // Every change carries the whole list, so one that came in meanwhile is at least as new.
-  if (!changed) setTasks(tasks);
+  if (!changed.has(dir)) setTasks(dir, tasks);
+}
+
+/** A project that closed: its cards and terminals go. Its sessions have ended in main. */
+export function forgetTasks(dir: string): void {
+  changed.delete(dir);
+  setStore('projects', produce((projects) => void delete projects[dir]));
 }
 
 /** Rejects with the reason the task couldn't start. */
-export async function startTask(req: Parameters<MainframeApi['startTask']>[0]): Promise<void> {
-  startPending = true;
+export async function startTask(dir: string, req: Parameters<MainframeApi['startTask']>[1]): Promise<void> {
+  startPending.add(dir);
   try {
-    const task = await window.mainframe.startTask(req);
+    const task = await window.mainframe.startTask(dir, req);
     // Selected already, unless the reply came before the list.
-    select(task.id);
+    select(dir, task.id);
   } finally {
-    startPending = false;
+    startPending.delete(dir);
   }
 }
 
-export async function reopenTask(id: string): Promise<void> {
+export async function reopenTask(dir: string, id: string): Promise<void> {
   // Selected first, so the new session's terminal mounts on screen. A reopen that fails leaves
   // the closed task selected, where the owner just asked for it.
-  select(id);
-  await window.mainframe.reopenTask(id);
+  select(dir, id);
+  await window.mainframe.reopenTask(dir, id);
 }
 
-export function closeTask(id: string): void {
-  window.mainframe.closeTask(id);
+export function closeTask(dir: string, id: string): void {
+  window.mainframe.closeTask(dir, id);
 }
 
 /** Whatever selects a task (a card, Answer, Reopen, New task) also brings the panel out to show it. */
-export function select(id: string | null): void {
-  setStore(id === null ? { selectedId: id } : { selectedId: id, panelOpen: true });
+export function select(dir: string, id: string | null): void {
+  if (!store.projects[dir]) return;
+  batch(() => {
+    setStore('projects', dir, id === null ? { selectedId: id } : { selectedId: id, panelOpen: true });
+    if (id !== null) setStore('lastSelected', id);
+  });
 }
 
-export function setPanelOpen(open: boolean): void {
-  setStore('panelOpen', open);
+export function setPanelOpen(dir: string, open: boolean): void {
+  if (store.projects[dir]) setStore('projects', dir, 'panelOpen', open);
 }
 
 /** What the task's running session, or the manager's, has reported; nothing while it is closed. */
@@ -99,27 +127,39 @@ export function isSuggesting(task: TaskView): boolean {
 }
 
 /** The session id of the task's terminal: its running session, or the last one it had. */
-export function terminalOf(taskId: string): string | null {
-  return store.terminals.find((t) => t.taskId === taskId)?.sessionId ?? null;
+export function terminalOf(dir: string, taskId: string): string | null {
+  return tasksOf(dir).terminals.find((t) => t.taskId === taskId)?.sessionId ?? null;
 }
 
 /** Puts the cursor in the task's terminal; nothing happens when the task has none in this run. */
-export function focusTerminalOf(taskId: string): void {
-  const sessionId = terminalOf(taskId);
+export function focusTerminalOf(dir: string, taskId: string): void {
+  const sessionId = terminalOf(dir, taskId);
   if (sessionId) getTerminal(sessionId)?.focus();
 }
 
+/** How many of the project's tasks wait in its Needs you lane. */
+export function needsYouCount(dir: string): number {
+  return laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'].length;
+}
+
 /**
- * Selects the task `step` places from the selected one in the Needs you lane, in board order, and
- * puts the cursor in its terminal. Nothing happens while nothing needs the owner, or while a modal
- * dialog is open: it blocks what lies behind it.
+ * Selects the task `step` places from the one selected last in the Needs you lanes of every open
+ * project, in the order `dirs` lists them and each board's order, and puts the cursor in its terminal.
+ * `reveal` brings its project on screen first. Nothing happens while nothing needs the owner, or while
+ * a modal dialog is open: it blocks what lies behind it.
  */
-export function jumpToNeedsYou(step: 1 | -1): void {
+export function jumpToNeedsYou(step: 1 | -1, dirs: string[], reveal: (dir: string) => void): void {
   if (document.querySelector('dialog:modal')) return;
-  const queue = laneOrder(store.tasks, store.sessions)['needs-you'].map((t) => t.id);
-  const id = nextNeedsYou(queue, store.selectedId, step);
-  if (id === null) return;
-  select(id);
-  // Once Solid has put the panel and the terminal on show: a hidden element can't take the focus.
-  queueMicrotask(() => focusTerminalOf(id));
+  const queue = dirs.flatMap((dir) => laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'].map((t) => ({ dir, id: t.id })));
+  const id = nextNeedsYou(
+    queue.map((t) => t.id),
+    store.lastSelected,
+    step,
+  );
+  const target = queue.find((t) => t.id === id);
+  if (!target) return;
+  reveal(target.dir);
+  select(target.dir, target.id);
+  // Once Solid has put the project, the panel and the terminal on show: a hidden element can't take the focus.
+  queueMicrotask(() => focusTerminalOf(target.dir, target.id));
 }

@@ -4,18 +4,16 @@ import { localFiles } from './pty/sessionHost';
 import { writeJsonAtomic } from './tasks/taskStore';
 
 /**
- * `projects.json`, in the data folder: the project folders Mainframe had open, which it opens again
- * at its next start. A list, as Mainframe runs several projects at once; this build opens one.
+ * `projects.json`, in the data folder: the project folders Mainframe has open, in the order its
+ * project list shows them. It opens them all again at its next start.
  */
 const FILE = 'projects.json';
-/** The version of `projects.json` this build writes and reads. */
+/**
+ * The version of `projects.json` this build writes and reads. An earlier build, which opened one
+ * project, reads the same version and opens the first one listed: kept at 1 so that build still
+ * starts, as it would refuse a newer one.
+ */
 const VERSION = 1;
-
-export interface ProjectPick {
-  dataDir: string;
-  /** Asks the owner for a project folder; undefined when they cancel. */
-  pick: () => Promise<string | undefined>;
-}
 
 /**
  * The folders `projects.json` lists, or none when it is missing or cannot be used. Throws for one a
@@ -52,22 +50,24 @@ export function writeOpenProjects(dataDir: string, open: string[]): void {
 }
 
 /**
- * The project to open: the remembered one while its folder is there, otherwise the one the owner
- * picks, which is remembered. Undefined when they cancel: Mainframe has no project of its own to
- * fall back on.
+ * The projects to open at start: the remembered ones whose folders are there, or else the one the
+ * owner picks, which is remembered. None when they cancel. A folder that has gone is left out, and
+ * drops out of `projects.json` at the next change to the list.
  */
-export async function chooseProject(deps: ProjectPick & { warn: (msg: string) => void }): Promise<string | undefined> {
-  const [remembered] = readOpen(deps.dataDir, deps.warn);
-  if (remembered !== undefined && localFiles.isDirectory(remembered)) return remembered;
+export async function chooseProjects(deps: {
+  dataDir: string;
+  /** Asks the owner for a project folder; undefined when they cancel. */
+  pick: () => Promise<string | undefined>;
+  warn: (msg: string) => void;
+}): Promise<string[]> {
+  const present = readOpen(deps.dataDir, deps.warn).filter((dir) => {
+    const there = localFiles.isDirectory(dir);
+    if (!there) deps.warn(`The project folder ${dir} has gone; Mainframe leaves it out`);
+    return there;
+  });
+  if (present.length > 0) return present;
   const picked = await deps.pick();
-  if (picked !== undefined) writeOpenProjects(deps.dataDir, [picked]);
-  return picked;
-}
-
-/** Open Project…: this build opens one project, so it remembers the picked one in its place and restarts on it. */
-export async function openProject(deps: ProjectPick & { current: string; restart: () => void }): Promise<void> {
-  const picked = await deps.pick();
-  if (picked === undefined || picked === deps.current) return;
+  if (picked === undefined) return [];
   writeOpenProjects(deps.dataDir, [picked]);
-  deps.restart();
+  return [picked];
 }

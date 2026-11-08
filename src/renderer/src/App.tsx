@@ -1,28 +1,15 @@
 import type { Terminal } from '@xterm/xterm';
-import { createMemo, createResource, createSignal, onCleanup, onMount, Show } from 'solid-js';
-import Board from './board/Board';
-import { glyphOf, stateLabel } from './board/lanes';
-import NewTaskDialog from './board/NewTaskDialog';
+import { createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
-import StatusGlyph from './board/StatusGlyph';
-import ManagerColumn from './manager/ManagerColumn';
 import { clampManagerWidth, loadManagerWidth, saveManagerWidth } from './manager/managerPrefs';
-import { loadManager, managerStore } from './manager/managerStore';
+import { managerOf } from './manager/managerStore';
 import { loadPanelPrefs, savePanelPrefs, type PanelPrefs } from './panel/panelPrefs';
-import SessionPanel from './panel/SessionPanel';
-import SidePanel from './panel/SidePanel';
-import {
-  focusTerminalOf,
-  jumpToNeedsYou,
-  loadTasks,
-  sessionOf,
-  setPanelOpen,
-  tasksStore,
-  terminalOf,
-} from './tasksStore';
+import Panes from './projects/Panes';
+import ProjectRail from './projects/ProjectRail';
+import { loadProjects, projectsStore, revealProject } from './projects/projectsStore';
+import { jumpToNeedsYou, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
-import { windowWidth } from './windowWidth';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -33,7 +20,16 @@ import '@fontsource/jetbrains-mono/700.css';
 import './app.css';
 
 const termOf = (sessionId: string | null) => (sessionId ? getTerminal(sessionId) : undefined);
-const terminalOfTask = (taskId: string) => termOf(terminalOf(taskId));
+/** The project the task belongs to: no two projects share a task id. */
+const dirOfTask = (taskId: string) =>
+  Object.keys(tasksStore.projects).find((dir) => tasksStore.projects[dir].tasks.some((t) => t.id === taskId));
+const terminalIdOf = (taskId: string) => {
+  const dir = dirOfTask(taskId);
+  return dir ? terminalOf(dir, taskId) : null;
+};
+const terminalOfTask = (taskId: string) => termOf(terminalIdOf(taskId));
+/** The manager's terminal of the project, or of the first one open. */
+const managerTerminalOf = (dir?: string) => termOf(managerOf(dir ?? projectsStore.projects[0]?.dir ?? '')?.managerTerminal ?? null);
 
 function textOf(term: Terminal | undefined): string {
   const buffer = term?.buffer.active;
@@ -48,11 +44,11 @@ const sizeOf = (term: Terminal | undefined) => (term ? { cols: term.cols, rows: 
 function installE2eHooks(): void {
   const firstSpawns = new Map<string, { cols: number; rows: number }>();
   window.__mainframeE2E = {
-    taskIds: () => tasksStore.tasks.map((t) => t.id),
+    taskIds: () => projectsStore.projects.flatMap((p) => tasksStore.projects[p.dir]?.tasks.map((t) => t.id) ?? []),
     screenText: (taskId) => textOf(terminalOfTask(taskId)),
     termSize: (taskId) => sizeOf(terminalOfTask(taskId)),
-    managerScreen: () => textOf(termOf(managerStore.managerTerminal)),
-    managerTermSize: () => sizeOf(termOf(managerStore.managerTerminal)),
+    managerScreen: (dir) => textOf(managerTerminalOf(dir)),
+    managerTermSize: (dir) => sizeOf(managerTerminalOf(dir)),
     cell: (taskId, row, col) => {
       const cell = terminalOfTask(taskId)?.buffer.active.getLine(row)?.getCell(col);
       if (!cell) return null;
@@ -64,12 +60,12 @@ function installE2eHooks(): void {
       return { fg, bold: !!cell.isBold(), underline: !!cell.isUnderline() };
     },
     fitSize: (taskId) => {
-      const sessionId = terminalOf(taskId);
+      const sessionId = terminalIdOf(taskId);
       const dims = sessionId ? getFit(sessionId)?.proposeDimensions() : undefined;
       return dims ? { cols: dims.cols, rows: dims.rows } : null;
     },
     firstSpawn: (taskId) => {
-      const sessionId = terminalOf(taskId);
+      const sessionId = terminalIdOf(taskId);
       return (sessionId && firstSpawns.get(sessionId)) || null;
     },
     spawn: (req) => {
@@ -79,8 +75,12 @@ function installE2eHooks(): void {
   };
 }
 
-// Buttons don't take focus on click, so typing stays in the terminal.
-const keepFocus = (e: MouseEvent) => e.preventDefault();
+const jump = (step: 1 | -1) =>
+  jumpToNeedsYou(
+    step,
+    projectsStore.projects.map((p) => p.dir),
+    revealProject,
+  );
 
 export default function App() {
   // Terminals render only once the config is here, so waiting for the font here covers them all.
@@ -89,113 +89,37 @@ export default function App() {
     if (c.e2e) installE2eHooks();
     return c;
   });
-  const selected = createMemo(() => tasksStore.tasks.find((t) => t.id === tasksStore.selectedId));
-  const [dialogOpen, setDialogOpen] = createSignal(false);
   const [panelPrefs, setPanelPrefs] = createSignal(loadPanelPrefs(localStorage));
   const keepPanelPrefs = (prefs: PanelPrefs) => {
     setPanelPrefs(prefs);
     savePanelPrefs(localStorage, prefs);
   };
-  // The owner's width for the manager's column, or the one its edge is dragged to. The window
-  // clamps what it shows, and the session panel leaves it that much.
+  // The owner's width for the managers' columns, or the one an edge is dragged to. Each pane clamps
+  // what it shows, and its session panel leaves it that much.
   const [managerWidth, setManagerWidth] = createSignal(loadManagerWidth(localStorage));
-  const shownManagerWidth = () => clampManagerWidth(managerWidth(), windowWidth());
-  const keepManagerWidth = (w: number) => {
-    const kept = clampManagerWidth(w, windowWidth());
+  const keepManagerWidth = (w: number, paneWidth: number) => {
+    const kept = clampManagerWidth(w, paneWidth);
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
   };
-  // Unpinned, a press on the board outside any card puts the panel away.
-  const hideUnpinnedPanel = (e: MouseEvent) => {
-    if (!panelPrefs().pinned && !(e.target as Element).closest('[data-testid=task-card]')) setPanelOpen(false);
-  };
 
   onMount(() => {
-    void loadTasks();
-    void loadManager();
+    loadProjects().catch((err: unknown) => console.error('[projects] could not list the open projects', err));
   });
-  onCleanup(installBoardShortcuts(window, jumpToNeedsYou));
-
-  const closeDialog = () => {
-    setDialogOpen(false);
-    // The dialog hands the focus back to where it was; the selected task's terminal is where typing goes.
-    if (tasksStore.selectedId) focusTerminalOf(tasksStore.selectedId);
-  };
+  onCleanup(installBoardShortcuts(window, jump));
 
   return (
     <div class="app">
-      <ManagerColumn
+      <ProjectRail />
+      <Panes
         config={config()}
-        width={shownManagerWidth()}
-        onDrag={setManagerWidth}
-        onDone={keepManagerWidth}
+        panelPrefs={panelPrefs()}
+        onPanelPrefs={keepPanelPrefs}
+        managerWidth={managerWidth()}
+        onManagerDrag={setManagerWidth}
+        onManagerDone={keepManagerWidth}
+        onJump={() => jump(1)}
       />
-
-      <section class="board-column" aria-label="Tasks">
-        <header class="topbar">
-          <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-            New task
-          </button>
-          <Show when={config()}>
-            {(c) => (
-              <>
-                <span class="tb-project" title={c().projectName}>
-                  <i aria-hidden="true" />
-                  <span>{c().projectName}</span>
-                </span>
-                <button
-                  class="tb-jump"
-                  data-testid="jump-next"
-                  title="Next session that needs you"
-                  onMouseDown={keepFocus}
-                  onClick={() => jumpToNeedsYou(1)}
-                >
-                  <kbd>Ctrl</kbd>
-                  <kbd>Tab</kbd>
-                  <span>Next that needs you</span>
-                </button>
-              </>
-            )}
-          </Show>
-        </header>
-        <div class="board" data-testid="board" onMouseDown={hideUnpinnedPanel}>
-          <Show when={config()}>{(c) => <Board projectName={c().projectName} />}</Show>
-        </div>
-      </section>
-
-      <SidePanel
-        label="Selected session"
-        prefs={panelPrefs()}
-        onPrefsChange={keepPanelPrefs}
-        besideWidth={shownManagerWidth()}
-        open={tasksStore.panelOpen}
-        onOpenChange={setPanelOpen}
-        badge={
-          <Show when={selected()}>
-            {(task) => (
-              <StatusGlyph glyph={glyphOf(task(), sessionOf(task()))} label={stateLabel(task(), sessionOf(task())).text} />
-            )}
-          </Show>
-        }
-        badgeLabel={selected() ? stateLabel(selected()!, sessionOf(selected()!)).text : undefined}
-        empty={
-          selected() ? undefined : (
-            <>
-              <strong>Select a session on the board</strong>
-              New task starts Claude Code in a worktree of its own.
-            </>
-          )
-        }
-      >
-        <SessionPanel task={selected()} config={config()} />
-      </SidePanel>
-
-      <Show when={dialogOpen() && config()}>
-        {(c) => <NewTaskDialog projectName={c().projectName} onClose={closeDialog} />}
-      </Show>
     </div>
   );
 }

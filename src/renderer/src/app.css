@@ -91,7 +91,305 @@ button {
   opacity: 0.7;
 }
 
-/* --- The manager's column, at the window's left, its full height ---------------------------- */
+/* --- The project list, at the window's left -------------------------------------------------- */
+
+/* On the frame, not an island: the islands are each project's own columns. Its top row is the
+   window's title bar, a drag region with the window buttons in its first 80 px. */
+.rail {
+  flex: none;
+  width: 196px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 10px 8px;
+}
+
+.rail-titlebar {
+  flex: none;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 0 4px 80px;
+  -webkit-app-region: drag;
+}
+
+/* How two or more projects on screen share the window. */
+.rail-arrange {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.rail-arrange button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--fg-subtle);
+}
+
+.rail-arrange button:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.rail-arrange button[aria-pressed='true'] {
+  border-color: var(--island-border);
+  background: var(--island);
+  color: var(--accent);
+}
+
+.rail-arrange svg {
+  width: 15px;
+  height: 15px;
+}
+
+.rail-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.rail-item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.rail-item:hover {
+  background: var(--hover);
+}
+
+/* On screen, it looks as the project's chip in its board's top bar does. */
+.rail-item[data-shown='true'] {
+  border-color: var(--island-border);
+  background: var(--island);
+}
+
+.rail-name {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 10px;
+  color: var(--fg-muted);
+  font-weight: 500;
+  text-align: left;
+}
+
+.rail-item[data-shown='true'] .rail-name {
+  color: var(--fg);
+}
+
+.rail-name i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--project);
+  opacity: 0.5;
+}
+
+.rail-item[data-shown='true'] .rail-name i {
+  opacity: 1;
+}
+
+.rail-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The Needs you lane's colour, as on the board: there only while work waits on the owner, so a
+   project off screen still shows when it does. */
+.rail-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row's own actions, there while the pointer or the focus is on it. */
+.rail-act {
+  flex: none;
+  display: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 3px;
+  border-radius: var(--radius-xs);
+  color: var(--fg-subtle);
+}
+
+.rail-item:hover .rail-act,
+.rail-item:focus-within .rail-act {
+  display: grid;
+}
+
+.rail-act:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.rail-act[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.rail-act:disabled {
+  opacity: 0.35;
+}
+
+.rail-act svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Close waits for a second click here: it stops the project's sessions. */
+.rail-item:has(.rail-confirm) {
+  height: auto;
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+.rail-confirm {
+  padding: 8px 10px 10px;
+}
+
+.rail-confirm p {
+  margin: 0 0 8px;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+.rail-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.rail-open {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin-top: 6px;
+  padding: 0 10px 0 11px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  font-weight: 500;
+}
+
+.rail-open:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.rail-open svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* --- The panes: the open projects, side by side or in a grid ---------------------------------- */
+
+.panes {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.panes[data-arrangement='grid'] {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+/* One project: what the whole window held before there were several. Its unpinned panel floats
+   over its own board. */
+.project-pane {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: clip;
+}
+
+/* Off screen: laid out over the panes on screen at the size they share, so its terminals keep a
+   size their sessions can use, and invisible throughout, the panel's way back included. */
+.project-pane[data-shown='false'] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.project-pane[data-shown='false'] .panel-show {
+  visibility: hidden;
+}
+
+/* Between two projects side by side: a drag or the arrow keys share the width between them. It
+   takes no room of its own; the islands' margins make the gap. */
+.pane-divider {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+/* While no project is open: what to do about it. */
+.panes-empty {
+  margin: auto;
+  max-width: 340px;
+  padding: 24px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.panes-empty h2 {
+  margin: 0 0 6px;
+  color: var(--fg);
+  font: 600 17px/1.3 var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+.panes-empty p {
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+/* --- The manager's column, at its project pane's left, its full height ------------------------ */
 
 /* An island like the side panel, whose rule it shares, at the owner's width; its header has the
    session panel's heights, so the two headers' dividers line up across the window. */
@@ -99,10 +397,14 @@ button {
   margin: 8px 0 8px 8px;
 }
 
-/* The window's title bar, laid out as the panel's is, and a drag region throughout: the window
-   buttons sit in its first 90 px, the glyph and the title after them. */
+/* The window's title bar, laid out as the panel's is, and a drag region throughout. */
 .manager-title-bar {
-  padding: 6px 16px 4px 90px;
+  padding: 6px 16px 4px 16px;
+}
+
+/* Hidden by the owner: it stays mounted, so its terminal keeps its output. */
+.manager-column[hidden] {
+  display: none;
 }
 
 /* While the manager is stopped, under its last output: the note, Restart, and why a Restart failed. */
@@ -132,9 +434,10 @@ button {
 
 /* --- The board's column: the top bar over the board ---------------------------------------- */
 
-/* The rest of the window, between the manager's column and the pinned panel; unpinned, the panel
-   floats over it. */
+/* The rest of the pane, between the manager's column and the pinned panel; unpinned, the panel
+   floats over it. Its top bar drops the words of its hints where the pane is narrow. */
 .board-column {
+  container-type: inline-size;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -244,6 +547,40 @@ kbd {
   margin-left: 4px;
 }
 
+/* Quiet, as the hint is: hides and shows the pane's manager column. */
+.tb-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+.tb-toggle:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.tb-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tb-toggle[aria-pressed='true'] svg {
+  color: var(--accent);
+}
+
+@container (max-width: 560px) {
+  .tb-jump span,
+  .tb-toggle span {
+    display: none;
+  }
+}
+
 /* Under the top bar; a press on it outside any card puts the unpinned panel away. */
 .board {
   flex: 1;
@@ -328,7 +665,7 @@ kbd {
 }
 
 /* Beside the pinned panel, lanes it cuts off fade out rather than end at a hard edge. */
-.app:has(> .side-panel[data-pinned='true']) .lanes {
+.project-pane:has(> .side-panel[data-pinned='true']) .lanes {
   mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
@@ -794,7 +1131,8 @@ kbd {
   right: -5px;
 }
 
-.resize-edge::after {
+.resize-edge::after,
+.pane-divider::after {
   content: '';
   position: absolute;
   top: 14px;
@@ -808,12 +1146,16 @@ kbd {
 
 .resize-edge:hover::after,
 .resize-edge:focus-visible::after,
-.resize-edge[data-dragging='true']::after {
+.resize-edge[data-dragging='true']::after,
+.pane-divider:hover::after,
+.pane-divider:focus-visible::after,
+.pane-divider[data-dragging='true']::after {
   opacity: 0.8;
 }
 
 /* The line is its focus ring. */
-.resize-edge:focus-visible {
+.resize-edge:focus-visible,
+.pane-divider:focus-visible {
   outline: none;
 }
 
@@ -901,7 +1243,7 @@ kbd {
   color: var(--fg-subtle);
 }
 
-.panel-pin:hover {
+.panel-pin:hover:not(:disabled) {
   background: var(--hover);
   border-color: var(--border-subtle);
   color: var(--fg);
@@ -909,6 +1251,11 @@ kbd {
 
 .panel-pin[aria-pressed='true'] {
   color: var(--accent);
+}
+
+/* The pane is too narrow to pin it beside the board. */
+.panel-pin:disabled {
+  opacity: 0.35;
 }
 
 .panel-pin svg {

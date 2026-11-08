@@ -1,17 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { cleanUp, launchApp } from './launch';
+import { cleanUp, launchApp, setWindowWidth } from './launch';
 import { box, card, firstSpawn, fitSize, screen, sendLine, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
 test("dragging the panel's edge sets its width, and a restart keeps it", async () => {
   const first = await launchApp();
+  await setWindowWidth(first.app, first.page, 1600);
   const handle = first.page.getByTestId('panel-resize');
   const before = (await box(first.page, 'side-panel')).width;
   const edge = await box(first.page, 'panel-resize');
   const x = edge.x + edge.width / 2;
   const y = edge.y + edge.height / 2;
-  // Narrower: beside the manager's column, the panel starts out as wide as the window lets it be.
+  // Narrower: the window leaves it its own width beside the manager's column and the board.
   await first.page.mouse.move(x, y);
   await first.page.mouse.down();
   await first.page.mouse.move(x + 200, y, { steps: 8 });
@@ -30,6 +31,7 @@ test("dragging the panel's edge sets its width, and a restart keeps it", async (
   await first.app.close();
 
   const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
+  await setWindowWidth(app, page, 1600);
   expect(Math.abs((await box(page, 'side-panel')).width - keyed)).toBeLessThanOrEqual(2);
   await app.close();
 });
@@ -48,6 +50,8 @@ test('the pinned panel sits beside the board', async () => {
 
 test('unpinned, the panel hides when the board is clicked and comes back when a card is clicked, without resizing the terminal', async () => {
   const { app, page } = await launchApp();
+  // Room for the pinned panel at its own width, so unpinning it changes nothing.
+  await setWindowWidth(app, page, 1600);
   const id = await startTask(page);
   const size = (await termSize(page, id))!;
   const panel = page.getByTestId('side-panel');
@@ -97,6 +101,8 @@ test('unpinned, the panel hides when the board is clicked and comes back when a 
 // slides sideways until the panel is in. Every measurement is taken inside the page, on each frame.
 test('showing the hidden panel with its button moves nothing sideways', async () => {
   const { app, page } = await launchApp();
+  // Room for the pinned panel at its own width, so unpinning it changes nothing.
+  await setWindowWidth(app, page, 1600);
   const id = await startTask(page);
   const size = (await termSize(page, id))!;
   const panel = page.getByTestId('side-panel');

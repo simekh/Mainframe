@@ -1,5 +1,5 @@
 import { createSignal, Show, type JSX } from 'solid-js';
-import { windowWidth } from '../windowWidth';
+import { useProject } from '../projects/projectContext';
 import { clampWidth, type PanelPrefs } from './panelPrefs';
 import ResizeEdge from './ResizeEdge';
 
@@ -7,7 +7,7 @@ import ResizeEdge from './ResizeEdge';
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /**
- * The panel on the window's right, its full height. Pinned, it sits beside the board; unpinned, it
+ * The panel on its project pane's right, its full height. Pinned, it sits beside the board; unpinned, it
  * floats over the board's right edge and slides away while it isn't open. It hides by moving and
  * then turning invisible, never by changing size, so the terminals in it keep their size.
  */
@@ -17,7 +17,9 @@ export default function SidePanel(props: {
   prefs: PanelPrefs;
   /** The owner set a width or the pin: keep it. */
   onPrefsChange: (prefs: PanelPrefs) => void;
-  /** The width of the column on the board's other side, which the panel leaves the window to. */
+  /** Whether the pane has room to pin it beside the board; without, the pin is off and can't be set. */
+  canPin: boolean;
+  /** The width of the column on the board's other side, which the panel leaves the pane to. */
   besideWidth: number;
   /** Whether the unpinned panel is out. The pinned one always is. */
   open: boolean;
@@ -33,10 +35,11 @@ export default function SidePanel(props: {
   let hideButton!: HTMLButtonElement;
   let showButton!: HTMLButtonElement;
 
+  const project = useProject();
   /** The width while the edge is dragged; kept once the pointer lets go. */
   const [dragWidth, setDragWidth] = createSignal<number | null>(null);
-  // A window resize, or the column beside it, re-clamps the width shown, and keeps the one the owner set.
-  const clamp = (w: number) => clampWidth(w, windowWidth() - props.besideWidth, props.prefs.pinned);
+  // A pane resize, or the column beside it, re-clamps the width shown, and keeps the one the owner set.
+  const clamp = (w: number) => clampWidth(w, project.width() - props.besideWidth, props.prefs.pinned);
   const width = () => clamp(dragWidth() ?? props.prefs.width);
   const shown = () => props.prefs.pinned || props.open;
   const keepWidth = (w: number) => props.onPrefsChange({ ...props.prefs, width: clamp(w) });
@@ -107,7 +110,8 @@ export default function SidePanel(props: {
           data-testid="panel-pin"
           aria-pressed={props.prefs.pinned ? 'true' : 'false'}
           aria-label="Pin panel"
-          title={props.prefs.pinned ? 'Unpin panel' : 'Pin panel'}
+          title={!props.canPin ? 'No room to pin the panel beside the board' : props.prefs.pinned ? 'Unpin panel' : 'Pin panel'}
+          disabled={!props.canPin}
           onMouseDown={keepFocus}
           onClick={togglePin}
         >

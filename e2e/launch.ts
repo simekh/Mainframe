@@ -43,15 +43,15 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
 
 /**
  * Starts the built app with `e2e/fake-claude.sh` as `claude`, in a data folder of its own: a fresh
- * one unless `env` names one (to relaunch on the same tasks). It opens on `project`, which the data
+ * one unless `env` names one (to relaunch on the same tasks). It opens `projects`, which the data
  * folder's `projects.json` names, so the folder dialog never shows.
  */
 export async function launchApp(
   env: Record<string, string> = {},
-  project = os.tmpdir(),
+  projects: string | string[] = os.tmpdir(),
 ): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
   const dataDir = env.MAINFRAME_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
-  writeOpenProjects(dataDir, [project]);
+  writeOpenProjects(dataDir, typeof projects === 'string' ? [projects] : projects);
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));
@@ -68,6 +68,19 @@ export async function launchApp(
   // The renderer installs its test hooks once its config and font are in.
   await page.waitForFunction(() => window.__mainframeE2E !== undefined);
   return { app, page, dataDir };
+}
+
+/**
+ * Makes the window `width` px wide, as the owner dragging its edge does; resolves once the page has
+ * that width. For a test that needs room for the manager's column, the board and the panel at their
+ * own widths beside the project list.
+ */
+export async function setWindowWidth(app: ElectronApplication, page: Page, width: number): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, w) => {
+    const [win] = BrowserWindow.getAllWindows();
+    win.setSize(w, win.getSize()[1]);
+  }, width);
+  await page.waitForFunction((w) => window.innerWidth === w, width);
 }
 
 // What `require('electron')` gives Node: the path of the Electron binary.

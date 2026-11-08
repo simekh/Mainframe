@@ -4,12 +4,12 @@ import { BOARD_ROOM, MIN_WIDTH } from '../panel/panelPrefs';
 export const MANAGER_WIDTH = { default: 400, min: 320, max: 640 };
 
 const KEY = 'mainframe.manager';
-/** What the window keeps beside the column: the session panel's minimum and the board's room when pinned. */
+/** What the pane keeps beside the column: the session panel's minimum and the board's room when pinned. */
 const BESIDE = MIN_WIDTH + BOARD_ROOM.pinned;
 
-/** The width the column can take in this window. The minimum wins when the window is too narrow. */
-export function clampManagerWidth(width: number, windowWidth: number): number {
-  const max = Math.min(MANAGER_WIDTH.max, windowWidth - BESIDE);
+/** The width the column can take in its project pane. The minimum wins when the pane is too narrow. */
+export function clampManagerWidth(width: number, paneWidth: number): number {
+  const max = Math.min(MANAGER_WIDTH.max, paneWidth - BESIDE);
   return Math.round(Math.max(MANAGER_WIDTH.min, Math.min(width, max)));
 }
 

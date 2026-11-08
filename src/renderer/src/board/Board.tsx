@@ -1,5 +1,6 @@
 import { createComputed, createEffect, createMemo, For, on } from 'solid-js';
-import { sessionOf, tasksStore } from '../tasksStore';
+import { useProject } from '../projects/projectContext';
+import { sessionOf, tasksOf, tasksStore } from '../tasksStore';
 import { now } from './ageClock';
 import { playCardMoves, snapshotCards, type CardSpot } from './cardMoves';
 import { laneOrder, type Lane } from './lanes';
@@ -13,9 +14,10 @@ const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
 ];
 
 /** The lanes of task cards. Cards that change place move there rather than jump. */
-export default function Board(props: { projectName: string }) {
+export default function Board() {
+  const project = useProject();
   let root!: HTMLDivElement;
-  const order = createMemo(() => laneOrder(tasksStore.tasks, tasksStore.sessions));
+  const order = createMemo(() => laneOrder(tasksOf(project.dir).tasks, tasksStore.sessions));
   // Each lane's ids, joined: it changes only when a card enters, leaves or changes place, so the
   // frequent msg updates measure nothing.
   const orderKey = createMemo(() => LANES.map(({ lane }) => order()[lane].map((t) => t.id).join(',')).join('|'));
@@ -56,7 +58,6 @@ export default function Board(props: { projectName: string }) {
                     session={sessionOf(task)}
                     lane={lane}
                     now={now()}
-                    projectName={props.projectName}
                   />
                 )}
               </For>

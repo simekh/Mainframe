@@ -29,7 +29,8 @@ test("a task's session streams output, reports OSC 7501 status and exit", async 
     api.onStatus((e) => record(e.sessionId, `status ${e.status ? e.status.state : 'none'}`));
     api.onExit((e) => record(e.sessionId, `exit ${e.exitCode}`));
 
-    const task = await api.startTask({ title: 'Bridge', description: '', noQuestions: false });
+    const [{ dir }] = await api.listProjects();
+    const task = await api.startTask(dir, { title: 'Bridge', description: '', noQuestions: false });
     const id = task.session!.id;
     // Until the exit and the working state's end have both come, whichever comes first.
     await new Promise<void>((resolve) => {

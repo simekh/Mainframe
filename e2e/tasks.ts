@@ -79,7 +79,9 @@ export async function run(page: Page, line: string): Promise<void> {
 export async function sendLine(page: Page, taskId: string, line: string): Promise<void> {
   await page.evaluate(
     async ([id, data]) => {
-      const task = (await window.mainframe.listTasks()).find((t) => t.id === id);
+      const projects = await window.mainframe.listProjects();
+      const tasks = await Promise.all(projects.map((p) => window.mainframe.listTasks(p.dir)));
+      const task = tasks.flat().find((t) => t.id === id);
       window.mainframe.write(task!.session!.id, data);
     },
     [taskId, `${line}\r`],
@@ -104,7 +106,12 @@ export async function startTask(page: Page, title = 'Task', description = ''): P
 export const report = (state: string) => `printf '\\033]7501;state=${state}\\033\\\\'`;
 
 /** Closes the task's session, as Close session in the panel does. */
-export const closeTask = (page: Page, taskId: string) => page.evaluate((id) => window.mainframe.closeTask(id), taskId);
+export const closeTask = (page: Page, taskId: string) =>
+  page.evaluate(async (id) => {
+    for (const { dir } of await window.mainframe.listProjects()) {
+      if ((await window.mainframe.listTasks(dir)).some((t) => t.id === id)) window.mainframe.closeTask(dir, id);
+    }
+  }, taskId);
 
 /** The links the app was asked to open, oldest first. `launchApp` keeps them from the owner's browser. */
 export const openedLinks = (app: ElectronApplication) =>
@@ -147,10 +154,11 @@ export const managerScreen = (page: Page) => page.evaluate(() => window.__mainfr
 
 export const managerTermSize = (page: Page) => page.evaluate(() => window.__mainframeE2E.managerTermSize());
 
-/** Sends a line to the manager's session through the bridge, so the focus can stay where it is. */
+/** Sends a line to the first open project's manager session through the bridge, so the focus can stay where it is. */
 export async function sendManagerLine(page: Page, line: string): Promise<void> {
   await page.evaluate(async (data) => {
-    const { session } = await window.mainframe.getManager();
+    const [{ dir }] = await window.mainframe.listProjects();
+    const { session } = await window.mainframe.getManager(dir);
     window.mainframe.write(session!.id, data);
   }, `${line}\r`);
 }

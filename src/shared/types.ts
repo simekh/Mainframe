@@ -26,8 +26,13 @@ export type ClipboardPaste =
 export interface RendererConfig {
   inputBatchMs: number;
   e2e: boolean;
-  /** The basename of the project folder. */
-  projectName: string;
+}
+
+/** An open project. Its folder is its id in every call and event that concerns it. */
+export interface ProjectView {
+  dir: string;
+  /** The folder's basename. */
+  name: string;
 }
 
 export interface PtyDataEvent {

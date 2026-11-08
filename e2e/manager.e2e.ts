@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
-import { cleanUp, launchApp } from './launch';
+import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
   box, card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo,
   run, screen, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
@@ -190,9 +190,10 @@ test('the manager never takes the focus by itself', async () => {
 
 test("the manager's terminal fits its column", async () => {
   const { app, page } = await launchApp();
-  // At the window's left, its full height 8 px in, and 400 px wide.
+  // Right of the project list, its full height 8 px in, and 400 px wide.
   const height = await page.evaluate(() => window.innerHeight);
-  expect(await box(page, 'manager-column')).toEqual({ x: 8, y: 8, width: 400, height: height - 16 });
+  const rail = await box(page, 'project-rail');
+  expect(await box(page, 'manager-column')).toEqual({ x: rail.x + rail.width + 8, y: 8, width: 400, height: height - 16 });
 
   await expect.poll(() => managerScreen(page)).toContain('$');
   await page.getByTestId('manager-column').click();
@@ -301,6 +302,7 @@ test('a Restart that fails shows why', async () => {
 test("dragging the manager's edge resizes it, keeps the width, and its terminal fits", async () => {
   const first = await launchApp();
   const { page, dataDir } = first;
+  await setWindowWidth(first.app, page, 1600);
   const id = await startTask(page);
   await expect.poll(() => managerScreen(page)).toContain('$');
   const before = { manager: (await managerTermSize(page))!, task: (await termSize(page, id))! };
@@ -321,9 +323,9 @@ test("dragging the manager's edge resizes it, keeps the width, and its terminal 
   expect((await box(page, 'manager-column')).width).toBe(496);
 
   // The pinned session panel gives up what the column took: its clamp leaves the board 360 px of the
-  // window less the column's width (the column's margin comes on top, so the board itself gets less).
-  const windowWidth = await page.evaluate(() => window.innerWidth);
-  await expect(page.getByTestId('panel-resize')).toHaveAttribute('aria-valuenow', String(windowWidth - 496 - 360));
+  // project's pane less the column's width (the column's margin comes on top, so the board itself gets less).
+  const paneWidth = (await box(page, 'project-pane')).width;
+  await expect(page.getByTestId('panel-resize')).toHaveAttribute('aria-valuenow', String(paneWidth - 496 - 360));
 
   // Both terminals fit what they show now, and their sessions come to that size.
   await settled(page);
@@ -336,6 +338,7 @@ test("dragging the manager's edge resizes it, keeps the width, and its terminal 
   await first.app.close();
 
   const { app, page: again } = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
+  await setWindowWidth(app, again, 1600);
   await expect(again.getByTestId('manager-resize')).toHaveAttribute('aria-valuenow', '496');
   expect((await box(again, 'manager-column')).width).toBe(496);
   await app.close();

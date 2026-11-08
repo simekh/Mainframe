@@ -7,11 +7,13 @@ import { resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug } from './naming';
 import { openingPrompt } from './openingPrompt';
-import { loadTasks, saveTasks, type TaskRecord } from './taskStore';
+import type { TaskRecord, TaskRecords } from './taskStore';
 
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
+  /** Every project's tasks, shared with the other open projects' services. */
+  records: TaskRecords;
   claudeBin: string;
   git: GitQueries;
   kill(sessionId: string): void;
@@ -52,9 +54,6 @@ export class TaskService {
   private readonly newId: () => string;
   private readonly now: () => number;
   private readonly warn: (msg: string) => void;
-  private readonly stateFile: string;
-  /** Every project's tasks: the other projects' records are written back as they were read. */
-  private readonly records: TaskRecord[];
   private readonly sessions = new Map<string, Session>();
   private quitting = false;
 
@@ -62,8 +61,6 @@ export class TaskService {
     this.newId = deps.newId ?? randomUUID;
     this.now = deps.now ?? Date.now;
     this.warn = deps.warn ?? console.warn;
-    this.stateFile = join(deps.dataDir, 'state.json');
-    this.records = loadTasks(this.stateFile, this.now(), this.warn);
   }
 
   list(): TaskView[] {
@@ -123,7 +120,7 @@ export class TaskService {
     };
 
     const argv = this.startArgvOf(task, writeHookSettings(this.taskDir(task.id)));
-    this.records.push(task);
+    this.deps.records.all.push(task);
     this.addSession({ taskId: task.id, argv, startedWithPrompt: true, resumePending: false });
     this.commit();
     return this.view(task);
@@ -194,6 +191,15 @@ export class TaskService {
     this.deps.kill(running.id);
   }
 
+  owns(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  /** The sessions it runs: one per open task. */
+  sessionIds(): string[] {
+    return [...this.sessions.keys()];
+  }
+
   launchSpec(sessionId: string): { argv: string[]; cwd: string } {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Unknown session ${sessionId}`);
@@ -226,7 +232,7 @@ export class TaskService {
     // Now rather than at each exit: the app may be gone before they arrive.
     for (const session of this.sessions.values()) this.markEnding(session);
     // Saved, not sent: nothing the window shows has changed.
-    saveTasks(this.stateFile, this.records);
+    this.deps.records.save();
   }
 
   async changedFiles(taskId: string): Promise<ChangedFile[] | null> {
@@ -235,7 +241,7 @@ export class TaskService {
   }
 
   private mine(): TaskRecord[] {
-    return this.records.filter((t) => t.projectDir === this.deps.projectDir);
+    return this.deps.records.all.filter((t) => t.projectDir === this.deps.projectDir);
   }
 
   private find(taskId: string): TaskRecord {
@@ -303,7 +309,7 @@ export class TaskService {
   }
 
   private commit(): void {
-    saveTasks(this.stateFile, this.records);
+    this.deps.records.save();
     this.deps.onChange(this.list());
   }
 }

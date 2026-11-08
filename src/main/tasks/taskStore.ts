@@ -64,6 +64,27 @@ function isTaskRecord(value: unknown): value is TaskRecord {
   );
 }
 
+/**
+ * Every project's tasks in `state.json`, read once per run. The services of all open projects share
+ * it, so each one's save writes back the others' tasks as they are now.
+ */
+export class TaskRecords {
+  readonly all: TaskRecord[];
+
+  /** Throws `NewerStateError` for a file a newer Mainframe wrote; sets any other bad file aside. */
+  constructor(
+    private readonly file: string,
+    now: number,
+    warn: (msg: string) => void,
+  ) {
+    this.all = loadTasks(file, now, warn);
+  }
+
+  save(): void {
+    saveTasks(this.file, this.all);
+  }
+}
+
 export function saveTasks(file: string, tasks: TaskRecord[]): void {
   writeJsonAtomic(file, { version: VERSION, tasks });
 }

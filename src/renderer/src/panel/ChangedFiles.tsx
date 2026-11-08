@@ -1,6 +1,7 @@
 // Adapted from Parallel Code (MIT): src/components/ChangedFilesList.tsx (its polling) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { createEffect, createSignal, Index, on, onCleanup, Show } from 'solid-js';
 import type { ChangedFile } from '../../../shared/types';
+import { useProject } from '../projects/projectContext';
 
 const POLL_MS = 5_000;
 
@@ -22,6 +23,7 @@ function Diff(props: { added: number | null; removed: number | null }) {
 
 /** What the selected task changed in its worktree, refreshed while it stays selected. */
 export default function ChangedFiles(props: { taskId: string | null; running: boolean }) {
+  const project = useProject();
   // By task: a task selected again shows its last list at once rather than an empty pane.
   const [known, setKnown] = createSignal<Record<string, ChangedFile[] | null>>({});
   // Tasks git has found a worktree for during this run. No worktree before that, while the session
@@ -42,7 +44,7 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
           if (inFlight) return;
           inFlight = true;
           window.mainframe
-            .changedFiles(taskId)
+            .changedFiles(project.dir, taskId)
             .then((files) => {
               if (cancelled) return;
               setKnown((all) => ({ ...all, [taskId]: files }));
@@ -53,9 +55,9 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
               inFlight = false;
             });
         };
-        // Every 5 s while the window shows, and at once when it shows again.
+        // Every 5 s while the window and the project's pane show, and at once when the window shows again.
         const refreshIfVisible = () => {
-          if (document.visibilityState === 'visible') refresh();
+          if (document.visibilityState === 'visible' && project.shown()) refresh();
         };
         const timer = setInterval(refreshIfVisible, POLL_MS);
         document.addEventListener('visibilitychange', refreshIfVisible);

@@ -99,7 +99,7 @@ test('a session that is closed goes straight to Closed, from Working and from Ne
 
   for (const [id, from] of [[a, 'working spin'], [b, 'needs-you ask']]) {
     const spots = await watchCard(page, id);
-    await page.evaluate((taskId) => window.mainframe.closeTask(taskId), id);
+    await closeTask(page, id);
     await expect(cardIn(page, 'closed', id)).toHaveCount(1);
     await expect.poll(() => screen(page, id)).toContain('[Process exited]');
     expect(await spots()).toEqual([from, 'closed dot']);
