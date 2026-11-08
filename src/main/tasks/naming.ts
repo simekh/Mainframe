@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 
 const MAX_SLUG_LENGTH = 40;
@@ -26,4 +27,10 @@ export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
 
 export function sessionName(projectDir: string, slug: string): string {
   return `${slugify(basename(projectDir))}-${slug}`;
+}
+
+/** A project's folder name in the data folder: its name, and a hash of its path so two folders of one name stay apart. */
+export function projectKey(projectDir: string): string {
+  const hash = createHash('sha256').update(projectDir).digest('hex').slice(0, 8);
+  return `${slugify(basename(projectDir))}-${hash}`;
 }

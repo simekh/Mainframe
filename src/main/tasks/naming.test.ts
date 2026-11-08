@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { it, expect } from 'vitest';
-import { sessionName, slugify, uniqueSlug } from './naming';
+import { projectKey, sessionName, slugify, uniqueSlug } from './naming';
 
 it.each([
   ['Fix login on iOS', 'fix-login-on-ios'],
@@ -21,4 +22,9 @@ it('uniqueSlug adds the first free number', () => {
 
 it('sessionName prefixes the slug with the project folder', () => {
   expect(sessionName('/Users/x/Developer/Acme', 'fix-login')).toBe('acme-fix-login');
+});
+
+it('projectKey is the folder name the manager uses: the slug of the basename and 8 hex of the path hash', () => {
+  const hash = createHash('sha256').update('/Users/a/My Project').digest('hex').slice(0, 8);
+  expect(projectKey('/Users/a/My Project')).toBe(`my-project-${hash}`);
 });

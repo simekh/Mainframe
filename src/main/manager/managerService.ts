@@ -1,10 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
 import { managerArgv, writeHookSettings } from '../tasks/launch';
-import { MANAGER_SLUG, sessionName, slugify } from '../tasks/naming';
+import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { readResumableSession } from './resumableChat';
 import { ROLE_PROMPT } from './rolePrompt';
@@ -59,8 +59,7 @@ export class ManagerService {
   constructor(private readonly deps: ManagerServiceDeps) {
     this.newId = deps.newId ?? randomUUID;
     this.warn = deps.warn ?? console.warn;
-    const hash = createHash('sha256').update(deps.projectDir).digest('hex').slice(0, 8);
-    this.dir = join(deps.dataDir, 'managers', `${slugify(basename(deps.projectDir))}-${hash}`);
+    this.dir = join(deps.dataDir, 'managers', projectKey(deps.projectDir));
     this.recordFile = join(this.dir, MANAGER_FILE);
   }
 

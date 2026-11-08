@@ -88,3 +88,67 @@ export interface ChangedFile {
   added: number | null;
   removed: number | null;
 }
+
+/** Where a project's to-do list came from, as the sync run found it. */
+export interface TodoSource {
+  kind: string;
+  board: string | null;
+  list: string;
+  url: string | null;
+}
+
+export interface TodoChecklist {
+  name: string;
+  items: { text: string; done: boolean }[];
+}
+
+export interface TodoCard {
+  id: string;
+  number: string | null;
+  title: string;
+  description: string;
+  labels: string[];
+  checklists: TodoChecklist[];
+  url: string | null;
+  forOwner: boolean;
+  urgent: boolean;
+}
+
+export interface TodoNote {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface TodoListRef {
+  name: string;
+  board: string | null;
+  url: string | null;
+}
+
+/** What the sync run needs from the owner before it can go on. */
+export type TodoAsk = { kind: 'tools'; connector: string; tools: string[] } | { kind: 'lists'; lists: TodoListRef[] };
+
+export interface TodoView {
+  source: TodoSource | null;
+  syncedAt: number | null;
+  cards: TodoCard[];
+  notes: TodoNote[];
+  syncing: boolean;
+  error: string | null;
+  ask: TodoAsk | null;
+  /** Whether tools are confirmed or a list picked, so "Set up again" has something to forget. */
+  setUp: boolean;
+}
+
+/** What a task started from a card keeps of it. */
+export interface TaskCardRef {
+  sourceKind: string;
+  id: string;
+  number: string | null;
+  url: string | null;
+  labels: string[];
+  /** The card's place in the list when the task started, from 0. */
+  position: number;
+  urgent: boolean;
+}
