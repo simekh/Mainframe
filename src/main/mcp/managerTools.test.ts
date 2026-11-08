@@ -103,10 +103,29 @@ it('start_task takes a title of 1 to 200 characters, a brief of up to 20000 and 
   expect(schema.safeParse({ title: 't', brief: 'b', noQuestions: 'yes' }).success).toBe(false);
 });
 
-it('start_task takes an optional cardId', () => {
-  const schema = setup().tools.get('start_task')!.config.inputSchema!;
-  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 'card-1' }).success).toBe(true);
-  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
+it('start_task takes an optional cardId, and with one no title', () => {
+  const { tools } = setup();
+  const { config } = tools.get('start_task')!;
+  expect(config.inputSchema!.safeParse({ title: 'Fix login', brief: '', cardId: 'card-1' }).success).toBe(true);
+  expect(config.inputSchema!.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
+  // A card start takes the card's title, so the manager isn't made to invent one it can't use.
+  expect(config.inputSchema!.safeParse({ brief: '', cardId: 'card-1' }).success).toBe(true);
+  expect(config.description).toContain('The title names the task (not needed with cardId)');
+});
+
+it('start_task refuses a start with neither a title nor a cardId', async () => {
+  const { call, calls } = setup();
+  const result = await call('start_task', { brief: 'Users get logged out' });
+  expect(result.isError).toBe(true);
+  expect(result.content).toEqual([{ type: 'text', text: 'A task needs a title, or a cardId to start from' }]);
+  expect(calls).toEqual(['startCheck']);
+});
+
+it('start_task with a cardId and no title starts from that card', async () => {
+  const { call, startedItems } = setup();
+  const result = await call('start_task', { brief: '', cardId: '#131' });
+  expect(result.isError).toBeUndefined();
+  expect(startedItems).toEqual([{ item: { kind: 'card', id: '#131' }, opts: { noQuestions: false, brief: '' } }]);
 });
 
 it("start_task's description says a card marked as the owner's never starts from here, and it takes no parameter to say otherwise", () => {

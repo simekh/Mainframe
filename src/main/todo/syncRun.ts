@@ -82,7 +82,7 @@ const DISCOVER = [
 const READ_FIND_LIST = `Find the list that holds the work still to do: the one this repo's CLAUDE.md names, or else the one named like To do, Todo or Backlog. If exactly one list is clearly it, read it. If several could be, don't read any cards: answer kind "lists" with each candidate's name, the board or project it belongs to, and its URL.`;
 
 const READ_ANSWER = [
-  `Answer kind "cards" with the source (the service's name, such as Trello; the board or project; the list; the list's URL) and every card in the list's order. Copy each card's title, description and checklist items word for word, and give its id, its short number as the service shows it (such as #128), its labels and its URL. Mark a card forOwner when this repo's CLAUDE.md says cards like it are for the owner rather than for an agent, and urgent when it says cards like it come first; otherwise leave both false.`,
+  `Answer kind "cards" with the source (the service's name, such as Trello; the board or project; the list; the list's URL) and every card in the list's order. Copy each card's title, description and checklist items word for word, and give its id (the service's own id for the card, exactly as its tools return it, so that it stays the same on every sync), its short number as the service shows it (such as #128), its labels and its URL. Mark a card forOwner when this repo's CLAUDE.md says cards like it are for the owner rather than for an agent, and urgent when it says cards like it come first; otherwise leave both false.`,
   `If you can't read the list, answer kind "none" with a message that tells the owner why.`,
 ];
 

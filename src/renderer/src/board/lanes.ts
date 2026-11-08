@@ -1,5 +1,5 @@
 // Adapted from Parallel Code (MIT): src/components/next-attention-task.ts (stepInQueue) at 97c3558. See THIRD_PARTY_NOTICES.md.
-import type { ProgramKind, TaskView } from '../../../shared/types';
+import type { ProgramKind, TaskView, TodoCard } from '../../../shared/types';
 import type { SessionState } from '../taskModel';
 
 export type Lane = 'needs-you' | 'working' | 'closed';
@@ -72,18 +72,28 @@ export function cardAge(task: TaskView, s: SessionState | undefined, now: number
 }
 
 /**
- * Each lane's tasks in board order. Needs you follows the to-do list: tasks whose card is urgent, then
- * the other tasks with a card, each by the card's place in the list, then tasks without a card, oldest
- * first. Ties go oldest first. Working goes oldest first and Closed newest first.
+ * Each lane's tasks in board order. Needs you follows the to-do list as `listed` has it now (the synced cards, in
+ * order): tasks whose card is urgent, then the other tasks with a card, each by the card's place in the list, then
+ * tasks without a card, oldest first. A card no longer on the list goes after those on it, by its place and urgency
+ * when its task started. Ties go oldest first. Working goes oldest first and Closed newest first.
  */
-export function laneOrder(tasks: TaskView[], sessions: Record<string, SessionState>): Record<Lane, TaskView[]> {
+export function laneOrder(
+  tasks: TaskView[],
+  sessions: Record<string, SessionState>,
+  listed: readonly Pick<TodoCard, 'id' | 'urgent'>[] = [],
+): Record<Lane, TaskView[]> {
   const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], closed: [] };
   for (const task of tasks) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
-  const group = (t: TaskView) => (t.card?.urgent ? 0 : t.card ? 1 : 2);
-  lanes['needs-you'].sort(
-    (a, b) =>
-      group(a) - group(b) || (a.card?.position ?? 0) - (b.card?.position ?? 0) || a.createdAt - b.createdAt,
-  );
+  const place = new Map(listed.map((card, at) => [card.id, { at, urgent: card.urgent }]));
+  const rank = (t: TaskView) => {
+    if (!t.card) return { group: 2, at: 0 };
+    const now = place.get(t.card.id) ?? { at: listed.length + t.card.position, urgent: t.card.urgent };
+    return { group: now.urgent ? 0 : 1, at: now.at };
+  };
+  lanes['needs-you'].sort((a, b) => {
+    const [ra, rb] = [rank(a), rank(b)];
+    return ra.group - rb.group || ra.at - rb.at || a.createdAt - b.createdAt;
+  });
   lanes.working.sort((a, b) => a.createdAt - b.createdAt);
   lanes.closed.sort((a, b) => b.createdAt - a.createdAt);
   return lanes;

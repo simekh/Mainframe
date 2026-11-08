@@ -123,6 +123,13 @@ describe('syncPrompt', () => {
     expect(syncPrompt({ kind: 'read', list: null })).toContain('Answer kind "cards" with the source');
   });
 
+  it("asks for each card's id as the service's tools return it, so a card keeps one id from sync to sync", () => {
+    // A task finds its card by this id, and a card has one task: an id that changed would let it start twice.
+    expect(syncPrompt({ kind: 'read', list: null })).toContain(
+      "give its id (the service's own id for the card, exactly as its tools return it, so that it stays the same on every sync)",
+    );
+  });
+
   it('the discover prompt calls no tool and asks for read tools only', () => {
     const prompt = syncPrompt({ kind: 'discover' });
     expect(prompt).toContain("don't call any tool");

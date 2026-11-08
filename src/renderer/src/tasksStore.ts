@@ -5,6 +5,7 @@ import type { TaskView } from '../../shared/types';
 import { laneOrder, nextNeedsYou } from './board/lanes';
 import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
 import { getTerminal } from './terminal/registry';
+import { todoOf } from './todo/todoStore';
 
 /** One open project's tasks, as its board and its session panel show them. */
 export interface ProjectTasks {
@@ -148,7 +149,7 @@ export function focusTerminalOf(dir: string, taskId: string): void {
 }
 
 /** The project's tasks in its Needs you lane, in board order. */
-const needsYou = (dir: string) => laneOrder(tasksOf(dir).tasks, store.sessions)['needs-you'];
+const needsYou = (dir: string) => laneOrder(tasksOf(dir).tasks, store.sessions, todoOf(dir)?.cards)['needs-you'];
 
 /** How many of the project's tasks wait in its Needs you lane. */
 export const needsYouCount = (dir: string) => needsYou(dir).length;

@@ -5,6 +5,7 @@ import { now } from './ageClock';
 import { playCardMoves, snapshotCards, type CardSpot } from './cardMoves';
 import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
+import { todoOf } from '../todo/todoStore';
 
 // A flex row: plan 2b's TODO lane joins at its start.
 const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
@@ -17,7 +18,7 @@ const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
 export default function Board() {
   const project = useProject();
   let root!: HTMLDivElement;
-  const order = createMemo(() => laneOrder(tasksOf(project.dir).tasks, tasksStore.sessions));
+  const order = createMemo(() => laneOrder(tasksOf(project.dir).tasks, tasksStore.sessions, todoOf(project.dir)?.cards));
   // Each lane's ids, joined: it changes only when a card enters, leaves or changes place, so the
   // frequent msg updates measure nothing.
   const orderKey = createMemo(() => LANES.map(({ lane }) => order()[lane].map((t) => t.id).join(',')).join('|'));

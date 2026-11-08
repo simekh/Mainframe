@@ -194,6 +194,24 @@ describe('laneOrder', () => {
     ]);
   });
 
+  it('Needs you follows the list as it is now, and a card no longer on it goes after, by where it was', () => {
+    // Saved as each task started: a at 5, b at 0 and urgent, c at 1. Since then the list became c5, c0, c1, with c1
+    // now urgent and c0 no longer; the last task's card has left the list.
+    const tasks = [
+      withSession('a', 10, cardAt(5)),
+      withSession('b', 20, cardAt(0, true)),
+      withSession('c', 30, cardAt(1)),
+      withSession('gone', 5, { ...cardAt(0)!, id: 'gone-card' }),
+    ];
+    const sessions = Object.fromEntries(tasks.map((t) => [t.session!.id, state('done')]));
+    const listed = [
+      { id: 'c5', urgent: false },
+      { id: 'c0', urgent: false },
+      { id: 'c1', urgent: true },
+    ];
+    expect(laneOrder(tasks, sessions, listed)['needs-you'].map((t) => t.id)).toEqual(['c', 'a', 'b', 'gone']);
+  });
+
   it('cards at the same place in the list go by age', () => {
     const tasks = [withSession('newer', 20, cardAt(3)), withSession('older', 5, cardAt(3))];
     const sessions = { 's-newer': state('done'), 's-older': state('done') };
