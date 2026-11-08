@@ -9,8 +9,8 @@ import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import TicketPanel from './TicketPanel';
-import { reopenTaskId, sourceLine, syncedLine, todoItems, type TodoItem } from './todoItems';
-import { TODO_WIDTH } from './todoPrefs';
+import { reopenTaskId, sourceLine, syncedLine, todoItems, visibleItems, type TodoItem } from './todoItems';
+import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
 import { confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
@@ -48,12 +48,21 @@ export default function TodoPanel(props: {
 }) {
   const project = useProject();
   const view = () => todoOf(project.dir);
-  // The rows go by key, as todoItems builds new objects each time: a sync, or a task that opens or closes, updates a
-  // row in place, so a button in it keeps the focus.
-  const itemByKey = createMemo(() => {
+  // Whether the list leaves out the cards for the owner: the project's own choice, kept for the next start.
+  const [hideMine, setHideMine] = createSignal(loadHideMine(localStorage, project.dir));
+  const toggleHideMine = () => {
+    setHideMine(!hideMine());
+    saveHideMine(localStorage, project.dir, hideMine());
+  };
+  const allItems = createMemo(() => {
     const v = view();
-    return new Map((v ? todoItems(v, tasksOf(project.dir).tasks) : []).map((item) => [item.key, item]));
+    return v ? todoItems(v, tasksOf(project.dir).tasks) : [];
   });
+  const shownItems = createMemo(() => visibleItems(allItems(), hideMine()));
+  const hiddenCount = () => allItems().length - shownItems().length;
+  // The rows go by key, as todoItems builds new objects each time: a sync, or a task that opens or closes, updates a
+  // row in place, so a button in it keeps the focus. A card the switch hides is off the list, so its ticket closes.
+  const itemByKey = createMemo(() => new Map(shownItems().map((item) => [item.key, item])));
   // None while its item is off the list.
   const ticketItem = (): TodoItem | 'new-note' | undefined =>
     props.ticket === 'new-note' ? 'new-note' : props.ticket ? itemByKey().get(props.ticket) : undefined;
@@ -282,6 +291,21 @@ export default function TodoPanel(props: {
               </p>
             </Show>
             <div class="todo-scroll">
+              {/* While the list has a card for the owner, and while it is pressed, so it can always be turned off. */}
+              <Show when={hideMine() || v().cards.some((card) => card.forOwner)}>
+                <button
+                  class="todo-hide-mine"
+                  data-testid="todo-hide-mine"
+                  aria-pressed={hideMine() ? 'true' : 'false'}
+                  onMouseDown={keepFocus}
+                  onClick={toggleHideMine}
+                >
+                  Hide my cards
+                  <Show when={hiddenCount() > 0}>
+                    <span class="todo-hide-count">{hiddenCount()} hidden</span>
+                  </Show>
+                </button>
+              </Show>
               <ul class="todo-list" aria-label="To do">
                 <For each={[...itemByKey().keys()]}>
                   {(key) => {
@@ -349,6 +373,10 @@ export default function TodoPanel(props: {
                   }}
                 </For>
               </ul>
+              {/* Hiding left no row, not even a note. */}
+              <Show when={shownItems().length === 0 && allItems().length > 0}>
+                <p class="todo-empty">Every card on the list is one of yours.</p>
+              </Show>
               <button
                 class="todo-add"
                 data-testid="todo-add-note"

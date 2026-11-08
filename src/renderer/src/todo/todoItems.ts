@@ -57,6 +57,10 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
   return [...cards, ...notes];
 }
 
+/** The items the list shows: with `hideMine`, every card for the owner is left out; notes and the cards for sessions stay. */
+export const visibleItems = (items: TodoItem[], hideMine: boolean): TodoItem[] =>
+  hideMine ? items.filter((item) => !item.forOwner) : items;
+
 /** The task a Reopen would reopen, for an item's `action`. */
 export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);
 

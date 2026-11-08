@@ -17,6 +17,30 @@ export function clampTodoWidth(width: number, paneWidth: number, pinned: boolean
   return Math.round(Math.max(TODO_WIDTH.min, Math.min(width, max)));
 }
 
+/**
+ * Whether the project's list leaves out the cards for the owner. Its own small pref, so the panels' shared
+ * `PanelPrefs` stay as they are; each project keeps its own, and it starts off.
+ */
+const HIDE_MINE_KEY = 'mainframe.todo-hide-mine';
+
+export function loadHideMine(storage: Pick<Storage, 'getItem'>, dir: string): boolean {
+  try {
+    const saved: unknown = JSON.parse(storage.getItem(`${HIDE_MINE_KEY}:${dir}`) ?? 'null');
+    return (saved as Record<string, unknown> | null)?.hideMine === true;
+  } catch {
+    return false;
+  }
+}
+
+/** A storage that refuses the write leaves the choice for this run only. */
+export function saveHideMine(storage: Pick<Storage, 'setItem'>, dir: string, hideMine: boolean): void {
+  try {
+    storage.setItem(`${HIDE_MINE_KEY}:${dir}`, JSON.stringify({ hideMine }));
+  } catch {
+    // Nothing to do: the list keeps working with what it has.
+  }
+}
+
 export const loadTodoPrefs = (storage: Pick<Storage, 'getItem'>, dir: string): PanelPrefs =>
   loadPanelPrefs(storage, dir, { key: KEY, defaults: DEFAULTS });
 

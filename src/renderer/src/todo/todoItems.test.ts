@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
-import { reopenTaskId, sourceLine, syncedAgo, syncedLine, todoItems } from './todoItems';
+import { reopenTaskId, sourceLine, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -164,5 +164,41 @@ describe('syncedAgo', () => {
     [3 * 3_600_000, '3 h ago'],
   ])('%i ms after a sync it reads %s, for a line that names the sync itself', (since, want) => {
     expect(syncedAgo(at, at + since)).toBe(want);
+  });
+});
+
+describe('visibleItems', () => {
+  const items = () =>
+    todoItems(
+      view({ cards: [card('1', { forOwner: true }), card('2'), card('3', { forOwner: true }), card('4'), card('5')], notes: [note('a')] }),
+      [task('t4', '4', { open: false })],
+    );
+
+  it('keeps every item while the owner has not asked to hide theirs', () => {
+    const all = items();
+    expect(visibleItems(all, false)).toEqual(all);
+  });
+
+  it("leaves out the cards for the owner, and keeps the others, Reopen rows and notes in order", () => {
+    const shown = visibleItems(items(), true);
+    expect(shown.map((i) => [i.key, i.action])).toEqual([
+      ['card:2', { kind: 'start' }],
+      ['card:4', { kind: 'reopen', taskId: 't4' }],
+      ['card:5', { kind: 'start' }],
+      ['note:a', { kind: 'start' }],
+    ]);
+  });
+
+  it('leaves the list it was given as it was', () => {
+    const all = items();
+    const before = all.map((i) => i.key);
+    visibleItems(all, true);
+    expect(all.map((i) => i.key)).toEqual(before);
+  });
+
+  it('leaves nothing when every item is for the owner', () => {
+    const only = todoItems(view({ cards: [card('1', { forOwner: true }), card('2', { forOwner: true })] }), []);
+    expect(visibleItems(only, true)).toEqual([]);
+    expect(visibleItems([], true)).toEqual([]);
   });
 });

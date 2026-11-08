@@ -630,3 +630,65 @@ test('a card for the owner opens its ticket but offers no Start', async () => {
   await expect(ticket.getByTestId('ticket-reopen')).toHaveCount(0);
   await app.close();
 });
+
+test('Hide my cards waits for a card for the owner, then leaves those out and counts them; an open ticket of one closes; the choice is kept across a restart', async () => {
+  const project = folder();
+  const first = await launchApp({}, project);
+  const { page, dataDir } = first;
+  const [search, exported] = CARDS.cards;
+  const forOwner = { ...exported, id: 'c119', number: '#119', title: 'Decide on the refund window', labels: ['Decision'], forOwner: true };
+  const items = page.getByTestId('todo-item');
+  const hide = page.getByTestId('todo-hide-mine');
+
+  // Nothing in the list is for the owner, so there is nothing to hide: no switch.
+  await syncFirstTime(page, dataDir);
+  await expect(hide).toHaveCount(0);
+
+  syncReply(dataDir, { ...CARDS, cards: [search, forOwner] });
+  await page.getByTestId('todo-sync').click();
+  await expect(hide).toBeVisible();
+  await expect(hide).toHaveText('Hide my cards');
+  await expect(hide).toHaveAttribute('aria-pressed', 'false');
+  await expect(items).toHaveCount(2);
+  await expect(itemRow(page, 'card:c119')).toBeVisible();
+
+  // The card for the owner leaves and the card for a session stays; the ticket of the one that left goes with it.
+  await itemRow(page, 'card:c119').click();
+  await expect(page.getByTestId('ticket-panel')).toBeVisible();
+  await hide.click();
+  await expect(hide).toHaveAttribute('aria-pressed', 'true');
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toHaveAttribute('data-key', 'card:c128');
+  await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
+  await expect(hide).toContainText('1 hidden');
+  await first.app.close();
+
+  // Kept for the project, and applied before any sync.
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, project);
+  const [list, switchAgain] = [again.page.getByTestId('todo-item'), again.page.getByTestId('todo-hide-mine')];
+  await again.page.getByTestId('todo-toggle').click();
+  await expect(switchAgain).toHaveAttribute('aria-pressed', 'true');
+  await expect(list).toHaveCount(1);
+  await expect(switchAgain).toContainText('1 hidden');
+
+  // A list of nothing but the owner's cards says so, and the switch stays, so it can be turned off.
+  syncReply(dataDir, { ...CARDS, cards: [forOwner] });
+  await again.page.getByTestId('todo-sync').click();
+  await expect(again.page.getByText('Every card on the list is one of yours.')).toBeVisible();
+  await expect(list).toHaveCount(0);
+  await expect(switchAgain).toContainText('1 hidden');
+  await expect(again.page.getByTestId('todo-add-note')).toBeVisible();
+
+  syncReply(dataDir, { ...CARDS, cards: [search, forOwner] });
+  await again.page.getByTestId('todo-sync').click();
+  await expect(list).toHaveCount(1);
+  await expect(again.page.getByText('Every card on the list is one of yours.')).toHaveCount(0);
+
+  // Off, the card comes back, and the count goes.
+  await switchAgain.click();
+  await expect(switchAgain).toHaveAttribute('aria-pressed', 'false');
+  await expect(switchAgain).toHaveText('Hide my cards');
+  await expect(list).toHaveCount(2);
+  await expect(itemRow(again.page, 'card:c119')).toBeVisible();
+  await again.app.close();
+});

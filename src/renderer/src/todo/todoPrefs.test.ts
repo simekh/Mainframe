@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs, TODO_WIDTH } from './todoPrefs';
+import { clampTodoWidth, loadHideMine, loadTodoPrefs, saveHideMine, saveTodoPrefs, TODO_WIDTH } from './todoPrefs';
 
 /** A Storage stand-in over a plain map. */
 function memoryStorage(entries: Record<string, string> = {}) {
@@ -24,6 +24,35 @@ describe('todoPrefs', () => {
     expect(loadTodoPrefs(storage, '/globex')).toEqual({ width: 320, pinned: false });
 
     expect(loadTodoPrefs(memoryStorage({ 'mainframe.todo:/acme': '{' }), '/acme')).toEqual({ width: 320, pinned: false });
+  });
+
+  it("Hide my cards starts off, is kept per project, and doesn't touch the panel's own prefs", () => {
+    const storage = memoryStorage({ 'mainframe.todo:/acme': '{"width":400,"pinned":true}' });
+    expect(loadHideMine(storage, '/acme')).toBe(false);
+
+    saveHideMine(storage, '/acme', true);
+    expect(storage.map.get('mainframe.todo-hide-mine:/acme')).toBe('{"hideMine":true}');
+    expect(loadHideMine(storage, '/acme')).toBe(true);
+    expect(loadHideMine(storage, '/globex')).toBe(false);
+    expect(loadTodoPrefs(storage, '/acme')).toEqual({ width: 400, pinned: true });
+
+    saveHideMine(storage, '/globex', true);
+    saveHideMine(storage, '/acme', false);
+    expect(loadHideMine(storage, '/acme')).toBe(false);
+    expect(loadHideMine(storage, '/globex')).toBe(true);
+  });
+
+  it.each(['{', 'null', 'true', '"yes"', '{"hideMine":"yes"}', '{}'])('Hide my cards stays off for the stored value %s', (bad) => {
+    expect(loadHideMine(memoryStorage({ 'mainframe.todo-hide-mine:/acme': bad }), '/acme')).toBe(false);
+  });
+
+  it('a storage that refuses the write leaves Hide my cards for this run only', () => {
+    const full = {
+      setItem: () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      },
+    };
+    expect(() => saveHideMine(full, '/acme', true)).not.toThrow();
   });
 
   it.each([

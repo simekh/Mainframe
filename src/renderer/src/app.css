@@ -634,6 +634,48 @@ button {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
+/* The filter at the top of the list, quiet as the top bar's toggles are. Pressed, it is tinted as the open card is, and
+   says how many cards it leaves out. */
+.todo-hide-mine {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.todo-hide-mine:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.todo-hide-mine[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+}
+
+.todo-hide-mine[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.todo-hide-count {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line that says hiding left nothing, in the list where the rows were: it keeps the rows' own inset. */
+.todo-scroll > .todo-empty {
+  padding: 2px 4px 0;
+}
+
 .todo-list {
   display: flex;
   flex-direction: column;
@@ -2437,6 +2479,7 @@ kbd {
   .todo-pick,
   .todo-item,
   .todo-add,
+  .todo-hide-mine,
   .ticket-close {
     transition:
       background-color var(--motion-fast) var(--ease-out),
