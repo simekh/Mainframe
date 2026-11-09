@@ -14,7 +14,8 @@ const alive = (pid: number) => {
 };
 
 async function shellPid(page: Page, taskId: string, tag: string): Promise<number> {
-  await run(page, `echo ${tag}-pid-$$`);
+  // In Git Bash, `$$` is an MSYS process id; process.kill takes the Windows one, which it keeps in /proc.
+  await run(page, `echo ${tag}-pid-${process.platform === 'win32' ? '$(cat /proc/$$/winpid)' : '$$'}`);
   await expect.poll(() => screen(page, taskId)).toMatch(new RegExp(`${tag}-pid-\\d+`));
   return Number((await screen(page, taskId)).match(new RegExp(`${tag}-pid-(\\d+)`))![1]);
 }
