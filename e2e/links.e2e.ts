@@ -108,10 +108,15 @@ test('a Cmd+click on a link stays out of a program that asks for the mouse, a pl
 
   // What the session was sent as mouse reports, which `cat -v` shows as ^[[<button;column;rowM or m.
   const reports = async () => (await screen(page, a)).replace(/\n/g, '').match(/\^\[\[<\d+;\d+;\d+[Mm]/g) ?? [];
+  // On Windows no report reaches the screen (spec §10.2): ConPTY hands the reports to the program as
+  // console mouse events, not bytes, and Git Bash's `cat` reads none of those. There the test checks
+  // only that the Cmd+click opens the link; the terminal code that sends the reports is the same on
+  // every system, and macOS and Linux check it.
+  const seesReports = process.platform !== 'win32';
 
   // The control: a plain click on a blank cell is reported, a press and a release.
   expect(await click(page, a, { blankColumn: 2 }, false)).toBe(false);
-  await expect.poll(reports).toHaveLength(2);
+  if (seesReports) await expect.poll(reports).toHaveLength(2);
 
   // The Cmd+click on the link opens it and is not reported. A second plain click, a column over,
   // follows it: once its release, the last report sent, shows, the reports stand in the order they
@@ -119,10 +124,12 @@ test('a Cmd+click on a link stays out of a program that asks for the mouse, a pl
   // and the release are sent apart, so the press can show alone.
   expect(await click(page, a, link, true)).toBe(true);
   expect(await click(page, a, { blankColumn: 30 }, false)).toBe(false);
-  await expect.poll(async () => (await reports()).some((r) => /;31;\d+m$/.test(r))).toBe(true);
-  const sent = await reports();
-  expect(sent).toHaveLength(4);
-  expect(sent.map((r) => r.split(';')[1])).toEqual(['3', '3', '31', '31']);
+  if (seesReports) {
+    await expect.poll(async () => (await reports()).some((r) => /;31;\d+m$/.test(r))).toBe(true);
+    const sent = await reports();
+    expect(sent).toHaveLength(4);
+    expect(sent.map((r) => r.split(';')[1])).toEqual(['3', '3', '31', '31']);
+  }
 
   await expect.poll(() => openedLinks(app)).toEqual(['https://example.com/tracked']);
   await app.close();
