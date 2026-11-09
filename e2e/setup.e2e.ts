@@ -233,6 +233,21 @@ test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
   await app.close();
 });
 
+test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and nothing is saved', async () => {
+  const pc = computer();
+  pc.installClaude();
+  // A claude is findable, but the variable names the only place looked at.
+  const nowhere = join(pc.home, 'nowhere', claudeFile);
+  const { app, page, dataDir } = await launchApp({ ...pc.env, MAINFRAME_CLAUDE_BIN: nowhere }, undefined, { firstStart: true });
+
+  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'missing');
+  await expect(page.getByTestId('setup')).toContainText(`MAINFRAME_CLAUDE_BIN is set to ${nowhere}`);
+  await expect(button(page, 'look-again')).toBeVisible();
+  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(button(page, other)).toHaveCount(0);
+  expect(savedSettings(dataDir)).toEqual({});
+  await app.close();
+});
+
 test('cancelling the folder dialog keeps the screen; quitting before choosing shows the welcome again', async () => {
   const pc = computer();
   pc.installClaude();
