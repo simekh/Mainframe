@@ -1,6 +1,5 @@
 // DIAGNOSTIC (Windows e2e diagnosis): measurements, not checks; each test writes what it saw with
 // writeDiag, and passes unless the app itself breaks. Removed before the branch's last commit.
-import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, type ElectronApplication, type Page } from '@playwright/test';
@@ -49,30 +48,27 @@ function eventsOf(d: DiagRecord, sid: string, from: number): string {
     .join('\n');
 }
 
-type Case = { resize: 'none' | 'before' | 'after'; delay: number };
-const CASES: Case[] = [
-  { resize: 'none', delay: 0 },
-  { resize: 'before', delay: 0 },
-  { resize: 'before', delay: 50 },
-  { resize: 'before', delay: 150 },
-  { resize: 'before', delay: 400 },
-  { resize: 'before', delay: 1000 },
-  { resize: 'after', delay: 0 },
-];
+/**
+ * Push 1 found no loss when the terminal kept the focus through the resize; the failed
+ * session-panel run lost the first key where xterm had sent a focus-out (CSI O) before the resize.
+ * Each case: what reaches the session before a resize, then the line 1.5 s after it.
+ */
+type Case = 'none' | 'out-bytes' | 'out-in-bytes' | 'blur' | 'out-bytes-no-resize';
+const CASES: Case[] = ['none', 'out-bytes', 'out-in-bytes', 'blur', 'out-bytes-no-resize'];
 
 const PROGRAMS: Array<{ name: string; env: Record<string, string> }> = [
   { name: 'bash', env: {} },
   { name: 'keylog', env: { FAKE_CLAUDE_KEYLOG: '1' } },
-  ...(process.platform === 'win32'
-    ? [{ name: 'usr-bash', env: { FAKE_CLAUDE_SHELL: join(process.env.ProgramFiles!, 'Git', 'usr', 'bin', 'bash.exe') } }]
-    : []),
 ];
 
-test('diag: the first input after a resize of an idle session', async () => {
+const bridgeWrite = (page: Page, sessionId: string, data: string) =>
+  page.evaluate(([id, d]) => window.mainframe.write(id, d), [sessionId, data] as const);
+
+test('diag: the first input after a focus-out and a resize of an idle session', async () => {
   test.setTimeout(900_000);
   const out: string[] = [];
   for (const program of PROGRAMS) {
-    for (const round of [1, 2]) {
+    for (const round of [1, 2, 3]) {
       const { app, page, dataDir } = await launchApp(program.env);
       for (const [i, c] of CASES.entries()) {
         const keysBefore = keysFiles(dataDir);
@@ -84,16 +80,17 @@ test('diag: the first input after a resize of an idle session', async () => {
         const line = program.name === 'keylog' ? 'stty size' : `echo ${tag}-$((1+1))`;
         // The record's clock counts from its own start in main.
         const from = Date.now() - (await diagOf(app)).t0 - 200;
-        if (c.resize === 'before') {
-          await bridgeResize(page, sid, size.cols, size.rows - 3);
-          if (c.delay) await page.waitForTimeout(c.delay);
-          await sendLine(page, id, line);
-        } else if (c.resize === 'after') {
-          await sendLine(page, id, line);
-          await bridgeResize(page, sid, size.cols, size.rows - 3);
-        } else {
-          await sendLine(page, id, line);
+        if (c === 'out-bytes' || c === 'out-bytes-no-resize') await bridgeWrite(page, sid, '\x1b[O');
+        if (c === 'out-in-bytes') {
+          await bridgeWrite(page, sid, '\x1b[O');
+          await page.waitForTimeout(100);
+          await bridgeWrite(page, sid, '\x1b[I');
         }
+        if (c === 'blur') await page.getByTestId('panel-title').click();
+        await page.waitForTimeout(300);
+        if (c !== 'out-bytes-no-resize') await bridgeResize(page, sid, size.cols, size.rows - 3);
+        await page.waitForTimeout(1500);
+        await sendLine(page, id, line);
         let outcome: string | null;
         let detail = '';
         if (program.name === 'keylog') {
@@ -124,33 +121,43 @@ test('diag: the first input after a resize of an idle session', async () => {
           });
           detail = (await screen(page, id)).split('\n').filter((l) => l.trim()).slice(-8).join('\n');
         }
-        out.push(`${program.name} round ${round} case ${c.resize}/${c.delay}ms: ${outcome ?? 'TIMEOUT'}`);
-        // The first resize case of each program, and every case that went wrong, in full.
-        if (outcome !== 'ok' || (round === 1 && i === 1)) {
-          out.push(`  ${detail.split('\n').join('\n  ')}`);
-          out.push(eventsOf(await diagOf(app), sid, from));
+        // When the program saw the resize: bash redraws its prompt, the keylog notes it.
+        const d = await diagOf(app);
+        const evs = (d.events[sid] ?? []).filter((e) => e[0] >= from);
+        const resizeAt = evs.find((e) => e[1] === 'resize')?.[0];
+        const inputAt = evs.find((e) => e[1] === 'in' && e[2].includes(program.name === 'keylog' ? 'stty' : tag))?.[0];
+        let seen = 'no resize';
+        if (resizeAt !== undefined && inputAt !== undefined) {
+          if (program.name === 'keylog') {
+            // The keylog's own lines: "<ms> resize <cols>x<rows>" and "<ms> in <hex>".
+            const notes = detail.split('\n').map((l) => l.split(' '));
+            const r = notes.find((n) => n[1] === 'resize');
+            const k = notes.find((n) => n[1] === 'in' && n[2]?.includes('7474792073697a650d'));
+            seen = !r
+              ? 'resize NEVER seen'
+              : !k
+                ? `resize seen at ${r[0]}, no input`
+                : `resize seen ${Number(k[0]) - Number(r[0])} ms ${Number(r[0]) <= Number(k[0]) ? 'before' : 'AFTER'} the input`;
+          } else {
+            const redraw = evs.find((e) => e[1] === 'out' && e[0] > resizeAt)?.[0];
+            seen =
+              redraw === undefined
+                ? 'no redraw'
+                : `redraw ${redraw - resizeAt} ms after the resize, ${redraw < inputAt ? 'before' : 'AFTER'} the input`;
+          }
         }
-        // The session's start, once per program: what ConPTY sends first and what xterm answers.
-        if (round === 1 && i === 0) out.push(eventsOf(await diagOf(app), sid, 0));
+        out.push(`${program.name} round ${round} case ${c}: ${outcome ?? 'TIMEOUT'}; ${seen}`);
+        // The first round of each case, and every case that went wrong, in full.
+        if (outcome !== 'ok' || round === 1) {
+          out.push(`  ${detail.split('\n').join('\n  ')}`);
+          out.push(eventsOf(d, sid, from));
+        }
       }
       await app.close();
     }
   }
   writeDiag('first-input', out.join('\n'));
 });
-
-function processCount(name: string): number {
-  try {
-    if (process.platform === 'win32') {
-      return execFileSync('tasklist', ['/FI', `IMAGENAME eq ${name}.exe`, '/NH'], { encoding: 'utf8' })
-        .split('\n')
-        .filter((l) => l.toLowerCase().includes(`${name}.exe`)).length;
-    }
-    return execFileSync('pgrep', ['-x', name], { encoding: 'utf8' }).trim().split('\n').filter(Boolean).length;
-  } catch {
-    return 0;
-  }
-}
 
 async function sample(app: ElectronApplication, sid: string): Promise<string> {
   const s = await app.evaluate((_electron, id) => {
@@ -179,27 +186,19 @@ async function sample(app: ElectronApplication, sid: string): Promise<string> {
         : null,
     };
   }, sid);
-  return JSON.stringify({ ...s, head: processCount('head'), yes: processCount('yes') });
+  return JSON.stringify(s);
 }
 
-test('diag: a flood, hidden and on screen, and the shell alone', async () => {
+/** Push 1: Git Bash's own flood took 42–47 s on Windows, hidden or shown; this times node's. */
+test('diag: a flood written by node, hidden and on screen', async () => {
   test.setTimeout(600_000);
   const out: string[] = [];
-  {
-    const { app, page } = await launchApp();
-    const id = await startTask(page, 'Pipe');
-    await run(page, 'time (yes mainframe | head -c 3000000 > /dev/null); echo pipe-$((1+1))');
-    const done = await within(page, 60_000, async () => ((await screen(page, id)).match(/^pipe-2$/m) ? true : null));
-    const text = await screen(page, id);
-    out.push(`pipe only (${done ? 'done' : 'TIMEOUT'}): ${text.split('\n').filter((l) => /^(real|user|sys)/.test(l)).join(' | ')}`);
-    await app.close();
-  }
   for (const variant of ['hidden', 'shown', 'hidden']) {
     const { app, page } = await launchApp();
     const a = await startTask(page, 'Flood');
     const sid = (await sessionIdOf(page, a))!;
     const t0 = Date.now();
-    await run(page, 'yes mainframe | head -c 3000000; echo flood-$((2+3))');
+    await run(page, `node -e "process.stdout.write('mainframe\\n'.repeat(300000))"; echo flood-$((2+3))`);
     if (variant === 'hidden') await startTask(page, 'Other');
     let doneAt = -1;
     const samples: string[] = [];

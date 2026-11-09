@@ -1,101 +1,95 @@
-// DIAGNOSTIC (Windows e2e diagnosis): measurements, not checks. A flood through a real PTY, read
-// with and without the renderer's flow control, so node-pty and ConPTY are timed without Electron.
+// DIAGNOSTIC (Windows e2e diagnosis): measurements, not checks. The first key after a focus report
+// and a resize, through a real PTY with no Electron and no xterm. Push 1's flood measurement found
+// Git Bash's 3 MB flood took 42 s on Windows with no flow control, node's 0.2 s.
 // Removed before the branch's last commit.
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it } from 'vitest';
-import { OutputFlow } from '../../renderer/src/terminal/outputFlow';
 import { spawnNodePty } from './nodePty';
 import { localFiles, SessionHost } from './sessionHost';
 import { buildSpawnEnv } from './spawnEnv';
 
-const NODE_FLOOD =
-  "const b='mainframe\\n'.repeat(1000);let n=0;const w=()=>{while(n<300){n++;if(!process.stdout.write(b))return process.stdout.once('drain',w)}process.stdout.write('flood-5\\n');setTimeout(()=>{},500)};w()";
+const KEYLOG =
+  "process.stdin.setRawMode(true);process.stdin.on('data',c=>process.stdout.write('\\r\\nKEYS:'+c.toString('hex')+'\\r\\n$ '));process.stdout.on('resize',()=>process.stdout.write('\\r\\nRESIZE:'+process.stdout.columns+'x'+process.stdout.rows+'\\r\\n'));process.stdout.write('$ ')";
 
 const bash = process.platform === 'win32' ? join(process.env.ProgramFiles!, 'Git', 'bin', 'bash.exe') : '/bin/bash';
 
 const programs: Record<string, string[]> = {
-  node: [process.execPath, '-e', NODE_FLOOD],
-  bash: [bash, '--noprofile', '--norc', '-c', 'yes mainframe | head -c 3000000; echo flood-5; sleep 0.5'],
+  bash: [bash, '--noprofile', '--norc'],
+  keylog: [process.execPath, '-e', KEYLOG],
 };
 
-async function flood(program: string, flowControl: boolean, writeMs: number): Promise<string> {
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function firstKey(program: string, focus: 'none' | 'out' | 'out-in', round: number): Promise<string> {
   const host = new SessionHost({
     spawnPty: spawnNodePty(process.platform),
     outputBatchMs: 8,
-    env: buildSpawnEnv(process.env, process.platform),
+    env: { ...buildSpawnEnv(process.env, process.platform), PS1: '$ ' },
     platform: process.platform,
     files: localFiles,
   });
   const t0 = Date.now();
-  let bytes = 0;
-  let tail = '';
-  let pauses = 0;
-  let resumes = 0;
-  let last = t0;
-  let gap = 0;
-  let gapAt = 0;
-  let doneAt = -1;
-  const flow = new OutputFlow({
-    write: (data, done) => setTimeout(done, writeMs),
-    pause: () => {
-      pauses++;
-      host.pause('flood');
-    },
-    resume: () => {
-      resumes++;
-      host.resume('flood');
-    },
-    schedule: (f) => {
-      const t = setTimeout(f, 16);
-      return () => clearTimeout(t);
-    },
-  });
-  const exit = new Promise<number>((resolve) =>
-    host.spawn(
-      'flood',
-      { argv: programs[program], cwd: tmpdir(), cols: 80, rows: 24 },
-      {
-        onData: (d) => {
-          const now = Date.now();
-          if (now - last > gap) {
-            gap = now - last;
-            gapAt = now - t0;
-          }
-          last = now;
-          bytes += d.length;
-          tail = (tail + Buffer.from(d).toString()).slice(-200);
-          if (doneAt < 0 && tail.includes('flood-5')) doneAt = now - t0;
-          if (flowControl) flow.push(d);
-        },
-        onStatus: () => {},
-        onExit: (e) => resolve(e.exitCode),
+  const log: string[] = [];
+  let out = '';
+  host.spawn(
+    'k',
+    { argv: programs[program], cwd: tmpdir(), cols: 80, rows: 30 },
+    {
+      onData: (d) => {
+        const text = Buffer.from(d).toString();
+        out += text;
+        log.push(`${Date.now() - t0} out ${JSON.stringify(text)}`);
+        // As xterm does: answer ConPTY's identity query, and report the focus once it asks for reports.
+        if (text.includes('\x1b[c')) host.write('k', '\x1b[?1;2c');
+        if (text.includes('\x1b[?1004h')) host.write('k', '\x1b[I');
       },
-    ),
+      onStatus: () => {},
+      onExit: () => {},
+    },
   );
-  const timedOut = await Promise.race([exit.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), 90_000))]);
-  if (timedOut) host.kill('flood');
-  return JSON.stringify({
-    platform: process.platform,
-    program,
-    flowControl,
-    writeMs,
-    doneAt,
-    total: Date.now() - t0,
-    timedOut,
-    bytes,
-    pauses,
-    resumes,
-    longestGap: gap,
-    gapAt,
-    tail: tail.slice(-60),
+  const until = async (ms: number, ok: () => boolean) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end && !ok()) await wait(50);
+    return ok();
+  };
+  const send = (data: string) => {
+    log.push(`${Date.now() - t0} in ${JSON.stringify(data)}`);
+    host.write('k', data);
+  };
+  await until(10_000, () => out.includes('$ '));
+  await wait(500);
+  if (focus !== 'none') send('\x1b[O');
+  if (focus === 'out-in') {
+    await wait(100);
+    send('\x1b[I');
+  }
+  await wait(300);
+  log.push(`${Date.now() - t0} resize 80x27`);
+  host.resize('k', 80, 27);
+  await wait(1500);
+  const tag = `k${round}`;
+  const before = out.length;
+  send(program === 'keylog' ? 'stty size\r' : `echo ${tag}-$((1+1))\r`);
+  let outcome = 'TIMEOUT';
+  await until(5000, () => {
+    const after = out.slice(before);
+    if (program === 'keylog') {
+      if (after.includes('737474792073697a650d')) outcome = 'ok';
+      else if (after.includes('7474792073697a650d')) outcome = 'LOST-FIRST';
+    } else if (new RegExp(`^${tag}-2\\r?$`, 'm').test(after)) outcome = 'ok';
+    else if (after.includes('command not found')) outcome = 'LOST-FIRST';
+    return outcome !== 'TIMEOUT';
   });
+  host.kill('k');
+  const fromResize = log.slice(log.findIndex((l) => l.includes(' resize ')) - 3);
+  return `[diag] ${process.platform} ${program} focus=${focus} round ${round}: ${outcome}\n${fromResize.map((l) => `    ${l}`).join('\n')}`;
 }
 
-it('diag: a flood through a real PTY, with and without flow control', { timeout: 900_000 }, async () => {
+it('diag: the first key after a focus report and a resize, through a real PTY', { timeout: 900_000 }, async () => {
   for (const program of Object.keys(programs)) {
-    for (const [flowControl, writeMs] of [[false, 0], [true, 1], [true, 10], [true, 50]] as const) {
-      console.log(`[diag] ${await flood(program, flowControl, writeMs)}`);
+    for (const focus of ['none', 'out', 'out-in'] as const) {
+      for (const round of [1, 2, 3, 4]) console.log(await firstKey(program, focus, round));
     }
   }
 });
