@@ -23,6 +23,8 @@ export const isFocused = (dir: string) => store.layout.focused === dir;
 export const isManagerShown = (dir: string) => managerShown(store.layout, dir);
 export const weightOf = (dir: string) => store.layout.weights[dir] ?? 1;
 
+/** Whether the first list has been asked for: until then the projects are still opening, one after another. */
+let asked = false;
 let changed = false;
 
 /** Shows the layout at once; `keep` also saves it, which a divider's drag leaves to its end. */
@@ -55,13 +57,18 @@ function setProjects(projects: ProjectView[]): void {
 }
 
 window.mainframe.onProjects((projects) => {
+  // Each project that opens while Mainframe starts reports the list so far. Taken for the whole list it
+  // would drop the projects still to open from the saved layout; `loadProjects` brings the whole one.
+  if (!asked) return;
   changed = true;
   setProjects(projects);
 });
 
 window.mainframe.onShowProject((dir) => revealProject(dir));
 
+/** The first list, asked for once every project has opened: the setup's end. */
 export async function loadProjects(): Promise<void> {
+  asked = true;
   const projects = await window.mainframe.listProjects();
   // Every change carries the whole list, so one that came in meanwhile is at least as new.
   if (!changed) setProjects(projects);

@@ -12,13 +12,15 @@ const logDir = process.env.FAKE_CLAUDE_LOG_DIR;
 /** This run's own file in the log folder, `<pid>.<ext>`. */
 const own = (ext) => join(logDir, `${process.pid}.${ext}`);
 
-// Mainframe's start check, not a launch: nothing is recorded. FAKE_CLAUDE_VERSION sets the answer.
+// Mainframe's start check, not a launch: nothing is recorded. FAKE_CLAUDE_VERSION sets the answer, and
+// FAKE_CLAUDE_VERSION_DELAY_MS holds it back, as a slow real claude does, so the window is up before the projects open.
 const versionCheck = args[0] === '--version';
 
 if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
 
 if (versionCheck) {
-  process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
+  const answer = () => process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
+  setTimeout(answer, Number(process.env.FAKE_CLAUDE_VERSION_DELAY_MS ?? 0));
 } else if (process.env.FAKE_CLAUDE_BRIDGE === '1') {
   // bridge.e2e.ts: some output and a status over OSC 7501, then a clean exit a moment later.
   process.stdout.write('bridge-ok\x1b]7501;state=working\x1b\\');

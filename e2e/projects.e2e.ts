@@ -78,6 +78,22 @@ test('each open project has its own board and manager; the list shows one in pla
   await again.app.close();
 });
 
+test('a restart whose start-up check is slow still opens the projects on screen as they were left', async () => {
+  const [acme, globex] = [repo(), repo()];
+  const first = await launchApp({}, [acme, globex]);
+  await (await rowButton(first.page, globex, 'rail-beside')).click();
+  await expect(pane(first.page, globex)).toHaveAttribute('data-shown', 'true');
+  await first.app.close();
+
+  // The window is up while the check waits for claude, and the projects then open one at a time:
+  // the page must not take the list so far, with one project in it, for the whole list.
+  const env = { MAINFRAME_DATA_DIR: first.dataDir, FAKE_CLAUDE_VERSION_DELAY_MS: '1500' };
+  const again = await launchApp(env, openProjects(first.dataDir));
+  await expect(pane(again.page, acme)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(again.page, globex)).toHaveAttribute('data-shown', 'true');
+  await again.app.close();
+});
+
 test('a project off screen shows how many of its sessions need you, and Ctrl+Tab brings it on screen', async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({}, [acme, globex]);
