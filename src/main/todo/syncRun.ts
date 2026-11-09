@@ -174,9 +174,11 @@ export function runClaude(o: {
       finish();
     };
     // A run that never started (no pid) is left alone: ending it throws on Windows, and signals the caller's own
-    // process group on a POSIX system. A failure to end a run is logged: the stop has been answered by then.
+    // process group on a POSIX system. So is one that has exited, which can still be unsettled while a connector holds
+    // its stdout open: Windows may have given its pid to another process by now. A failure to end a run is logged: the
+    // stop has been answered by then.
     const endChild = () => {
-      if (child.pid === undefined) return;
+      if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
       try {
         if (platform === 'win32') killTree(child.pid);
         else child.kill('SIGTERM');

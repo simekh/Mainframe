@@ -272,6 +272,15 @@ describe('runClaude', () => {
 
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+  const isRunning = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   it('passes the input on stdin, runs in cwd with env, and resolves with stdout', async () => {
     const cwd = folder();
     const program = stub(`
@@ -361,6 +370,38 @@ describe('runClaude', () => {
     expect(killed).toEqual([pid]);
     // The spy ended nothing: end the stub, so its folder can be removed.
     process.kill(pid);
+  });
+
+  it("on Windows a stop after the run has exited kills nothing, as Windows may have given the run's pid to another process", async () => {
+    // A connector that outlives the run keeps its stdout open, so the run has not settled when it exits.
+    const cwd = folder();
+    const program = stub(`
+      const fs = require('node:fs');
+      const { spawn } = require('node:child_process');
+      const connector = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], {
+        stdio: ['ignore', 'inherit', 'ignore'],
+        detached: true,
+        windowsHide: true,
+      });
+      connector.unref();
+      fs.writeFileSync('pids.tmp', JSON.stringify({ run: process.pid, connector: connector.pid }));
+      fs.renameSync('pids.tmp', 'pids');
+    `);
+    const killed: number[] = [];
+    const run = runClaude(options(program, { cwd, platform: 'win32', killTree: (pid) => killed.push(pid) }));
+    await vi.waitFor(() => expect(existsSync(join(cwd, 'pids'))).toBe(true), { timeout: 5000 });
+    const pids = JSON.parse(readFileSync(join(cwd, 'pids'), 'utf8')) as { run: number; connector: number };
+    try {
+      await vi.waitFor(() => expect(isRunning(pids.run)).toBe(false), { timeout: 5000 });
+      // Node learns of an exit a moment after the process is gone.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      run.cancel();
+      await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
+      expect(killed).toEqual([]);
+    } finally {
+      // End the connector, so the folder can be removed.
+      process.kill(pids.connector);
+    }
   });
 
   it('a run that could not start is never killed', async () => {
