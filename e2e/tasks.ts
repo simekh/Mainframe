@@ -133,15 +133,17 @@ export const closeTask = (page: Page, taskId: string) =>
 export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
-/** What `e2e/fake-claude.cjs` recorded of each launch in this data folder, oldest first. */
-export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const UUID =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The conversation a launch began. */
 export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 
 const fakeLogDir = (dataDir: string) => join(dataDir, 'fake-claude');
 
-/** Each launch's file, `<pid>.argv`, with what it recorded: its working directory and its arguments. */
+/**
+ * What `e2e/fake-claude.cjs` recorded of each launch in this data folder, oldest first: each launch's file,
+ * `<pid>.argv`, with its working directory and its arguments.
+ */
 function allLaunches(dataDir: string): Array<{ file: string; cwd: string; args: string[] }> {
   const dir = fakeLogDir(dataDir);
   return readdirSync(dir)

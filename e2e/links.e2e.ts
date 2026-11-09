@@ -108,10 +108,11 @@ test('a Cmd+click on a link stays out of a program that asks for the mouse, a pl
 
   // What the session was sent as mouse reports, which `cat -v` shows as ^[[<button;column;rowM or m.
   const reports = async () => (await screen(page, a)).replace(/\n/g, '').match(/\^\[\[<\d+;\d+;\d+[Mm]/g) ?? [];
-  // On Windows no report reaches the screen (spec §10.2): ConPTY hands the reports to the program as
-  // console mouse events, not bytes, and Git Bash's `cat` reads none of those. There the test checks
-  // only that the Cmd+click opens the link; the terminal code that sends the reports is the same on
-  // every system, and macOS and Linux check it.
+  // On Windows no report reached the screen in CI. Most likely ConPTY hands the reports to the program
+  // as console mouse events, not bytes, and Git Bash's `cat` reads none of those; that is inferred, not
+  // confirmed on Windows (docs/superpowers/findings/2026-11-09-cross-platform-2a-ci.md). There the test
+  // checks only that the Cmd+click opens the link; the terminal code that sends the reports is the same
+  // on every system, and macOS and Linux check it.
   const seesReports = process.platform !== 'win32';
 
   // The control: a plain click on a blank cell is reported, a press and a release.
