@@ -150,12 +150,18 @@ async function start(
   const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
   const toWindow = (channel: string, payload: unknown) => sendTo(win, channel, payload);
 
+  // The page is not told of the projects while they open, one after another: it would take the list so
+  // far for the whole list and drop the projects still to open from its saved layout. It asks for the
+  // whole list itself (`listProjects`) once the setup is over.
+  let opening = true;
   const projects = new ProjectRegistry<Project>({
     dataDir: config.dataDir,
     open: makeProject,
     kill: (sessionId, signal) => host.kill(sessionId, signal),
     running: (sessionId) => host.has(sessionId),
-    onChange: (list) => toWindow(IPC.projectsChanged, list),
+    onChange: (list) => {
+      if (!opening) toWindow(IPC.projectsChanged, list);
+    },
   });
 
   // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
@@ -246,8 +252,7 @@ async function start(
     }
   };
   Menu.setApplicationMenu(buildMenu(() => void openPicked()));
-  // Before the projects open: the page asks for each project's tasks, manager and list as soon as
-  // `projects:changed` tells it of the project, and the handlers answer for the projects open by then.
+  // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
     toWindow,
     projects,
@@ -259,6 +264,7 @@ async function start(
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
+  opening = false;
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
