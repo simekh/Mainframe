@@ -15,6 +15,8 @@ export interface TaskServiceDeps {
   /** Every project's tasks, shared with the other open projects' services. */
   records: TaskRecords;
   claudeBin: string;
+  /** What the SessionStart hook runs: a real program path, as claudeBin is. */
+  nodeBin: string;
   git: GitQueries;
   kill(sessionId: string): void;
   /** What a running session last reported, as the session host keeps it. */
@@ -131,7 +133,7 @@ export class TaskService {
       ...(req.card && { card: req.card }),
     };
 
-    const argv = this.startArgvOf(task, writeHookSettings(this.taskDir(task.id)));
+    const argv = this.startArgvOf(task, writeHookSettings(this.taskDir(task.id), this.deps.nodeBin));
     this.deps.records.all.push(task);
     this.addSession({ taskId: task.id, argv, startedWithPrompt: true, resumePending: false });
     this.commit();
@@ -146,7 +148,7 @@ export class TaskService {
     // to quit: then the task stays as recorded, to carry on when the project next opens.
     if (this.sessionOf(task.id) || this.quitting) return this.view(task);
 
-    const settingsPath = writeHookSettings(this.taskDir(task.id));
+    const settingsPath = writeHookSettings(this.taskDir(task.id), this.deps.nodeBin);
     const recorded = readRecordedSession(this.taskDir(task.id));
     const prompt = recorded === null ? undefined : resumePromptFor(task);
     const carryOn = prompt !== undefined;

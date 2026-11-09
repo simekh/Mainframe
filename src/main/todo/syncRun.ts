@@ -46,9 +46,10 @@ const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * The run's `--settings`, as JSON text. A PreToolUse hook blocks every tool but the answer's own and the confirmed
  * ones (it exits 2 before any allow rule is read, so it also blocks what the owner's own settings allow), and those
  * are allowed here because `dontAsk` would deny them. `--settings` outranks the owner's and the project's settings, so
- * `disableAllHooks` is set to false: with it true there, the guard would never run.
+ * `disableAllHooks` is set to false: with it true there, the guard would never run. The guard is `nodeBin` run with no
+ * shell; `onFailure: 'block'` stops the call when it can't start, since a guard that doesn't run lets every tool through.
  */
-export function syncSettings(allowTools: string[]): string {
+export function syncSettings(nodeBin: string, allowTools: string[]): string {
   const letThrough = ['StructuredOutput', ...allowTools.map(escapeRegExp)].join('|');
   return JSON.stringify({
     ...(allowTools.length > 0 ? { permissions: { allow: allowTools } } : {}),
@@ -60,8 +61,11 @@ export function syncSettings(allowTools: string[]): string {
           hooks: [
             {
               type: 'command',
-              command: `echo "Mainframe's sync may only read the to-do list." >&2; exit 2`,
+              command: nodeBin,
+              // exitCode, not exit(): the message reaches the pipe in full before node ends.
+              args: ['-e', 'process.stderr.write(process.argv[1]);process.exitCode=2', "Mainframe's sync may only read the to-do list."],
               timeout: 10,
+              onFailure: 'block',
             },
           ],
         },

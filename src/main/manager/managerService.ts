@@ -26,6 +26,8 @@ export interface ManagerServiceDeps {
   projectDir: string;
   dataDir: string;
   claudeBin: string;
+  /** What the SessionStart hook runs: a real program path, as claudeBin is. */
+  nodeBin: string;
   /** The contents of `mcp.json`: the MCP server's port and token change with each run of the app. */
   mcpConfig: string;
   onChange(view: ManagerView): void;
@@ -79,7 +81,7 @@ export class ManagerService {
     const prior = loadRecord(this.recordFile, this.warn);
 
     // Every launch: the port and the token change with each run of the app.
-    const settingsPath = writeHookSettings(this.dir, ALLOWED_TOOLS);
+    const settingsPath = writeHookSettings(this.dir, this.deps.nodeBin, ALLOWED_TOOLS);
     const mcpConfigPath = join(this.dir, MCP_FILE);
     // Made anew, as the mode is only for a file that is made here; one that was there would keep its own.
     rmSync(mcpConfigPath, { force: true });

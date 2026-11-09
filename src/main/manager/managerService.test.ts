@@ -9,6 +9,9 @@ import { hookSettings, managerArgv, SESSION_START_FILE } from '../tasks/launch';
 import { ManagerService } from './managerService';
 import { ROLE_PROMPT } from './rolePrompt';
 
+/** Where nothing runs: the path is only written into settings. */
+const NODE = '/usr/local/bin/node';
+
 const cleanup: string[] = [];
 
 afterEach(() => {
@@ -36,6 +39,7 @@ function setup() {
       projectDir,
       dataDir,
       claudeBin: 'claude',
+      nodeBin: NODE,
       mcpConfig,
       onChange: (view) => changes.push(view),
       newId,
@@ -115,7 +119,7 @@ it('start writes manager.json, the hooks and permissions in settings.json, and m
   service.start();
 
   expect(readRecord()).toEqual({ version: 1, midTurn: false });
-  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo']));
+  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, NODE, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo']));
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(MCP_CONFIG);
   expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });

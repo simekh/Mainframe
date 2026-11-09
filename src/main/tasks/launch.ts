@@ -58,31 +58,36 @@ export function managerArgv(o: {
   ];
 }
 
-function shQuote(path: string): string {
-  return `'${path.replace(/'/g, `'\\''`)}'`;
-}
-
 /** The file the SessionStart hook writes, in each task's folder and in the manager's. */
 export const SESSION_START_FILE = 'session-start.json';
 
-/** The settings file of a session whose folder is `dir`: its SessionStart hook, and `allow` as permission rules. */
-export function hookSettings(dir: string, allow: string[] = []): string {
-  const target = shQuote(`${dir}/${SESSION_START_FILE}`);
-  const tmp = shQuote(`${dir}/${SESSION_START_FILE}.tmp`);
-  const command = `cat > ${tmp} && mv ${tmp} ${target}`;
+/**
+ * Node's code for the SessionStart hook, run as `node -e <code> <file>` (the file is `process.argv[1]`): it saves stdin
+ * to the file whole, through a temp file and a rename, so the reader never sees half of it.
+ */
+const SAVE_STDIN =
+  "const fs=process.getBuiltinModule('node:fs'),t=process.argv[1],c=[];" +
+  "process.stdin.on('data',(d)=>c.push(d)).on('end',()=>{fs.writeFileSync(t+'.tmp',Buffer.concat(c));fs.renameSync(t+'.tmp',t)})";
+
+/**
+ * The settings file of a session whose folder is `dir`: its SessionStart hook, and `allow` as permission rules. The hook
+ * runs `nodeBin` with its arguments, no shell, so nothing is quoted and a path may hold any character.
+ */
+export function hookSettings(dir: string, nodeBin: string, allow: string[] = []): string {
+  const hook = { type: 'command', command: nodeBin, args: ['-e', SAVE_STDIN, join(dir, SESSION_START_FILE)], timeout: 10 };
   return JSON.stringify({
     hooks: {
-      SessionStart: [{ hooks: [{ type: 'command', command, timeout: 10 }] }],
+      SessionStart: [{ hooks: [hook] }],
     },
     ...(allow.length > 0 && { permissions: { allow } }),
   });
 }
 
 /** Writes `hookSettings` into the session's folder, making the folder if it has gone; returns the file's path. */
-export function writeHookSettings(dir: string, allow: string[] = []): string {
+export function writeHookSettings(dir: string, nodeBin: string, allow: string[] = []): string {
   mkdirSync(dir, { recursive: true });
   const settingsPath = join(dir, 'settings.json');
-  writeFileSync(settingsPath, hookSettings(dir, allow));
+  writeFileSync(settingsPath, hookSettings(dir, nodeBin, allow));
   return settingsPath;
 }
 

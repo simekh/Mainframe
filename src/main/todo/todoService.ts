@@ -26,6 +26,8 @@ export interface TodoServiceDeps {
   projectDir: string;
   dataDir: string;
   claudeBin: string;
+  /** What the sync's PreToolUse guard runs: a real program path, as claudeBin is. */
+  nodeBin: string;
   env: NodeJS.ProcessEnv;
   startTask: TaskService['start'];
   onChange(view: TodoView): void;
@@ -196,7 +198,7 @@ export class TodoService {
     const settingsPath = join(this.dir, SETTINGS_FILE);
     try {
       mkdirSync(this.dir, { recursive: true });
-      writeFileSync(settingsPath, syncSettings(step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
+      writeFileSync(settingsPath, syncSettings(this.deps.nodeBin, step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
     } catch (err) {
       // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
       this.ask = null;

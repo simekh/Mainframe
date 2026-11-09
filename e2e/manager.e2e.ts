@@ -70,7 +70,7 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
 
   const { hooks, permissions } = JSON.parse(readFileSync(settings, 'utf8'));
   expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'] });
-  expect(hooks.SessionStart[0].hooks[0].command).toContain(join(managerDir(dataDir), 'session-start.json'));
+  expect(hooks.SessionStart[0].hooks[0].args).toContain(join(managerDir(dataDir), 'session-start.json'));
 
   expect(statSync(mcp).mode & 0o777).toBe(0o600);
   const server = JSON.parse(readFileSync(mcp, 'utf8')).mcpServers.mainframe;

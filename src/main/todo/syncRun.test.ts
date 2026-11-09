@@ -8,8 +8,11 @@ import { isMcpToolName, readSyncAnswer, runClaude, syncArgv, syncPrompt, syncSet
 
 interface Settings {
   permissions?: { allow: string[] };
-  hooks: { PreToolUse: { matcher: string; hooks: { type: string; command: string; timeout: number }[] }[] };
+  hooks: { PreToolUse: { matcher: string; hooks: { type: string; command: string; args: string[]; timeout: number; onFailure?: string }[] }[] };
 }
+
+/** Where nothing runs: the path is only written into settings. */
+const NODE = '/usr/local/bin/node';
 
 const hook = (settings: string) => (JSON.parse(settings) as Settings).hooks.PreToolUse[0];
 
@@ -40,7 +43,7 @@ it('syncArgv is the background run, with the schema and the settings file', () =
 
 describe('syncSettings', () => {
   it('the hook blocks every tool but StructuredOutput and the allowed ones', () => {
-    const settings = syncSettings(['mcp__tracker__get_list']);
+    const settings = syncSettings(NODE, ['mcp__tracker__get_list']);
     const blocks = new RegExp(hook(settings).matcher);
     for (const name of ['Bash', 'mcp__tracker__update_card', 'StructuredOutputX', 'xStructuredOutput']) {
       expect(blocks.test(name), name).toBe(true);
@@ -52,7 +55,7 @@ describe('syncSettings', () => {
   });
 
   it('escapes the allowed names, so a name cannot widen the matcher', () => {
-    const blocks = new RegExp(hook(syncSettings(['mcp__a__b.c', 'mcp__a__(d|e)'])).matcher);
+    const blocks = new RegExp(hook(syncSettings(NODE, ['mcp__a__b.c', 'mcp__a__(d|e)'])).matcher);
     expect(blocks.test('mcp__a__bxc')).toBe(true);
     expect(blocks.test('mcp__a__d')).toBe(true);
     expect(blocks.test('mcp__a__b.c')).toBe(false);
@@ -60,7 +63,7 @@ describe('syncSettings', () => {
   });
 
   it('with nothing allowed, only StructuredOutput gets through and there are no allow rules', () => {
-    const settings = syncSettings([]);
+    const settings = syncSettings(NODE, []);
     const blocks = new RegExp(hook(settings).matcher);
     expect(blocks.test('StructuredOutput')).toBe(false);
     expect(blocks.test('mcp__tracker__get_list')).toBe(true);
@@ -70,21 +73,27 @@ describe('syncSettings', () => {
 
   it("switches hooks on, so the owner's or the repo's disableAllHooks can't turn the guard off", () => {
     for (const allow of [[], ['mcp__tracker__get_list']]) {
-      expect(JSON.parse(syncSettings(allow))).toHaveProperty('disableAllHooks', false);
+      expect(JSON.parse(syncSettings(NODE, allow))).toHaveProperty('disableAllHooks', false);
     }
   });
 
   it("the hook's command exits 2 and says why", () => {
-    const { type, command } = hook(syncSettings([])).hooks[0];
+    const { type, command, args } = hook(syncSettings(process.execPath, [])).hooks[0];
     expect(type).toBe('command');
     let failure: { status: number; stderr: string } | undefined;
     try {
-      execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8', stdio: 'pipe' });
+      execFileSync(command, args, { encoding: 'utf8', stdio: 'pipe' });
     } catch (err) {
       failure = err as { status: number; stderr: string };
     }
     expect(failure?.status).toBe(2);
-    expect(failure?.stderr).toContain('may only read the to-do list');
+    expect(failure?.stderr).toBe("Mainframe's sync may only read the to-do list.");
+  });
+
+  it("a guard that can't start blocks the call", () => {
+    const { command, onFailure } = hook(syncSettings(NODE, [])).hooks[0];
+    expect(onFailure).toBe('block');
+    expect(command).toBe(NODE);
   });
 });
 

@@ -81,13 +81,20 @@ async function pickProjectFolder(win?: BrowserWindow): Promise<string | undefine
 }
 
 /**
- * The environment every session and sync run gets, and where claude is in it, looked up once at
- * start. Not found, the name passes through and each launch reports it.
+ * The environment every session and sync run gets, and where claude and node are in it, looked up
+ * once at start. Claude not found, the name passes through and each launch reports it. Node not
+ * found, Mainframe can't start: the hooks it writes for Claude Code run node, with no shell.
  */
-function findPrograms(config: AppConfig): { env: Record<string, string>; claudeBin: string } {
+function findPrograms(config: AppConfig): { env: Record<string, string>; claudeBin: string; nodeBin: string } {
   const env = buildSpawnEnv(process.env, process.platform);
-  const found = findExecutable(config.claudeBin, { env, cwd: process.cwd(), platform: process.platform, files: localFiles });
-  return { env, claudeBin: found ?? config.claudeBin };
+  const lookup = { env, cwd: process.cwd(), platform: process.platform, files: localFiles };
+  const nodeBin = findExecutable('node', lookup);
+  if (nodeBin === null) {
+    throw new Error(
+      'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.',
+    );
+  }
+  return { env, claudeBin: findExecutable(config.claudeBin, lookup) ?? config.claudeBin, nodeBin };
 }
 
 /** Throws when Mainframe can't start; a project that can't open is said and left out. */
@@ -132,6 +139,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
       dataDir: config.dataDir,
       records,
       claudeBin: programs.claudeBin,
+      nodeBin: programs.nodeBin,
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),
       status: (sessionId) => host.status(sessionId),
@@ -141,6 +149,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
       projectDir: dir,
       dataDir: config.dataDir,
       claudeBin: programs.claudeBin,
+      nodeBin: programs.nodeBin,
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
       env: programs.env,
       startTask: (req) => service.start(req),
@@ -152,6 +161,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
       projectDir: dir,
       dataDir: config.dataDir,
       claudeBin: programs.claudeBin,
+      nodeBin: programs.nodeBin,
       mcpConfig: mcpConfigJson(mcp.url, mcp.token),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });

@@ -14,6 +14,8 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+/** Where nothing runs: the path is only written into settings. */
+const NODE = '/usr/local/bin/node';
 const ENV = { PATH: '/usr/bin', HOME: '/home/owner' };
 const NOW = 1_700_000_000_000;
 
@@ -106,6 +108,7 @@ function setup(todoFile?: string) {
       projectDir,
       dataDir,
       claudeBin: 'claude',
+      nodeBin: NODE,
       env: ENV,
       startTask,
       onChange: (view) => changes.push(view),
@@ -159,7 +162,7 @@ it("a first sync runs with no tools allowed, then asks the owner to confirm the 
     timeoutMs: SYNC_TIMEOUT_MS,
   });
   expect(t.settings().permissions).toBeUndefined();
-  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings([]));
+  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(NODE, []));
   expect(t.service.view().syncing).toBe(true);
 
   t.last().answer(TOOLS_ANSWER);
@@ -207,7 +210,7 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
   expect(t.calls).toHaveLength(2);
   expect(t.last().options.input).toBe(syncPrompt({ kind: 'read', list: null }));
   expect(t.settings().permissions).toEqual({ allow: TOOLS });
-  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(TOOLS));
+  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(NODE, TOOLS));
   expect(t.todo().readTools).toEqual({ connector: 'Tracker', tools: TOOLS });
   expect(t.service.view()).toMatchObject({ syncing: true, ask: null, setUp: true });
 

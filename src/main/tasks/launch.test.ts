@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it, expect } from 'vitest';
 import { hookSettings, managerArgv, readRecordedSession, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 
+/** Where nothing runs: the path is only written into settings. */
+const NODE = '/usr/local/bin/node';
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
 const MCP = '/data/managers/acme-0a1b2c3d/mcp.json';
@@ -55,25 +57,39 @@ it('refuses to resume the manager on an id that is not a UUID', () => {
   expect(() => managerArgv({ ...M, resume: true, claudeSessionId: 'not-a-uuid' })).toThrow('not-a-uuid');
 });
 
-it('gives a task the hooks file it has always had, byte for byte', () => {
-  const command = "cat > '/d/t1/session-start.json.tmp' && mv '/d/t1/session-start.json.tmp' '/d/t1/session-start.json'";
-  const expected = JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'command', command, timeout: 10 }] }] } });
-  expect(hookSettings('/d/t1')).toBe(expected);
-  expect(hookSettings('/d/t1', [])).toBe(expected);
+it("a task's SessionStart hook runs node with no shell", () => {
+  for (const settings of [hookSettings('/d/t1', NODE), hookSettings('/d/t1', NODE, [])]) {
+    const parsed = JSON.parse(settings);
+    expect(Object.keys(parsed)).toEqual(['hooks']);
+    expect(parsed.hooks.SessionStart).toHaveLength(1);
+    expect(parsed.hooks.SessionStart[0].hooks).toEqual([
+      { type: 'command', command: NODE, args: ['-e', expect.any(String), join('/d/t1', 'session-start.json')], timeout: 10 },
+    ]);
+  }
 });
 
 it('adds the allow rules it is given as permissions.allow, beside the hook', () => {
-  const settings = JSON.parse(hookSettings('/d/m', ['mcp__mainframe__*']));
+  const settings = JSON.parse(hookSettings('/d/m', NODE, ['mcp__mainframe__*']));
   expect(settings.permissions).toEqual({ allow: ['mcp__mainframe__*'] });
   expect(Object.keys(settings.hooks)).toEqual(['SessionStart']);
 });
 
-it('the hook command saves its input silently, also in a folder whose path has a space and a quote', () => {
-  const dir = mkdtempSync(join(tmpdir(), "hook dir 'q' "));
-  const command = JSON.parse(hookSettings(dir)).hooks.SessionStart[0].hooks[0].command;
-  const out = execFileSync('/bin/sh', ['-c', command], { input: `{"session_id":"${U}","source":"clear"}` });
-  expect(out.toString()).toBe('');
-  expect(readFileSync(join(dir, 'session-start.json'), 'utf8')).toBe(`{"session_id":"${U}","source":"clear"}`);
+it("the node path is the hook's command as it is, spaces and all", () => {
+  const node = 'C:\\Program Files\\nodejs\\node.exe';
+  expect(JSON.parse(hookSettings('/d', node)).hooks.SessionStart[0].hooks[0].command).toBe(node);
+});
+
+it('the hook command saves its input silently, also in a folder whose path has a space, a quote and non-ASCII letters', () => {
+  const dir = mkdtempSync(join(tmpdir(), "hook dir 'q' åäö "));
+  const hook = JSON.parse(hookSettings(dir, process.execPath)).hooks.SessionStart[0].hooks[0];
+  const first = `{"session_id":"${U}","source":"clear"}`;
+  expect(execFileSync(hook.command, hook.args, { input: first }).toString()).toBe('');
+  expect(readFileSync(join(dir, 'session-start.json'), 'utf8')).toBe(first);
+  // The second run replaces the file the first left, as the rename must on Windows too.
+  const second = `{"session_id":"${U}","source":"compact"}`;
+  expect(execFileSync(hook.command, hook.args, { input: second }).toString()).toBe('');
+  expect(readFileSync(join(dir, 'session-start.json'), 'utf8')).toBe(second);
+  expect(readdirSync(dir)).toEqual(['session-start.json']);
 });
 
 it.each([

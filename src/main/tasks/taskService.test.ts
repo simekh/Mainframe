@@ -9,6 +9,9 @@ import { openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
 
+/** Where nothing runs: the path is only written into settings. */
+const NODE = '/usr/local/bin/node';
+
 const cleanup: string[] = [];
 
 afterEach(() => {
@@ -46,6 +49,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
       dataDir,
       records,
       claudeBin: 'claude',
+      nodeBin: NODE,
       git,
       kill: (id) => killed.push(id),
       status: (id) => statuses.get(id) ?? null,
@@ -97,7 +101,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
   expect(new Set([record.id, record.claudeSessionId, view.session!.id]).size).toBe(3);
 
   const settingsPath = join(taskDir(record.id), 'settings.json');
-  expect(readFileSync(settingsPath, 'utf8')).toBe(hookSettings(taskDir(record.id)));
+  expect(readFileSync(settingsPath, 'utf8')).toBe(hookSettings(taskDir(record.id), NODE));
   expect(service.launchSpec(view.session!.id)).toEqual({
     cwd: projectDir,
     argv: startArgv({
@@ -866,7 +870,7 @@ it('reopen writes the hooks file again, and its folder, if they have gone', asyn
   rmSync(taskDir(view.id), { recursive: true });
 
   await service.reopen(view.id);
-  expect(readFileSync(join(taskDir(view.id), 'settings.json'), 'utf8')).toBe(hookSettings(taskDir(view.id)));
+  expect(readFileSync(join(taskDir(view.id), 'settings.json'), 'utf8')).toBe(hookSettings(taskDir(view.id), NODE));
 });
 
 it('reopen of a running task changes nothing', async () => {
