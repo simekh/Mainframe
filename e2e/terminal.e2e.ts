@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, ids, run, screen, startTask, styleOf } from './tasks';
+import { card, cardIn, ids, run, screen, sendLine, startTask, styleOf, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -132,6 +132,25 @@ test('a flood in a hidden task arrives in full', async () => {
   await card(page, a).click();
   await expect(card(page, a)).toHaveAttribute('data-selected', 'true');
   expect(await screen(page, a)).toContain('flood-5');
+  await app.close();
+});
+
+/** What `FAKE_CLAUDE_RAW`'s program read, all its reads joined. */
+const rawReads = (text: string) => [...text.matchAll(/^read: (".*")$/gm)].map((m) => JSON.parse(m[1]) as string).join('');
+
+test('a program that reads the terminal raw, as Claude Code does, sees a resize at once and then every key', async () => {
+  const { app, page } = await launchApp({ FAKE_CLAUDE_RAW: '1' });
+  const a = await startTask(page);
+  const before = (await termSize(page, a))!;
+  // The panel's edge takes the focus (on Windows the terminal reports the focus-out to ConPTY), and a
+  // narrower panel fits the terminal: where Git Bash loses the next key (sendAfterResize).
+  await page.getByTestId('panel-resize').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await termSize(page, a))!.cols).toBeLessThan(before.cols);
+  const size = (await termSize(page, a))!;
+  await expect.poll(() => screen(page, a)).toContain(`resized: ${size.cols}x${size.rows}`);
+  await sendLine(page, a, 'stty size');
+  await expect.poll(async () => rawReads(await screen(page, a))).toBe('stty size\r');
   await app.close();
 });
 
