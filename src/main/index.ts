@@ -86,12 +86,16 @@ const pickProjectFolder = (win: BrowserWindow) =>
     properties: ['openDirectory'],
   });
 
-/** On Windows only `.exe` files are offered: Mainframe runs nothing else there. */
+/**
+ * On Windows only `.exe` files are offered: Mainframe runs nothing else there. A symlink is kept as
+ * picked (macOS would give its target, and the target of a Homebrew one changes at every upgrade),
+ * and hidden folders, where a package manager may have put claude, are shown (macOS and Windows).
+ */
 const pickClaude = (win: BrowserWindow) =>
   pickPath(win, {
     title: 'Find Claude Code',
     buttonLabel: 'Use this',
-    properties: ['openFile'],
+    properties: ['openFile', 'noResolveAliases', 'showHiddenFiles'],
     filters: process.platform === 'win32' ? [{ name: 'Programs', extensions: ['exe'] }] : undefined,
   });
 
