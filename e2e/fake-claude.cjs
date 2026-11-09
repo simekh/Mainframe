@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Stands in for `claude` in e2e tests: records its working directory and arguments, then runs a plain
-// shell so the terminal tests can type into it. CommonJS with built-ins only, so on Windows the same
-// file builds into a real .exe (e2e/globalSetup.ts).
+// Stands in for `claude` in e2e tests: answers `--version`; otherwise records its working directory and
+// arguments, then runs a plain shell so the terminal tests can type into it. CommonJS with built-ins
+// only, so on Windows the same file builds into a real .exe (e2e/globalSetup.ts).
 'use strict';
 const { spawn } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
@@ -12,9 +12,14 @@ const logDir = process.env.FAKE_CLAUDE_LOG_DIR;
 /** This run's own file in the log folder, `<pid>.<ext>`. */
 const own = (ext) => join(logDir, `${process.pid}.${ext}`);
 
-if (logDir) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
+// Mainframe's start check, not a launch: nothing is recorded. FAKE_CLAUDE_VERSION sets the answer.
+const versionCheck = args[0] === '--version';
 
-if (process.env.FAKE_CLAUDE_BRIDGE === '1') {
+if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
+
+if (versionCheck) {
+  process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
+} else if (process.env.FAKE_CLAUDE_BRIDGE === '1') {
   // bridge.e2e.ts: some output and a status over OSC 7501, then a clean exit a moment later.
   process.stdout.write('bridge-ok\x1b]7501;state=working\x1b\\');
   setTimeout(() => {}, 300);

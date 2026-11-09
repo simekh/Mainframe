@@ -4,6 +4,7 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { writeOpenProjects } from '../src/main/projects';
+import { type AppSettings, writeSettings } from '../src/main/setup/settings';
 
 const root = join(__dirname, '..');
 
@@ -25,36 +26,46 @@ export async function cleanUp(): Promise<void> {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
+/** The stand-in for `claude`: `e2e/fake-claude.cjs`, on Windows the .exe the global setup built from it. */
+export const fakeClaude = process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake-claude.cjs');
+
 /**
- * The app's environment in a test: `e2e/fake-claude.cjs` as `claude` (on Windows the .exe the global
- * setup built from it), logging to the data folder.
+ * The app's environment in a test: the stand-in as `claude`, logging to the data folder. A variable
+ * `env` gives as `undefined` is left out, even one set here.
  */
-function appEnv(dataDir: string, env: Record<string, string>): Record<string, string> {
+function appEnv(dataDir: string, env: Record<string, string | undefined>): Record<string, string> {
   const fakeClaudeLogDir = join(dataDir, 'fake-claude');
   mkdirSync(fakeClaudeLogDir, { recursive: true });
-  return {
-    ...(process.env as Record<string, string>),
+  const vars: Record<string, string | undefined> = {
+    ...process.env,
     MAINFRAME_E2E: '1',
-    MAINFRAME_CLAUDE_BIN: process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake-claude.cjs'),
+    MAINFRAME_CLAUDE_BIN: fakeClaude,
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
     BASH_SILENCE_DEPRECATION_WARNING: '1',
     ...env,
   };
+  return Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
 
 /**
  * Starts the built app with `e2e/fake-claude.cjs` as `claude`, in a data folder of its own: a fresh
  * one unless `env` names one (to relaunch on the same tasks). It opens `projects`, which the data
- * folder's `projects.json` names, so the folder dialog never shows.
+ * folder's `projects.json` names, so the folder dialog never shows; and `settings.json` holds
+ * `o.settings`, `{ welcomeSeen: true }` unless given, so the welcome never shows. With `o.firstStart`
+ * the folder gets neither file: the app starts as on a computer that has never run it.
  */
 export async function launchApp(
-  env: Record<string, string> = {},
+  env: Record<string, string | undefined> = {},
   projects: string | string[] = os.tmpdir(),
+  o: { firstStart?: boolean; settings?: AppSettings } = {},
 ): Promise<{ app: ElectronApplication; page: Page; dataDir: string }> {
   const dataDir = env.MAINFRAME_DATA_DIR ?? removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-')));
-  writeOpenProjects(dataDir, typeof projects === 'string' ? [projects] : projects);
+  if (!o.firstStart) {
+    writeOpenProjects(dataDir, typeof projects === 'string' ? [projects] : projects);
+    writeSettings(dataDir, o.settings ?? { welcomeSeen: true });
+  }
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));

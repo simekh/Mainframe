@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { test, expect } from '@playwright/test';
-import { cleanUp, launchApp, removeAfterTest } from './launch';
+import { cleanUp, fakeClaude, launchApp, removeAfterTest } from './launch';
 import {
   card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendAfterResize, sendLine,
   sessionIdOf, startTask, termSize, UUID,
@@ -11,6 +11,20 @@ import {
 test.afterEach(cleanUp);
 
 const settingsFile = (dataDir: string, taskId: string) => join(dataDir, 'tasks', taskId, 'settings.json');
+
+/**
+ * Launches with a copy of the stand-in as `claude`, which the start check accepts, and removes the copy
+ * once the board shows: a claude that can't start. Resolves with the copy's path as well. (`copyFileSync`
+ * keeps the executable bit.)
+ */
+async function launchWithClaudeGone(projects?: string) {
+  const claude = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-claude-'))), basename(fakeClaude));
+  copyFileSync(fakeClaude, claude);
+  const launched = await launchApp({ MAINFRAME_CLAUDE_BIN: claude }, projects);
+  await expect(launched.page.getByTestId('new-task')).toBeVisible();
+  rmSync(claude);
+  return { ...launched, claude };
+}
 
 test('New task launches claude -w in the main checkout with a fresh session id, the hooks file and the opening prompt', async () => {
   const main = repo();
@@ -173,15 +187,18 @@ test('tasks reopened at startup start at the size their terminal shows', async (
 });
 
 test("a task whose claude can't start lands in Closed and stays closed after a restart", async () => {
-  const first = await launchApp({ MAINFRAME_CLAUDE_BIN: '/nonexistent/claude' });
+  const first = await launchWithClaudeGone();
   await first.page.getByTestId('new-task').click();
   await first.page.getByTestId('new-task-title').fill('Fix login');
   await first.page.getByTestId('new-task-start').click();
   await expect(first.page.getByTestId('task-card')).toHaveCount(1);
   const [id] = await ids(first.page);
   await expect(cardIn(first.page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
-  // The terminal says why, without the bridge's wrapping.
-  await expect.poll(() => screen(first.page, id)).toContain('/nonexistent/claude');
+  // The terminal says why, without the bridge's wrapping. White space is ignored: it wraps the long path.
+  const compact = (text: string) => text.replace(/\s+/g, '');
+  await expect
+    .poll(async () => compact(await screen(first.page, id)))
+    .toContain(compact(`${first.claude} was not found, or is not an executable file`));
   expect(await screen(first.page, id)).not.toContain('invoking remote method');
   await first.app.close();
   const saved = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks;
@@ -195,7 +212,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
 
 test('Reopen of a task whose claude never started begins its conversation, and the next Reopen resumes it', async () => {
   const main = repo();
-  const first = await launchApp({ MAINFRAME_CLAUDE_BIN: '/nonexistent/claude' }, main);
+  const first = await launchWithClaudeGone(main);
   await first.page.getByTestId('new-task').click();
   await first.page.getByTestId('new-task-title').fill('Fix login');
   await first.page.getByTestId('new-task-no-questions').check();
