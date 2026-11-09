@@ -16,6 +16,15 @@ Every session is a real `claude` process. It runs with your own Claude Code logi
 - **Claude Code**, installed and logged in: `claude` must run in your terminal.
 - **git.** Each project you open must be a git repository.
 
+**On Linux**, `npm install` compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
+
+Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` starts Mainframe without the sandbox and says so. To keep the sandbox, run this once, and again after an `npm install` that reinstalls Electron:
+
+```sh
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
 ## Run it
 
 ```sh
@@ -55,5 +64,7 @@ npm run test:e2e    # builds, then runs the end-to-end tests (Playwright + Elect
 ```
 
 On Windows the end-to-end tests need [Git for Windows](https://gitforwindows.org/), because their stand-in for `claude` opens Git Bash.
+
+On a Linux that blocks Chromium's sandbox (see "What you need"), run `npm run dev -- --noSandbox`.
 
 Mainframe adapts some code from Parallel Code; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

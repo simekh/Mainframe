@@ -3,10 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "main": "out/main/index.js",
+  "allowScripts": {
+    "fsevents": true,
+    "node-pty": true
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview",
+    "start": "node scripts/start.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",

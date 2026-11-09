@@ -32,25 +32,10 @@ jobs:
           try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution failed: $_" }
           Get-CimInstance Win32_VideoController | Select-Object Name, CurrentHorizontalResolution, CurrentVerticalResolution | Format-List
 
-      # Mainframe opens a 1400 px window, and the tests widen it to 1700; a smaller screen unpins panels.
-      - name: Screen size (macOS)
-        if: runner.os == 'macOS'
-        run: system_profiler SPDisplaysDataType | grep -iE 'resolution|display type|main display' || true
-
-      # Ubuntu 24.04 restricts the unprivileged user namespaces Electron's sandbox needs. A friend's
-      # Ubuntu won't have this change, so plan 2 makes Mainframe start without it and removes this step.
-      - name: Allow Electron's sandbox (Linux)
-        if: runner.os == 'Linux'
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Install
         run: npm ci
 
       # Each step below runs even when one before it failed, so every result shows.
-      - name: Status check
-        if: ${{ !cancelled() }}
-        run: npx vitest run src/main/pty/statusPassthrough.pty.test.ts --silent=false
-
       - name: Typecheck
         if: ${{ !cancelled() }}
         run: npm run typecheck
@@ -58,6 +43,37 @@ jobs:
       - name: Unit tests
         if: ${{ !cancelled() }}
         run: npm test
+
+      # The next two steps run `npm start` the way a friend does, on an Ubuntu that blocks Chromium's
+      # sandbox. A fresh data folder has no project, so Mainframe waits at its folder dialog: `timeout`
+      # ends it after 90 seconds (exit 124) and that is the pass. Any other exit fails the step, such as
+      # Chromium's "No usable sandbox" abort.
+      - name: Start as a friend does (Linux)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        timeout-minutes: 5
+        run: |
+          set +e
+          export MAINFRAME_DATA_DIR="$(mktemp -d)"
+          timeout 90 xvfb-run -a npm start 2>&1 | tee start.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 124 ]; then echo "npm start ended with exit code $code, not still running"; exit 1; fi
+          # Nothing set up Electron's setuid helper, so Mainframe must have said it starts without the sandbox.
+          grep -q "without Chromium's sandbox" start.log
+
+      - name: Start with the setuid sandbox (Linux)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        timeout-minutes: 5
+        run: |
+          # The README's way to keep the sandbox.
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+          set +e
+          export MAINFRAME_DATA_DIR="$(mktemp -d)"
+          timeout 90 xvfb-run -a npm start 2>&1 | tee start.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 124 ]; then echo "npm start ended with exit code $code, not still running"; exit 1; fi
+          # With the helper set up, Mainframe keeps the sandbox and says nothing.
+          ! grep -q "without Chromium's sandbox" start.log
 
       - name: E2E tests
         if: ${{ !cancelled() && runner.os == 'Linux' }}

@@ -42,11 +42,13 @@ function readConfig(): AppConfig | Error {
   }
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(e2e: boolean): BrowserWindow {
   const win = new BrowserWindow({
     title: 'Mainframe',
     width: 1400,
     height: 900,
+    // macOS only: in an e2e run the window may be larger than the runner's screen (MAINFRAME_E2E=1).
+    enableLargerThanScreen: e2e,
     backgroundColor: APP_BACKGROUND,
     // The window buttons sit in the manager's column, which runs to the top edge as the panel does.
     titleBarStyle: 'hiddenInset',
@@ -190,7 +192,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
 
-  const shown = createWindow();
+  const shown = createWindow(config.e2e);
   win = shown;
   // The project picked is brought on screen, whether it opens now or was open already.
   const openPicked = async () => {
