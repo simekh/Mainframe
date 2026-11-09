@@ -36,6 +36,9 @@ function computer(o: { git?: boolean } = {}) {
   const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
   let dirs: string[];
   if (process.platform === 'win32') {
+    for (const folder of ['AppData\\Roaming', 'AppData\\Local', 'AppData\\Local\\Temp', 'Desktop', 'Documents', 'Downloads']) {
+      mkdirSync(join(home, folder), { recursive: true });
+    }
     dirs = [dirname(process.execPath), ...(o.git === false ? [] : [dirname(systemGit())])];
   } else {
     const bin = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-bin-')));
