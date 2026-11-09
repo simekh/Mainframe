@@ -6,6 +6,7 @@ import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
 import type { SessionHost } from './pty/sessionHost';
+import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
 
@@ -22,6 +23,36 @@ export interface Project extends RegisteredProject {
   todo: TodoService;
 }
 
+/**
+ * The calls that work before any project has started: the page's config and the setup screen's.
+ * `begun` is the flow's `begin`, so the page's first answer is never a screen it doesn't need.
+ */
+export function registerSetupIpc(
+  rendererConfig: RendererConfig,
+  flow: SetupFlow,
+  begun: Promise<void>,
+  /** Told why the projects couldn't start; it ends the app. */
+  startFailed: (err: unknown) => void,
+): void {
+  ipcMain.handle(IPC.getConfig, () => rendererConfig);
+  ipcMain.handle(IPC.getSetup, async () => {
+    await begun;
+    return flow.view();
+  });
+  // The screen would wait for an answer that never comes, so a failure is told and ends the app; the page's invoke still rejects.
+  const action = (run: () => Promise<void>) => async () => {
+    try {
+      await run();
+    } catch (err) {
+      startFailed(err);
+      throw err;
+    }
+  };
+  ipcMain.handle(IPC.setupLookAgain, action(() => flow.lookAgain()));
+  ipcMain.handle(IPC.setupFindClaude, action(() => flow.findClaude()));
+  ipcMain.handle(IPC.setupChooseProject, action(() => flow.chooseProject()));
+}
+
 export function registerIpc(
   /** Sends to the window, unless it has gone. */
   send: (channel: string, payload: unknown) => void,
@@ -29,12 +60,9 @@ export function registerIpc(
   /** Asks for a folder and opens it; says why itself when it can't. */
   openPicked: () => Promise<void>,
   host: SessionHost,
-  rendererConfig: RendererConfig,
   clipboardDeps: ClipboardDeps,
   openExternal: (url: string) => Promise<void>,
 ): void {
-  ipcMain.handle(IPC.getConfig, () => rendererConfig);
-
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
   ipcMain.handle(IPC.closeProject, (_e, dir: string) => projects.close(dir));

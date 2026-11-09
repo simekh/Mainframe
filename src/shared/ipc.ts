@@ -6,6 +6,7 @@ import type {
   ProjectView,
   PtyExitEvent,
   RendererConfig,
+  SetupView,
   StartCheck,
   StatusEvent,
   TaskView,
@@ -17,6 +18,11 @@ import type {
 
 export const IPC = {
   getConfig: 'app:get-config',
+  getSetup: 'setup:get',
+  setupChanged: 'setup:changed',
+  setupLookAgain: 'setup:look-again',
+  setupFindClaude: 'setup:find-claude',
+  setupChooseProject: 'setup:choose-project',
   listProjects: 'projects:list',
   openProject: 'projects:open',
   closeProject: 'projects:close',
@@ -61,6 +67,19 @@ export const IPC = {
  */
 export interface MainframeApi {
   getConfig(): Promise<RendererConfig>;
+  /**
+   * The setup screen to show, once main has checked git and claude: null when none is needed, which
+   * also means the projects have started. The project calls below are answered only from then on.
+   */
+  getSetup(): Promise<SetupView | null>;
+  /** Every change to the setup screen, with the whole view; null once the projects have started. */
+  onSetup(cb: (view: SetupView | null) => void): () => void;
+  /** Checks again what was not found. Rejects when Mainframe can't start, and main then says why and ends the app. */
+  setupLookAgain(): Promise<void>;
+  /** Asks for a claude file, and uses it if it works. Not offered when MAINFRAME_CLAUDE_BIN names the claude. */
+  setupFindClaude(): Promise<void>;
+  /** Asks for the first project's folder and starts Mainframe on it. */
+  setupChooseProject(): Promise<void>;
   /** The open projects, in the order the owner opened them. */
   listProjects(): Promise<ProjectView[]>;
   /** Asks for a folder and opens it as a project; main says why when it can't. */

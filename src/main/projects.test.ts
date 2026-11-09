@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { chooseProjects, hasProjectsFile, rememberedProjects, writeOpenProjects } from './projects';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { hasProjectsFile, rememberedProjects, writeOpenProjects } from './projects';
 
 let root: string;
 let dataDir: string;
@@ -25,7 +25,6 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const projectsFile = () => join(dataDir, 'projects.json');
 const remember = (value: unknown) => writeFileSync(projectsFile(), JSON.stringify(value));
 const remembered = () => JSON.parse(readFileSync(projectsFile(), 'utf8'));
-const picker = (answer: string | undefined) => vi.fn(async () => answer);
 
 describe('rememberedProjects', () => {
   it('lists the remembered folders that are still there, in order, and says which one has gone', () => {
@@ -38,6 +37,17 @@ describe('rememberedProjects', () => {
   it('writes nothing, and lists nothing when there is no file', () => {
     expect(rememberedProjects(dataDir, warn)).toEqual([]);
     expect(hasProjectsFile(dataDir)).toBe(false);
+  });
+
+  it.each([
+    ['is not JSON', '{'],
+    ['has no version', JSON.stringify({ open: ['/x'] })],
+    ['holds no list', JSON.stringify({ version: 1, open: '/x' })],
+    ['lists a non-path', JSON.stringify({ version: 1, open: [7] })],
+  ])('lists nothing, and says so, when projects.json %s', (_case, text) => {
+    writeFileSync(projectsFile(), text);
+    expect(rememberedProjects(dataDir, warn)).toEqual([]);
+    expect(warnings).toHaveLength(1);
   });
 
   it('leaves a projects.json from a newer Mainframe as it is, and says so', () => {
@@ -57,60 +67,5 @@ describe('hasProjectsFile', () => {
   it('is true for a file that cannot be used: it was there', () => {
     writeFileSync(projectsFile(), '{');
     expect(hasProjectsFile(dataDir)).toBe(true);
-  });
-});
-
-describe('chooseProjects', () => {
-  it('asks for a folder the first time and remembers it', async () => {
-    const pick = picker(acme);
-    expect(await chooseProjects({ dataDir, pick, warn })).toEqual([acme]);
-    expect(remembered()).toEqual({ version: 1, open: [acme] });
-  });
-
-  it('opens every remembered folder, in order, without asking', async () => {
-    writeOpenProjects(dataDir, [globex, acme]);
-    const pick = picker(undefined);
-    expect(await chooseProjects({ dataDir, pick, warn })).toEqual([globex, acme]);
-    expect(pick).not.toHaveBeenCalled();
-  });
-
-  it('leaves out a remembered folder that has gone, and says so', async () => {
-    const gone = join(root, 'gone');
-    writeOpenProjects(dataDir, [gone, acme]);
-    const pick = picker(globex);
-    expect(await chooseProjects({ dataDir, pick, warn })).toEqual([acme]);
-    expect(pick).not.toHaveBeenCalled();
-    expect(warnings).toEqual([`The project folder ${gone} has gone; Mainframe leaves it out`]);
-  });
-
-  it('asks again when every remembered folder has gone, and remembers the new one', async () => {
-    writeOpenProjects(dataDir, [join(root, 'gone')]);
-    expect(await chooseProjects({ dataDir, pick: picker(globex), warn })).toEqual([globex]);
-    expect(remembered()).toEqual({ version: 1, open: [globex] });
-  });
-
-  it('opens nothing and remembers nothing when the owner cancels', async () => {
-    expect(await chooseProjects({ dataDir, pick: picker(undefined), warn })).toEqual([]);
-    expect(() => remembered()).toThrow('ENOENT');
-  });
-
-  it.each([
-    ['is not JSON', '{'],
-    ['has no version', JSON.stringify({ open: ['/x'] })],
-    ['holds no list', JSON.stringify({ version: 1, open: '/x' })],
-    ['lists a non-path', JSON.stringify({ version: 1, open: [7] })],
-  ])('asks again when projects.json %s', async (_case, text) => {
-    writeFileSync(projectsFile(), text);
-    const pick = picker(acme);
-    expect(await chooseProjects({ dataDir, pick, warn })).toEqual([acme]);
-    expect(pick).toHaveBeenCalledOnce();
-  });
-
-  it('leaves a projects.json from a newer Mainframe as it is, and says so', async () => {
-    remember({ version: 2, open: [acme] });
-    const pick = picker(globex);
-    await expect(chooseProjects({ dataDir, pick, warn })).rejects.toThrow('newer Mainframe');
-    expect(pick).not.toHaveBeenCalled();
-    expect(remembered()).toEqual({ version: 2, open: [acme] });
   });
 });

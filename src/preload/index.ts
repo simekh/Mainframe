@@ -9,6 +9,11 @@ function listen<T>(channel: string, cb: (payload: T) => void): () => void {
 
 const api: MainframeApi = {
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
+  getSetup: () => ipcRenderer.invoke(IPC.getSetup),
+  onSetup: (cb) => listen(IPC.setupChanged, cb),
+  setupLookAgain: () => ipcRenderer.invoke(IPC.setupLookAgain),
+  setupFindClaude: () => ipcRenderer.invoke(IPC.setupFindClaude),
+  setupChooseProject: () => ipcRenderer.invoke(IPC.setupChooseProject),
   listProjects: () => ipcRenderer.invoke(IPC.listProjects),
   openProject: () => ipcRenderer.invoke(IPC.openProject),
   closeProject: (dir) => ipcRenderer.invoke(IPC.closeProject, dir),

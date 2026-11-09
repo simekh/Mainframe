@@ -65,21 +65,3 @@ export function rememberedProjects(dataDir: string, warn: (msg: string) => void)
     return there;
   });
 }
-
-/**
- * The projects to open at start: the remembered ones whose folders are there, or else the one the
- * owner picks, which is remembered. None when they cancel.
- */
-export async function chooseProjects(deps: {
-  dataDir: string;
-  /** Asks the owner for a project folder; undefined when they cancel. */
-  pick: () => Promise<string | undefined>;
-  warn: (msg: string) => void;
-}): Promise<string[]> {
-  const present = rememberedProjects(deps.dataDir, deps.warn);
-  if (present.length > 0) return present;
-  const picked = await deps.pick();
-  if (picked === undefined) return [];
-  writeOpenProjects(deps.dataDir, [picked]);
-  return [picked];
-}

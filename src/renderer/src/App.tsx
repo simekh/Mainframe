@@ -70,14 +70,23 @@ function installE2eHooks(): void {
 }
 
 export default function App() {
+  // Main answers once it has checked git and claude and, when nothing is missing, started the projects:
+  // the calls that need them wait for this. A screen to show means they have not started.
+  const setup = window.mainframe.getSetup();
   // Terminals render only once the config is here, so waiting for the font here covers them all.
   const [config] = createResource(async () => {
     const [c] = await Promise.all([window.mainframe.getConfig(), loadTerminalFont(document.fonts)]);
-    if (c.e2e) installE2eHooks();
+    if (c.e2e) {
+      // A test drives main as soon as the hooks are there: by then its start-up is over, or its screen is up.
+      await setup;
+      installE2eHooks();
+    }
     return c;
   });
   onMount(() => {
-    loadProjects().catch((err: unknown) => console.error('[projects] could not list the open projects', err));
+    setup
+      .then((view) => (view === null ? loadProjects() : undefined))
+      .catch((err: unknown) => console.error('[projects] could not list the open projects', err));
   });
   onCleanup(
     installBoardShortcuts(window, {

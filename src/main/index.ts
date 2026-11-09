@@ -6,17 +6,18 @@ import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenD
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
-import { registerIpc, type Project } from './ipc';
+import { registerIpc, registerSetupIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
 import { ProjectRegistry } from './projectRegistry';
-import { chooseProjects } from './projects';
-import { findExecutable } from './pty/findExecutable';
+import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
+import { runVersion } from './setup/programChecks';
+import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
@@ -70,38 +71,68 @@ function createWindow(e2e: boolean): BrowserWindow {
   return win;
 }
 
-/** The folder dialog, on the window once there is one. Undefined when the owner cancels. */
-async function pickProjectFolder(win?: BrowserWindow): Promise<string | undefined> {
-  const options: OpenDialogOptions = {
-    message: 'Choose the folder of the project Mainframe should run on',
-    buttonLabel: 'Open',
-    properties: ['openDirectory'],
-  };
-  // Looked up at each call, so an e2e run can answer it.
-  const { canceled, filePaths } = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+/** One path from a dialog on the window; undefined when the user cancels. Looked up at each call, so an e2e run can answer it. */
+async function pickPath(win: BrowserWindow, options: OpenDialogOptions): Promise<string | undefined> {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, options);
   return canceled ? undefined : filePaths[0];
 }
 
+/** `message` shows on macOS only, `title` everywhere. */
+const pickProjectFolder = (win: BrowserWindow) =>
+  pickPath(win, {
+    title: 'Choose a project folder',
+    message: 'Choose the folder of the project Mainframe should run on',
+    buttonLabel: 'Open',
+    properties: ['openDirectory'],
+  });
+
+/** On Windows only `.exe` files are offered: Mainframe runs nothing else there. */
+const pickClaude = (win: BrowserWindow) =>
+  pickPath(win, {
+    title: 'Find Claude Code',
+    buttonLabel: 'Use this',
+    properties: ['openFile'],
+    filters: process.platform === 'win32' ? [{ name: 'Programs', extensions: ['exe'] }] : undefined,
+  });
+
+const lookupIn = (env: Record<string, string>): ExecutableLookup => ({
+  env,
+  cwd: process.cwd(),
+  platform: process.platform,
+  files: localFiles,
+});
+
 /**
- * The environment every session and sync run gets, and where claude and node are in it, looked up
- * once at start. Claude not found, the name passes through and each launch reports it. Node not
- * found, Mainframe can't start: the hooks it writes for Claude Code run node, with no shell.
+ * The environment every session and sync run gets, and where node is in it, looked up once at
+ * start. Node not found, Mainframe can't start: the hooks it writes for Claude Code run node, with
+ * no shell. Claude is the setup's to find; the projects start with the path it settles on.
  */
-function findPrograms(config: AppConfig): { env: Record<string, string>; claudeBin: string; nodeBin: string } {
+function findPrograms(): { env: Record<string, string>; nodeBin: string } {
   const env = buildSpawnEnv(process.env, process.platform);
-  const lookup = { env, cwd: process.cwd(), platform: process.platform, files: localFiles };
-  const nodeBin = findExecutable('node', lookup);
+  const nodeBin = findExecutable('node', lookupIn(env));
   if (nodeBin === null) {
     throw new Error(
       'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.',
     );
   }
-  const claudeName = config.claudeBin ?? 'claude';
-  return { env, claudeBin: findExecutable(claudeName, lookup) ?? claudeName, nodeBin };
+  return { env, nodeBin };
 }
 
-/** Throws when Mainframe can't start; a project that can't open is said and left out. */
-async function start(config: AppConfig, programs: ReturnType<typeof findPrograms>, projectDirs: string[]): Promise<void> {
+/** Sends to the window, unless it has gone: exits and setup answers keep arriving while the app quits. */
+function sendTo(win: BrowserWindow, channel: string, payload: unknown): void {
+  if (!win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+/**
+ * Starts the projects in the window, once the setup has a claude that works. Throws when Mainframe
+ * can't start; a project that can't open is said and left out.
+ */
+async function start(
+  config: AppConfig,
+  programs: ReturnType<typeof findPrograms> & { claudeBin: string },
+  projectDirs: string[],
+  win: BrowserWindow,
+): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
@@ -115,14 +146,9 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     files: localFiles,
     log: config.logOsc ? console.log : undefined,
   });
-  // Before the window: a state.json it can't use stops the start here, with no window left
-  // waiting for handlers that never come.
+  // A state.json it can't use stops the start here, before any project call is registered.
   const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
-  let win: BrowserWindow | undefined;
-  // Exits keep arriving while the app quits, after the window has gone.
-  const toWindow = (channel: string, payload: unknown) => {
-    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
-  };
+  const toWindow = (channel: string, payload: unknown) => sendTo(win, channel, payload);
 
   const projects = new ProjectRegistry<Project>({
     dataDir: config.dataDir,
@@ -131,6 +157,25 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     running: (sessionId) => host.has(sessionId),
     onChange: (list) => toWindow(IPC.projectsChanged, list),
   });
+
+  // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
+  // whichever of the two events below comes first does it, and the other changes nothing. It is set
+  // up before the projects open: the window is up while they do, and a quit then must stop them.
+  let quitting = false;
+  const beginQuit = () => {
+    if (quitting) return;
+    quitting = true;
+    // Chromium keeps the renderer's latest localStorage writes (layout, widths, pins) in memory for a
+    // while; on Windows a quit lost them. Writing them out now keeps them on every system.
+    session.defaultSession.flushStorageData();
+    projects.beginQuit();
+    host.killAll();
+  };
+  app.on('before-quit', beginQuit);
+  // On Windows a shutdown, restart or log-off sends this and no before-quit. Once it fires the
+  // session ends whatever happens, so beginQuit records where the sessions were, synchronously.
+  // It never fires on macOS or Linux.
+  win.on('session-end', beginQuit);
 
   async function makeProject(dir: string): Promise<Project> {
     // Only while it is the project open on its folder: a closed one's last exits change nothing on screen.
@@ -193,12 +238,10 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
 
-  const shown = createWindow(config.e2e);
-  win = shown;
   // The project picked is brought on screen, whether it opens now or was open already.
   const openPicked = async () => {
     try {
-      const dir = await pickProjectFolder(shown);
+      const dir = await pickProjectFolder(win);
       if (dir === undefined) return;
       await projects.open(dir);
       toWindow(IPC.showProject, dir);
@@ -212,37 +255,50 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     projects,
     openPicked,
     host,
-    { inputBatchMs: config.inputBatchMs, e2e: config.e2e },
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
     // Looked up at each call, so an e2e run can stand in for the browser.
     (url) => shell.openExternal(url),
   );
-  // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
-  app.on('second-instance', () => {
-    if (shown.isDestroyed()) return;
-    if (shown.isMinimized()) shown.restore();
-    shown.focus();
-  });
-  // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
-  // whichever of the two events below comes first does it, and the other changes nothing.
-  let quitting = false;
-  const beginQuit = () => {
-    if (quitting) return;
-    quitting = true;
-    // Chromium keeps the renderer's latest localStorage writes (layout, widths, pins) in memory for a
-    // while; on Windows a quit lost them. Writing them out now keeps them on every system.
-    session.defaultSession.flushStorageData();
-    projects.beginQuit();
-    host.killAll();
-  };
-  app.on('before-quit', beginQuit);
-  // On Windows a shutdown, restart or log-off sends this and no before-quit. Once it fires the
-  // session ends whatever happens, so beginQuit records where the sessions were, synchronously.
-  // It never fires on macOS or Linux.
-  shown.on('session-end', beginQuit);
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Mainframe can't start: says why and ends the app. */
+function failStart(err: unknown): void {
+  dialog.showErrorBox('Mainframe could not start', messageOf(err));
+  app.quit();
+}
+
+/**
+ * Start-up, in order: the window opens first, so the setup can show in it; the setup then checks
+ * git and claude and starts the projects once both work, asking for what it can't find. A quit
+ * before that starts no project. Throws when Mainframe can't start.
+ */
+async function launch(config: AppConfig): Promise<void> {
+  const programs = findPrograms();
+  const win = createWindow(config.e2e);
+  // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
+  app.on('second-instance', () => {
+    if (win.isDestroyed()) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+  const flow = new SetupFlow({
+    dataDir: config.dataDir,
+    envClaudeBin: config.claudeBin,
+    lookup: lookupIn(programs.env),
+    run: runVersion(programs.env),
+    pickClaude: () => pickClaude(win),
+    pickFolder: () => pickProjectFolder(win),
+    onChange: (view) => sendTo(win, IPC.setupChanged, view),
+    start: (claudeBin, dirs) => start(config, { ...programs, claudeBin }, dirs, win),
+    warn: console.warn,
+  });
+  // The calls are registered in the same turn, before the page can make one.
+  const begun = flow.begin();
+  registerSetupIpc({ inputBatchMs: config.inputBatchMs, e2e: config.e2e }, flow, begun, failStart);
+  await begun;
+}
 
 const config = readConfig();
 
@@ -257,16 +313,9 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     try {
       if (config instanceof Error) throw config;
-      const programs = findPrograms(config);
-      const projectDirs = await chooseProjects({ dataDir: config.dataDir, pick: () => pickProjectFolder(), warn: console.warn });
-      if (projectDirs.length === 0) {
-        app.quit();
-        return;
-      }
-      await start(config, programs, projectDirs);
+      await launch(config);
     } catch (err) {
-      dialog.showErrorBox('Mainframe could not start', messageOf(err));
-      app.quit();
+      failStart(err);
     }
   });
 }
