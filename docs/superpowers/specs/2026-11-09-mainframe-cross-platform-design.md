@@ -217,10 +217,10 @@ Seven unit-test files assume POSIX today (shell scripts as fake binaries, `/bin/
 
 ## 11. Order of work
 
-1. **Now:** this design and the plan are committed on `cross-platform` (documents only).
+1. **Now:** this design and plan 1 (`docs/superpowers/plans/2026-11-09-cross-platform-1-status-check-and-ci.md`: the status check and CI) are committed on `cross-platform`.
 2. **Start now: the Windows status check (§5.3) and the GitHub Actions workflow (§10.1)** **(owner, 2026-11-09)**. Both only add new files, so they don't collide with `todo`, and the check's answer shapes §5.3's half of the work.
 3. **Everything else starts once `todo` has merged into `main`** **(owner)**. `todo` is about 29 commits ahead of `main` and still being worked on, and it changes files this work touches (the background sync, the fake `claude`, the terminal code). Before that work starts, `cross-platform` is moved onto the new `main`.
-4. Plan tasks that touch files existing only on `todo` (the sync's guard hook, its spawn and stop, the fake `claude`'s sync mode, `todo.e2e.ts`, the README) are written against `todo` as it is when the plan is written, with a note to re-check them after the merge **(designer's call)**.
+4. **Plan 2 covers everything else.** It is written once `todo` has merged and plan 1's findings are in, because both change what it says: the files `todo` brings (the sync's guard hook, its spawn and stop, the fake `claude`'s sync mode, `todo.e2e.ts`, the README) and the status route on Windows **(designer's call)**.
 5. The rest, in the order the plan decides. The setup window and §5 make Windows usable; §6–§8 make it feel right; §10 runs throughout.
 
 **Pushing to see CI results** **(owner, 2026-11-09):** GitHub's runners are the only Windows and Linux machines available, so the work is pushed to `origin` (`cross-platform` only) whenever a CI result is needed, and the results are read with `gh`. The owner allows these pushes without `/simplify` and `/code-review high`: before each one, the tip is recorded in `.git/claude-reviewed` and `.git/claude-simplified` without a run. Both runs still happen once, on the whole branch, after its last code task and before the owner's acceptance, as the root `CLAUDE.md` says, and the gate still guards every merge into `main`.
