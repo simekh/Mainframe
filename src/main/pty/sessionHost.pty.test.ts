@@ -4,7 +4,9 @@ import { localFiles, SessionHost } from './sessionHost';
 import { buildSpawnEnv } from './spawnEnv';
 
 it('runs a real command in a PTY and reports its output and exit code', async () => {
-  const host = new SessionHost({ spawnPty: pty.spawn, outputBatchMs: 8, env: buildSpawnEnv(process.env), files: localFiles });
+  const host = new SessionHost({
+    spawnPty: pty.spawn, outputBatchMs: 8, env: buildSpawnEnv(process.env, process.platform), platform: process.platform, files: localFiles,
+  });
   let out = '';
   const code = await new Promise<number>((resolve) => host.spawn('real',
     { argv: ['/bin/sh', '-c', 'printf "pty-%s" ok; exit 3'], cwd: '/tmp', cols: 80, rows: 24 },

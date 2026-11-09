@@ -28,7 +28,8 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
   const host = new SessionHost({
     spawnPty: (file, args, opts) => pty.spawn(file, args, { ...opts, useConptyDll }),
     outputBatchMs: 8,
-    env: buildSpawnEnv(process.env),
+    env: buildSpawnEnv(process.env, process.platform),
+    platform: process.platform,
     // The launch check isn't portable yet (plan 2); node-pty checks the absolute path itself.
     files: { isExecutableFile: () => true, isDirectory: () => true },
     log: (line) => logLines.push(line),

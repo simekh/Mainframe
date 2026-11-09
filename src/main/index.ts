@@ -14,6 +14,7 @@ import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
 import { ProjectRegistry } from './projectRegistry';
 import { chooseProjects } from './projects';
+import { findExecutable } from './pty/findExecutable';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
@@ -79,8 +80,18 @@ async function pickProjectFolder(win?: BrowserWindow): Promise<string | undefine
   return canceled ? undefined : filePaths[0];
 }
 
+/**
+ * The environment every session and sync run gets, and where claude is in it, looked up once at
+ * start. Not found, the name passes through and each launch reports it.
+ */
+function findPrograms(config: AppConfig): { env: Record<string, string>; claudeBin: string } {
+  const env = buildSpawnEnv(process.env, process.platform);
+  const found = findExecutable(config.claudeBin, { env, cwd: process.cwd(), platform: process.platform, files: localFiles });
+  return { env, claudeBin: found ?? config.claudeBin };
+}
+
 /** Throws when Mainframe can't start; a project that can't open is said and left out. */
-async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
+async function start(config: AppConfig, programs: ReturnType<typeof findPrograms>, projectDirs: string[]): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   rmSync(pasteDir, { recursive: true, force: true });
@@ -89,7 +100,8 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
   const host = new SessionHost({
     spawnPty: pty.spawn,
     outputBatchMs: config.outputBatchMs,
-    env: buildSpawnEnv(process.env),
+    env: programs.env,
+    platform: process.platform,
     files: localFiles,
     log: config.logOsc ? console.log : undefined,
   });
@@ -119,7 +131,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
       projectDir: dir,
       dataDir: config.dataDir,
       records,
-      claudeBin: config.claudeBin,
+      claudeBin: programs.claudeBin,
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),
       status: (sessionId) => host.status(sessionId),
@@ -128,9 +140,9 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
     const todo = new TodoService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: config.claudeBin,
+      claudeBin: programs.claudeBin,
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
-      env: buildSpawnEnv(process.env),
+      env: programs.env,
       startTask: (req) => service.start(req),
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
@@ -139,7 +151,7 @@ async function start(config: AppConfig, projectDirs: string[]): Promise<void> {
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: config.claudeBin,
+      claudeBin: programs.claudeBin,
       mcpConfig: mcpConfigJson(mcp.url, mcp.token),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });
@@ -219,12 +231,13 @@ if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     try {
       if (config instanceof Error) throw config;
+      const programs = findPrograms(config);
       const projectDirs = await chooseProjects({ dataDir: config.dataDir, pick: () => pickProjectFolder(), warn: console.warn });
       if (projectDirs.length === 0) {
         app.quit();
         return;
       }
-      await start(config, projectDirs);
+      await start(config, programs, projectDirs);
     } catch (err) {
       dialog.showErrorBox('Mainframe could not start', messageOf(err));
       app.quit();

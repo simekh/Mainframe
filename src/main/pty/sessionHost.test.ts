@@ -5,6 +5,7 @@ import { OSC7501_SUPPORT_REPLY } from '../status/osc7501';
 function setup(
   env: Record<string, string> = { PATH: '/usr/bin' },
   existing: { executables: string[]; folders: string[] } = { executables: ['/usr/bin/claude'], folders: ['/repo'] },
+  platform: NodeJS.Platform = 'darwin',
 ) {
   const log: string[] = [];
   const calls: Parameters<SpawnPty>[] = [];
@@ -30,7 +31,7 @@ function setup(
     isExecutableFile: (path) => existing.executables.includes(path),
     isDirectory: (path) => existing.folders.includes(path),
   };
-  const host = new SessionHost({ spawnPty, outputBatchMs: 0, env, files });
+  const host = new SessionHost({ spawnPty, outputBatchMs: 0, env, files, platform });
   const listener = {
     onData: (d: Uint8Array) => log.push(`data:${Buffer.from(d).toString()}`),
     onStatus: (s: { state: string } | null) => log.push(`status:${s ? s.state : 'none'}`),
@@ -41,10 +42,16 @@ function setup(
 
 const spec = { argv: ['claude', '--x'], cwd: '/repo', cols: 100, rows: 30 };
 
-it('spawns argv[0] with the rest as args, in cwd, with size and env', () => {
+it('spawns the absolute path of argv[0] with the rest as args, in cwd, with size and env', () => {
   const { host, calls, listener } = setup();
   host.spawn('s1', spec, listener);
-  expect(calls[0]).toEqual(['claude', ['--x'], { name: 'xterm-256color', cwd: '/repo', env: { PATH: '/usr/bin' }, cols: 100, rows: 30 }]);
+  expect(calls[0]).toEqual(['/usr/bin/claude', ['--x'], { name: 'xterm-256color', cwd: '/repo', env: { PATH: '/usr/bin' }, cols: 100, rows: 30 }]);
+});
+
+it('on Windows it looks claude.exe up on Path and spawns its absolute path', () => {
+  const { host, calls, listener } = setup({ Path: 'C:\\bin' }, { executables: ['C:\\bin\\claude.exe'], folders: ['C:\\repo'] }, 'win32');
+  host.spawn('s1', { ...spec, cwd: 'C:\\repo' }, listener);
+  expect(calls[0][0]).toBe('C:\\bin\\claude.exe');
 });
 
 it("looks the binary up on the PTY's PATH, not the app's", () => {
