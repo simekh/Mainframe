@@ -756,6 +756,8 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   // Start saves the edits first, and the note leaves the list once its task has started.
   await again.first().click();
   await page.getByTestId('ticket-panel').getByLabel('Text').fill('Remove the old flags.');
+  // Start waits for the start check that opening the ticket runs, and a disabled button can't take the focus.
+  await expect(page.getByTestId('ticket-start')).toBeEnabled();
   await page.getByTestId('ticket-start').focus();
   await expect(page.getByTestId('ticket-start')).toBeFocused();
   await page.keyboard.press('Enter');
