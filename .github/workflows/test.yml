@@ -84,6 +84,12 @@ jobs:
         if: ${{ !cancelled() && runner.os != 'Linux' }}
         run: npm run test:e2e
 
+      # TEMPORARY DIAGNOSTIC (2b CI push 5), removed afterwards: the reload test again, twelve times.
+      - name: Repeat the reload test (Windows)
+        if: ${{ !cancelled() && runner.os == 'Windows' }}
+        continue-on-error: true
+        run: npx playwright test e2e/tasks.e2e.ts -g "reloading the window keeps running tasks" --repeat-each=12
+
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
