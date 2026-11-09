@@ -470,7 +470,7 @@ button {
 }
 
 /* The tab strip is the island's title bar, laid out as the manager's, and a drag region up to the
-   pin: its one tab sits on the manager's title line, and Sync just left of the pin. */
+   pin: its one tab sits on the manager's title line, and Quick Add and Sync just left of the pin. */
 .todo-tabs {
   flex: none;
   display: flex;
@@ -502,10 +502,18 @@ button {
   background: var(--accent);
 }
 
-/* A drag region takes no clicks of its own. While a sync runs this is its Stop, the same width as Sync. */
+/* A drag region takes no clicks of its own. Quick Add leads the two, outlined in dashes as the Todo mark is: what
+   it adds is Mainframe's own. While a sync runs Sync is its Stop. */
+.todo-add,
 .todo-sync {
-  margin-left: auto;
   -webkit-app-region: no-drag;
+}
+
+/* Over .btn, which comes later. */
+.btn.todo-add {
+  margin-left: auto;
+  border-style: dashed;
+  border-color: var(--border);
 }
 
 /* Where the list comes from, in the row under the title; a long name gives way first, and when it
@@ -788,25 +796,6 @@ button {
   border: 1px dashed var(--border);
   background: none;
   color: var(--fg-subtle);
-}
-
-/* Under the last item. Outlined in dashes as the Note mark is: what it adds is Mainframe's own. */
-.todo-add {
-  flex: none;
-  align-self: flex-start;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-subtle);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.todo-add:hover {
-  border-color: var(--fg-subtle);
-  background: var(--hover);
-  color: var(--fg);
 }
 
 /* Quiet, at the panel's foot: it undoes an allow or a pick that was wrong. */
@@ -2652,7 +2641,6 @@ kbd {
   .pane-heading,
   .todo-pick,
   .todo-item,
-  .todo-add,
   .todo-hide-mine,
   .ticket-close {
     transition:

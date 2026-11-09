@@ -219,23 +219,35 @@ export default function TodoPanel(props: {
       >
         <PinIcon />
       </button>
-      {/* One tab for now, and Sync beside the pin, as the session panel's title bar holds its buttons: the row
-          under it keeps its width for the source's name. While a sync runs, the same button, kept so that it keeps
-          the focus, is its Stop, and the row under it says Syncing…. */}
+      {/* One tab for now, and Quick Add and Sync beside the pin, as the session panel's title bar holds its buttons:
+          the row under it keeps its width for the source's name. While a sync runs, the same button, kept so that it
+          keeps the focus, is its Stop, and the row under it says Syncing…. */}
       <div class="todo-tabs">
         <h2 class="todo-tab">Todo</h2>
         <Show when={view()}>
           {(v) => (
-            <button
-              class="btn todo-sync"
-              data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
-              aria-label={v().syncing ? 'Stop the sync' : undefined}
-              onMouseDown={keepFocus}
-              onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
-            >
-              {v().syncing ? <StopIcon /> : <SyncIcon />}
-              {v().syncing ? 'Stop' : 'Sync'}
-            </button>
+            <>
+              <button
+                class="btn todo-add"
+                data-testid="todo-add-note"
+                title="Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it."
+                ref={addNote}
+                onMouseDown={keepFocus}
+                onClick={() => openTicket('new-note')}
+              >
+                Quick Add
+              </button>
+              <button
+                class="btn todo-sync"
+                data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
+                aria-label={v().syncing ? 'Stop the sync' : undefined}
+                onMouseDown={keepFocus}
+                onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
+              >
+                {v().syncing ? <StopIcon /> : <SyncIcon />}
+                {v().syncing ? 'Stop' : 'Sync'}
+              </button>
+            </>
           )}
         </Show>
       </div>
@@ -321,7 +333,7 @@ export default function TodoPanel(props: {
             {/* Until there is a list or a note; an ask says the same more precisely. */}
             <Show when={!v().source && v().notes.length === 0 && !v().ask}>
               <p class="todo-empty">
-                Sync reads your to-do list through the connector you use for it. Notes you add stay in Mainframe.
+                Sync reads your to-do list through the connector you use for it. Todos you add stay in Mainframe.
               </p>
             </Show>
             <div class="todo-scroll">
@@ -376,7 +388,7 @@ export default function TodoPanel(props: {
                         <Show when={item().action || item().labels.length > 0}>
                           <div class="todo-row">
                             <Show when={item().kind === 'note'}>
-                              <span class="todo-label note">Note</span>
+                              <span class="todo-label note">Todo</span>
                             </Show>
                             <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
                             <Switch>
@@ -416,15 +428,6 @@ export default function TodoPanel(props: {
               <Show when={shownItems().length === 0 && allItems().length > 0}>
                 <p class="todo-all-mine">Every card on the list is one of yours.</p>
               </Show>
-              <button
-                class="todo-add"
-                data-testid="todo-add-note"
-                ref={addNote}
-                onMouseDown={keepFocus}
-                onClick={() => openTicket('new-note')}
-              >
-                + Add note
-              </button>
             </div>
 
             <Show when={v().setUp}>

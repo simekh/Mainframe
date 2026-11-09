@@ -110,7 +110,7 @@ export default function TicketPanel(props: {
     <section
       class="ticket-panel"
       data-testid="ticket-panel"
-      aria-label={props.item === 'new-note' ? 'New note' : props.item.title}
+      aria-label={props.item === 'new-note' ? 'New todo' : props.item.title}
     >
       <button
         class="ticket-close"
@@ -130,7 +130,7 @@ export default function TicketPanel(props: {
           when={card()}
           fallback={
             <>
-              <h3 class="ticket-title">{props.item === 'new-note' ? 'New note' : 'Note'}</h3>
+              <h3 class="ticket-title">{props.item === 'new-note' ? 'New todo' : 'Todo'}</h3>
               <label class="ticket-field">
                 <span>Title</span>
                 <input
@@ -153,12 +153,12 @@ export default function TicketPanel(props: {
                   onMouseDown={keepFocus}
                   onClick={save}
                 >
-                  Save note
+                  Save todo
                 </button>
                 <Show when={note()}>
                   {(n) => (
                     <button class="btn ticket-delete" data-testid="note-delete" onMouseDown={keepFocus} onClick={() => remove(n().id)}>
-                      Delete note
+                      Delete todo
                     </button>
                   )}
                 </Show>

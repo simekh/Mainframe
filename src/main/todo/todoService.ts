@@ -125,13 +125,13 @@ export class TodoService {
   saveNote(note: TodoNoteDraft): TodoNote {
     this.writable();
     const title = note.title.trim();
-    if (!title) throw new Error('A note needs a title');
+    if (!title) throw new Error('A todo needs a title');
     const saved = { id: note.id ?? this.newId(), title, text: note.text };
     const { notes } = this.record;
     if (note.id === undefined) {
       this.save({ ...this.record, notes: [...notes, saved] });
     } else {
-      if (!notes.some((n) => n.id === note.id)) throw new Error(`No note ${note.id}`);
+      if (!notes.some((n) => n.id === note.id)) throw new Error(`No todo ${note.id}`);
       this.save({ ...this.record, notes: notes.map((n) => (n.id === note.id ? saved : n)) });
     }
     this.changed();
@@ -172,7 +172,7 @@ export class TodoService {
 
     this.writable();
     const note = this.record.notes.find((n) => n.id === item.id);
-    if (!note) throw new Error(`No note ${item.id}`);
+    if (!note) throw new Error(`No todo ${item.id}`);
     const task = await this.deps.startTask({ title: note.title, description: note.text, noQuestions: opts.noQuestions });
     this.deleteNote(note.id);
     return task;

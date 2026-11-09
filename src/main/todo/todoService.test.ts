@@ -527,8 +527,8 @@ it('notes are added, edited and deleted, kept in todo.json, and a sync leaves th
   t.service.deleteNote('nope');
   expect(t.changes).toHaveLength(changesAfterDelete);
 
-  expect(() => t.service.saveNote({ title: '   ', text: 'No title' })).toThrow('A note needs a title');
-  expect(() => t.service.saveNote({ id: 'nope', title: 'Title', text: '' })).toThrow('No note nope');
+  expect(() => t.service.saveNote({ title: '   ', text: 'No title' })).toThrow('A todo needs a title');
+  expect(() => t.service.saveNote({ id: 'nope', title: 'Title', text: '' })).toThrow('No todo nope');
   expect(t.service.view().notes).toEqual([edited]);
 });
 
@@ -700,9 +700,9 @@ it('an unknown card or note is refused, saying so', async () => {
   await expect(t.service.startItem({ kind: 'card', id: 'zz' }, { noQuestions: false })).rejects.toThrow(
     'No card zz in the synced list; sync it again',
   );
-  await expect(t.service.startItem({ kind: 'note', id: 'zz' }, { noQuestions: false })).rejects.toThrow('No note zz');
+  await expect(t.service.startItem({ kind: 'note', id: 'zz' }, { noQuestions: false })).rejects.toThrow('No todo zz');
   // A card's id is not a note's.
-  await expect(t.service.startItem({ kind: 'note', id: 'c1' }, { noQuestions: false })).rejects.toThrow('No note c1');
+  await expect(t.service.startItem({ kind: 'note', id: 'c1' }, { noQuestions: false })).rejects.toThrow('No todo c1');
   expect(t.starts).toEqual([]);
 });
 

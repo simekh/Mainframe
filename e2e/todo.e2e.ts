@@ -470,7 +470,7 @@ test("a Start from the list whose check warns leaves the ticket the owner opened
 
   // Its warning was logged, not shown: the note's ticket is still the one open, with its text.
   await expect.poll(() => logs.filter((line) => line.startsWith('warning: [todo]') && line.includes('card:c128'))).toHaveLength(1);
-  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New note');
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New todo');
   await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
   await expect(itemRow(page, 'card:c128').getByTestId('todo-start')).toBeVisible();
   expect(launches(dataDir)).toEqual([]);
@@ -494,7 +494,7 @@ test('a Start from the list that fails leaves the ticket the owner opened meanwh
   await expect
     .poll(() => logs.filter((line) => line.startsWith('error: [todo] could not start card:c128') && line.includes('The tracker went away')))
     .toHaveLength(1);
-  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New note');
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('New todo');
   await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
   await expect(ticket.getByTestId('ticket-error')).toHaveCount(0);
   await expect(itemRow(page, 'card:c128').getByTestId('todo-start')).toBeVisible();
@@ -669,8 +669,31 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   const first = await launchApp({}, project);
   const ticket = first.page.getByTestId('ticket-panel');
   await first.page.getByTestId('todo-toggle').click();
+
+  // Quick Add sits in the panel's top bar, between its name and Sync, with room to spare left of the pin even at the
+  // panel's narrowest. Its hover says that what it adds stays in Mainframe.
+  await expect(first.page.getByTestId('todo-add-note')).toHaveText('Quick Add');
+  await expect(first.page.getByTestId('todo-add-note')).toHaveAttribute(
+    'title',
+    "Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it.",
+  );
+  const edge = first.page.getByTestId('todo-resize');
+  await edge.focus();
+  for (let i = 0; i < 3; i++) await first.page.keyboard.press('ArrowLeft');
+  await expect(edge).toHaveAttribute('aria-valuenow', '280');
+  const [name, add, sync, pin] = await Promise.all(
+    [first.page.getByRole('heading', { name: 'Todo', level: 2 }), ...['todo-add-note', 'todo-sync', 'todo-pin'].map((id) => first.page.getByTestId(id))].map(
+      async (l) => (await l.boundingBox())!,
+    ),
+  );
+  expect(Math.abs(add.y + add.height / 2 - (sync.y + sync.height / 2))).toBeLessThan(1);
+  expect(name.x + name.width).toBeLessThan(add.x);
+  expect(add.x + add.width).toBeLessThan(sync.x);
+  expect(sync.x + sync.width).toBeLessThan(pin.x);
+
   await first.page.getByTestId('todo-add-note').click();
   await expect(ticket.getByLabel('Title')).toBeFocused();
+  await expect(ticket.getByTestId('note-save')).toHaveText('Save todo');
   await expect(ticket.getByTestId('note-delete')).toHaveCount(0);
   await ticket.getByLabel('Title').fill('Tidy the flags');
   await ticket.getByLabel('Text').fill('Remove the old flags.\nKeep the new ones.');
@@ -678,17 +701,19 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   const items = first.page.getByTestId('todo-item');
   await expect(items).toHaveCount(1);
   await expect(items.first()).toContainText('Tidy the flags');
-  await expect(items.first()).toContainText('Note');
+  await expect(items.first()).toContainText('Todo');
   await expect(ticket).toHaveCount(0);
 
   await items.first().click();
+  await expect(ticket.getByRole('heading', { level: 3 })).toHaveText('Todo');
+  await expect(ticket.getByTestId('note-delete')).toHaveText('Delete todo');
   await expect(ticket.getByLabel('Title')).toHaveValue('Tidy the flags');
   await expect(ticket.getByLabel('Text')).toHaveValue('Remove the old flags.\nKeep the new ones.');
   await ticket.getByLabel('Title').fill('Tidy the feature flags');
   await ticket.getByTestId('note-save').click();
   await expect(items.first()).toContainText('Tidy the feature flags');
 
-  // Delete note takes it away.
+  // Delete todo takes it away.
   await first.page.getByTestId('todo-add-note').click();
   await ticket.getByLabel('Title').fill('Scratch');
   await ticket.getByTestId('note-save').click();
@@ -742,7 +767,7 @@ test("a note's unsaved typing is kept as a draft when its ticket closes, by Esc,
   await page.getByTestId('todo-toggle').click();
   await page.getByTestId('todo-pin').click();
 
-  // The new note: Esc closes it, and + Add note brings back what was typed. Saved, the next new note starts empty.
+  // The new note: Esc closes it, and Quick Add brings back what was typed. Saved, the next new note starts empty.
   await page.getByTestId('todo-add-note').click();
   await title.fill('Tidy the flags');
   await text.fill('Remove the old flags.');
