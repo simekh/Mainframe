@@ -5,7 +5,7 @@ import { loadConfig } from './config';
 describe('loadConfig', () => {
   it('uses the defaults', () => {
     expect(loadConfig({}, '/data')).toEqual({
-      claudeBin: 'claude', dataDir: '/data', inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
+      claudeBin: 'claude', dataDir: resolve('/data'), inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
     });
   });
 
@@ -14,7 +14,7 @@ describe('loadConfig', () => {
       MAINFRAME_CLAUDE_BIN: '/x/claude', MAINFRAME_DATA_DIR: '/tmp/d',
       MAINFRAME_INPUT_BATCH_MS: '8', MAINFRAME_OUTPUT_BATCH_MS: '0', MAINFRAME_LOG_OSC: '1', MAINFRAME_E2E: '1',
     }, '/data')).toEqual({
-      claudeBin: '/x/claude', dataDir: '/tmp/d',
+      claudeBin: '/x/claude', dataDir: resolve('/tmp/d'),
       inputBatchMs: 8, outputBatchMs: 0, logOsc: true, e2e: true,
     });
   });

@@ -121,7 +121,8 @@ it('start writes manager.json, the hooks and permissions in settings.json, and m
   expect(readRecord()).toEqual({ version: 1, midTurn: false });
   expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, NODE, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo']));
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(MCP_CONFIG);
-  expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
+  // Windows has no owner-only mode bits (spec §10.2).
+  if (process.platform !== 'win32') expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });
 
 it('a later run writes mcp.json again, with its own port and token, and keeps it to the owner', () => {
@@ -134,7 +135,8 @@ it('a later run writes mcp.json again, with its own port and token, and keeps it
   make(next).start();
 
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(next);
-  expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
+  // Windows has no owner-only mode bits (spec §10.2).
+  if (process.platform !== 'win32') expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });
 
 it('start while a session runs returns the same view and launches nothing', () => {

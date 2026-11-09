@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { it, expect } from 'vitest';
 import { resolveClipboardPaste } from './clipboard';
 
@@ -17,15 +20,18 @@ const written: Array<[string, Buffer]> = [];
 const write = async (p: string, d: Buffer) => { written.push([p, d]); };
 let n = 0;
 const nextPath = () => `/tmp/paste-${++n}.png`;
+const inTmp = (name: string) => join(tmpdir(), name);
 
 it('a Finder file copy becomes its path, ahead of image and text', async () => {
-  expect(await resolveClipboardPaste(board({ uriList: 'file:///Users/x/My%20Shot.png', png: Buffer.from('p'), text: 't' }), write, nextPath))
-    .toEqual({ kind: 'file', path: '/Users/x/My Shot.png' });
+  const uriList = pathToFileURL(inTmp('My Shot.png')).href;
+  expect(await resolveClipboardPaste(board({ uriList, png: Buffer.from('p'), text: 't' }), write, nextPath))
+    .toEqual({ kind: 'file', path: inTmp('My Shot.png') });
 });
 
 it('of several copied files the first one is used', async () => {
-  expect(await resolveClipboardPaste(board({ uriList: '# comment\r\nfile:///a/1.txt\r\nfile:///a/2.txt' }), write, nextPath))
-    .toEqual({ kind: 'file', path: '/a/1.txt' });
+  const uriList = `# comment\r\n${pathToFileURL(inTmp('1.txt')).href}\r\n${pathToFileURL(inTmp('2.txt')).href}`;
+  expect(await resolveClipboardPaste(board({ uriList }), write, nextPath))
+    .toEqual({ kind: 'file', path: inTmp('1.txt') });
 });
 
 it('each image is saved to its own PNG', async () => {
