@@ -20,8 +20,28 @@ if (process.env.FAKE_CLAUDE_BRIDGE === '1') {
   setTimeout(() => {}, 300);
 } else if (args[0] === '-p') {
   sync();
+} else if (process.env.FAKE_CLAUDE_KEYLOG === '1') {
+  keylog();
 } else {
   session();
+}
+
+/**
+ * DIAGNOSTIC (Windows e2e diagnosis), removed before the branch's last commit: reads the terminal in
+ * raw mode, as Claude Code does, and logs each chunk it reads and each resize it sees in <pid>.keys.
+ */
+function keylog() {
+  const { appendFileSync } = require('node:fs');
+  const t0 = Date.now();
+  const note = (line) => appendFileSync(own('keys'), `${Date.now() - t0} ${line}\n`);
+  note(`start ${process.stdout.columns}x${process.stdout.rows}`);
+  process.stdin.setRawMode(true);
+  process.stdin.on('data', (chunk) => {
+    note(`in ${chunk.toString('hex')}`);
+    process.stdout.write(`\r\nKEYS ${chunk.length}\r\n$ `);
+  });
+  process.stdout.on('resize', () => note(`resize ${process.stdout.columns}x${process.stdout.rows}`));
+  process.stdout.write('$ ');
 }
 
 /**
