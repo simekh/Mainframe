@@ -191,13 +191,14 @@ Rules that go with it:
 - The main process works as on the Mac (a real pty, POSIX paths and shells), so starting sessions and the board's status should carry over.
 - Keys and the window follow Windows (§6, §7).
 - `npm install` needs a compiler (§3); the README says so.
+- **Mainframe must start on a current Ubuntu without anyone changing system settings.** Ubuntu 24.04 and later block the unprivileged user namespaces Electron's sandbox needs, so Electron stops at launch on a friend's machine. The CI job switches that block off (§10.1), which hides the problem. How Mainframe starts there (and what the README says, if anything) is plan 2's to decide; once it is handled, the CI step that switches the block off comes out, so CI tests what a friend gets.
 
 ## 10. Tests and checks
 
 ### 10.1 On every push: GitHub Actions on all three systems
 
 The repo is public, so GitHub's runners are free. A workflow runs on every push and pull request, on `macos-latest`, `windows-latest` and `ubuntu-latest`, with the newest Node.js LTS (`lts/*`): `npm ci`, `npm run typecheck`, `npm test`, `npm run test:e2e` **(designer's call, owner agreed)**. It keeps the test results when a run fails. The Windows and Linux jobs are expected to fail until the tasks that fix them land; that is fine, since nothing on GitHub requires them to pass **(designer's call)**.
-- Linux needs a virtual display for Electron (for example `xvfb-run`) and builds node-pty from source.
+- Linux needs a virtual display for Electron (for example `xvfb-run`, given a full-HD screen, since its default is far smaller than Mainframe's window) and builds node-pty from source. Until §9's sandbox item lands, the job switches off Ubuntu's user-namespace block; that step is temporary.
 - Windows runners have a desktop session. Their default screen may be too small for the e2e tests' 1600–1700 px windows, so the job may need a larger resolution.
 - A `.gitattributes` keeps line endings LF in the repo (Git for Windows defaults to `core.autocrlf=true`, which breaks shell scripts and makes content checks flaky).
 
