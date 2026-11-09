@@ -316,6 +316,118 @@ button {
   height: 13px;
 }
 
+/* --- The setup screen: what Mainframe found, in place of the board until it can start ---------- */
+
+/* The window's frame with one terminal island in it, as the board's islands sit in it. The row
+   above it is the title bar: a drag region, with the window buttons at its left. */
+.setup {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+}
+
+.setup-titlebar {
+  flex: none;
+  height: 46px;
+  -webkit-app-region: drag;
+}
+
+.setup-term {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+  background: var(--terminal);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius-lg);
+  color: var(--fg-muted);
+  font: 13px/1.6 var(--font-mono);
+  user-select: text;
+}
+
+.setup-page {
+  max-width: 78ch;
+  margin: 0 auto;
+  padding: 40px 32px 48px;
+}
+
+/* A blank line after each, as a terminal leaves one. */
+.setup-page > * {
+  margin: 0 0 1.6em;
+}
+
+.setup-line {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.setup-line[data-tone='strong'] {
+  color: var(--fg);
+}
+
+/* The wordmark: the one place the accent runs large. */
+.setup-line[data-tone='logo'] {
+  color: var(--accent);
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: pre;
+}
+
+.setup-aside,
+.setup-line[data-tone='hint'] {
+  color: var(--fg-subtle);
+}
+
+/* The check lines, and the project question's hint, sit together without a blank line. */
+.setup-check:has(+ .setup-check),
+.setup-line:has(+ .setup-line[data-tone='hint']) {
+  margin-bottom: 0;
+}
+
+.setup-check {
+  display: grid;
+  grid-template-columns: 10ch minmax(0, 1fr);
+}
+
+.setup-name {
+  color: var(--fg);
+}
+
+.setup-caret {
+  color: var(--accent);
+}
+
+.setup-status {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.setup-check[data-state='found'] .setup-status {
+  color: var(--success);
+}
+
+.setup-check[data-state='looking'] .setup-status {
+  color: var(--fg-subtle);
+}
+
+.setup-check[data-state='missing'] .setup-status,
+.setup-check[data-state='too-old'] .setup-status,
+.setup-check[data-state='broken'] .setup-status {
+  color: var(--error);
+}
+
+.setup-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
 /* --- The panes: the open projects, side by side or in a grid ---------------------------------- */
 
 .panes {

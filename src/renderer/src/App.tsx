@@ -1,10 +1,12 @@
 import type { Terminal } from '@xterm/xterm';
-import { createResource, onCleanup, onMount } from 'solid-js';
+import { createResource, onCleanup, Show } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { closeFocusedPane, focusProject, jump, loadProjects, projectsStore } from './projects/projectsStore';
+import { closeFocusedPane, focusProject, jump, projectsStore } from './projects/projectsStore';
+import SetupScreen from './setup/SetupScreen';
+import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
@@ -70,9 +72,9 @@ function installE2eHooks(): void {
 }
 
 export default function App() {
-  // Main answers once it has checked git and claude and, when nothing is missing, started the projects:
-  // the calls that need them wait for this. A screen to show means they have not started.
-  const setup = window.mainframe.getSetup();
+  // Main answers once it has checked git and claude and, when nothing is missing, started the projects.
+  // The calls that need them wait for this: the store lists the projects when the screen gives way to them.
+  const setup = loadSetup();
   // Terminals render only once the config is here, so waiting for the font here covers them all.
   const [config] = createResource(async () => {
     const [c] = await Promise.all([window.mainframe.getConfig(), loadTerminalFont(document.fonts)]);
@@ -84,11 +86,6 @@ export default function App() {
       installE2eHooks();
     }
     return c;
-  });
-  onMount(() => {
-    setup
-      .then((view) => (view === null ? loadProjects() : undefined))
-      .catch((err: unknown) => console.error('[projects] could not list the open projects', err));
   });
   onCleanup(
     installBoardShortcuts(window, {
@@ -103,8 +100,19 @@ export default function App() {
 
   return (
     <div class="app">
-      <ProjectRail />
-      <Panes config={config()} />
+      <Show when={setupView() !== undefined}>
+        <Show
+          when={setupView()}
+          fallback={
+            <>
+              <ProjectRail />
+              <Panes config={config()} />
+            </>
+          }
+        >
+          {(view) => <SetupScreen view={view()} />}
+        </Show>
+      </Show>
     </div>
   );
 }
