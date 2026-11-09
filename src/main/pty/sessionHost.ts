@@ -54,6 +54,8 @@ interface Session {
   proc: PtyLike;
   batcher: OutputBatcher;
   records: ProgramStatusRecords;
+  /** Whether Windows' one kill of the pty has been made. */
+  killed: boolean;
 }
 
 /** Owns the PTYs of running sessions: output batching, OSC 7501 answering and status. */
@@ -96,7 +98,7 @@ export class SessionHost {
     );
     const records = new ProgramStatusRecords();
     const batcher = createOutputBatcher({ intervalMs: this.opts.outputBatchMs, send: (d) => listener.onData(d) });
-    this.sessions.set(id, { proc, batcher, records });
+    this.sessions.set(id, { proc, batcher, records, killed: false });
 
     proc.onData((chunk) => {
       for (const event of scanner.feed(chunk)) {
@@ -124,12 +126,23 @@ export class SessionHost {
     });
   }
 
+  // A pty that has just exited refuses a write or a resize while its exit is still on the way
+  // (node-pty reports it up to about a second late with Windows' ConPTY). The exit follows, so
+  // the error says nothing the session's end won't.
   write(id: string, data: string): void {
-    this.sessions.get(id)?.proc.write(data);
+    try {
+      this.sessions.get(id)?.proc.write(data);
+    } catch {
+      // The pty has exited.
+    }
   }
 
   resize(id: string, cols: number, rows: number): void {
-    this.sessions.get(id)?.proc.resize(cols, rows);
+    try {
+      this.sessions.get(id)?.proc.resize(cols, rows);
+    } catch {
+      // The pty has exited.
+    }
   }
 
   pause(id: string): void {
@@ -142,11 +155,27 @@ export class SessionHost {
 
   /** node-pty's default signal is SIGHUP, as when a terminal window closes; SIGKILL ends it outright. */
   kill(id: string, signal?: 'SIGKILL'): void {
-    this.sessions.get(id)?.proc.kill(signal);
+    const session = this.sessions.get(id);
+    if (session) this.killSession(session, signal);
   }
 
   killAll(): void {
-    for (const { proc } of this.sessions.values()) proc.kill();
+    for (const session of this.sessions.values()) this.killSession(session);
+  }
+
+  /**
+   * Windows has no signals: node-pty's kill throws when given one, and a second kill of a pty can
+   * crash the process (node-pty issue 983). A project's close and Quit both kill, so there each
+   * pty is killed once, with no signal.
+   */
+  private killSession(session: Session, signal?: 'SIGKILL'): void {
+    if (this.opts.platform !== 'win32') {
+      session.proc.kill(signal);
+      return;
+    }
+    if (session.killed) return;
+    session.killed = true;
+    session.proc.kill();
   }
 
   has(id: string): boolean {

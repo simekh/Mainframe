@@ -1,4 +1,4 @@
-import { it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { SessionHost, type LaunchFiles, type PtyLike, type SpawnPty } from './sessionHost';
 import { OSC7501_SUPPORT_REPLY } from '../status/osc7501';
 
@@ -9,17 +9,22 @@ function setup(
 ) {
   const log: string[] = [];
   const calls: Parameters<SpawnPty>[] = [];
-  const ptys: Array<PtyLike & { emit(d: string): void; exit(code: number): void; killed: boolean }> = [];
+  const ptys: Array<PtyLike & { emit(d: string): void; exit(code: number): void; killed: boolean; broken: boolean }> = [];
   const spawnPty: SpawnPty = (...args) => {
     calls.push(args);
     let onData: (d: string) => void = () => {};
     let onExit: (e: { exitCode: number }) => void = () => {};
+    // A pty that has just exited refuses both, as node-pty's does.
+    const refuseWhenBroken = () => {
+      if (p.broken) throw new Error('Cannot resize a pty that has already exited');
+    };
     const p = {
       killed: false,
+      broken: false,
       onData: (cb: typeof onData) => { onData = cb; },
       onExit: (cb: typeof onExit) => { onExit = cb; },
-      write: (d: string) => log.push(`write:${d}`),
-      resize: (c: number, r: number) => log.push(`resize:${c}x${r}`),
+      write: (d: string) => { refuseWhenBroken(); log.push(`write:${d}`); },
+      resize: (c: number, r: number) => { refuseWhenBroken(); log.push(`resize:${c}x${r}`); },
       pause: () => log.push('pause'), resume: () => log.push('resume'),
       kill: (signal?: string) => { p.killed = true; log.push(`kill:${signal ?? 'default'}`); },
       emit: (d: string) => onData(d), exit: (code: number) => onExit({ exitCode: code }),
@@ -131,6 +136,15 @@ it('passes write, resize, pause and resume through', () => {
   expect(log).toEqual(['write:ls\r', 'resize:90x20', 'pause', 'resume']);
 });
 
+it('drops the error of a pty that has just exited when written to or resized', () => {
+  const { host, ptys, log, listener } = setup();
+  host.spawn('s1', spec, listener);
+  ptys[0].broken = true;
+  expect(() => host.write('s1', 'x')).not.toThrow();
+  expect(() => host.resize('s1', 90, 20)).not.toThrow();
+  expect(log).toEqual([]);
+});
+
 it('kill hangs up on the session, or kills it outright with SIGKILL', () => {
   const { host, log, listener } = setup();
   host.spawn('s1', spec, listener);
@@ -145,4 +159,38 @@ it('killAll kills every running session', () => {
   host.spawn('b', spec, listener);
   host.killAll();
   expect(ptys.map((p) => p.killed)).toEqual([true, true]);
+});
+
+// Windows has no signals: node-pty's kill throws when given one, and a second kill can crash the
+// process (node-pty issue 983). The project's close and Quit both kill, so each pty is killed once.
+describe('on Windows', () => {
+  const windows = () =>
+    setup({ Path: 'C:\\bin' }, { executables: ['C:\\bin\\claude.exe'], folders: ['C:\\repo'] }, 'win32');
+  const winSpec = { ...spec, cwd: 'C:\\repo' };
+
+  it('kill never passes a signal and kills a pty once, however often it is asked', () => {
+    const { host, log, listener } = windows();
+    host.spawn('s1', winSpec, listener);
+    host.kill('s1');
+    host.kill('s1', 'SIGKILL');
+    expect(log).toEqual(['kill:default']);
+  });
+
+  it('kill with SIGKILL alone kills with no signal', () => {
+    const { host, log, listener } = windows();
+    host.spawn('s1', winSpec, listener);
+    host.kill('s1', 'SIGKILL');
+    expect(log).toEqual(['kill:default']);
+  });
+
+  it('killAll kills nothing a kill has already killed, and each of the others once', () => {
+    const { host, ptys, log, listener } = windows();
+    host.spawn('a', winSpec, listener);
+    host.spawn('b', winSpec, listener);
+    host.kill('a');
+    host.killAll();
+    host.killAll();
+    expect(log).toEqual(['kill:default', 'kill:default']);
+    expect(ptys.map((p) => p.killed)).toEqual([true, true]);
+  });
 });

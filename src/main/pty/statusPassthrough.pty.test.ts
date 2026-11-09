@@ -1,19 +1,24 @@
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import * as pty from 'node-pty';
 import { expect, it } from 'vitest';
-import { SessionHost } from './sessionHost';
+import { spawnNodePty } from './nodePty';
+import { localFiles, SessionHost } from './sessionHost';
 import { buildSpawnEnv } from './spawnEnv';
 
-// Whether Claude Code's OSC 7501 status gets through the pty layer to Mainframe: the query out,
-// Mainframe's reply back in ahead of the terminal's answer to CSI c, and the reports out. On
-// Windows the layer is ConPTY, which can answer CSI c itself and drop unknown sequences, so the
-// test also runs with the ConPTY bundled in node-pty.
+// Whether Claude Code's OSC 7501 status gets through the pty layer Mainframe uses on this system
+// to Mainframe: the query out, Mainframe's reply back in ahead of the terminal's answer to CSI c,
+// and the reports out. On Windows the layer is ConPTY, which can answer CSI c itself and drop
+// unknown sequences.
 
 const PROBE = fileURLToPath(new URL('./fixtures/statusProbe.mjs', import.meta.url));
 
+// Under the test's timeout, so a probe that hangs ends with its result on the log, not as a bare timeout.
+const GIVE_UP_MS = 15_000;
+
 interface ProbeResult {
   exitCode: number;
+  /** Whether the session was killed after GIVE_UP_MS, having not exited. */
+  killed: boolean;
   queryReachedHost: boolean;
   /** How many CSI c queries reached Mainframe: ConPTY may send its own at start, ahead of the probe's. */
   da1Queries: number;
@@ -23,22 +28,26 @@ interface ProbeResult {
   states: string[];
 }
 
-function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
+function runProbe(): Promise<ProbeResult> {
   const logLines: string[] = [];
   const host = new SessionHost({
-    spawnPty: (file, args, opts) => pty.spawn(file, args, { ...opts, useConptyDll }),
+    spawnPty: spawnNodePty(process.platform),
     outputBatchMs: 8,
     env: buildSpawnEnv(process.env, process.platform),
     platform: process.platform,
-    // The launch check isn't portable yet (plan 2); node-pty checks the absolute path itself.
-    files: { isExecutableFile: () => true, isDirectory: () => true },
+    files: localFiles,
     log: (line) => logLines.push(line),
   });
   const id = 'probe';
   let output = '';
   let da1Queries = 0;
+  let killed = false;
   const states: string[] = [];
   return new Promise((resolve) => {
+    const giveUp = setTimeout(() => {
+      killed = true;
+      host.kill(id, 'SIGKILL');
+    }, GIVE_UP_MS);
     host.spawn(
       id,
       { argv: [process.execPath, PROBE], cwd: tmpdir(), cols: 80, rows: 24 },
@@ -54,10 +63,12 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
           if (status) states.push(status.kind ? `${status.state}:${status.kind}` : status.state);
         },
         onExit: ({ exitCode }) => {
+          clearTimeout(giveUp);
           const line = /PROBE (\{.*?\})/.exec(output);
           const probe = line ? (JSON.parse(line[1]) as Pick<ProbeResult, 'sawReply' | 'sawDa1' | 'replyFirst'>) : undefined;
           resolve({
             exitCode,
+            killed,
             queryReachedHost: logLines.some((l) => l.endsWith(' query')),
             da1Queries,
             sawReply: probe?.sawReply ?? false,
@@ -71,24 +82,13 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
   });
 }
 
-const log = (mode: string, result: ProbeResult) => console.log('[status-check]', mode, JSON.stringify(result));
-
-function expectStatusGotThrough(r: ProbeResult): void {
+it('status gets through the pty Mainframe uses on this system', async () => {
+  const r = await runProbe();
+  console.log('[status-check]', process.platform, JSON.stringify(r));
+  expect(r.killed).toBe(false);
   expect(r.exitCode).toBe(0);
   expect(r.queryReachedHost).toBe(true);
   expect(r.sawReply).toBe(true);
   expect(r.replyFirst).toBe(true);
   expect(r.states).toEqual(expect.arrayContaining(['working', 'blocked:question']));
-}
-
-it("status gets through the system's own pty layer", async () => {
-  const r = await runProbe(false);
-  log('own', r);
-  expectStatusGotThrough(r);
-}, 20_000);
-
-it.runIf(process.platform === 'win32')('status gets through the ConPTY bundled with node-pty', async () => {
-  const r = await runProbe(true);
-  log('bundled', r);
-  expectStatusGotThrough(r);
 }, 20_000);

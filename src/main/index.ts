@@ -3,7 +3,6 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type OpenDialogOptions } from 'electron';
-import * as pty from 'node-pty';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
@@ -15,6 +14,7 @@ import { buildMenu } from './menu';
 import { ProjectRegistry } from './projectRegistry';
 import { chooseProjects } from './projects';
 import { findExecutable } from './pty/findExecutable';
+import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
 import { TaskService } from './tasks/taskService';
@@ -98,7 +98,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
   mkdirSync(pasteDir, { recursive: true });
 
   const host = new SessionHost({
-    spawnPty: pty.spawn,
+    spawnPty: spawnNodePty(process.platform),
     outputBatchMs: config.outputBatchMs,
     env: programs.env,
     platform: process.platform,
@@ -209,11 +209,20 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     if (shown.isMinimized()) shown.restore();
     shown.focus();
   });
-  // beginQuit can't be undone, so it runs here only, once quitting is under way.
-  app.on('before-quit', () => {
+  // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
+  // whichever of the two events below comes first does it, and the other changes nothing.
+  let quitting = false;
+  const beginQuit = () => {
+    if (quitting) return;
+    quitting = true;
     projects.beginQuit();
     host.killAll();
-  });
+  };
+  app.on('before-quit', beginQuit);
+  // On Windows a shutdown, restart or log-off sends this and no before-quit. Once it fires the
+  // session ends whatever happens, so beginQuit records where the sessions were, synchronously.
+  // It never fires on macOS or Linux.
+  shown.on('session-end', beginQuit);
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
