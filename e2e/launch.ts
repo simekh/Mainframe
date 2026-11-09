@@ -81,7 +81,8 @@ export async function launchApp(
 export async function setWindowWidth(app: ElectronApplication, page: Page, width: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, w) => {
     const [win] = BrowserWindow.getAllWindows();
-    win.setSize(w, win.getSize()[1]);
+    // The page's size, not the window's: on Windows the window's frame is wider than the page.
+    win.setContentSize(w, win.getContentSize()[1]);
   }, width);
   await page.waitForFunction((w) => window.innerWidth === w, width);
 }
