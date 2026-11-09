@@ -1,0 +1,85 @@
+import { execFile } from 'node:child_process';
+import { posix, win32 } from 'node:path';
+import { promisify } from 'node:util';
+import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
+import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
+
+const execFileAsync = promisify(execFile);
+
+/** What a program prints for `--version`, or null when it can't run, times out or fails. */
+export type VersionRunner = (file: string, args: string[]) => Promise<string | null>;
+
+/** Runs the file itself, never through a shell, so a `.cmd` launcher can't be run by mistake. */
+export function runVersion(env: Record<string, string>): VersionRunner {
+  return async (file, args) => {
+    try {
+      const { stdout } = await execFileAsync(file, args, { env, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
+      return stdout;
+    } catch {
+      return null;
+    }
+  };
+}
+
+// Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
+export function parseClaudeVersion(stdout: string): string | null {
+  return /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(stdout.trim())?.[1] ?? null;
+}
+
+export function isAtLeast(version: string, min: string): boolean {
+  const have = version.split('.').map(Number);
+  const need = min.split('.').map(Number);
+  for (let i = 0; i < Math.max(have.length, need.length); i++) {
+    const difference = (have[i] ?? 0) - (need[i] ?? 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return true;
+}
+
+/**
+ * Where claude may be, after a saved path: PATH, the native installer's file, and on Windows npm's
+ * real executable (npm's `claude.cmd` is a launcher script Mainframe never runs). On macOS and Linux
+ * npm's `claude` sits beside `node`, which is on PATH, so PATH covers it.
+ */
+export function claudePlaces(lookup: ExecutableLookup): string[] {
+  const { env } = lookup;
+  const places = [findExecutable('claude', lookup)];
+  if (lookup.platform === 'win32') {
+    if (env.USERPROFILE) places.push(win32.join(env.USERPROFILE, '.local', 'bin', 'claude.exe'));
+    if (env.APPDATA) places.push(win32.join(env.APPDATA, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+  } else if (env.HOME) {
+    places.push(posix.join(env.HOME, '.local', 'bin', 'claude'));
+  }
+  return [...new Set(places.filter((place) => place !== null))];
+}
+
+export async function checkClaude(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck> {
+  if (!files.isExecutableFile(path)) return { state: 'missing', path };
+  const stdout = await run(path, ['--version']);
+  const version = stdout === null ? null : parseClaudeVersion(stdout);
+  if (version === null) return { state: 'broken', path };
+  return { state: isAtLeast(version, MIN_CLAUDE_VERSION) ? 'found' : 'too-old', path, version };
+}
+
+/**
+ * `fromEnv` (MAINFRAME_CLAUDE_BIN) is the only place looked at when set. Otherwise the saved path,
+ * then `claudePlaces`, and the first that works wins; an old claude on PATH doesn't hide a current
+ * one beside it. When none works, the failure that helps most: too old, then broken, then missing.
+ */
+export async function findClaude(o: { fromEnv?: string; saved?: string; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
+  if (o.fromEnv) return checkClaude(o.fromEnv, o.run, o.lookup.files);
+  const failures: ProgramCheck[] = [];
+  for (const path of new Set([...(o.saved ? [o.saved] : []), ...claudePlaces(o.lookup)])) {
+    const check = await checkClaude(path, o.run, o.lookup.files);
+    if (check.state === 'found') return check;
+    failures.push(check);
+  }
+  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
+}
+
+export async function checkGit(lookup: ExecutableLookup, run: VersionRunner): Promise<ProgramCheck> {
+  const path = findExecutable('git', lookup);
+  if (path === null) return { state: 'missing' };
+  const version = /git version (\S+)/.exec((await run(path, ['--version'])) ?? '')?.[1];
+  return version === undefined ? { state: 'broken', path } : { state: 'found', path, version };
+}

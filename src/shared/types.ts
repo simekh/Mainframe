@@ -51,6 +51,20 @@ export interface StatusEvent {
   status: ProgramStatus | null;
 }
 
+/** The oldest Claude Code Mainframe works with: it needs OSC 7501 status reports and hook `onFailure`. */
+export const MIN_CLAUDE_VERSION = '2.1.295';
+
+/** What looking for a program Mainframe needs (git, claude) found. */
+export type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
+
+export interface ProgramCheck {
+  state: CheckState;
+  /** The file looked at; not set when nothing was found anywhere. */
+  path?: string;
+  /** What the program says it is, when it said so. */
+  version?: string;
+}
+
 export interface StartCheck {
   /** Commits on the main checkout's branch that origin/HEAD does not have. */
   ahead: number;
