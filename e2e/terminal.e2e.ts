@@ -122,7 +122,10 @@ test('a new status replaces the old one, so a resolved question leaves no kind b
 test('a flood in a hidden task arrives in full', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Flood');
-  await run(page, 'yes mainframe | head -c 3000000; echo flood-$((2+3))');
+  // Node writes the flood, as Claude Code writes its output. Git Bash's own programs write to Windows'
+  // console at tens of KB a second, too slowly to fill the window that pauses a session, and 3 MB of
+  // `yes` took over 40 s on Windows CI with no Mainframe in the way.
+  await run(page, `node -e "process.stdout.write('mainframe\\n'.repeat(300000))"; echo flood-$((2+3))`);
   await startTask(page, 'Other');
   await expect(card(page, a)).toHaveAttribute('data-selected', 'false');
   await expect.poll(() => screen(page, a), { timeout: 30_000 }).toContain('flood-5');
