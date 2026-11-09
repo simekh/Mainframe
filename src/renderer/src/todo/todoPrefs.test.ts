@@ -26,7 +26,7 @@ describe('todoPrefs', () => {
     expect(loadTodoPrefs(memoryStorage({ 'mainframe.todo:/acme': '{' }), '/acme')).toEqual({ width: 320, pinned: false });
   });
 
-  it("Hide my cards starts off, is kept per project, and doesn't touch the panel's own prefs", () => {
+  it("Hide my tasks starts off, is kept per project, and doesn't touch the panel's own prefs", () => {
     const storage = memoryStorage({ 'mainframe.todo:/acme': '{"width":400,"pinned":true}' });
     expect(loadHideMine(storage, '/acme')).toBe(false);
 
@@ -42,7 +42,7 @@ describe('todoPrefs', () => {
     expect(loadHideMine(storage, '/globex')).toBe(true);
   });
 
-  it('a storage that refuses the write leaves Hide my cards for this run only', () => {
+  it('a storage that refuses the write leaves Hide my tasks for this run only', () => {
     const full = {
       setItem: () => {
         throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');

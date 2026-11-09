@@ -900,7 +900,7 @@ test("a card for the owner whose start the check warns about shows the warning a
   await app.close();
 });
 
-test('Hide my cards waits for a card for the owner, then leaves those out and counts them; an open ticket of one closes; the choice is kept across a restart', async () => {
+test('Hide my tasks waits for a card for the owner, then leaves those out and counts them; an open ticket of one closes; the choice is kept across a restart', async () => {
   const project = folder();
   const first = await launchApp({}, project);
   const { page, dataDir } = first;
@@ -915,7 +915,7 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   syncReply(dataDir, { ...CARDS, cards: [search, OWNER_CARD] });
   await page.getByTestId('todo-sync').click();
   await expect(hide).toBeVisible();
-  await expect(hide).toHaveText('Hide my cards');
+  await expect(hide).toHaveText('Hide my tasks');
   await expect(hide).toHaveAttribute('aria-pressed', 'false');
   await expect(items).toHaveCount(2);
   await expect(itemRow(page, 'card:c119')).toBeVisible();
@@ -955,7 +955,7 @@ test('Hide my cards waits for a card for the owner, then leaves those out and co
   // Off, the card comes back, and the count goes.
   await switchAgain.click();
   await expect(switchAgain).toHaveAttribute('aria-pressed', 'false');
-  await expect(switchAgain).toHaveText('Hide my cards');
+  await expect(switchAgain).toHaveText('Hide my tasks');
   await expect(list).toHaveCount(2);
   await expect(itemRow(again.page, 'card:c119')).toBeVisible();
   await again.app.close();

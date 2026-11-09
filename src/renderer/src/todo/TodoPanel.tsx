@@ -348,7 +348,7 @@ export default function TodoPanel(props: {
                   onMouseDown={keepFocus}
                   onClick={toggleHideMine}
                 >
-                  Hide my cards
+                  Hide my tasks
                   <Show when={hiddenCount() > 0}>
                     <span class="todo-hide-count">{hiddenCount()} hidden</span>
                   </Show>
