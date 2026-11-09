@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { basename, join } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -13,16 +13,18 @@ test.afterEach(cleanUp);
 const settingsFile = (dataDir: string, taskId: string) => join(dataDir, 'tasks', taskId, 'settings.json');
 
 /**
- * Launches with a copy of the stand-in as `claude`, which the start check accepts, and removes the copy
- * once the board shows: a claude that can't start. Resolves with the copy's path as well. (`copyFileSync`
- * keeps the executable bit.)
+ * Launches with a copy of the stand-in as `claude`, which the start check accepts, and takes the copy
+ * away once the board shows: a claude that can't start. Resolves with the copy's path as well.
+ * (`copyFileSync` keeps the executable bit.) Windows won't delete a program that is running, and the
+ * project's manager is running this copy, but it lets one be renamed (the folder goes with the test).
  */
 async function launchWithClaudeGone(projects?: string) {
   const claude = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-claude-'))), basename(fakeClaude));
   copyFileSync(fakeClaude, claude);
   const launched = await launchApp({ MAINFRAME_CLAUDE_BIN: claude }, projects);
   await expect(launched.page.getByTestId('new-task')).toBeVisible();
-  rmSync(claude);
+  if (process.platform === 'win32') renameSync(claude, `${claude}.gone`);
+  else rmSync(claude);
   return { ...launched, claude };
 }
 

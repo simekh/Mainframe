@@ -23,7 +23,9 @@ export function removeAfterTest(dir: string): string {
  */
 export async function cleanUp(): Promise<void> {
   await Promise.all([...runningApps].map((app) => app.close()));
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // Retries: Windows keeps a program's file locked until its process has gone, which can be a moment
+  // after the app has quit.
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 /** The stand-in for `claude`: `e2e/fake-claude.cjs`, on Windows the .exe the global setup built from it. */
