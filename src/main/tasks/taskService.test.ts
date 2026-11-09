@@ -18,7 +18,7 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setup(gitOverrides: Partial<GitQueries> = {}) {
+function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform = 'darwin') {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-service-'));
   cleanup.push(root);
   const projectDir = join(root, 'Acme');
@@ -50,6 +50,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}) {
       records,
       claudeBin: 'claude',
       nodeBin: NODE,
+      platform,
       git,
       kill: (id) => killed.push(id),
       status: (id) => statuses.get(id) ?? null,
@@ -124,6 +125,73 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
   expect(prompt).toBe(openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+});
+
+/** Over 32,000 characters once quoted, as typed: with leading spaces and a trailing newline. */
+const LONG = `  ${'Users get logged out. '.repeat(1000)}\n`;
+
+/** The launch of "Fix login" with `description`, as `start` builds it for a session whose folder is `taskDir`. */
+function expectedStart(claudeSessionId: string, taskDir: string, description: string, brief?: { dir: string; file: string }): string[] {
+  return startArgv({
+    claudeBin: 'claude',
+    slug: 'fix-login',
+    name: 'acme-fix-login',
+    claudeSessionId,
+    settingsPath: join(taskDir, 'settings.json'),
+    ...(brief && { addDir: brief.dir }),
+    prompt: openingPrompt({
+      title: 'Fix login',
+      description,
+      branch: 'worktree-fix-login',
+      noQuestions: false,
+      ...(brief && { descriptionFile: brief.file }),
+    }),
+  });
+}
+
+it('on Windows, a description too long for the command line goes to a file the session is given the folder of', async () => {
+  const { service, readState, taskDir } = setup({}, 'win32');
+  const view = await service.start({ ...NEW_TASK, description: LONG });
+
+  const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
+  const { argv } = service.launchSpec(view.session!.id);
+  expect(argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(argv.at(-1)).toContain(brief.file);
+  expect(argv.at(-1)).not.toContain('Users get logged out.');
+  expect(argv.indexOf('--add-dir')).toBe(argv.indexOf('--settings') - 2);
+  expect(argv[argv.indexOf('--add-dir') + 1]).toBe(brief.dir);
+  expect(readFileSync(brief.file, 'utf8')).toBe(LONG);
+  expect(view.description).toBe(LONG);
+});
+
+it('on Windows, a description that fits launches as it does anywhere, with no file', async () => {
+  const { service, readState, taskDir } = setup({}, 'win32');
+  const view = await service.start(NEW_TASK);
+
+  expect(service.launchSpec(view.session!.id).argv).toEqual(
+    expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description),
+  );
+  expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
+});
+
+it('on the Mac, a long description stays in the prompt, with no file', async () => {
+  const { service, readState, taskDir } = setup();
+  const view = await service.start({ ...NEW_TASK, description: LONG });
+
+  expect(service.launchSpec(view.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG));
+  expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
+});
+
+it('on Windows, a reopen that must begin the conversation again moves a long description to its file too', async () => {
+  const { service, readState, taskDir } = setup({}, 'win32');
+  const view = await service.start({ ...NEW_TASK, description: LONG });
+  // claude was missing or quit at once: SessionStart never fired.
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(readFileSync(brief.file, 'utf8')).toBe(LONG);
 });
 
 const CARD: TaskCardRef = {

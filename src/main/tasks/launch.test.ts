@@ -18,6 +18,12 @@ it('starts claude in a named worktree with a fixed session id, the hooks file an
     .toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--settings', S, 'P']);
 });
 
+it('gives claude an extra folder right before --settings, so the prompt stays last', () => {
+  expect(
+    startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'acme-fix-login', claudeSessionId: U, settingsPath: S, addDir: '/b', prompt: 'P' }),
+  ).toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--add-dir', '/b', '--settings', S, 'P']);
+});
+
 it('reopens in the worktree while its branch exists, and in the main checkout once it is gone', () => {
   const o = { claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S };
   expect(reopenArgv({ ...o, branchExists: true })).toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S]);

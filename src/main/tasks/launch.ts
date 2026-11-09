@@ -13,9 +13,12 @@ export function startArgv(o: {
   name: string;
   claudeSessionId: string;
   settingsPath: string;
+  /** A folder the session may read without asking. `--add-dir` takes several values, so it goes before `--settings`, not before the prompt. */
+  addDir?: string;
   prompt: string;
 }): string[] {
-  return [o.claudeBin, '-w', o.slug, '-n', o.name, '--session-id', o.claudeSessionId, '--settings', o.settingsPath, o.prompt];
+  const addDir = o.addDir === undefined ? [] : ['--add-dir', o.addDir];
+  return [o.claudeBin, '-w', o.slug, '-n', o.name, '--session-id', o.claudeSessionId, ...addDir, '--settings', o.settingsPath, o.prompt];
 }
 
 export function reopenArgv(o: {

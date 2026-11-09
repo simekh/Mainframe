@@ -42,6 +42,33 @@ it('a card without a number, a URL or labels reads cleanly', () => {
   expect(prompt.endsWith('\n\n' + tail)).toBe(true);
 });
 
+const FILE = 'D:\\data\\tasks\\t1\\brief\\description.md';
+
+it("with a description file, the prompt points at it in the description's place and holds none of the description", () => {
+  const prompt = openingPrompt({ ...t, description: 'The button does nothing.', descriptionFile: FILE });
+  expect(prompt).toBe(
+    brief +
+      'Task: Fix login\n\n' +
+      `This task's description is in ${FILE}: it is too long to pass on the command line. Read that file before you plan.\n\n` +
+      tail,
+  );
+  expect(prompt).not.toContain('The button does nothing.');
+});
+
+it("with a description file and a card, the file is called the owner's note", () => {
+  const card = { sourceKind: 'Tracker', number: null, url: null, labels: [] };
+  const prompt = openingPrompt({ ...t, description: 'web only', descriptionFile: FILE, card });
+  expect(prompt).toContain(
+    `\n\nThe owner's note on this task is in ${FILE}: it is too long to pass on the command line. Read that file before you plan.\n\n`,
+  );
+  expect(prompt).not.toContain('web only');
+  expect(prompt).not.toContain('From the owner');
+});
+
+it('with no description, a description file is not mentioned', () => {
+  expect(openingPrompt({ ...t, description: ' ', descriptionFile: FILE })).toBe(brief + 'Task: Fix login\n\n' + tail);
+});
+
 it('passes on no-questions mode', () => {
   expect(openingPrompt({ ...t, description: '', noQuestions: true })).toBe(
     brief + 'Task: Fix login\n\n' + tail + '\n\n' +

@@ -20,12 +20,20 @@ function cardParts({ sourceKind, labels, url }: PromptCard): string[] {
   ];
 }
 
+/** Where the description is, when it is too long for the command line and Mainframe has put it in a file. */
+function descriptionInFile(file: string, isCard: boolean): string {
+  const what = isCard ? "The owner's note on this task" : "This task's description";
+  return `${what} is in ${file}: it is too long to pass on the command line. Read that file before you plan.`;
+}
+
 export function openingPrompt(t: {
   title: string;
   description: string;
   branch: string;
   noQuestions: boolean;
   card?: PromptCard;
+  /** Where the description is, instead of in this prompt. */
+  descriptionFile?: string;
 }): string {
   const worktreeNote =
     `Mainframe started you in this task's own worktree, on branch ${t.branch}, so don't call EnterWorktree. ` +
@@ -34,7 +42,10 @@ export function openingPrompt(t: {
   const description = t.description.trim();
   const parts = [BRIEF, `Task: ${t.card?.number ? `${t.card.number} ` : ''}${t.title.trim()}`];
   if (t.card) parts.push(...cardParts(t.card));
-  if (description) parts.push(t.card ? `From the owner: ${description}` : description);
+  if (description) {
+    if (t.descriptionFile) parts.push(descriptionInFile(t.descriptionFile, t.card !== undefined));
+    else parts.push(t.card ? `From the owner: ${description}` : description);
+  }
   parts.push(worktreeNote);
   if (t.noQuestions) parts.push(NO_QUESTIONS);
   return parts.join('\n\n');

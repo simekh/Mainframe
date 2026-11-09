@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
+import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug } from './naming';
@@ -17,6 +18,8 @@ export interface TaskServiceDeps {
   claudeBin: string;
   /** What the SessionStart hook runs: a real program path, as claudeBin is. */
   nodeBin: string;
+  /** Windows caps a command line, so a task's long description goes to a file there. */
+  platform: NodeJS.Platform;
   git: GitQueries;
   kill(sessionId: string): void;
   /** What a running session last reported, as the session host keeps it. */
@@ -287,22 +290,36 @@ export class TaskService {
     }
   }
 
-  /** The launch that begins the task's conversation, under its `claudeSessionId`. */
+  /**
+   * The launch that begins the task's conversation, under its `claudeSessionId`. On Windows, when it would overflow the
+   * command line, the description goes to a file in a folder the session may read, and the prompt points at it.
+   */
   private startArgvOf(task: TaskRecord, settingsPath: string): string[] {
-    return startArgv({
-      claudeBin: this.deps.claudeBin,
-      slug: task.slug,
-      name: task.name,
-      claudeSessionId: task.claudeSessionId,
-      settingsPath,
-      prompt: openingPrompt({
-        title: task.title,
-        description: task.description,
-        branch: task.branch,
-        noQuestions: task.noQuestions ?? false,
-        card: task.card,
-      }),
-    });
+    const build = (brief?: { dir: string; file: string }) =>
+      startArgv({
+        claudeBin: this.deps.claudeBin,
+        slug: task.slug,
+        name: task.name,
+        claudeSessionId: task.claudeSessionId,
+        settingsPath,
+        ...(brief && { addDir: brief.dir }),
+        prompt: openingPrompt({
+          title: task.title,
+          description: task.description,
+          branch: task.branch,
+          noQuestions: task.noQuestions ?? false,
+          card: task.card,
+          descriptionFile: brief?.file,
+        }),
+      });
+
+    const argv = build();
+    if (this.deps.platform !== 'win32' || fitsWindowsCommandLine(argv)) return argv;
+    const dir = join(this.taskDir(task.id), 'brief');
+    const file = join(dir, 'description.md');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, task.description, 'utf8');
+    return build({ dir, file });
   }
 
   private view(task: TaskRecord): TaskView {

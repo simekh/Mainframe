@@ -140,6 +140,7 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
       records,
       claudeBin: programs.claudeBin,
       nodeBin: programs.nodeBin,
+      platform: process.platform,
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),
       status: (sessionId) => host.status(sessionId),
