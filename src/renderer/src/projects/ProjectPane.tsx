@@ -155,16 +155,16 @@ export default function ProjectPane(props: {
       >
         <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>
           <header class="topbar">
+            <span class="tb-project" title={dir}>
+              <i aria-hidden="true" />
+              <span>{props.project.name}</span>
+            </span>
             <button class="tb-btn" data-testid="new-task" onMouseDown={keepFocus} onClick={() => setDialogOpen(true)}>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
                 <path d="M8 3v10M3 8h10" />
               </svg>
               New task
             </button>
-            <span class="tb-project" title={dir}>
-              <i aria-hidden="true" />
-              <span>{props.project.name}</span>
-            </span>
             <button
               class="tb-toggle"
               data-testid="todo-toggle"

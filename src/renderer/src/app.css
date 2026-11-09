@@ -1274,7 +1274,7 @@ kbd {
   text-align: center;
 }
 
-/* Quiet: no border, so they read as hints beside the chip, not second actions. The toggles show and
+/* Quiet: no border, so they read as hints beside New task, not second actions. The toggles show and
    hide the pane's Todo panel and its manager. */
 .tb-jump,
 .tb-toggle {
