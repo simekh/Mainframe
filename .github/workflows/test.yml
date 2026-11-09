@@ -32,7 +32,13 @@ jobs:
           try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution failed: $_" }
           Get-CimInstance Win32_VideoController | Select-Object Name, CurrentHorizontalResolution, CurrentVerticalResolution | Format-List
 
-      # Ubuntu 24.04 restricts the unprivileged user namespaces Electron's sandbox needs.
+      # Mainframe opens a 1400 px window, and the tests widen it to 1700; a smaller screen unpins panels.
+      - name: Screen size (macOS)
+        if: runner.os == 'macOS'
+        run: system_profiler SPDisplaysDataType | grep -iE 'resolution|display type|main display' || true
+
+      # Ubuntu 24.04 restricts the unprivileged user namespaces Electron's sandbox needs. A friend's
+      # Ubuntu won't have this change, so plan 2 makes Mainframe start without it and removes this step.
       - name: Allow Electron's sandbox (Linux)
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -55,7 +61,8 @@ jobs:
 
       - name: E2E tests
         if: ${{ !cancelled() && runner.os == 'Linux' }}
-        run: xvfb-run -a npm run test:e2e
+        # xvfb-run's own default screen is far smaller than the window Mainframe opens.
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e
 
       - name: E2E tests
         if: ${{ !cancelled() && runner.os != 'Linux' }}
