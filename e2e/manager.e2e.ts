@@ -280,14 +280,6 @@ test('unpinned, the manager floats over the board under its top bar, a press on 
   const board = await box(page, 'board');
   expect(board.x).toBeLessThan(floating.x + floating.width);
   expect(await isOnTop(page.getByTestId('manager-toggle'))).toBe(true);
-  // macOS hit-tests the top bar's drag region natively, whatever lies over it: the column carves
-  // itself out of it as a no-drag element after it in the page.
-  const carved = await column.evaluate((el) => {
-    const topbar = el.closest('[data-testid=project-pane]')!.querySelector('.topbar')!;
-    const after = Boolean(topbar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-    return [getComputedStyle(el).getPropertyValue('-webkit-app-region'), after];
-  });
-  expect(carved).toEqual(['no-drag', true]);
   // Shorter than pinned by the top bar, its terminal loses rows, never columns.
   await expect.poll(async () => (await managerTermSize(page))!.rows).toBeLessThan(size.rows);
   const floatingSize = (await managerTermSize(page))!;

@@ -1206,9 +1206,9 @@ button {
   -webkit-app-region: drag;
 }
 
-/* A drag region takes no pointer events: carved out are the buttons, and the chip, for its folder to show on hover. */
-.topbar button,
-.tb-project {
+/* A drag region takes no pointer events: only the bar's empty space drags, so the chip keeps its tooltip, the buttons
+   their clicks. */
+.topbar > * {
   -webkit-app-region: no-drag;
 }
 
@@ -1851,19 +1851,19 @@ kbd {
 .manager-column[data-pinned='false'],
 .todo-panel[data-pinned='false'] {
   position: absolute;
+  top: 8px;
   bottom: 8px;
   margin: 0;
 }
 
-/* The manager and the Todo panel float over the board's left end under its top bar, so the buttons that bring them
-   out stay in reach to put them away again. The manager's terminal loses those rows while it floats. */
+/* The manager and the Todo panel float over the board's left end under its top bar (.topbar's 46 px), so the buttons
+   that bring them out stay in reach to put them away again. The manager's terminal loses those rows while it floats. */
 .manager-column[data-pinned='false'],
 .todo-panel[data-pinned='false'] {
   top: 46px;
 }
 
 .side-panel[data-pinned='false'] {
-  top: 8px;
   right: 8px;
   z-index: 5;
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
