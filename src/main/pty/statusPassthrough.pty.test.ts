@@ -15,7 +15,8 @@ const PROBE = fileURLToPath(new URL('./fixtures/statusProbe.mjs', import.meta.ur
 interface ProbeResult {
   exitCode: number;
   queryReachedHost: boolean;
-  da1QueryReachedHost: boolean;
+  /** How many CSI c queries reached Mainframe: ConPTY may send its own at start, ahead of the probe's. */
+  da1Queries: number;
   sawReply: boolean;
   sawDa1: boolean;
   replyFirst: boolean;
@@ -34,7 +35,7 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
   });
   const id = 'probe';
   let output = '';
-  let da1QueryReachedHost = false;
+  let da1Queries = 0;
   const states: string[] = [];
   return new Promise((resolve) => {
     host.spawn(
@@ -43,11 +44,10 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
       {
         onData: (data) => {
           output += Buffer.from(data).toString();
-          if (!da1QueryReachedHost && output.includes('\x1b[c')) {
-            da1QueryReachedHost = true;
-            // xterm answers after a round trip to the renderer; Mainframe's own reply goes out at once.
-            setTimeout(() => host.write(id, '\x1b[?1;2c'), 20);
-          }
+          // Every CSI c gets xterm's answer, after the round trip to the renderer that xterm's takes;
+          // Mainframe's own reply goes out at once.
+          const seen = output.match(/\x1b\[0?c/g)?.length ?? 0;
+          for (; da1Queries < seen; da1Queries++) setTimeout(() => host.write(id, '\x1b[?1;2c'), 20);
         },
         onStatus: (status) => {
           if (status) states.push(status.kind ? `${status.state}:${status.kind}` : status.state);
@@ -58,7 +58,7 @@ function runProbe(useConptyDll: boolean): Promise<ProbeResult> {
           resolve({
             exitCode,
             queryReachedHost: logLines.some((l) => l.endsWith(' query')),
-            da1QueryReachedHost,
+            da1Queries,
             sawReply: probe?.sawReply ?? false,
             sawDa1: probe?.sawDa1 ?? false,
             replyFirst: probe?.replyFirst ?? false,
