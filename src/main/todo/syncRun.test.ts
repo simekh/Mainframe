@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SYNC_ANSWER_JSON } from './todoSchema';
 import { isMcpToolName, readSyncAnswer, runClaude, syncArgv, syncPrompt, syncSettings } from './syncRun';
 
@@ -238,7 +238,9 @@ describe('runClaude', () => {
   const folders: string[] = [];
 
   afterEach(() => {
-    for (const dir of folders.splice(0)) rmSync(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    // A stopped stub can still be ending for a moment, and Windows won't remove the folder a process runs in.
+    for (const dir of folders.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10 });
   });
 
   function folder(): string {
@@ -247,27 +249,44 @@ describe('runClaude', () => {
     return dir;
   }
 
-  /** A program that is the script given, in a folder of its own. */
-  function stub(script: string): string {
-    const file = join(folder(), 'claude-stub');
-    writeFileSync(file, `#!/bin/sh\n${script}\n`);
-    chmodSync(file, 0o755);
-    return file;
+  /**
+   * A program that runs `code` with Node, as `[node, script]` to put first in argv: Node runs the same on every
+   * system, while a shell script would not on Windows. Where the code reads stdin it does so as a stream, since
+   * `readFileSync(0)` can fail on a Windows pipe.
+   */
+  function stub(code: string): string[] {
+    const file = join(folder(), 'claude-stub.cjs');
+    writeFileSync(file, `${code}\n`);
+    return [process.execPath, file];
   }
 
   const options = (argv: string[], over: Partial<Parameters<typeof runClaude>[0]> = {}) => ({
     argv,
     cwd: folder(),
-    env: { PATH: process.env.PATH },
+    // A child Node can't start on Windows without SystemRoot.
+    env: process.env,
     input: '',
     timeoutMs: 10_000,
     ...over,
   });
 
+  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   it('passes the input on stdin, runs in cwd with env, and resolves with stdout', async () => {
     const cwd = folder();
-    const program = stub('cat > got-input; pwd > got-cwd; printf %s "$SYNC_TEST" > got-env; printf \'{"ok":1}\'');
-    const run = runClaude(options([program], { cwd, env: { PATH: process.env.PATH, SYNC_TEST: 'set' }, input: 'the prompt' }));
+    const program = stub(`
+      const fs = require('node:fs');
+      let input = '';
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (chunk) => (input += chunk));
+      process.stdin.on('end', () => {
+        fs.writeFileSync('got-input', input);
+        fs.writeFileSync('got-cwd', process.cwd());
+        fs.writeFileSync('got-env', process.env.SYNC_TEST ?? '');
+        process.stdout.write('{"ok":1}');
+      });
+    `);
+    const run = runClaude(options(program, { cwd, env: { ...process.env, SYNC_TEST: 'set' }, input: 'the prompt' }));
     await expect(run.done).resolves.toBe('{"ok":1}');
     expect(readFileSync(join(cwd, 'got-input'), 'utf8')).toBe('the prompt');
     expect(readFileSync(join(cwd, 'got-cwd'), 'utf8').trim()).toBe(cwd);
@@ -275,43 +294,43 @@ describe('runClaude', () => {
   });
 
   it('hands the rest of argv to the program as it is, with no shell between', async () => {
-    const program = stub('printf "%s|" "$@"');
-    const run = runClaude(options([program, '-p', '', 'a b', '$HOME;echo x']));
+    const program = stub(`process.stdout.write(process.argv.slice(2).map((arg) => arg + '|').join(''));`);
+    const run = runClaude(options([...program, '-p', '', 'a b', '$HOME;echo x']));
     await expect(run.done).resolves.toBe('-p||a b|$HOME;echo x|');
   });
 
   it('resolves with stdout even when the run exits non-zero', async () => {
-    const program = stub('printf \'{"is_error":true}\'; echo "boom" >&2; exit 1');
-    await expect(runClaude(options([program])).done).resolves.toBe('{"is_error":true}');
+    const program = stub(`process.stdout.write('{"is_error":true}'); process.stderr.write('boom\\n'); process.exitCode = 1;`);
+    await expect(runClaude(options(program)).done).resolves.toBe('{"is_error":true}');
   });
 
   it('rejects with the last line of stderr when the run prints nothing', async () => {
-    const program = stub('echo "first" >&2; echo "Not logged in" >&2; echo >&2; exit 1');
-    await expect(runClaude(options([program])).done).rejects.toThrow(new Error('Not logged in'));
+    const program = stub(`process.stderr.write('first\\nNot logged in\\n\\n'); process.exitCode = 1;`);
+    await expect(runClaude(options(program)).done).rejects.toThrow(new Error('Not logged in'));
   });
 
   it('rejects with the exit code when the run prints nothing at all', async () => {
-    const program = stub('exit 3');
-    await expect(runClaude(options([program])).done).rejects.toThrow(new Error('claude exited with code 3'));
+    const program = stub('process.exitCode = 3;');
+    await expect(runClaude(options(program)).done).rejects.toThrow(new Error('claude exited with code 3'));
   });
 
   it('stops a run that outlasts its time, and says so', async () => {
-    const program = stub('exec sleep 5');
+    const program = stub('setTimeout(() => {}, 5000);');
     const started = Date.now();
-    await expect(runClaude(options([program], { timeoutMs: 200 })).done).rejects.toThrow(/took longer than \d+ minutes and was stopped/);
+    await expect(runClaude(options(program, { timeoutMs: 200 })).done).rejects.toThrow(/took longer than \d+ minutes and was stopped/);
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
   it('cancel stops the run and rejects', async () => {
-    const program = stub('exec sleep 5');
-    const run = runClaude(options([program]));
+    const program = stub('setTimeout(() => {}, 5000);');
+    const run = runClaude(options(program));
     run.cancel();
     await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
   });
 
   it('settles once: a cancel after the run finished changes nothing', async () => {
-    const program = stub('printf done');
-    const run = runClaude(options([program]));
+    const program = stub(`process.stdout.write('done');`);
+    const run = runClaude(options(program));
     await expect(run.done).resolves.toBe('done');
     run.cancel();
     await expect(run.done).resolves.toBe('done');
@@ -321,6 +340,58 @@ describe('runClaude', () => {
     const missing = join(folder(), 'no-such-claude');
     const failure = await runClaude(options([missing])).done.catch((err: Error) => err);
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toMatch(new RegExp(`^Could not run ${missing}: .*ENOENT`));
+    expect((failure as Error).message).toMatch(new RegExp(`^Could not run ${escapeRegExp(missing)}: .*ENOENT`));
+  });
+
+  it("on Windows a stop ends the run's whole process tree", async () => {
+    // child.kill ends only the program itself, and a sync's connectors (MCP servers) are its children.
+    const cwd = folder();
+    const program = stub(`
+      const fs = require('node:fs');
+      fs.writeFileSync('pid.tmp', String(process.pid));
+      fs.renameSync('pid.tmp', 'pid');
+      setTimeout(() => {}, 5000);
+    `);
+    const killed: number[] = [];
+    const run = runClaude(options(program, { cwd, platform: 'win32', killTree: (pid) => killed.push(pid) }));
+    await vi.waitFor(() => expect(existsSync(join(cwd, 'pid'))).toBe(true), { timeout: 5000 });
+    const pid = Number(readFileSync(join(cwd, 'pid'), 'utf8'));
+    run.cancel();
+    await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
+    expect(killed).toEqual([pid]);
+    // The spy ended nothing: end the stub, so its folder can be removed.
+    process.kill(pid);
+  });
+
+  it('a run that could not start is never killed', async () => {
+    const killed: number[] = [];
+    const missing = join(folder(), 'no-such-claude');
+    const run = runClaude(options([missing], { platform: 'win32', killTree: (pid) => killed.push(pid) }));
+    run.cancel();
+    await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
+    expect(killed).toEqual([]);
+  });
+
+  it('a tree killer that throws still rejects the run as stopped', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failure = new Error('taskkill is missing');
+    let pid = 0;
+    const killTree = (started: number) => {
+      pid = started;
+      throw failure;
+    };
+    const run = runClaude(options(stub('setTimeout(() => {}, 5000);'), { platform: 'win32', killTree }));
+    expect(() => run.cancel()).not.toThrow();
+    await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.any(String), failure);
+    process.kill(pid);
+  });
+
+  it('cancel in the same tick as a spawn that fails rejects as stopped', async () => {
+    // Ending a run that never started threw `kill EINVAL` on Windows, and on a POSIX system it signals the whole
+    // process group of the caller.
+    const run = runClaude(options([join(folder(), 'no-such-claude')]));
+    run.cancel();
+    await expect(run.done).rejects.toThrow(new Error('The sync was stopped'));
   });
 });

@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { win32 } from 'node:path';
 import type { TodoListRef } from '../../shared/types';
 import { SYNC_ANSWER, SYNC_ANSWER_JSON, type SyncAnswer } from './todoSchema';
 
@@ -137,9 +138,18 @@ export function readSyncAnswer(stdout: string): SyncAnswer {
 }
 
 /**
+ * Ends `pid` and every process it started: on Windows `child.kill` ends only the program itself, and a sync's
+ * connectors (MCP servers) are its children. Errors are ignored, since the tree may already be gone.
+ */
+function taskkillTree(pid: number): void {
+  const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
+  execFile(taskkill, ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
+}
+
+/**
  * Runs `argv` (never through a shell) with `input` on stdin. It resolves with stdout whenever there is any, whatever
  * the exit code, since `claude -p` prints its JSON when it fails too. It settles once; `cancel` and the time limit
- * stop the program with SIGTERM.
+ * stop the program: with SIGTERM, and on Windows (`platform`) by `killTree`, which ends its whole process tree.
  */
 export function runClaude(o: {
   argv: string[];
@@ -147,10 +157,13 @@ export function runClaude(o: {
   env: NodeJS.ProcessEnv;
   input: string;
   timeoutMs: number;
+  platform?: NodeJS.Platform;
+  killTree?: (pid: number) => void;
 }): { done: Promise<string>; cancel(): void } {
+  const { platform = process.platform, killTree = taskkillTree } = o;
   let cancel!: () => void;
   const done = new Promise<string>((resolve, reject) => {
-    const child = spawn(o.argv[0], o.argv.slice(1), { cwd: o.cwd, env: o.env });
+    const child = spawn(o.argv[0], o.argv.slice(1), { cwd: o.cwd, env: o.env, windowsHide: true });
     let stdout = '';
     let stderr = '';
     let settled = false;
@@ -160,10 +173,21 @@ export function runClaude(o: {
       clearTimeout(timer);
       finish();
     };
+    // A run that never started (no pid) is left alone: ending it throws on Windows, and signals the caller's own
+    // process group on a POSIX system. A failure to end a run is logged: the stop has been answered by then.
+    const endChild = () => {
+      if (child.pid === undefined) return;
+      try {
+        if (platform === 'win32') killTree(child.pid);
+        else child.kill('SIGTERM');
+      } catch (err) {
+        console.warn(`[todo] could not end the sync run of ${o.cwd}`, err);
+      }
+    };
     const stop = (message: string) =>
       settle(() => {
-        child.kill('SIGTERM');
         reject(new Error(message));
+        endChild();
       });
     const timer = setTimeout(
       () => stop(`The sync took longer than ${Math.round(o.timeoutMs / 60_000)} minutes and was stopped`),

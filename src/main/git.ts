@@ -11,6 +11,8 @@ async function git(dir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('git', ['--no-optional-locks', '-C', dir, ...args], {
     encoding: 'utf8',
     maxBuffer: 16 * 1024 * 1024,
+    // No console window flashes on Windows for each git call.
+    windowsHide: true,
   });
   return stdout;
 }
