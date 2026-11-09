@@ -18,7 +18,8 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          # The newest LTS, with the npm it ships: what a friend installs today.
+          node-version: lts/*
           cache: npm
 
       # The e2e tests size the window up to 1700 px wide. Whether the runner lets the resolution

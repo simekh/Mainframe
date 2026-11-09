@@ -40,10 +40,12 @@ Nobody can try it on Windows by hand soon: the owner has a Windows PC that isn't
 
 | | macOS | Windows | Linux |
 |---|---|---|---|
-| Node.js 22.12+ | yes | yes | yes |
+| Node.js, the newest LTS (26 as of 2026-11, with npm 11.20) | yes | yes | yes |
 | git on PATH | yes | yes (Git for Windows, or any git.exe on PATH) | yes |
 | Claude Code | native installer, Homebrew or npm | native installer or WinGet (`claude.exe`); npm installs see §4.3 | native installer or npm |
 | A compiler for `npm install` | no | no (node-pty 1.1.0 ships win32-x64 and win32-arm64 builds) | **yes**: node-pty 1.1.0 has no Linux build, so `build-essential` (or the distro's equivalent) and Python 3 |
+
+**Mainframe is built for the newest versions, not old ones** **(owner, 2026-11-09)**: the newest LTS of Node.js and the npm it ships, a current Claude Code (the setup asks for `claude update` when it finds an older one), and current versions of each system. Nothing is added only to support an older version. Newer npm versions (11.19 and later) skip the install scripts of dependencies such as node-pty unless the project allows them, so Mainframe must install correctly on that npm.
 
 `git` must be on PATH, not just somewhere on disk: Claude Code's own `-w` worktrees use the git on PATH, so Mainframe pointing at a git elsewhere wouldn't help **(designer's call)**.
 
@@ -193,7 +195,7 @@ Rules that go with it:
 
 ### 10.1 On every push: GitHub Actions on all three systems
 
-The repo is public, so GitHub's runners are free. A workflow runs on every push and pull request, on `macos-latest`, `windows-latest` and `ubuntu-latest`: `npm ci`, `npm run typecheck`, `npm test`, `npm run test:e2e` **(designer's call, owner agreed)**. It keeps the test results when a run fails. The Windows and Linux jobs are expected to fail until the tasks that fix them land; that is fine, since nothing on GitHub requires them to pass **(designer's call)**.
+The repo is public, so GitHub's runners are free. A workflow runs on every push and pull request, on `macos-latest`, `windows-latest` and `ubuntu-latest`, with the newest Node.js LTS (`lts/*`): `npm ci`, `npm run typecheck`, `npm test`, `npm run test:e2e` **(designer's call, owner agreed)**. It keeps the test results when a run fails. The Windows and Linux jobs are expected to fail until the tasks that fix them land; that is fine, since nothing on GitHub requires them to pass **(designer's call)**.
 - Linux needs a virtual display for Electron (for example `xvfb-run`) and builds node-pty from source.
 - Windows runners have a desktop session. Their default screen may be too small for the e2e tests' 1600–1700 px windows, so the job may need a larger resolution.
 - A `.gitattributes` keeps line endings LF in the repo (Git for Windows defaults to `core.autocrlf=true`, which breaks shell scripts and makes content checks flaky).
