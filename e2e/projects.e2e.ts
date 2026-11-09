@@ -2,6 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
+import { layoutsOnDisk } from './layoutdiag';
 import { launches, managerLaunches, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
@@ -68,12 +69,20 @@ test('each open project has its own board and manager; the list shows one in pla
   await page.mouse.up();
   const dragged = (await boxOf(pane(page, globex))).width;
   expect(Math.abs(dragged - (before.globex.width + 100))).toBeLessThanOrEqual(2);
+  console.log(`[layoutdiag] before quit, in the page: ${await page.evaluate(() => localStorage.getItem('mainframe.layout'))}`);
+  const exited = new Promise<string>((resolve) => app.process().once('exit', (code, signal) => resolve(`${code}/${signal}`)));
   await app.close();
+  console.log(`[layoutdiag] exit ${await exited}; on disk: ${layoutsOnDisk(dataDir)}`);
 
   // A restart opens both again, on screen as they were, with the divider where it was left.
   const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, openProjects(dataDir));
   await expect(pane(again.page, acme)).toHaveAttribute('data-shown', 'true');
-  await expect(pane(again.page, globex)).toHaveAttribute('data-shown', 'true');
+  try {
+    await expect(pane(again.page, globex)).toHaveAttribute('data-shown', 'true');
+  } catch (err) {
+    console.log(`[layoutdiag] FAILED after restart; in the page now: ${await again.page.evaluate(() => localStorage.getItem('mainframe.layout'))}; projects.json: ${JSON.stringify(openProjects(dataDir))}`);
+    throw err;
+  }
   expect(Math.abs((await boxOf(pane(again.page, globex))).width - dragged)).toBeLessThanOrEqual(2);
   await again.app.close();
 });
