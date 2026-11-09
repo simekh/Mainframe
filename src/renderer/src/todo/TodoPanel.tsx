@@ -1,8 +1,10 @@
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { httpUrl } from '../../../shared/httpUrl';
 import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
+import { openLinkLogged } from '../openLink';
 import Chevron from '../panel/Chevron';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
@@ -11,7 +13,7 @@ import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
 import TicketPanel from './TicketPanel';
 import {
-  reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
+  reopenTaskId, sourcePlace, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
 } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
 import { cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
@@ -259,10 +261,24 @@ export default function TodoPanel(props: {
           <>
             {/* Laid out as the manager's row under its title, so the two headers' dividers line up. */}
             <div class="p-branch-bar">
-              <Show when={sourceLine(v())}>
-                {(line) => (
-                  <span class="todo-source-name" title={line()}>
-                    {line()}
+              {/* The service's name opens the list where it lives, as the ticket's Open in does for a card. */}
+              <Show when={v().source}>
+                {(source) => (
+                  <span class="todo-source-name" data-testid="todo-source" title={`${source().kind} · ${sourcePlace(source())}`}>
+                    <Show when={httpUrl(source().url)} fallback={source().kind}>
+                      {(url) => (
+                        <button
+                          class="todo-source-link"
+                          data-testid="todo-source-link"
+                          title={`Open in ${source().kind}`}
+                          onMouseDown={keepFocus}
+                          onClick={() => openLinkLogged(url(), 'todo')}
+                        >
+                          {source().kind} ↗
+                        </button>
+                      )}
+                    </Show>
+                    {` · ${sourcePlace(source())}`}
                   </span>
                 )}
               </Show>

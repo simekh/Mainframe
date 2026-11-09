@@ -157,7 +157,13 @@ test('Sync finds the connector and asks to allow its read tools; allowed, it sho
   await expect(items.first()).toContainText('Search ignores accents');
   await expect(items.first()).toContainText('UI');
   await expect(items.nth(1)).toContainText('Export drops the last row');
-  await expect(panel.getByText('Tracker · Shop · To do', { exact: true })).toBeVisible();
+  await expect(panel.getByTestId('todo-source')).toHaveText('Tracker ↗ · Shop · To do');
+  // The service's name opens the list where it lives, in the browser.
+  const sourceLink = panel.getByTestId('todo-source-link');
+  await expect(sourceLink).toHaveText('Tracker ↗');
+  await expect(sourceLink).toHaveAttribute('title', 'Open in Tracker');
+  await sourceLink.click();
+  await expect.poll(() => openedLinks(first.app)).toEqual(['https://tracker.example/shop/to-do']);
   await expect(panel.getByText('Synced just now')).toBeVisible();
   await expect(allow).toHaveCount(0);
   await expect(panel.getByTestId('todo-reset')).toHaveText('Set up again');
@@ -267,7 +273,7 @@ test('two projects side by side keep their own lists', async () => {
   await expect(other.getByText('Not synced yet')).toBeVisible();
   await expect(other.getByTestId('todo-item')).toHaveCount(0);
   await expect(pane(page, acme).getByTestId('todo-item')).toHaveCount(2);
-  await expect(pane(page, acme).getByText('Tracker · Shop · To do', { exact: true })).toBeVisible();
+  await expect(pane(page, acme).getByTestId('todo-source')).toHaveText('Tracker ↗ · Shop · To do');
 
   // Each pane has its own ticket, and Esc closes the one in the project the owner works in.
   await itemRow(pane(page, acme), 'card:c128').click();

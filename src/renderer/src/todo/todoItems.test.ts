@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { TaskView, TodoCard, TodoNote, TodoView } from '../../../shared/types';
-import { reopenTaskId, sourceLine, startsFromTicket, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
+import type { TaskView, TodoCard, TodoNote, TodoSource, TodoView } from '../../../shared/types';
+import { reopenTaskId, sourcePlace, startsFromTicket, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -127,17 +127,15 @@ describe('reopenTaskId', () => {
   });
 });
 
-describe('sourceLine', () => {
-  it('names the source, its board and its list', () => {
-    expect(sourceLine(view())).toBe('Tracker · Shop · To do');
+describe('sourcePlace', () => {
+  const source: TodoSource = { kind: 'Tracker', board: 'Shop', list: 'To do', url: null };
+
+  it('names the board and the list, after the service its name is shown with', () => {
+    expect(sourcePlace(source)).toBe('Shop · To do');
   });
 
   it('leaves the board out when there is none', () => {
-    expect(sourceLine(view({ source: { kind: 'Tracker', board: null, list: 'To do', url: null } }))).toBe('Tracker · To do');
-  });
-
-  it('is empty before the first sync', () => {
-    expect(sourceLine(view({ source: null }))).toBe('');
+    expect(sourcePlace({ ...source, board: null })).toBe('To do');
   });
 });
 

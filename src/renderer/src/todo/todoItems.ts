@@ -1,4 +1,4 @@
-import type { TaskView, TodoCard, TodoItemRef, TodoNote, TodoView } from '../../../shared/types';
+import type { TaskView, TodoCard, TodoItemRef, TodoNote, TodoSource, TodoView } from '../../../shared/types';
 
 /** One row of the Todo panel's list: a synced card or one of the owner's notes. */
 export interface TodoItem {
@@ -69,11 +69,9 @@ export interface StartOptions {
 /** The task a Reopen would reopen, for an item's `action`. */
 export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);
 
-/** Where the list comes from, as the last sync found it; nothing before the first. */
-export function sourceLine(view: TodoView): string {
-  const { source } = view;
-  if (!source) return '';
-  return [source.kind, source.board, source.list].filter((part) => part !== null).join(' · ');
+/** Where in its service the list is: the board or project, and the list. The service's name goes before it. */
+export function sourcePlace(source: TodoSource): string {
+  return [source.board, source.list].filter((part) => part !== null).join(' · ');
 }
 
 /** How long ago the list was synced. */

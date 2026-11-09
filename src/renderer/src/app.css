@@ -524,6 +524,16 @@ button {
   text-overflow: ellipsis;
 }
 
+/* The service's name opens the list, in the accent of the ticket's Open in. */
+.todo-source-link {
+  color: var(--accent);
+}
+
+.todo-source-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
 .todo-synced {
   flex: none;
   display: inline-flex;
