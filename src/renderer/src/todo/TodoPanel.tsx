@@ -14,7 +14,7 @@ import {
   reopenTaskId, sourceLine, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
 } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
-import { cancelTodoSync, confirmTodoTools, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
+import { cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -152,6 +152,8 @@ export default function TodoPanel(props: {
         if (o.note && item.note) await window.mainframe.saveTodoNote(project.dir, { id: item.note.id, ...o.note });
         await startTodoItem(project.dir, { item: { kind: item.kind, id: item.id }, noQuestions: o.noQuestions, ownersCard: o.ownersCard });
       }
+      // Started, a note's typing is its task's brief, so no draft is kept.
+      keepNoteDraft(project.dir, key, null);
       // Another item's ticket stays, with what is typed in it.
       if (props.ticket === key) props.onTicketChange(null);
     } catch (err) {

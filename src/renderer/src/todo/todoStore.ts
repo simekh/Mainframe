@@ -28,11 +28,35 @@ export async function loadTodo(dir: string): Promise<void> {
   if (open.has(dir) && !changed.has(dir)) setTodo(dir, view);
 }
 
-/** A project that closed: its list goes. Its sync has stopped in main. */
+/** A project that closed: its list and note drafts go. Its sync has stopped in main. */
 export function forgetTodo(dir: string): void {
   open.delete(dir);
   changed.delete(dir);
+  drafts.delete(dir);
   setStore(produce((todos) => void delete todos[dir]));
+}
+
+export interface NoteDraft {
+  title: string;
+  text: string;
+}
+
+/**
+ * What was typed in a note's ticket and not saved, by project and then ticket key (a note's, or 'new-note'). It comes
+ * back when the ticket opens again, until Mainframe quits or the project closes.
+ */
+const drafts = new Map<string, Map<string, NoteDraft>>();
+
+export const noteDraft = (dir: string, key: string): NoteDraft | undefined => drafts.get(dir)?.get(key);
+
+/** Keeps `draft` for the ticket, or with null forgets it. */
+export function keepNoteDraft(dir: string, key: string, draft: NoteDraft | null): void {
+  if (draft) {
+    if (!drafts.has(dir)) drafts.set(dir, new Map());
+    drafts.get(dir)!.set(key, draft);
+  } else {
+    drafts.get(dir)?.delete(key);
+  }
 }
 
 // What these find, ask or fail with shows in the view; a call main refuses is only logged.

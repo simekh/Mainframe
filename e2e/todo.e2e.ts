@@ -733,6 +733,68 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await app.close();
 });
 
+test("a note's unsaved typing is kept as a draft when its ticket closes, by Esc, ✕, the board or another row, and goes once saved or started", async () => {
+  const { app, page } = await launchApp({}, folder());
+  const ticket = page.getByTestId('ticket-panel');
+  const items = page.getByTestId('todo-item');
+  const title = ticket.getByLabel('Title');
+  const text = ticket.getByLabel('Text');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-pin').click();
+
+  // The new note: Esc closes it, and + Add note brings back what was typed. Saved, the next new note starts empty.
+  await page.getByTestId('todo-add-note').click();
+  await title.fill('Tidy the flags');
+  await text.fill('Remove the old flags.');
+  await page.keyboard.press('Escape');
+  await expect(ticket).toHaveCount(0);
+  await page.getByTestId('todo-add-note').click();
+  await expect(title).toHaveValue('Tidy the flags');
+  await expect(text).toHaveValue('Remove the old flags.');
+  await ticket.getByTestId('note-save').click();
+  await expect(items).toHaveCount(1);
+  await page.getByTestId('todo-add-note').click();
+  await expect(title).toHaveValue('');
+  await expect(text).toHaveValue('');
+  await title.fill('Scratch');
+  await ticket.getByTestId('note-save').click();
+  await expect(items).toHaveCount(2);
+
+  // A saved note's edits survive another row, ✕ and a press on the board; the list keeps the saved text.
+  await items.first().click();
+  await text.fill('Remove the old flags, and their tests.');
+  await items.nth(1).click();
+  await expect(title).toHaveValue('Scratch');
+  await items.first().click();
+  await expect(text).toHaveValue('Remove the old flags, and their tests.');
+  await ticket.getByTestId('ticket-close').click();
+  await items.first().click();
+  await expect(text).toHaveValue('Remove the old flags, and their tests.');
+  const board = await box(page, 'board');
+  await page.getByTestId('board').click({ position: { x: board.width - 40, y: board.height - 40 } });
+  await expect(ticket).toHaveCount(0);
+  await expect(items.first()).toContainText('Remove the old flags.');
+  await items.first().click();
+  await expect(text).toHaveValue('Remove the old flags, and their tests.');
+
+  // Saved, the draft is the note: closing and opening shows the saved text.
+  await ticket.getByTestId('note-save').click();
+  await expect(items.first()).toContainText('and their tests.');
+  await page.keyboard.press('Escape');
+  await items.first().click();
+  await expect(text).toHaveValue('Remove the old flags, and their tests.');
+  await page.keyboard.press('Escape');
+
+  // A new note started as a task keeps no draft.
+  await page.getByTestId('todo-add-note').click();
+  await title.fill('Write the changelog');
+  await page.getByTestId('ticket-start').click();
+  await expect.poll(() => taskBriefs(page)).toEqual([{ title: 'Write the changelog', description: '' }]);
+  await page.getByTestId('todo-add-note').click();
+  await expect(title).toHaveValue('');
+  await app.close();
+});
+
 test("a card for the owner has no Start in the list; its ticket says it is marked as yours and Start anyway starts it, and a closed one offers Reopen", async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   const [search] = CARDS.cards;

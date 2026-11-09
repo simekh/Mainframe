@@ -1,4 +1,4 @@
-import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
+import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
 import type { StartCheck } from '../../../shared/types';
 import { now } from '../board/ageClock';
@@ -10,7 +10,7 @@ import { useProject } from '../projects/projectContext';
 import { isFocused } from '../projects/projectsStore';
 import Markdown from './MarkdownView';
 import { reopenTaskId, syncedAgo, type StartOptions, type TodoItem } from './todoItems';
-import { todoOf } from './todoStore';
+import { keepNoteDraft, noteDraft, todoOf } from './todoStore';
 
 // Its buttons don't take the focus on click, as the Todo panel's don't: typing stays where it was.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -18,7 +18,8 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 /**
  * A card or a note in full, joined to the Todo panel's right edge and over the board and the manager. A card is
  * shown as the last sync left it; a note, or the new one, can be edited and saved. Mounted for one item: the pane
- * mounts it anew for another, so a note's fields never carry over.
+ * mounts it anew for another. What is typed in a note and not saved stays as its draft, and comes back when its ticket
+ * opens again.
  */
 export default function TicketPanel(props: {
   item: TodoItem | 'new-note';
@@ -49,8 +50,11 @@ export default function TicketPanel(props: {
     return url && source ? { url, kind: source.kind } : null;
   };
 
-  const [title, setTitle] = createSignal(note()?.title ?? '');
-  const [text, setText] = createSignal(note()?.text ?? '');
+  // The ticket's key, for its draft: it is mounted for one item.
+  const key = props.item === 'new-note' ? 'new-note' : props.item.key;
+  const draft = isNote() ? noteDraft(project.dir, key) : undefined;
+  const [title, setTitle] = createSignal(draft?.title ?? note()?.title ?? '');
+  const [text, setText] = createSignal(draft?.text ?? note()?.text ?? '');
   const [noQuestions, setNoQuestions] = createSignal(false);
   const [noteError, setNoteError] = createSignal<string | null>(null);
   // The new note is all edits; main trims a saved title.
@@ -59,18 +63,34 @@ export default function TicketPanel(props: {
     return !n || title().trim() !== n.title || text() !== n.text;
   };
   const fields = () => (isNote() && edited() ? { title: title(), text: text() } : undefined);
+  // What is typed stays as the draft until it is saved: a saved note matches it again, and a new note's goes below.
+  createEffect(() => {
+    if (!isNote()) return;
+    const typed = note() ? edited() : title() !== '' || text() !== '';
+    keepNoteDraft(project.dir, key, typed ? { title: title(), text: text() } : null);
+  });
 
   const save = () => {
     setNoteError(null);
     // The new note shows in the list once saved, which opens it from there.
     window.mainframe.saveTodoNote(project.dir, { id: note()?.id, title: title(), text: text() }).then(
-      () => props.item === 'new-note' && props.onClose(),
+      () => {
+        if (props.item !== 'new-note') return;
+        keepNoteDraft(project.dir, key, null);
+        props.onClose();
+      },
       (err: unknown) => setNoteError(errorMessage(err)),
     );
   };
   const remove = (id: string) => {
     setNoteError(null);
-    window.mainframe.deleteTodoNote(project.dir, id).then(props.onClose, (err: unknown) => setNoteError(errorMessage(err)));
+    window.mainframe.deleteTodoNote(project.dir, id).then(
+      () => {
+        keepNoteDraft(project.dir, key, null);
+        props.onClose();
+      },
+      (err: unknown) => setNoteError(errorMessage(err)),
+    );
   };
 
   let titleInput: HTMLInputElement | undefined;
