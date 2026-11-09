@@ -5,8 +5,8 @@ import { test, expect, type ElectronApplication, type Locator, type Page } from 
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, launches, openedLinks, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches,
-  syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, releaseSyncs, repoAhead, stoppedSyncs,
+  syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -15,13 +15,6 @@ test.afterEach(cleanUp);
 const folder = () => removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-todo-')));
 
 const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project="${dir}"]`);
-
-/** Whether `locator` is what shows at its own centre, not something laid over it. */
-const isOnTop = (locator: Locator) =>
-  locator.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
-  });
 
 /** What the first sync answers: the connector that holds the list, and its tools that only read. */
 const TOOLS = { kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_list'] };
@@ -405,6 +398,27 @@ test("the manager's way back stays out of sight under the floating Todo panel, a
   await page.getByTestId('todo-hide').click();
   await expect(panel).toBeHidden();
   await expect(way).toBeVisible();
+  await app.close();
+});
+
+test('floating over the board, the Todo panel starts under the top bar, so the Todo button there puts it away again', async () => {
+  const { app, page } = await launchApp({}, folder());
+  // It moves at once, so what it covers is what it covers once out.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  // With the manager put away, the board starts at the pane's left edge, where the panel floats.
+  await page.getByTestId('manager-hide').click();
+  await expect(page.getByTestId('manager-column')).toBeHidden();
+  const toggle = page.getByTestId('todo-toggle');
+  const panel = page.getByTestId('todo-panel');
+  await toggle.click();
+  await expect(panel).toBeVisible();
+
+  for (const el of [page.locator('.tb-project'), page.getByTestId('new-task'), toggle, page.getByTestId('manager-toggle')]) {
+    expect(await isOnTop(el)).toBe(true);
+  }
+  await toggle.click();
+  await expect(panel).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await app.close();
 });
 

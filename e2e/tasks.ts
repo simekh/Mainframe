@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { removeAfterTest } from './launch';
 
@@ -74,6 +74,13 @@ export const settled = (page: Page) =>
   page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
 
 export const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
+
+/** Whether `locator` is what shows at its own centre, not something laid over it. */
+export const isOnTop = (locator: Locator) =>
+  locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  });
 
 /** Whether the focus is in the task's terminal on show, where typing goes. */
 export const terminalHasFocus = (page: Page) =>
