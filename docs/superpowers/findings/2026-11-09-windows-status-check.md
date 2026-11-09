@@ -8,7 +8,7 @@ Plan 1 of the cross-platform work, on branch `cross-platform`, 2026-11-09. Three
 | [42599576558](https://github.com/simekh/Mainframe/actions/runs/42599576558) | f0a078b | 26.13.0 / 11.20.0 (`lts/*`) | Newest LTS. Cancelled once superseded; Linux finished, and Windows got past its unit tests |
 | [42601437383](https://github.com/simekh/Mainframe/actions/runs/42601437383) | e6c9ca8 | 26.13.0 / 11.20.0 | The probe answers every CSI c (d3f6f56); Linux gets a full-HD virtual screen; the Mac job prints its screen |
 
-Everything below is from the third run unless it says otherwise. The Node version changed nothing: the first two runs gave the same status-check lines and the same Windows failures.
+Everything below is from the third run unless it says otherwise. The Node version changed nothing in the status check: the first two runs gave the same status-check lines. The Windows unit failures were the same but for one, `syncRun.test.ts > cancel stops the run and rejects`, which failed only in the first run (Node 22), with `Error: kill EINVAL` thrown by `child.kill('SIGTERM')` (`src/main/todo/syncRun.ts`, in `stop`): the test cancels in the same tick as a spawn that fails with `ENOENT`. It passed in both Node 26 runs, so it looks like timing, not Node. Plan 2's work on stopping processes on Windows (spec §5.4) should know that `child.kill` can throw there.
 
 ## The decision (spec §5.3): Windows uses the ConPTY bundled with node-pty
 
@@ -29,7 +29,7 @@ ubuntu own       {"exitCode":0,"queryReachedHost":true,"da1Queries":1,"sawReply"
 
 - The probe reads its input with Node's raw mode. Claude Code runs on Bun, which may read Windows console input differently. The owner's Windows PC check (spec §10.4) confirms the decision with a real Claude Code.
 - The runner is Windows Server 2025, not Windows 11. Both are build 26100, but the check on a Windows 11 PC is the one that counts.
-- The bundled ConPTY works only once node-pty's postinstall has copied conpty.dll into `build/Release/conpty`. npm 11.20 still runs that script, with a warning (below).
+- The bundled ConPTY needs no install script. node-pty loads `conpty\conpty.dll` from beside the `conpty.node` it loaded (`src/win/conpty.cc`, `LoadConptyDll`), and the npm package ships both in `prebuilds/win32-x64/` and `prebuilds/win32-arm64/`. node-pty's postinstall copy into `build/Release/conpty` serves only a source build.
 
 ## Per system, per step
 
@@ -41,9 +41,9 @@ ubuntu own       {"exitCode":0,"queryReachedHost":true,"da1Queries":1,"sawReply"
 | Unit tests | pass: 750, 1 skipped | fail: 29 tests in 8 files | pass: 750, 1 skipped |
 | E2E tests | fail: 20 of 89 | fail: 80 of 89 | pass: 89 of 89 |
 
-- **npm's warning.** On every system `npm ci` prints `npm warn install-scripts 1 package has install scripts not yet covered by allowScripts: node-pty@1.1.0`. npm 11 still runs them: node-pty has no Linux prebuild, yet it compiled and loaded there. A later npm is to stop running them, so spec §3 now has Mainframe's `package.json` allow node-pty's scripts.
+- **npm's warning.** On every system `npm ci` prints `npm warn install-scripts 1 package has install scripts not yet covered by allowScripts: node-pty@1.1.0`. npm 11 still runs them: node-pty has no Linux prebuild, yet it compiled and loaded there. A later npm is to stop running them, so spec §3 now has Mainframe's `package.json` allow node-pty's scripts, for Linux's compile. macOS and Windows load node-pty's prebuilds and don't need them.
 - **Electron starts on all three.** On Linux the job first switches off Ubuntu's block on unprivileged user namespaces, so this doesn't show that Mainframe starts on a friend's Ubuntu (spec §9). No run has tried without that step.
-- **Screens.** The Windows runner's screen is 1920x1080 (`Set-DisplayResolution` didn't throw, and the screen was already that size). `xvfb-run`'s default screen was too small for the window, which was all of Linux's 16 e2e failures in the first run; `--server-args="-screen 0 1920x1080x24"` fixed every one. The Mac runner's `system_profiler SPDisplaysDataType` lists no display, so its screen size is still unknown.
+- **Screens.** After the screen-size step, the Windows runner's screen is 1920x1080. `Set-DisplayResolution` reported "The new display settings have been saved", and the run doesn't show the size before the step, so the step may be what made it fit: keep it. `xvfb-run`'s default screen was too small for the window, which was all of Linux's 16 e2e failures in the first run; `--server-args="-screen 0 1920x1080x24"` fixed every one. The Mac runner's `system_profiler SPDisplaysDataType` lists no display, so its screen size is still unknown.
 
 ## For plan 2
 
