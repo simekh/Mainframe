@@ -84,12 +84,6 @@ jobs:
         if: ${{ !cancelled() && runner.os != 'Linux' }}
         run: npm run test:e2e
 
-      # TEMPORARY DIAGNOSTIC (2b CI push 6), removed afterwards: the layout restart test again, eight times.
-      - name: Repeat the layout restart test (Windows)
-        if: ${{ !cancelled() && runner.os == 'Windows' }}
-        continue-on-error: true
-        run: npx playwright test e2e/projects.e2e.ts -g "each open project has its own board" --repeat-each=8
-
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
