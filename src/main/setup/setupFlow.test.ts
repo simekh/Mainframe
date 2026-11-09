@@ -426,3 +426,93 @@ describe('findClaude', () => {
     expect(existsSync(settingsFile())).toBe(false);
   });
 });
+
+describe('one action at a time', () => {
+  const gitOnly = { [GIT]: 'git version 2.56.0\n' };
+
+  it('a second lookAgain while the first is pending gets the first, and the projects start once', async () => {
+    existingInstall();
+    const h = harness({ programs: gitOnly });
+    await h.flow.begin();
+    h.programs[NATIVE] = CURRENT;
+    const first = h.flow.lookAgain();
+    const second = h.flow.lookAgain();
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(h.start).toHaveBeenCalledOnce();
+    expect(h.ran.filter((file) => file === NATIVE)).toHaveLength(1);
+  });
+
+  it('another action while one is pending gets that one, and asks nothing', async () => {
+    existingInstall();
+    const h = harness({ programs: gitOnly });
+    await h.flow.begin();
+    h.programs[NATIVE] = CURRENT;
+    h.picks.claude = PICKED;
+    h.picks.folder = globex;
+    const first = h.flow.lookAgain();
+    await Promise.all([first, h.flow.findClaude(), h.flow.chooseProject()]);
+    expect(h.pickClaude).not.toHaveBeenCalled();
+    expect(h.pickFolder).not.toHaveBeenCalled();
+    expect(h.start).toHaveBeenCalledOnce();
+    expect(h.start).toHaveBeenCalledWith(NATIVE, [acme, globex]);
+  });
+
+  it('a second chooseProject while the first is pending asks for a folder and starts once', async () => {
+    const h = harness();
+    await h.flow.begin();
+    h.picks.folder = acme;
+    const first = h.flow.chooseProject();
+    const second = h.flow.chooseProject();
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(h.pickFolder).toHaveBeenCalledOnce();
+    expect(h.start).toHaveBeenCalledOnce();
+    expect(h.start).toHaveBeenCalledWith(NATIVE, [acme]);
+  });
+
+  it('after chooseProject has started the project, every action does nothing', async () => {
+    const h = harness({ programs: { [GIT]: 'git version 2.56.0\n', [NATIVE]: CURRENT, [PICKED]: CURRENT } });
+    await h.flow.begin();
+    h.picks.folder = acme;
+    await h.flow.chooseProject();
+    h.ran.length = 0;
+    h.picks.claude = PICKED;
+    h.picks.folder = globex;
+    await h.flow.lookAgain();
+    await h.flow.findClaude();
+    await h.flow.chooseProject();
+    expect(h.pickClaude).not.toHaveBeenCalled();
+    expect(h.pickFolder).toHaveBeenCalledOnce();
+    expect(h.ran).toEqual([]);
+    expect(h.start).toHaveBeenCalledOnce();
+    expect(settings()).toStrictEqual({ claudeBin: NATIVE, welcomeSeen: true });
+    expect(h.flow.view()).toBeNull();
+    expect(h.views).toEqual([expectedView({ askProject: true }), null]);
+  });
+
+  it('after a silent start, every action does nothing', async () => {
+    existingInstall();
+    const h = harness();
+    await h.flow.begin();
+    h.picks.claude = PICKED;
+    h.picks.folder = globex;
+    await h.flow.lookAgain();
+    await h.flow.findClaude();
+    await h.flow.chooseProject();
+    expect(h.pickClaude).not.toHaveBeenCalled();
+    expect(h.pickFolder).not.toHaveBeenCalled();
+    expect(h.start).toHaveBeenCalledOnce();
+    expect(h.views).toEqual([]);
+  });
+
+  it('after one that failed, the next action runs', async () => {
+    const h = harness();
+    await h.flow.begin();
+    h.pickFolder.mockRejectedValueOnce(new Error('dialog failed'));
+    await expect(h.flow.chooseProject()).rejects.toThrow('dialog failed');
+    h.picks.folder = acme;
+    await h.flow.chooseProject();
+    expect(h.start).toHaveBeenCalledWith(NATIVE, [acme]);
+  });
+});
