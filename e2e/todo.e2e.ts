@@ -5,8 +5,8 @@ import { test, expect, type ElectronApplication, type Locator, type Page } from 
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, launches, openedLinks, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches,
-  syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, releaseSyncs, repoAhead, stoppedSyncs,
+  syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -15,13 +15,6 @@ test.afterEach(cleanUp);
 const folder = () => removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-todo-')));
 
 const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project="${dir}"]`);
-
-/** Whether `locator` is what shows at its own centre, not something laid over it. */
-const isOnTop = (locator: Locator) =>
-  locator.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
-  });
 
 /** What the first sync answers: the connector that holds the list, and its tools that only read. */
 const TOOLS = { kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_list'] };
@@ -345,6 +338,8 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   const under = await box(page, 'manager-column');
   expect(floating.x).toBeLessThan(under.x + under.width);
   expect(under.x).toBeLessThan(floating.x + floating.width);
+  // From that column's top, which the board's top bar doesn't reach, its tab on the manager's title line.
+  expect(Math.abs(floating.y - under.y)).toBeLessThanOrEqual(1);
   expect(await isOnTop(panel)).toBe(true);
 
   // Its arrow puts it away and hands the focus to the Todo button, which brings it back.
@@ -386,24 +381,32 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await third.app.close();
 });
 
-test("the manager's way back stays out of sight under the floating Todo panel, and shows again once that is put away", async () => {
+test("floating over the board, the Todo panel hides the manager's way back and starts under the top bar, whose Todo button puts it away again", async () => {
   const { app, page } = await launchApp({}, folder());
+  // It moves at once, so what it covers is what it covers once out.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const manager = page.getByTestId('manager-column');
   const way = page.getByTestId('manager-show');
+  // With the manager put away, the board starts at the pane's left edge, where the panel floats.
   await page.getByTestId('manager-hide').click();
   await expect(manager).toBeHidden();
   await expect(way).toBeVisible();
 
   // Floating and out, the Todo panel covers the way back's 14 px but not the 8 px margin beside them: no sliver of it shows.
-  await page.getByTestId('todo-toggle').click();
+  const toggle = page.getByTestId('todo-toggle');
+  await toggle.click();
   const panel = page.getByTestId('todo-panel');
   await expect(panel).toHaveAttribute('data-pinned', 'false');
   await expect(panel).toBeVisible();
   await expect(way).toBeHidden();
+  for (const el of [page.locator('.tb-project'), page.getByTestId('new-task'), toggle, page.getByTestId('manager-toggle')]) {
+    expect(await isOnTop(el)).toBe(true);
+  }
 
-  // Put away, the panel slides off and the way back is there again.
-  await page.getByTestId('todo-hide').click();
+  // Put away, the panel is gone and the way back is there again.
+  await toggle.click();
   await expect(panel).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await expect(way).toBeVisible();
   await app.close();
 });

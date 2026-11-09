@@ -647,7 +647,7 @@ button {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* The filter at the top of the list, quiet as the top bar's toggles are. Pressed, it is tinted as the open card is, and
+/* The filter at the top of the list, quiet as the top bar's toggles are and, pressed, tinted as they are when open. It
    says how many cards it leaves out. */
 .todo-hide-mine {
   flex: none;
@@ -1206,7 +1206,9 @@ button {
   -webkit-app-region: drag;
 }
 
-.topbar button {
+/* A drag region takes no pointer events: only the bar's empty space drags, so the chip keeps its tooltip, the buttons
+   their clicks. */
+.topbar > * {
   -webkit-app-region: no-drag;
 }
 
@@ -1274,8 +1276,8 @@ kbd {
   text-align: center;
 }
 
-/* Quiet: no border, so they read as hints beside the chip, not second actions. The toggle hides and
-   shows the pane's manager column. */
+/* Quiet: no border, so they read as hints beside New task, not second actions. The toggles show and
+   hide the pane's Todo panel and its manager. */
 .tb-jump,
 .tb-toggle {
   flex: none;
@@ -1306,6 +1308,17 @@ kbd {
 .tb-toggle svg {
   width: 14px;
   height: 14px;
+}
+
+/* Open: its panel is on screen. A tint that stays, unlike hover's grey, and the label at full strength,
+   so the state doesn't rest on the icon's colour alone. The same look as Hide my tasks. */
+.tb-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+}
+
+.tb-toggle[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .tb-toggle[aria-pressed='true'] svg {
@@ -1843,6 +1856,19 @@ kbd {
   margin: 0;
 }
 
+/* The manager and the Todo panel float over the board's left end under its top bar (.topbar's 46 px), so the buttons
+   that bring them out stay in reach to put them away again. The manager's terminal loses those rows while it floats. */
+.manager-column[data-pinned='false'],
+.todo-panel[data-pinned='false'] {
+  top: 46px;
+}
+
+/* Over the pinned manager, which the top bar doesn't reach, the Todo panel covers that column from its top, its tab
+   on the manager's title line. */
+.project-pane:has(> .manager-column[data-pinned='true'][data-open='true']) > .todo-panel[data-pinned='false'] {
+  top: 8px;
+}
+
 .side-panel[data-pinned='false'] {
   right: 8px;
   z-index: 5;
@@ -1996,6 +2022,12 @@ kbd {
   border: 1px solid var(--border);
   border-left: 0;
   border-radius: 0 999px 999px 0;
+}
+
+/* Level with the floating manager's arrow: that island starts under the top bar, so its middle is 19 px below the
+   pane's. */
+.manager-column[data-pinned='false'] + .panel-show {
+  top: calc(50% + 19px);
 }
 
 /* Beside the pinned Todo panel, below the hide pill that overhangs that panel's edge. */
@@ -2644,6 +2676,8 @@ kbd {
   .card-act,
   .btn,
   .tb-btn,
+  .tb-jump,
+  .tb-toggle,
   .panel-pin,
   .pane-heading,
   .todo-pick,

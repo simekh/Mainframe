@@ -4,8 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, ids, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo,
-  run, screen, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
+  box, card, cardIn, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report,
+  repo, run, screen, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -229,6 +229,9 @@ test('the manager column sits left of the board, and its top strip holds the win
 
   // The board's top bar no longer makes room for them.
   expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
+  // A drag region takes no pointer events, so the project chip is carved out of the top bar's, for its folder to show
+  // on hover.
+  expect(await page.locator('.tb-project').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
   await app.close();
 });
 
@@ -258,7 +261,7 @@ test("the manager's arrow puts it away, and the pill at the pane's left edge bri
   await app.close();
 });
 
-test('unpinned, the manager floats over the board, a press on the board puts it away, and its terminal keeps its size', async () => {
+test('unpinned, the manager floats over the board under its top bar, a press on the board puts it away, and hidden and shown, its terminal keeps its size', async () => {
   const first = await launchApp();
   const { page, dataDir } = first;
   // Room on the board right of the floating column.
@@ -272,19 +275,15 @@ test('unpinned, the manager floats over the board, a press on the board puts it 
   await expect(column).toHaveAttribute('data-pinned', 'false');
   await expect(pin).toHaveAttribute('aria-pressed', 'false');
   await expect(column).toHaveAttribute('data-open', 'true');
-  // Over the board, which starts under it.
+  // Over the board, which starts under it, and under the board's top bar, whose Manager button stays in reach.
   const floating = await box(page, 'manager-column');
   const board = await box(page, 'board');
   expect(board.x).toBeLessThan(floating.x + floating.width);
-  // macOS hit-tests the top bar's drag region natively, whatever lies over it: the column carves
-  // itself out of it as a no-drag element after it in the page.
-  const carved = await column.evaluate((el) => {
-    const topbar = el.closest('[data-testid=project-pane]')!.querySelector('.topbar')!;
-    const after = Boolean(topbar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-    return [getComputedStyle(el).getPropertyValue('-webkit-app-region'), after];
-  });
-  expect(carved).toEqual(['no-drag', true]);
-  expect(await managerTermSize(page)).toEqual(size);
+  expect(await isOnTop(page.getByTestId('manager-toggle'))).toBe(true);
+  // Shorter than pinned by the top bar, its terminal loses rows, never columns.
+  await expect.poll(async () => (await managerTermSize(page))!.rows).toBeLessThan(size.rows);
+  const floatingSize = (await managerTermSize(page))!;
+  expect(floatingSize.cols).toBe(size.cols);
 
   // The bottom of the board, right of the column.
   await page.getByTestId('board').click({ position: { x: floating.x + floating.width - board.x + 40, y: board.height - 40 } });
@@ -299,11 +298,15 @@ test('unpinned, the manager floats over the board, a press on the board puts it 
   await show.click();
   await expect(column).toBeVisible();
   await expect(page.getByTestId('manager-hide')).toBeFocused();
+  const arrow = await box(page, 'manager-hide');
   await page.getByTestId('manager-hide').click();
   await expect(column).toBeHidden();
   await expect(show).toBeFocused();
-  expect(await managerTermSize(page)).toEqual(size);
-  await expectSessionSize(size, (line) => sendManagerLine(page, line), () => managerScreen(page));
+  // The way back is level with the arrow that put the manager away.
+  const way = await box(page, 'manager-show');
+  expect(Math.abs(way.y + way.height / 2 - (arrow.y + arrow.height / 2))).toBeLessThanOrEqual(1);
+  expect(await managerTermSize(page)).toEqual(floatingSize);
+  await expectSessionSize(floatingSize, (line) => sendManagerLine(page, line), () => managerScreen(page));
   await first.app.close();
 
   // The pin is the project's, kept for the next start.
