@@ -2522,7 +2522,7 @@ kbd {
   color: var(--fg-muted);
 }
 
-/* The one filled button on screen. */
+/* The filled button: the main action of its dialog, panel or setup block. */
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);

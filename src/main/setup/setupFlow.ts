@@ -103,6 +103,8 @@ export class SetupFlow {
   }
 
   private async startProjects(claudeBin: string, projectDirs: string[]): Promise<void> {
+    // Set before `start` runs and kept when it fails: a failed start is final. Main shows "Mainframe
+    // could not start" and ends the app, so no further action follows.
     this.started = true;
     await this.deps.start(claudeBin, projectDirs);
   }
