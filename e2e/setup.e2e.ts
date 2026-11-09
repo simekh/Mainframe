@@ -28,17 +28,19 @@ function systemGit(): string {
 
 /**
  * A computer with nothing but node, and git unless `o.git` is false: the app's PATH holds only those,
- * and HOME, USERPROFILE and APPDATA name an empty folder, so no claude of the developer's can be found
- * and `MAINFRAME_CLAUDE_BIN` is unset. On POSIX PATH is a folder of links, as the stand-in for claude
- * is a script that runs `node`; on Windows it is node's own folder and Git's own folder.
+ * and HOME, USERPROFILE and APPDATA name an empty folder (on Windows one with the AppData\Roaming
+ * Electron needs), so no claude of the developer's can be found and `MAINFRAME_CLAUDE_BIN` is unset.
+ * On POSIX PATH is a folder of links, as the stand-in for claude is a script that runs `node`; on
+ * Windows it is node's own folder and Git's own folder.
  */
 function computer(o: { git?: boolean } = {}) {
   const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
   let dirs: string[];
   if (process.platform === 'win32') {
-    for (const folder of ['AppData\\Roaming', 'AppData\\Local', 'AppData\\Local\\Temp', 'Desktop', 'Documents', 'Downloads']) {
-      mkdirSync(join(home, folder), { recursive: true });
-    }
+    // Electron on Windows crashes at launch (exit 0x80000003) when USERPROFILE names a folder with no
+    // AppData\Roaming in it. CI run 3: with only that folder in it, Electron launched; with an empty one,
+    // one holding only AppData\Local, or C:\Users\Public (no AppData at all), it crashed.
+    mkdirSync(join(home, 'AppData', 'Roaming'), { recursive: true });
     dirs = [dirname(process.execPath), ...(o.git === false ? [] : [dirname(systemGit())])];
   } else {
     const bin = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-bin-')));
