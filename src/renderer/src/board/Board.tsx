@@ -7,7 +7,7 @@ import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
 import { todoOf } from '../todo/todoStore';
 
-// A flex row: plan 2b's TODO lane joins at its start.
+// A flex row of lanes.
 const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
   { lane: 'needs-you', name: 'Needs you', empty: 'Nothing needs you' },
   { lane: 'working', name: 'Working', empty: 'Nothing running' },

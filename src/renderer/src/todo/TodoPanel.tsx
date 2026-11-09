@@ -97,6 +97,14 @@ export default function TodoPanel(props: {
   // ticket is open, or the item's own is. Another item's ticket may hold what is being typed in it.
   const ticketFreeFor = (key: string) => props.ticket === null || props.ticket === key;
 
+  // What the start check warns of. One that fails warns of nothing, from the list as from the ticket: it is logged, and
+  // the start goes ahead.
+  const checkStart = () =>
+    window.mainframe.startCheck(project.dir).then(aheadOf, (err: unknown) => {
+      console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`);
+      return null;
+    });
+
   /**
    * Opens a ticket in place of the one open. One a Start opens says what that Start found; any other with a Start runs
    * the start check, so its Start warns as New task's does.
@@ -110,17 +118,11 @@ export default function TodoPanel(props: {
     setChecking(check);
     props.onTicketChange(key);
     if (!check) return;
-    window.mainframe
-      .startCheck(project.dir)
-      .then(aheadOf, (err: unknown) => {
-        console.error(`[todo] start check failed for ${project.dir}: ${errorMessage(err)}`);
-        return null;
-      })
-      .then((warns) => {
-        if (props.ticket !== key || opening !== latestCheck) return;
-        setWarning(warns);
-        setChecking(false);
-      });
+    void checkStart().then((warns) => {
+      if (props.ticket !== key || opening !== latestCheck) return;
+      setWarning(warns);
+      setChecking(false);
+    });
   }
 
   /**
@@ -137,7 +139,7 @@ export default function TodoPanel(props: {
     const key = item === 'new-note' ? item : item.key;
     try {
       if (check) {
-        const warns = aheadOf(await window.mainframe.startCheck(project.dir));
+        const warns = await checkStart();
         if (warns) {
           if (ticketFreeFor(key)) return openTicket(key, { warning: warns, error: null });
           // Not started, and still on the list with its Start: the ticket open meanwhile stays.

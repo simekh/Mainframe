@@ -1323,7 +1323,7 @@ kbd {
 /* --- Board: lanes without boxes, cards with faint fills ----------------------------------------
    Adapted from Parallel Code (MIT): src/components/task-board.css at 97c3558. See THIRD_PARTY_NOTICES.md. */
 
-/* A row of lanes; plan 2b's TODO lane joins at its start. */
+/* A row of lanes. */
 .lanes {
   flex: 1;
   min-height: 0;

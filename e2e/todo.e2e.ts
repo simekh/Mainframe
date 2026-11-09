@@ -502,6 +502,21 @@ test('a Start from the list that fails leaves the ticket the owner opened meanwh
   await app.close();
 });
 
+test('a Start from the list whose start check fails starts the card anyway, as its ticket does, and logs why', async () => {
+  const { app, page, dataDir } = await launchApp({}, folder());
+  await syncFirstTime(page, dataDir);
+  const logs: string[] = [];
+  page.on('console', (message) => logs.push(`${message.type()}: ${message.text()}`));
+  await holdAnswers(app, IPC.startCheck, { error: 'git went away' });
+  await releaseHeld(app);
+
+  await itemRow(page, 'card:c128').getByTestId('todo-start').click();
+  await expect.poll(() => launches(dataDir)).toHaveLength(1);
+  await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
+  expect(logs.filter((line) => line.startsWith('error: [todo] start check failed for') && line.includes('git went away'))).toHaveLength(1);
+  await app.close();
+});
+
 test("a task started from a card shows its number on the board, and the session panel's link opens the card", async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   const [search, exported] = CARDS.cards;

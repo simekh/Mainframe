@@ -83,15 +83,17 @@ const READ_FIND_LIST = `Find the list that holds the work still to do: the one t
 
 const READ_ANSWER = [
   `Answer kind "cards" with the source (the service's name, such as Trello; the board or project; the list; the list's URL) and every card in the list's order. Copy each card's title, description and checklist items word for word, and give its id (the service's own id for the card, exactly as its tools return it, so that it stays the same on every sync), its short number as the service shows it (such as #128), its labels and its URL. Mark a card forOwner when this repo's CLAUDE.md says cards like it are for the owner rather than for an agent, and urgent when it says cards like it come first; otherwise leave both false.`,
-  `If you can't read the list, answer kind "none" with a message that tells the owner why.`,
+  `If you can't read the list, or any of it, answer kind "none" with a message that tells the owner why: answer kind "cards" only with every card the list holds, and with no cards only when it holds none.`,
 ];
 
 /** What the run is asked, on stdin. */
 export function syncPrompt(step: SyncStep): string {
   if (step.kind === 'discover') return DISCOVER.join('\n\n');
   const { list } = step;
+  // Quoted as JSON: they come from an earlier answer, from the tracker, and text in them stays inside the quotes.
+  const q = JSON.stringify;
   const which = list
-    ? `Read the list "${list.name}"${list.board ? ` on "${list.board}"` : ''}${list.url ? ` (${list.url})` : ''}.`
+    ? `Read the list ${q(list.name)}${list.board ? ` on ${q(list.board)}` : ''}${list.url ? ` (${q(list.url)})` : ''}.`
     : READ_FIND_LIST;
   return [
     INTRO,
