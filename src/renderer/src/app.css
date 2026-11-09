@@ -647,7 +647,7 @@ button {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-/* The filter at the top of the list, quiet as the top bar's toggles are. Pressed, it is tinted as the open card is, and
+/* The filter at the top of the list, quiet as the top bar's toggles are and, pressed, tinted as they are when open. It
    says how many cards it leaves out. */
 .todo-hide-mine {
   flex: none;
@@ -2655,6 +2655,8 @@ kbd {
   .card-act,
   .btn,
   .tb-btn,
+  .tb-jump,
+  .tb-toggle,
   .panel-pin,
   .pane-heading,
   .todo-pick,
