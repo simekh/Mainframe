@@ -1274,8 +1274,8 @@ kbd {
   text-align: center;
 }
 
-/* Quiet: no border, so they read as hints beside the chip, not second actions. The toggle hides and
-   shows the pane's manager column. */
+/* Quiet: no border, so they read as hints beside the chip, not second actions. The toggles show and
+   hide the pane's Todo panel and its manager. */
 .tb-jump,
 .tb-toggle {
   flex: none;
@@ -1306,6 +1306,17 @@ kbd {
 .tb-toggle svg {
   width: 14px;
   height: 14px;
+}
+
+/* Open: its panel is on screen. A tint that stays, unlike hover's grey, and the label at full strength,
+   so the state doesn't rest on the icon's colour alone. The same look as Hide my tasks. */
+.tb-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+}
+
+.tb-toggle[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .tb-toggle[aria-pressed='true'] svg {
