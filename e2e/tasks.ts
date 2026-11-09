@@ -106,8 +106,8 @@ export async function sendLine(page: Page, taskId: string, line: string): Promis
 
 /**
  * Sends `line` with `send`, after a lone Enter. Git Bash, the tests' shell on Windows, can notice a
- * resize under ConPTY only when its next key arrives, and then loses that key; a focus-out just
- * before the resize makes it likely. A program that reads the terminal raw, as Claude Code does,
+ * resize under ConPTY only when its next key arrives, and then loses that key; it seems likelier
+ * when the terminal isn't focused. A program that reads the terminal raw, as Claude Code does,
  * sees the resize at once and loses no key (terminal.e2e.ts). So a line that must arrive whole after
  * a resize goes after the Enter, for Git Bash to lose; otherwise the Enter shows one more prompt.
  */
