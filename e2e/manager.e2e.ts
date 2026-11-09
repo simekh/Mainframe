@@ -72,7 +72,8 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
   expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'] });
   expect(hooks.SessionStart[0].hooks[0].args).toContain(join(managerDir(dataDir), 'session-start.json'));
 
-  expect(statSync(mcp).mode & 0o777).toBe(0o600);
+  // Windows has no owner-only mode bits (spec §10.2).
+  if (process.platform !== 'win32') expect(statSync(mcp).mode & 0o777).toBe(0o600);
   const server = JSON.parse(readFileSync(mcp, 'utf8')).mcpServers.mainframe;
   expect(server).toEqual({
     type: 'http',
