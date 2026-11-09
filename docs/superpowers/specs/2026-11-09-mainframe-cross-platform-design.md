@@ -25,7 +25,7 @@ Nobody can try it on Windows by hand soon: the owner has a Windows PC that isn't
 **Non-goals**
 - An installer, code signing, auto-update or app packaging **(owner: "no installer needed for now")**.
 - Running `claude` inside WSL. Claude Code in WSL must be launched from inside WSL, and Electron's docs advise against developing Electron apps under WSL.
-- 32-bit Windows (neither Electron 44 nor Claude Code supports it).
+- Windows 10, and any other older system or tool version **(owner, 2026-11-09)**. Mainframe is mainly for the owner and their friends, not a large crowd, so it targets current versions only (§3). 32-bit Windows is out too (neither Electron 44 nor Claude Code supports it).
 - Dependency upgrades. Electron 45, TypeScript 7 and the others are separate decisions under the shared package rule; none goes into this branch **(designer's call)**.
 - Agents other than Claude Code.
 - Checking whether Claude Code is logged in. The first session asks for a login itself if needed **(designer's call, owner agreed)**.
@@ -45,7 +45,7 @@ Nobody can try it on Windows by hand soon: the owner has a Windows PC that isn't
 | Claude Code | native installer, Homebrew or npm | native installer or WinGet (`claude.exe`); npm installs see §4.3 | native installer or npm |
 | A compiler for `npm install` | no | no (node-pty 1.1.0 ships win32-x64 and win32-arm64 builds) | **yes**: node-pty 1.1.0 has no Linux build, so `build-essential` (or the distro's equivalent) and Python 3 |
 
-**Mainframe is built for the newest versions, not old ones** **(owner, 2026-11-09)**: the newest LTS of Node.js and the npm it ships, a current Claude Code (the setup asks for `claude update` when it finds an older one), and current versions of each system. Nothing is added only to support an older version. Newer npm versions (11.19 and later) skip the install scripts of dependencies such as node-pty unless the project allows them, so Mainframe must install correctly on that npm.
+**Mainframe is built for the newest versions, not old ones** **(owner, 2026-11-09)**: the newest LTS of Node.js and the npm it ships, a current Claude Code (the setup asks for `claude update` when it finds an older one), and current versions of each system: current macOS, current Windows 11 (no Windows 10), and a current Linux. Nothing is added only to support an older version. Newer npm versions (11.19 and later) skip the install scripts of dependencies such as node-pty unless the project allows them, so Mainframe must install correctly on that npm.
 
 `git` must be on PATH, not just somewhere on disk: Claude Code's own `-w` worktrees use the git on PATH, so Mainframe pointing at a git elsewhere wouldn't help **(designer's call)**.
 
@@ -120,9 +120,10 @@ On Windows, Claude Code runs a shell-form hook in Git Bash, or in PowerShell whe
 The board knows whether a session is working or needs you from OSC 7501, a terminal sequence Claude Code sends once Mainframe answers its `OSC 7501;?` query before the terminal's answer to the `CSI c` query that follows (`sessionHost.ts`). On Windows, node-pty runs every session through ConPTY. Older ConPTY versions answered `CSI c` themselves and dropped unknown OSC sequences. If the Windows ConPTY does that, Claude Code concludes the terminal doesn't support OSC 7501 and the board never sees any status. Nobody can tell without trying.
 
 So **the first step of the work is a check on a Windows machine** (a GitHub Windows runner, §10) **(owner)**: a small test program, run through node-pty, sends the query and `CSI c` and prints OSC 7501 reports, and the test records what reaches Mainframe, in which order, with Windows' own ConPTY and with the newer ConPTY that node-pty 1.1.0 bundles (`useConptyDll: true`).
-How the result decides what every Windows user gets **(designer's call)**. The runner is Windows Server 2025, and friends run older Windows 10 and 11 builds whose own ConPTY may behave differently, so a pass with Windows' own ConPTY says little about their machines:
-- **If the bundled ConPTY passes,** Mainframe uses it (`useConptyDll: true`) on every Windows machine. It ships inside node-pty, so it behaves the same whatever the Windows build. The board then works as on the Mac.
-- **If only Windows' own ConPTY passes, or neither does,** Claude Code reports its status to Mainframe's local server through hooks instead, on Windows **(owner)**. Mac and Linux keep OSC 7501.
+How the result decides what every Windows user gets. Mainframe supports current Windows 11 only **(owner, 2026-11-09)**, and the runner (Windows Server 2025, build 26100) is built on the same core as current Windows 11, so its result for Windows' own ConPTY stands for friends' machines **(designer's call, from the owner's Windows 11 decision)**:
+- **If Windows' own ConPTY passes,** Mainframe uses it, as today, with no option. The board works as on the Mac.
+- **If only the bundled ConPTY passes,** Mainframe uses it (`useConptyDll: true`) on Windows, and must then make sure its files are in place on an npm that skips node-pty's install script (§3).
+- **If neither passes,** Claude Code reports its status to Mainframe's local server through hooks instead, on Windows **(owner)**. Mac and Linux keep OSC 7501.
 - **The hook route** covers task sessions and the manager. It must tell the board's lanes apart exactly (working versus needs you, and when a session is done), and give the kind of "needs you" (a permission, a question, a login) wherever Claude Code's hooks can tell; where they can't, an approximation is accepted.
 - The owner's Windows PC check (§10.4) confirms the choice with a real Claude Code on a desktop Windows.
 
