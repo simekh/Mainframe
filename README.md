@@ -34,7 +34,9 @@ npm install
 npm start
 ```
 
-At the first start, Mainframe asks for a project folder. To open more, use **File → Open Project…** (⌘O). Mainframe remembers which projects are open.
+At the first start, Mainframe opens a setup screen. It looks for `git` and `claude`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…** to point it at a Claude Code it missed, **How to install** to open the install page, and **Look again** once you've fixed it. When both work, it asks which project to start with: any folder that is a git repository.
+
+Mainframe remembers the `claude` it found in `settings.json` in its data folder. At every start it checks `git` and `claude` again, and shows the setup screen only when one of them has moved or stopped working. To open more projects, use **File → Open Project…** (⌘O). Mainframe remembers which projects are open.
 
 ## Set up the Todo panel
 
@@ -51,7 +53,7 @@ Set these as environment variables before `npm start`:
 | Variable | What it does |
 |---|---|
 | `MAINFRAME_DATA_DIR` | Where Mainframe keeps its state (default: `~/Library/Application Support/mainframe`) |
-| `MAINFRAME_CLAUDE_BIN` | The `claude` command to run, if it isn't `claude` on your `PATH` |
+| `MAINFRAME_CLAUDE_BIN` | The `claude` file to run. Checked at every start, wins over the saved path, and is never saved. When it can't run, the setup screen says so and looks nowhere else |
 | `MAINFRAME_LOG_OSC=1` | Prints the sessions' status reports to the terminal |
 
 ## Develop
