@@ -114,8 +114,6 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
     files: localFiles,
     log: config.logOsc ? console.log : undefined,
   });
-  // DIAGNOSTIC (Windows e2e diagnosis), test-only: the e2e run reads the PTYs' state. Removed before the branch's last commit.
-  if (config.e2e) (globalThis as { mainframeHost?: SessionHost }).mainframeHost = host;
   // Before the window: a state.json it can't use stops the start here, with no window left
   // waiting for handlers that never come.
   const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
