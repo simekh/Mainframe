@@ -524,16 +524,6 @@ button {
   text-overflow: ellipsis;
 }
 
-/* The service's name opens the list, in the accent of the ticket's Open in. */
-.todo-source-link {
-  color: var(--accent);
-}
-
-.todo-source-link:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
-}
-
 .todo-synced {
   flex: none;
   display: inline-flex;
@@ -887,16 +877,23 @@ button {
   gap: 4px;
 }
 
-/* The way to the live card: here, and in the session panel beside the branch (`.p-card-link`). */
+/* The way to the live card: here, and in the session panel beside the branch (`.p-card-link`); and to the list, in the
+   Todo panel's source line, where it keeps the line's type. */
+.ticket-link,
+.p-card-link,
+.todo-source-link {
+  color: var(--accent);
+}
+
 .ticket-link,
 .p-card-link {
-  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
 }
 
 .ticket-link:hover,
-.p-card-link:hover {
+.p-card-link:hover,
+.todo-source-link:hover {
   color: var(--accent-hover);
   text-decoration: underline;
 }
