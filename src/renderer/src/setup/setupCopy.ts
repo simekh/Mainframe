@@ -47,7 +47,8 @@ export function checkLine(name: 'git' | 'claude', check: ProgramCheck | 'looking
     case 'found':
       return `found  ${name === 'git' ? `git ${check.version}` : `${check.path} · v${check.version}`}  ✓`;
     case 'missing':
-      return 'not found  ✗';
+      // A path is there only for a file picked by hand, or named by MAINFRAME_CLAUDE_BIN.
+      return check.path === undefined ? 'not found  ✗' : `${check.path} isn't a program I can run  ✗`;
     case 'too-old':
       return `${check.path} · v${check.version}, too old  ✗`;
     case 'broken':
@@ -120,9 +121,11 @@ function claudeBlock(view: SetupView): Explanation | null {
       return {
         check: 'claude',
         lines: [
-          platform === 'win32'
-            ? "Hmm. I looked on your PATH, in %USERPROFILE%\\.local\\bin and in npm's global folder, and Claude Code wasn't in any of them."
-            : "Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.",
+          claude.path !== undefined
+            ? `${claude.path} isn't a program I can run.`
+            : platform === 'win32'
+              ? "Hmm. I looked on your PATH, in %USERPROFILE%\\.local\\bin and in npm's global folder, and Claude Code wasn't in any of them."
+              : "Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.",
           "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.",
         ],
         buttons: ['find-claude', 'install-claude', 'look-again'],

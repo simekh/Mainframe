@@ -43,6 +43,10 @@ describe('checkLine', () => {
     expect(checkLine('claude', { state: 'missing' })).toBe('not found  ✗');
   });
 
+  it('says a file that was picked and is no program, with its path', () => {
+    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' })).toBe("/opt/claude isn't a program I can run  ✗");
+  });
+
   it('says a claude that is too old, with its path and version', () => {
     expect(checkLine('claude', { state: 'too-old', path: '/opt/claude', version: '2.0.1' })).toBe(
       '/opt/claude · v2.0.1, too old  ✗',
@@ -166,6 +170,18 @@ describe('explanations', () => {
           buttons: ['find-claude', 'install-claude', 'look-again'],
         },
       ]);
+    });
+
+    it("after a file was picked that can't be run: says which file, in place of the places looked in", () => {
+      for (const platform of ['darwin', 'linux', 'win32'] as const) {
+        expect(blocks({ platform, claude: { state: 'missing', path: '/opt/claude' } })).toEqual([
+          {
+            check: 'claude',
+            lines: ["/opt/claude isn't a program I can run.", ASK],
+            buttons: ['find-claude', 'install-claude', 'look-again'],
+          },
+        ]);
+      }
     });
 
     it('on macOS and Linux: names the two places looked in', () => {
