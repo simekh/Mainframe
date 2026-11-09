@@ -298,9 +298,13 @@ test('unpinned, the manager floats over the board under its top bar, a press on 
   await show.click();
   await expect(column).toBeVisible();
   await expect(page.getByTestId('manager-hide')).toBeFocused();
+  const arrow = await box(page, 'manager-hide');
   await page.getByTestId('manager-hide').click();
   await expect(column).toBeHidden();
   await expect(show).toBeFocused();
+  // The way back is level with the arrow that put the manager away.
+  const way = await box(page, 'manager-show');
+  expect(Math.abs(way.y + way.height / 2 - (arrow.y + arrow.height / 2))).toBeLessThanOrEqual(1);
   expect(await managerTermSize(page)).toEqual(floatingSize);
   await expectSessionSize(floatingSize, (line) => sendManagerLine(page, line), () => managerScreen(page));
   await first.app.close();

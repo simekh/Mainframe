@@ -205,8 +205,8 @@ export default function ProjectPane(props: {
           </div>
         </section>
 
-        {/* Laid out left of the board, but after it in the page: macOS carves the top bar's drag region
-            only for what comes after it, and the unpinned column floats over the top bar. */}
+        {/* Laid out left of the board, and before the Todo panel in the page: macOS carves a drag region
+            only for what comes after it, and that panel floats over this column's title bar. */}
         <ManagerColumn
           config={props.config}
           width={shownManagerWidth()}
@@ -219,7 +219,8 @@ export default function ProjectPane(props: {
           onOpenChange={setManagerOpen}
         />
 
-        {/* After the manager, for the same reason: it floats over the manager and the top bar. */}
+        {/* After the manager and the board, for that reason: it floats over the manager's title bar, and its
+            ticket over the top bar. */}
         <TodoPanel
           width={shownTodoWidth()}
           maxWidth={todoWidthIn(Infinity)}

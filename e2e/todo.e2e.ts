@@ -338,6 +338,8 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   const under = await box(page, 'manager-column');
   expect(floating.x).toBeLessThan(under.x + under.width);
   expect(under.x).toBeLessThan(floating.x + floating.width);
+  // From that column's top, which the board's top bar doesn't reach, its tab on the manager's title line.
+  expect(Math.abs(floating.y - under.y)).toBeLessThanOrEqual(1);
   expect(await isOnTop(panel)).toBe(true);
 
   // Its arrow puts it away and hands the focus to the Todo button, which brings it back.

@@ -1863,6 +1863,12 @@ kbd {
   top: 46px;
 }
 
+/* Over the pinned manager, which the top bar doesn't reach, the Todo panel covers that column from its top, its tab
+   on the manager's title line. */
+.project-pane:has(> .manager-column[data-pinned='true'][data-open='true']) > .todo-panel[data-pinned='false'] {
+  top: 8px;
+}
+
 .side-panel[data-pinned='false'] {
   right: 8px;
   z-index: 5;
@@ -2016,6 +2022,12 @@ kbd {
   border: 1px solid var(--border);
   border-left: 0;
   border-radius: 0 999px 999px 0;
+}
+
+/* Level with the floating manager's arrow: that island starts under the top bar, so its middle is 19 px below the
+   pane's. */
+.manager-column[data-pinned='false'] + .panel-show {
+  top: calc(50% + 19px);
 }
 
 /* Beside the pinned Todo panel, below the hide pill that overhangs that panel's edge. */
