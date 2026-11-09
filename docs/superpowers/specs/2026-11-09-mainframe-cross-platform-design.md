@@ -193,7 +193,9 @@ Rules that go with it:
 - The main process works as on the Mac (a real pty, POSIX paths and shells), so starting sessions and the board's status should carry over.
 - Keys and the window follow Windows (§6, §7).
 - `npm install` needs a compiler (§3); the README says so.
-- **Mainframe must start on a current Ubuntu without anyone changing system settings.** Ubuntu 24.04 and later block the unprivileged user namespaces Electron's sandbox needs, so Electron stops at launch on a friend's machine. The CI job switches that block off (§10.1), which hides the problem. How Mainframe starts there (and what the README says, if anything) is plan 2's to decide; once it is handled, the CI step that switches the block off comes out, so CI tests what a friend gets.
+- **Mainframe must start on a current Ubuntu without anyone changing system settings.** Ubuntu 24.04 and later block the unprivileged user namespaces Electron's sandbox needs, so Electron stops at launch on a friend's machine. The CI job switches that block off (§10.1), which hides the problem. Once it is handled, the CI step that switches the block off comes out, so CI tests what a friend gets.
+  - **Decision (owner, 2026-11-09): start without the sandbox where Ubuntu blocks it, and say how to keep it.** `npm start` runs a small start script. On Linux, when `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` reads `1`, it starts Electron with `--no-sandbox` (electron-vite's `preview --noSandbox`) and prints one line saying so. Macs, Windows and other Linuxes keep the sandbox. The README explains the one-time admin step that keeps the sandbox on (an AppArmor profile for `node_modules/electron/dist/electron`). The flag has to be on the command line: Chromium sets up its sandbox before any of Mainframe's code runs, so `app.commandLine.appendSwitch` is too late.
+  - Playwright adds `--no-sandbox` on Linux by itself, so the e2e tests can't show that `npm start` works; CI gets a step that runs `npm start` the way a friend does, on Ubuntu with the block left on.
 
 ## 10. Tests and checks
 
