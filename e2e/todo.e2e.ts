@@ -757,6 +757,7 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await again.first().click();
   await page.getByTestId('ticket-panel').getByLabel('Text').fill('Remove the old flags.');
   await page.getByTestId('ticket-start').focus();
+  await expect(page.getByTestId('ticket-start')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect.poll(() => taskBriefs(page)).toEqual([{ title: 'Tidy the feature flags', description: 'Remove the old flags.' }]);
   await expect(again).toHaveCount(0);
