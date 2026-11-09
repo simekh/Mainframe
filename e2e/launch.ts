@@ -25,14 +25,17 @@ export async function cleanUp(): Promise<void> {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
-/** The app's environment in a test: `e2e/fake-claude.sh` as `claude`, logging to the data folder. */
+/**
+ * The app's environment in a test: `e2e/fake-claude.cjs` as `claude` (on Windows the .exe the global
+ * setup built from it), logging to the data folder.
+ */
 function appEnv(dataDir: string, env: Record<string, string>): Record<string, string> {
   const fakeClaudeLogDir = join(dataDir, 'fake-claude');
   mkdirSync(fakeClaudeLogDir, { recursive: true });
   return {
     ...(process.env as Record<string, string>),
     MAINFRAME_E2E: '1',
-    MAINFRAME_CLAUDE_BIN: join(root, 'e2e', 'fake-claude.sh'),
+    MAINFRAME_CLAUDE_BIN: process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake-claude.cjs'),
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
@@ -42,7 +45,7 @@ function appEnv(dataDir: string, env: Record<string, string>): Record<string, st
 }
 
 /**
- * Starts the built app with `e2e/fake-claude.sh` as `claude`, in a data folder of its own: a fresh
+ * Starts the built app with `e2e/fake-claude.cjs` as `claude`, in a data folder of its own: a fresh
  * one unless `env` names one (to relaunch on the same tasks). It opens `projects`, which the data
  * folder's `projects.json` names, so the folder dialog never shows.
  */
@@ -92,7 +95,9 @@ const electronBin: string = require('electron');
  * promise rejects.
  */
 export function launchAgain(dataDir: string, timeoutMs = 15_000): Promise<number | null> {
-  const proc = spawn(electronBin, [root], { env: appEnv(dataDir, {}), stdio: 'ignore' });
+  // On Linux without Chromium's sandbox, as Playwright's own launch runs it.
+  const args = process.platform === 'linux' ? [root, '--no-sandbox'] : [root];
+  const proc = spawn(electronBin, args, { env: appEnv(dataDir, {}), stdio: 'ignore' });
   return new Promise((resolve, reject) => {
     let timedOut = false;
     const timer = setTimeout(() => {

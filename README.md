@@ -54,4 +54,6 @@ npm run typecheck
 npm run test:e2e    # builds, then runs the end-to-end tests (Playwright + Electron)
 ```
 
+On Windows the end-to-end tests need [Git for Windows](https://gitforwindows.org/), because their stand-in for `claude` opens Git Bash.
+
 Mainframe adapts some code from Parallel Code; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

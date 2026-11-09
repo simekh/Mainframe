@@ -14,7 +14,7 @@ test.afterEach(cleanUp);
 /** A project folder of its own, removed after the test. */
 const folder = () => removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-todo-')));
 
-const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project="${dir}"]`);
+const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(dir)}]`);
 
 /** What the first sync answers: the connector that holds the list, and its tools that only read. */
 const TOOLS = { kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_list'] };
@@ -254,7 +254,7 @@ test('a sync that changes a card updates its row in place, and the other rows st
 test('two projects side by side keep their own lists', async () => {
   const [acme, globex] = [folder(), folder()];
   const { app, page, dataDir } = await launchApp({}, [acme, globex]);
-  const row = page.locator(`[data-testid=rail-project][data-project="${globex}"]`);
+  const row = page.locator(`[data-testid=rail-project][data-project=${JSON.stringify(globex)}]`);
   await row.hover();
   await row.getByTestId('rail-beside').click();
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');

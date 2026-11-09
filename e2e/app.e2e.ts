@@ -45,7 +45,7 @@ test('Open Project… opens the picked folder beside the open one and shows it, 
   }, picked);
 
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
-  await expect(page.locator(`[data-testid=project-pane][data-project="${picked}"]`)).toHaveAttribute('data-shown', 'true');
+  await expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(picked)}]`)).toHaveAttribute('data-shown', 'true');
   expect(JSON.parse(readFileSync(projectsFile, 'utf8'))).toEqual({ version: 1, open: [first, picked] });
   await app.close();
 });

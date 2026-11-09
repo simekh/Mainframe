@@ -1,18 +1,11 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
-import { cleanUp, launchApp, removeAfterTest } from './launch';
+import { cleanUp, launchApp } from './launch';
 
 test.afterEach(cleanUp);
 
 test("a task's session streams output, reports OSC 7501 status and exit", async () => {
-  const dir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-bridge-')));
-  const claude = join(dir, 'claude');
-  writeFileSync(claude, "#!/bin/sh\nprintf 'bridge-%s' ok; printf '\\033]7501;state=working\\033\\\\'; sleep 0.3\n", {
-    mode: 0o755,
-  });
-  const { app, page } = await launchApp({ MAINFRAME_CLAUDE_BIN: claude });
+  // fake-claude prints some output and a working status, then exits a moment later.
+  const { app, page } = await launchApp({ FAKE_CLAUDE_BRIDGE: '1' });
 
   const result = await page.evaluate(async () => {
     const api = window.mainframe;

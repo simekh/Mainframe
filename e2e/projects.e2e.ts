@@ -6,8 +6,8 @@ import { launches, managerLaunches, report, repo, screen, sendLine } from './tas
 
 test.afterEach(cleanUp);
 
-const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project="${dir}"]`);
-const row = (page: Page, dir: string) => page.locator(`[data-testid=rail-project][data-project="${dir}"]`);
+const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(dir)}]`);
+const row = (page: Page, dir: string) => page.locator(`[data-testid=rail-project][data-project=${JSON.stringify(dir)}]`);
 const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
 const openProjects = (dataDir: string) => JSON.parse(readFileSync(join(dataDir, 'projects.json'), 'utf8')).open;
 

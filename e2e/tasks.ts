@@ -133,7 +133,7 @@ export const closeTask = (page: Page, taskId: string) =>
 export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
-/** What `e2e/fake-claude.sh` recorded of each launch in this data folder, oldest first. */
+/** What `e2e/fake-claude.cjs` recorded of each launch in this data folder, oldest first. */
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The conversation a launch began. */
@@ -184,13 +184,30 @@ export const holdSyncs = (dataDir: string) => writeFileSync(join(fakeLogDir(data
 
 export const releaseSyncs = (dataDir: string) => rmSync(join(fakeLogDir(dataDir), 'sync-hold'), { force: true });
 
-const syncMarks = (dataDir: string, ext: string) => readdirSync(fakeLogDir(dataDir)).filter((name) => name.endsWith(ext)).length;
+/** The sync runs' files that end in `ext`, each named `<pid><ext>`. */
+const syncMarks = (dataDir: string, ext: string) => readdirSync(fakeLogDir(dataDir)).filter((name) => name.endsWith(ext));
 
 /** How many sync runs are waiting, held. Stopping one before it waits could find it before it can record the stop. */
-export const heldSyncs = (dataDir: string) => syncMarks(dataDir, '.holding');
+export const heldSyncs = (dataDir: string) => syncMarks(dataDir, '.holding').length;
 
-/** How many sync runs got SIGTERM, which is how Mainframe stops one. */
-export const stoppedSyncs = (dataDir: string) => syncMarks(dataDir, '.sigterm');
+const isGone = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * How many sync runs were stopped. Mainframe stops one with SIGTERM, which the run records. Windows
+ * can't run a handler when a process is stopped, so there it counts the held runs whose process has
+ * gone: a held run ends only by a stop or a release.
+ */
+export const stoppedSyncs = (dataDir: string) =>
+  process.platform === 'win32'
+    ? syncMarks(dataDir, '.holding').filter((name) => isGone(Number.parseInt(name, 10))).length
+    : syncMarks(dataDir, '.sigterm').length;
 
 /** The Todo folder in this data folder, where an e2e run's one synced project keeps its list and the sync's settings. */
 export function todoDir(dataDir: string): string {
