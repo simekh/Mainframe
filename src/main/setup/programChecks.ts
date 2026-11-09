@@ -67,7 +67,9 @@ export async function checkClaude(path: string, run: VersionRunner, files: Execu
  * one beside it. When none works, the failure that helps most: too old, then broken, then missing.
  */
 export async function findClaude(o: { fromEnv?: string; saved?: string; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
-  if (o.fromEnv) return checkClaude(o.fromEnv, o.run, o.lookup.files);
+  // An empty fromEnv counts as unset (config already throws on an empty MAINFRAME_CLAUDE_BIN). Looked
+  // up as sessions look it up, so the absolute path that is checked is the one they will run.
+  if (o.fromEnv) return checkClaude(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
   const failures: ProgramCheck[] = [];
   for (const path of new Set([...(o.saved ? [o.saved] : []), ...claudePlaces(o.lookup)])) {
     const check = await checkClaude(path, o.run, o.lookup.files);

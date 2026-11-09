@@ -163,6 +163,44 @@ describe('findClaude', () => {
     expect(run.calls).toEqual([]);
   });
 
+  it("with a relative fromEnv, checks and gives the absolute path sessions will run (from Mainframe's folder, once)", async () => {
+    const lookup = mac(mapPath, '/claude-code/dist/claude');
+    const run = fakeRun({ '/claude-code/dist/claude': current });
+    expect(await findClaude({ fromEnv: '../claude-code/dist/claude', lookup, run })).toEqual({
+      state: 'found',
+      path: '/claude-code/dist/claude',
+      version: '2.1.319',
+    });
+    expect(run.calls).toEqual(['/claude-code/dist/claude']);
+  });
+
+  it('with a bare fromEnv, looks the name up on PATH, as sessions do, and gives where it is', async () => {
+    const lookup = mac(mapPath, '/usr/bin/claude-dev');
+    const run = fakeRun({ '/usr/bin/claude-dev': current });
+    expect(await findClaude({ fromEnv: 'claude-dev', lookup, run })).toEqual({
+      state: 'found',
+      path: '/usr/bin/claude-dev',
+      version: '2.1.319',
+    });
+  });
+
+  it("with a bare fromEnv, a file of that name in Mainframe's own folder is not run: only PATH is searched", async () => {
+    const lookup = mac(mapPath, '/repo/claude-dev');
+    const run = fakeRun({ '/repo/claude-dev': current });
+    expect(await findClaude({ fromEnv: 'claude-dev', lookup, run })).toEqual({ state: 'missing', path: 'claude-dev' });
+    expect(run.calls).toEqual([]);
+  });
+
+  it('win32: a bare fromEnv is looked up on PATH with its .exe', async () => {
+    const lookup = win(winEnv, 'C:\\bin\\claude-dev.exe');
+    const run = fakeRun({ 'C:\\bin\\claude-dev.exe': current });
+    expect(await findClaude({ fromEnv: 'claude-dev', lookup, run })).toEqual({
+      state: 'found',
+      path: 'C:\\bin\\claude-dev.exe',
+      version: '2.1.319',
+    });
+  });
+
   it('tries the saved path first', async () => {
     const lookup = mac(mapPath, '/saved/claude', '/usr/bin/claude', NATIVE);
     const run = fakeRun({ '/saved/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
