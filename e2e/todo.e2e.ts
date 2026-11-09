@@ -763,7 +763,8 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await expect(page.getByTestId('ticket-panel')).toHaveCount(0);
   await expect(page.getByTestId('panel-title')).toHaveText('Tidy the feature flags');
   await expect.poll(() => terminalHasFocus(page)).toBe(true);
-  expect(launches(dataDir)).toHaveLength(1);
+  // The terminal has focus before the session's program has started and logged its launch.
+  await expect.poll(() => launches(dataDir)).toHaveLength(1);
 
   // A new note's Start starts a task as New task does, and keeps no note.
   await page.getByTestId('todo-add-note').click();
