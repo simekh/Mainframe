@@ -272,7 +272,9 @@ test('reloading the window keeps running tasks running, in the state they last r
   await expect(cardIn(page, 'needs-you', id).getByTestId('task-ask')).toHaveText('Needs input');
   await expect(card(page, id).getByTestId('task-activity')).toHaveText('Asking you a question');
   await card(page, id).click();
-  await run(page, 'echo still-$((2+2))');
+  // The card brings the task's terminal on screen, resized to its place there: so, as after the
+  // other resizes, Git Bash on Windows may lose the first key of the line (run 4: `cho` for `echo`).
+  await sendAfterResize((line) => run(page, line), 'echo still-$((2+2))');
   await expect.poll(() => screen(page, id)).toContain('still-4');
   expect(launches(dataDir)).toHaveLength(1);
   await app.close();
