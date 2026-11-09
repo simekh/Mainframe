@@ -34,7 +34,8 @@ function pathValue({ env, platform }: ExecutableLookup): string {
   return platform === 'win32' ? '' : DEFAULT_PATH;
 }
 
-function searchDirs(o: ExecutableLookup): string[] {
+/** The folders a bare name is searched in, in PATH's order. */
+export function searchDirs(o: ExecutableLookup): string[] {
   const dirs = pathValue(o).split(o.platform === 'win32' ? win32.delimiter : posix.delimiter);
   if (o.platform !== 'win32') return dirs.map((dir) => dir || '.');
   // Entries may be quoted. Only an absolute one is searched: an empty or relative entry

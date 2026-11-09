@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { posix, win32 } from 'node:path';
 import { promisify } from 'node:util';
 import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
-import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
+import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,15 +38,20 @@ export function isAtLeast(version: string, min: string): boolean {
 
 /**
  * Where claude may be, after a saved path: PATH, the native installer's file, and on Windows npm's
- * real executable (npm's `claude.cmd` is a launcher script Mainframe never runs). On macOS and Linux
- * npm's `claude` sits beside `node`, which is on PATH, so PATH covers it.
+ * real executable (npm's `claude.cmd` is a launcher script Mainframe never runs). That executable
+ * is in the package beside `claude.cmd`, in the global folder of whichever npm prefix is on PATH
+ * (a version manager's, say), or else of the default one in %APPDATA%. On macOS and Linux npm's
+ * `claude` sits beside `node`, which is on PATH, so PATH covers it.
  */
 export function claudePlaces(lookup: ExecutableLookup): string[] {
   const { env } = lookup;
   const places = [findExecutable('claude', lookup)];
   if (lookup.platform === 'win32') {
     if (env.USERPROFILE) places.push(win32.join(env.USERPROFILE, '.local', 'bin', 'claude.exe'));
-    if (env.APPDATA) places.push(win32.join(env.APPDATA, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+    // On Windows a file is executable when it is there, so this asks whether claude.cmd is.
+    const npmFolders = searchDirs(lookup).filter((dir) => lookup.files.isExecutableFile(win32.join(dir, 'claude.cmd')));
+    if (env.APPDATA) npmFolders.push(win32.join(env.APPDATA, 'npm'));
+    for (const dir of npmFolders) places.push(win32.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
   } else if (env.HOME) {
     places.push(posix.join(env.HOME, '.local', 'bin', 'claude'));
   }

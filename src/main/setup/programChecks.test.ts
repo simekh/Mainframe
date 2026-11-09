@@ -39,6 +39,11 @@ const mapPath = { PATH: '/usr/bin', HOME: '/Users/x' };
 const WIN_NATIVE = 'C:\\Users\\x\\.local\\bin\\claude.exe';
 const WIN_NPM = 'C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe';
 const winEnv = { Path: 'C:\\bin', USERPROFILE: 'C:\\Users\\x', APPDATA: 'C:\\Users\\x\\AppData\\Roaming' };
+// A custom npm prefix (nvm-windows, fnm, Volta): claude.cmd on PATH there, the package beside it.
+const PREFIX = 'D:\\nvm\\v26';
+const PREFIX_CMD = `${PREFIX}\\claude.cmd`;
+const PREFIX_EXE = `${PREFIX}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
+const prefixEnv = { ...winEnv, Path: `C:\\bin;${PREFIX}` };
 
 describe('parseClaudeVersion', () => {
   it("reads the version from claude's own line", () => {
@@ -96,6 +101,24 @@ describe('claudePlaces', () => {
 
   it('win32: never lists claude.cmd', () => {
     expect(claudePlaces(win(winEnv, 'C:\\bin\\claude.cmd')).some((place) => place.endsWith('.cmd'))).toBe(false);
+  });
+
+  it("win32: a PATH folder holding claude.cmd adds the package's claude.exe beside it, after the native one and before %APPDATA%'s", () => {
+    expect(claudePlaces(win(prefixEnv, PREFIX_CMD))).toEqual([WIN_NATIVE, PREFIX_EXE, WIN_NPM]);
+  });
+
+  it('win32: a PATH folder without claude.cmd adds no npm place', () => {
+    expect(claudePlaces(win(prefixEnv))).toEqual([WIN_NATIVE, WIN_NPM]);
+  });
+
+  it("win32: npm's own folder on PATH is listed once", () => {
+    const npmFolder = 'C:\\Users\\x\\AppData\\Roaming\\npm';
+    expect(claudePlaces(win({ ...winEnv, Path: npmFolder }, `${npmFolder}\\claude.cmd`))).toEqual([WIN_NATIVE, WIN_NPM]);
+  });
+
+  it('win32: reads PATH as the lookup does: quotes stripped, relative entries left out', () => {
+    const quoted = { ...winEnv, Path: `"${PREFIX}";npm` };
+    expect(claudePlaces(win(quoted, PREFIX_CMD, 'C:\\repo\\npm\\claude.cmd'))).toEqual([WIN_NATIVE, PREFIX_EXE, WIN_NPM]);
   });
 });
 
@@ -224,6 +247,18 @@ describe('findClaude', () => {
     const lookup = win(winEnv, WIN_NPM);
     const run = fakeRun({ [WIN_NPM]: null });
     expect(await findClaude({ lookup, run })).toEqual({ state: 'broken', path: WIN_NPM });
+  });
+
+  it("win32: finds the real claude.exe behind a claude.cmd in a custom npm prefix, and never runs the .cmd", async () => {
+    const lookup = win(prefixEnv, PREFIX_CMD, PREFIX_EXE);
+    const run = fakeRun({ [PREFIX_EXE]: current });
+    expect(await findClaude({ lookup, run })).toEqual({ state: 'found', path: PREFIX_EXE, version: '2.1.319' });
+    expect(run.calls).toEqual([PREFIX_EXE]);
+  });
+
+  it("win32: a claude.cmd with only npm's placeholder behind it is broken, and the placeholder's path is given", async () => {
+    const lookup = win(prefixEnv, PREFIX_CMD, PREFIX_EXE);
+    expect(await findClaude({ lookup, run: fakeRun({ [PREFIX_EXE]: null }) })).toEqual({ state: 'broken', path: PREFIX_EXE });
   });
 
   it('win32: finds the native installer when PATH has nothing', async () => {
