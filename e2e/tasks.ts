@@ -133,7 +133,7 @@ export const closeTask = (page: Page, taskId: string) =>
 export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
 
-export const UUID =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The conversation a launch began. */
 export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
