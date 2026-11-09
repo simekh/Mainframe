@@ -16,6 +16,10 @@ function orNull(read) {
   }
 }
 
+// Electron has no install script: it downloads its binary the first time it is required. electron-vite's
+// preview and the sandbox helper below both need that binary on disk, so a fresh clone gets it here.
+require('electron');
+
 const restriction = orNull(() => readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8'));
 const helper = orNull(() => {
   const { uid, mode } = statSync(join(dirname(require.resolve('electron/package.json')), 'dist', 'chrome-sandbox'));
