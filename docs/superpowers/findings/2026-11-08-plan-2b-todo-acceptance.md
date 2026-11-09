@@ -60,7 +60,12 @@ The owner asked for these while trying the branch. Each was agreed in chat.
 - An image in a description shows as its alt text, not as a link to the picture.
 - The set-aside comment now says the notes go with the file.
 
-The other four were left with reasons in the plan's ledger: card fields in a task's opening prompt, notes in a `todo.json` that fails validation, card ids colliding across trackers, and two starts at once in one project.
+The other four were left as they are:
+
+- **Card fields in a task's opening prompt.** The session is told to read the same card through its connector, so pasting the card's labels and URL gives a crafted card no reach it doesn't already have.
+- **Notes in a `todo.json` that fails validation.** Mainframe validates what it saves, so only a hand edit gets there. The file is kept aside whole, notes included.
+- **Card ids colliding across trackers.** The ids are each service's own (`ari:cloud:trello::card/…` on Trello). Keying on the service's name as well would break when the model spells that name differently.
+- **Two starts at once in one project.** New task and a Todo Start that overlap select whichever task finishes starting last.
 
 ## Points raised with the owner
 
