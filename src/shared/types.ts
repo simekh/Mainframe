@@ -65,6 +65,21 @@ export interface ProgramCheck {
   version?: string;
 }
 
+/** What the setup screen shows. The main process publishes a new one at every step, and `null` once the board can appear. */
+export interface SetupView {
+  /** The welcome at a true first start; "something moved" at any later start. */
+  intro: 'welcome' | 'moved';
+  git: ProgramCheck;
+  claude: ProgramCheck;
+  /** MAINFRAME_CLAUDE_BIN names the claude, so it is the only place looked at and nothing is saved. */
+  claudeFromEnv: boolean;
+  /** The user asked to look again and something is still missing: a fresh install may need a new terminal. */
+  lookedAgain: boolean;
+  /** Everything is found, and a first project is the next question. */
+  askProject: boolean;
+  platform: NodeJS.Platform;
+}
+
 export interface StartCheck {
   /** Commits on the main checkout's branch that origin/HEAD does not have. */
   ahead: number;

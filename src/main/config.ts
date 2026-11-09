@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
 
 export interface AppConfig {
-  claudeBin: string;
+  /** MAINFRAME_CLAUDE_BIN; not set when the setup is to find claude itself. */
+  claudeBin?: string;
   dataDir: string;
   inputBatchMs: number;
   outputBatchMs: number;
@@ -9,9 +10,8 @@ export interface AppConfig {
   e2e: boolean;
 }
 
-function readClaudeBin(env: NodeJS.ProcessEnv): string {
+function readClaudeBin(env: NodeJS.ProcessEnv): string | undefined {
   const raw = env.MAINFRAME_CLAUDE_BIN;
-  if (raw === undefined) return 'claude';
   if (raw === '') throw new Error('MAINFRAME_CLAUDE_BIN must name the claude binary, got an empty value');
   return raw;
 }

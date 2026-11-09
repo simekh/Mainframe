@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { localFiles } from './pty/sessionHost';
 import { writeJsonAtomic } from './tasks/taskStore';
@@ -49,10 +49,26 @@ export function writeOpenProjects(dataDir: string, open: string[]): void {
   writeJsonAtomic(join(dataDir, FILE), { version: VERSION, open });
 }
 
+/** Whether Mainframe has remembered projects before, even if the file can no longer be used. */
+export function hasProjectsFile(dataDir: string): boolean {
+  return existsSync(join(dataDir, FILE));
+}
+
+/**
+ * The remembered folders that are still there, and no more: nothing is asked or written. A folder
+ * that has gone is left out, and drops out of `projects.json` at the next change to the list.
+ */
+export function rememberedProjects(dataDir: string, warn: (msg: string) => void): string[] {
+  return readOpen(dataDir, warn).filter((dir) => {
+    const there = localFiles.isDirectory(dir);
+    if (!there) warn(`The project folder ${dir} has gone; Mainframe leaves it out`);
+    return there;
+  });
+}
+
 /**
  * The projects to open at start: the remembered ones whose folders are there, or else the one the
- * owner picks, which is remembered. None when they cancel. A folder that has gone is left out, and
- * drops out of `projects.json` at the next change to the list.
+ * owner picks, which is remembered. None when they cancel.
  */
 export async function chooseProjects(deps: {
   dataDir: string;
@@ -60,11 +76,7 @@ export async function chooseProjects(deps: {
   pick: () => Promise<string | undefined>;
   warn: (msg: string) => void;
 }): Promise<string[]> {
-  const present = readOpen(deps.dataDir, deps.warn).filter((dir) => {
-    const there = localFiles.isDirectory(dir);
-    if (!there) deps.warn(`The project folder ${dir} has gone; Mainframe leaves it out`);
-    return there;
-  });
+  const present = rememberedProjects(deps.dataDir, deps.warn);
   if (present.length > 0) return present;
   const picked = await deps.pick();
   if (picked === undefined) return [];

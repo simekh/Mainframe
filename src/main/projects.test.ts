@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { chooseProjects, writeOpenProjects } from './projects';
+import { chooseProjects, hasProjectsFile, rememberedProjects, writeOpenProjects } from './projects';
 
 let root: string;
 let dataDir: string;
@@ -26,6 +26,39 @@ const projectsFile = () => join(dataDir, 'projects.json');
 const remember = (value: unknown) => writeFileSync(projectsFile(), JSON.stringify(value));
 const remembered = () => JSON.parse(readFileSync(projectsFile(), 'utf8'));
 const picker = (answer: string | undefined) => vi.fn(async () => answer);
+
+describe('rememberedProjects', () => {
+  it('lists the remembered folders that are still there, in order, and says which one has gone', () => {
+    const gone = join(root, 'gone');
+    writeOpenProjects(dataDir, [globex, gone, acme]);
+    expect(rememberedProjects(dataDir, warn)).toEqual([globex, acme]);
+    expect(warnings).toEqual([`The project folder ${gone} has gone; Mainframe leaves it out`]);
+  });
+
+  it('writes nothing, and lists nothing when there is no file', () => {
+    expect(rememberedProjects(dataDir, warn)).toEqual([]);
+    expect(hasProjectsFile(dataDir)).toBe(false);
+  });
+
+  it('leaves a projects.json from a newer Mainframe as it is, and says so', () => {
+    remember({ version: 2, open: [acme] });
+    expect(() => rememberedProjects(dataDir, warn)).toThrow('newer Mainframe');
+    expect(remembered()).toEqual({ version: 2, open: [acme] });
+  });
+});
+
+describe('hasProjectsFile', () => {
+  it('is false before projects are remembered, and true once the file is there', () => {
+    expect(hasProjectsFile(dataDir)).toBe(false);
+    writeOpenProjects(dataDir, []);
+    expect(hasProjectsFile(dataDir)).toBe(true);
+  });
+
+  it('is true for a file that cannot be used: it was there', () => {
+    writeFileSync(projectsFile(), '{');
+    expect(hasProjectsFile(dataDir)).toBe(true);
+  });
+});
 
 describe('chooseProjects', () => {
   it('asks for a folder the first time and remembers it', async () => {

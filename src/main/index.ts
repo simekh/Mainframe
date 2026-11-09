@@ -96,7 +96,8 @@ function findPrograms(config: AppConfig): { env: Record<string, string>; claudeB
       'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.',
     );
   }
-  return { env, claudeBin: findExecutable(config.claudeBin, lookup) ?? config.claudeBin, nodeBin };
+  const claudeName = config.claudeBin ?? 'claude';
+  return { env, claudeBin: findExecutable(claudeName, lookup) ?? claudeName, nodeBin };
 }
 
 /** Throws when Mainframe can't start; a project that can't open is said and left out. */

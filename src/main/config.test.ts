@@ -3,9 +3,9 @@ import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config';
 
 describe('loadConfig', () => {
-  it('uses the defaults', () => {
+  it('uses the defaults, and sets no claude path of its own', () => {
     expect(loadConfig({}, '/data')).toEqual({
-      claudeBin: 'claude', dataDir: resolve('/data'), inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
+      claudeBin: undefined, dataDir: resolve('/data'), inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
     });
   });
 
