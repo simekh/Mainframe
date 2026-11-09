@@ -254,8 +254,6 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
-    // Looked up at each call, so an e2e run can stand in for the browser.
-    (url) => shell.openExternal(url),
   );
 
   for (const dir of projectDirs) {
@@ -310,7 +308,14 @@ async function launch(config: AppConfig): Promise<void> {
   });
   // The calls are registered in the same turn, before the page can make one.
   const begun = flow.begin();
-  registerSetupIpc({ inputBatchMs: config.inputBatchMs, e2e: config.e2e }, flow, begun, failStart);
+  registerSetupIpc(
+    { inputBatchMs: config.inputBatchMs, e2e: config.e2e },
+    flow,
+    begun,
+    failStart,
+    // Looked up at each call, so an e2e run can stand in for the browser.
+    (url) => shell.openExternal(url),
+  );
   await begun;
 }
 

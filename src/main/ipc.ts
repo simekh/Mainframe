@@ -24,8 +24,9 @@ export interface Project extends RegisteredProject {
 }
 
 /**
- * The calls that work before any project has started: the page's config and the setup screen's.
- * `begun` is the flow's `begin`, so the page's first answer is never a screen it doesn't need.
+ * The calls that work before any project has started: the page's config, the setup screen's, and
+ * opening a link (its How to install buttons). `begun` is the flow's `begin`, so the page's first
+ * answer is never a screen it doesn't need.
  */
 export function registerSetupIpc(
   rendererConfig: RendererConfig,
@@ -33,8 +34,10 @@ export function registerSetupIpc(
   begun: Promise<void>,
   /** Told why the projects couldn't start; it ends the app. */
   startFailed: (err: unknown) => void,
+  openExternal: (url: string) => Promise<void>,
 ): void {
   ipcMain.handle(IPC.getConfig, () => rendererConfig);
+  ipcMain.handle(IPC.openLink, (_e, url: unknown) => openLink(url, openExternal));
   ipcMain.handle(IPC.getSetup, async () => {
     await begun;
     return flow.view();
@@ -61,7 +64,6 @@ export function registerIpc(
   openPicked: () => Promise<void>,
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
-  openExternal: (url: string) => Promise<void>,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
@@ -163,8 +165,6 @@ export function registerIpc(
   ipcMain.handle(IPC.resolvePaste, () =>
     resolveClipboardPaste(clipboardDeps.clipboard, clipboardDeps.writeFile, clipboardDeps.newImagePath),
   );
-
-  ipcMain.handle(IPC.openLink, (_e, url: unknown) => openLink(url, openExternal));
 
   ipcMain.on(IPC.write, (_e, sessionId: string, data: string) => host.write(sessionId, data));
   ipcMain.on(IPC.resize, (_e, sessionId: string, cols: number, rows: number) => host.resize(sessionId, cols, rows));
