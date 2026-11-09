@@ -127,6 +127,8 @@ How the result decides what every Windows user gets. Mainframe supports current 
 - **The hook route** covers task sessions and the manager. It must tell the board's lanes apart exactly (working versus needs you, and when a session is done), and give the kind of "needs you" (a permission, a question, a login) wherever Claude Code's hooks can tell; where they can't, an approximation is accepted.
 - The owner's Windows PC check (§10.4) confirms the choice with a real Claude Code on a desktop Windows.
 
+**Result (2026-11-09): only the bundled ConPTY passed, so Windows uses it** (`docs/superpowers/findings/2026-11-09-windows-status-check.md`). Windows' own ConPTY answers `CSI c` itself and never passes Mainframe's reply on. The hook route isn't needed.
+
 The e2e tests' fake `claude` also prints OSC 7501 sequences, so this check decides whether those tests can pass on Windows as they are.
 
 A real Claude Code on Windows is then checked by hand on the owner's Windows PC or by a friend (§10.4).
