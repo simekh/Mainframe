@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
 import {
-  card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendLine, sessionIdOf, startTask,
-  termSize, UUID,
+  card, cardIn, closeTask, firstSpawn, fitSize, git, ids, launches, report, repo, run, screen, sendAfterResize, sendLine,
+  sessionIdOf, startTask, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -166,7 +166,7 @@ test('tasks reopened at startup start at the size their terminal shows', async (
   await card(page, id).click();
   const size = (await termSize(page, id))!;
   expect(await fitSize(page, id)).toEqual(size);
-  await run(page, 'stty size');
+  await sendAfterResize((line) => run(page, line), 'stty size');
   await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${size.rows} ${size.cols}$`, 'm'));
   expect(await termSize(page, id)).toEqual(size);
   await app.close();

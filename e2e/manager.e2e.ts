@@ -5,7 +5,8 @@ import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
   box, card, cardIn, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report,
-  repo, run, screen, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
+  repo, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize,
+  UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -292,7 +293,7 @@ test('unpinned, the manager floats over the board under its top bar, a press on 
   await expect(column).toBeHidden();
   // A hidden manager that comes to need the owner shows from its way back.
   const show = page.getByTestId('manager-show');
-  await sendManagerLine(page, report('blocked:kind=question'));
+  await sendAfterResize((line) => sendManagerLine(page, line), report('blocked:kind=question'));
   await expect(show.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
   await expect(show).toHaveAccessibleName('Show manager, Needs input');
 

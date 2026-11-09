@@ -2,7 +2,9 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, fitSize, git, launches, repo, run, screen, sendLine, settled, startTask, termSize } from './tasks';
+import {
+  card, cardIn, fitSize, git, launches, repo, run, screen, sendAfterResize, sendLine, settled, startTask, termSize,
+} from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -178,7 +180,7 @@ test('switching tasks resizes no terminal off screen, and none whose panel looks
 
   // The sessions have the sizes their terminals show, the one off screen too.
   for (const id of [a, b]) {
-    await sendLine(page, id, 'stty size');
+    await sendAfterResize((line) => sendLine(page, id, line), 'stty size');
     await expect.poll(() => screen(page, id)).toMatch(new RegExp(`^${shown[id].rows} ${shown[id].cols}$`, 'm'));
   }
   await app.close();

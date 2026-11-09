@@ -104,6 +104,18 @@ export async function sendLine(page: Page, taskId: string, line: string): Promis
   );
 }
 
+/**
+ * Sends `line` with `send`, after a lone Enter. Git Bash, the tests' shell on Windows, can notice a
+ * resize under ConPTY only when its next key arrives, and then loses that key; a focus-out just
+ * before the resize makes it likely. A program that reads the terminal raw, as Claude Code does,
+ * sees the resize at once and loses no key (terminal.e2e.ts). So a line that must arrive whole after
+ * a resize goes after the Enter, for Git Bash to lose; otherwise the Enter shows one more prompt.
+ */
+export async function sendAfterResize(send: (line: string) => Promise<void>, line: string): Promise<void> {
+  await send('');
+  await send(line);
+}
+
 /** Starts a task through the New task dialog; resolves with its id once its shell prompt shows. */
 export async function startTask(page: Page, title = 'Task', description = ''): Promise<string> {
   const before = await ids(page);
