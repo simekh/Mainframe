@@ -81,28 +81,11 @@ jobs:
         run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e
 
       - name: E2E tests
-        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        if: ${{ !cancelled() && runner.os != 'Linux' }}
         run: npm run test:e2e
 
-      # DIAGNOSTIC (Windows e2e diagnosis), reverted before the last push: the four tests that failed
-      # on Windows and the raw reader's guard, eight times each, then the whole suite once.
-      - name: E2E repeat (Windows)
-        if: ${{ !cancelled() && runner.os == 'Windows' }}
-        run: |
-          npx electron-vite build
-          npx playwright test e2e/terminal.e2e.ts:122 e2e/terminal.e2e.ts:141 e2e/manager.e2e.ts:266 e2e/session-panel.e2e.ts:117 e2e/tasks.e2e.ts:155 --repeat-each=8 --reporter=list --output=test-results/repeat
-
-      - name: E2E tests
-        if: ${{ !cancelled() && runner.os == 'Windows' }}
-        run: npx playwright test --reporter=list --output=test-results/full
-
-      - name: Print diagnostics
-        if: ${{ always() }}
-        shell: bash
-        run: find test-results -name 'diag-*.txt' -print -exec cat {} \; || true
-
       - uses: actions/upload-artifact@v7
-        if: ${{ always() }}
+        if: ${{ failure() }}
         with:
           name: test-results-${{ matrix.os }}
           path: test-results/

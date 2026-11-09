@@ -1,102 +1,9 @@
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import { _electron as electron, test, type ElectronApplication, type Page } from '@playwright/test';
+import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { writeOpenProjects } from '../src/main/projects';
-
-// DIAGNOSTIC (Windows e2e diagnosis): a record in main of each session's PTY traffic, written out
-// when a test fails. Removed before the branch's last commit.
-export interface DiagRecord {
-  t0: number;
-  events: Record<string, Array<[number, string, string]>>;
-  bytes: Record<string, number>;
-  /** Bytes per second of the run, per session. */
-  buckets: Record<string, Record<number, number>>;
-  pauses: Record<string, number>;
-  resumes: Record<string, number>;
-  pausedNow: Record<string, boolean>;
-  lastData: Record<string, number>;
-}
-
-async function installRecorder(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ app: electronApp, BrowserWindow, ipcMain }) => {
-    const t0 = Date.now();
-    const d: DiagRecord = { t0, events: {}, bytes: {}, buckets: {}, pauses: {}, resumes: {}, pausedNow: {}, lastData: {} };
-    const add = (id: string, kind: string, data: string) => {
-      const list = (d.events[id] ??= []);
-      const text = data.length > 600 ? `${data.slice(0, 600)}…(+${data.length - 600})` : data;
-      if (list.length < 4000) list.push([Date.now() - t0, kind, text]);
-    };
-    ipcMain.on('pty:write', (_e, id: string, data: string) => add(id, 'in', JSON.stringify(data)));
-    ipcMain.on('pty:resize', (_e, id: string, cols: number, rows: number) => add(id, 'resize', `${cols}x${rows}`));
-    ipcMain.on('pty:pause', (_e, id: string) => {
-      d.pauses[id] = (d.pauses[id] ?? 0) + 1;
-      d.pausedNow[id] = true;
-      add(id, 'pause', String(d.bytes[id] ?? 0));
-    });
-    ipcMain.on('pty:resume', (_e, id: string) => {
-      d.resumes[id] = (d.resumes[id] ?? 0) + 1;
-      d.pausedNow[id] = false;
-      add(id, 'resume', String(d.bytes[id] ?? 0));
-    });
-    const wrap = (win: { webContents: { send: (channel: string, ...args: unknown[]) => void } }) => {
-      const wc = win.webContents;
-      const send = wc.send.bind(wc);
-      wc.send = (channel: string, ...args: unknown[]) => {
-        try {
-          if (channel === 'pty:data') {
-            const { sessionId, data } = args[0] as { sessionId: string; data: Uint8Array };
-            const before = d.bytes[sessionId] ?? 0;
-            d.bytes[sessionId] = before + data.length;
-            const t = Date.now() - t0;
-            d.lastData[sessionId] = t;
-            const buckets = (d.buckets[sessionId] ??= {});
-            buckets[Math.floor(t / 1000)] = (buckets[Math.floor(t / 1000)] ?? 0) + data.length;
-            if (before < 32_768) add(sessionId, 'out', JSON.stringify(Buffer.from(data).toString('utf8')));
-          } else if (channel === 'pty:exit') {
-            const exit = args[0] as { sessionId: string };
-            add(exit.sessionId, 'exit', JSON.stringify(exit));
-          }
-        } catch {
-          // A diagnostic never breaks the app.
-        }
-        send(channel, ...args);
-      };
-    };
-    BrowserWindow.getAllWindows().forEach(wrap);
-    electronApp.on('browser-window-created', (_e, win) => wrap(win));
-    (globalThis as { __diag?: DiagRecord }).__diag = d;
-  });
-}
-
-export const diagOf = (app: ElectronApplication) =>
-  app.evaluate(() => (globalThis as { __diag?: DiagRecord }).__diag!);
-
-/** The record as text: per session its totals, its bytes per second, and its first and last events. */
-export function formatDiag(d: DiagRecord, events = 80): string {
-  const lines: string[] = [];
-  for (const id of Object.keys(d.events)) {
-    lines.push(
-      `session ${id}: bytes=${d.bytes[id] ?? 0} pauses=${d.pauses[id] ?? 0} resumes=${d.resumes[id] ?? 0} pausedNow=${d.pausedNow[id] ?? false} lastData=${d.lastData[id]}`,
-    );
-    const buckets = d.buckets[id] ?? {};
-    lines.push(`  per second: ${Object.entries(buckets).map(([s, n]) => `${s}s:${n}`).join(' ')}`);
-    const list = d.events[id];
-    const shown = list.length > events * 2 ? [...list.slice(0, events), null, ...list.slice(-events)] : list;
-    for (const e of shown) lines.push(e ? `  ${e[0]} ${e[1]} ${e[2]}` : '  …');
-  }
-  return lines.join('\n');
-}
-
-let diagCount = 0;
-
-/** Writes a diagnostic text into the test's output folder, for the CI step that prints them. */
-export function writeDiag(name: string, text: string): void {
-  const file = test.info().outputPath(`diag-${name}-${++diagCount}.txt`);
-  mkdirSync(join(file, '..'), { recursive: true });
-  writeFileSync(file, `### ${test.info().titlePath.join(' > ')} (retry ${test.info().retry}, repeat ${test.info().repeatEachIndex})\n${text}\n`);
-}
 
 const root = join(__dirname, '..');
 
@@ -114,17 +21,6 @@ export function removeAfterTest(dir: string): string {
  * test left running first, since Chromium writes its profile back into the data folder as it quits.
  */
 export async function cleanUp(): Promise<void> {
-  // DIAGNOSTIC (Windows e2e diagnosis): a failed test's apps write their PTY record first.
-  const info = test.info();
-  if (info.status !== info.expectedStatus) {
-    for (const app of runningApps) {
-      try {
-        writeDiag('failed', formatDiag(await diagOf(app)));
-      } catch (err) {
-        writeDiag('failed', `no record: ${String(err)}`);
-      }
-    }
-  }
   await Promise.all([...runningApps].map((app) => app.close()));
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
@@ -162,7 +58,6 @@ export async function launchApp(
   const app = await electron.launch({ args: [root], env: appEnv(dataDir, env) });
   runningApps.add(app);
   app.on('close', () => runningApps.delete(app));
-  await installRecorder(app);
   // No e2e run opens the owner's browser: the links main is asked to open are recorded instead,
   // for `openedLinks`. Main looks the opener up at each call.
   await app.evaluate(({ shell }) => {
