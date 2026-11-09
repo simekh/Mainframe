@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu, shell, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
 import { gitQueries } from './git';
@@ -228,6 +228,9 @@ async function start(config: AppConfig, programs: ReturnType<typeof findPrograms
   const beginQuit = () => {
     if (quitting) return;
     quitting = true;
+    // Chromium keeps the renderer's latest localStorage writes (layout, widths, pins) in memory for a
+    // while; on Windows a quit lost them. Writing them out now keeps them on every system.
+    session.defaultSession.flushStorageData();
     projects.beginQuit();
     host.killAll();
   };
