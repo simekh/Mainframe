@@ -37,8 +37,9 @@ function pathValue({ env, platform }: ExecutableLookup): string {
 function searchDirs(o: ExecutableLookup): string[] {
   const dirs = pathValue(o).split(o.platform === 'win32' ? win32.delimiter : posix.delimiter);
   if (o.platform !== 'win32') return dirs.map((dir) => dir || '.');
-  // An empty entry is skipped, so that a claude.exe planted in a repo is not run; entries may be quoted.
-  return dirs.map((dir) => dir.replaceAll('"', '')).filter((dir) => dir !== '');
+  // Entries may be quoted. Only an absolute one is searched: an empty or relative entry
+  // (`.`, `bin`) is the session's folder, where a planted claude.exe would be run.
+  return dirs.map((dir) => dir.replaceAll('"', '')).filter((dir) => win32.isAbsolute(dir));
 }
 
 /**
@@ -55,7 +56,7 @@ export function findExecutable(name: string, o: ExecutableLookup): string | null
   return candidates.find((candidate) => o.files.isExecutableFile(candidate)) ?? null;
 }
 
-/** node-pty's helper ends without a word when it can't run the binary, so say which one is wrong. */
+/** `findExecutable`, but throws `<name> was not found …` (naming the PATH searched) when there is none. */
 export function resolveExecutable(name: string, o: ExecutableLookup): string {
   const found = findExecutable(name, o);
   if (found !== null) return found;

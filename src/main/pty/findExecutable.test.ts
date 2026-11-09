@@ -72,9 +72,14 @@ it('win32: a relative path is resolved against the folder it runs from', () => {
 });
 
 it("win32: never looks in the folder it runs from, which the repo's own files could fill", () => {
-  const o = (path: string) => win({ Path: path }, 'C:\\repo\\claude.exe');
-  expect(findExecutable('claude', o(''))).toBeNull();
-  expect(findExecutable('claude', o(';C:\\b'))).toBeNull();
+  const o = (path: string) => win({ Path: path }, 'C:\\repo\\claude.exe', 'C:\\repo\\bin\\claude.exe');
+  for (const path of ['', ';C:\\b', '.;C:\\b', '.\\bin', 'bin;C:\\b', '"."']) {
+    expect(findExecutable('claude', o(path))).toBeNull();
+  }
+});
+
+it('win32: skips a relative Path entry and still searches the absolute ones after it', () => {
+  expect(findExecutable('claude', win({ Path: '.;C:\\b' }, 'C:\\repo\\claude.exe', 'C:\\b\\claude.exe'))).toBe('C:\\b\\claude.exe');
 });
 
 it('win32: reads an upper case PATH too', () => {
