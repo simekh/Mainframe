@@ -1206,7 +1206,9 @@ button {
   -webkit-app-region: drag;
 }
 
-.topbar button {
+/* A drag region takes no pointer events: carved out are the buttons, and the chip, for its folder to show on hover. */
+.topbar button,
+.tb-project {
   -webkit-app-region: no-drag;
 }
 

@@ -229,6 +229,9 @@ test('the manager column sits left of the board, and its top strip holds the win
 
   // The board's top bar no longer makes room for them.
   expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
+  // A drag region takes no pointer events, so the project chip is carved out of the top bar's, for its folder to show
+  // on hover.
+  expect(await page.locator('.tb-project').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
   await app.close();
 });
 
