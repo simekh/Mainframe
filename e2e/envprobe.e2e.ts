@@ -1,41 +1,37 @@
-// TEMPORARY DIAGNOSTIC (2b CI push 2), removed once the cause is known: which environment of the
-// setup tests' stand-in computer makes Electron crash at launch on Windows (exit 0x80000003).
-import { mkdtempSync } from 'node:fs';
+// TEMPORARY DIAGNOSTIC (2b CI push 3), removed once the cause is known. Run 2 showed that Electron
+// crashes at launch on Windows (exit 0x80000003) when USERPROFILE names an empty folder, and not
+// when PATH, HOME or APPDATA do. This asks which parts of a profile folder it needs.
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { test } from '@playwright/test';
-import { findExecutable } from '../src/main/pty/findExecutable';
-import { localFiles } from '../src/main/pty/sessionHost';
-import { pathKey } from '../src/main/pty/spawnEnv';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
 
 test.afterEach(cleanUp);
 test.skip(process.platform !== 'win32', 'diagnostic for Windows only');
 
-test('which environment makes Electron crash at launch', async () => {
+test('which profile folder lets Electron launch', async () => {
   test.setTimeout(300_000);
-  const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
-  const git = findExecutable('git', { env: process.env as Record<string, string>, cwd: process.cwd(), platform: 'win32', files: localFiles });
-  const key = pathKey(process.env, 'win32') ?? 'PATH';
-  const restricted = [dirname(process.execPath), ...(git === null ? [] : [dirname(git)])].join(delimiter);
-  const system = process.env.SystemRoot ?? 'C:\\Windows';
-  console.log(`[envprobe] ${JSON.stringify({ key, restricted, home, system, realPath: process.env[key], userprofile: process.env.USERPROFILE, appdata: process.env.APPDATA, localappdata: process.env.LOCALAPPDATA })}`);
-  const variants: Record<string, Record<string, string>> = {
-    normal: {},
-    'PATH restricted': { [key]: restricted },
-    'PATH restricted + System32': { [key]: `${restricted}${delimiter}${system}\\System32${delimiter}${system}` },
-    'HOME only': { HOME: home },
-    'USERPROFILE only': { USERPROFILE: home },
-    'APPDATA only': { APPDATA: home },
-    'HOME, USERPROFILE and APPDATA': { HOME: home, USERPROFILE: home, APPDATA: home },
+  const profile = (...folders: string[]) => {
+    const dir = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
+    for (const folder of folders) mkdirSync(join(dir, folder), { recursive: true });
+    return dir;
   };
-  for (const [name, env] of Object.entries(variants)) {
+  const variants: Record<string, string> = {
+    'empty folder': profile(),
+    'AppData\\Roaming': profile('AppData\\Roaming'),
+    'AppData\\Local': profile('AppData\\Local'),
+    'AppData\\Roaming and AppData\\Local': profile('AppData\\Roaming', 'AppData\\Local'),
+    'a full skeleton': profile('AppData\\Roaming', 'AppData\\Local', 'AppData\\Local\\Temp', 'Desktop', 'Documents', 'Downloads'),
+    'C:\\Users\\Public': 'C:\\Users\\Public',
+  };
+  for (const [name, userprofile] of Object.entries(variants)) {
     try {
-      const { app } = await launchApp({ ...env, ELECTRON_ENABLE_LOGGING: '1' });
+      const { app } = await launchApp({ USERPROFILE: userprofile, ELECTRON_ENABLE_LOGGING: '1' });
       await app.close();
-      console.log(`[envprobe] ${name}: launched`);
+      console.log(`[envprobe] USERPROFILE = ${name}: launched`);
     } catch (err) {
-      console.log(`[envprobe] ${name}: FAILED ${String((err as Error).message).replace(/\s+/g, ' ').slice(0, 2500)}`);
+      console.log(`[envprobe] USERPROFILE = ${name}: FAILED ${String((err as Error).message).replace(/\s+/g, ' ').slice(0, 600)}`);
     }
   }
 });
