@@ -681,11 +681,10 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await edge.focus();
   for (let i = 0; i < 3; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
-  const [name, add, sync, pin] = await Promise.all(
-    [first.page.getByRole('heading', { name: 'Todo', level: 2 }), ...['todo-add-note', 'todo-sync', 'todo-pin'].map((id) => first.page.getByTestId(id))].map(
-      async (l) => (await l.boundingBox())!,
-    ),
-  );
+  const name = (await first.page.getByRole('heading', { name: 'Todo', level: 2 }).boundingBox())!;
+  const add = await box(first.page, 'todo-add-note');
+  const sync = await box(first.page, 'todo-sync');
+  const pin = await box(first.page, 'todo-pin');
   expect(Math.abs(add.y + add.height / 2 - (sync.y + sync.height / 2))).toBeLessThan(1);
   expect(name.x + name.width).toBeLessThan(add.x);
   expect(add.x + add.width).toBeLessThan(sync.x);

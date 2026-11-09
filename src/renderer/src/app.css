@@ -502,14 +502,14 @@ button {
   background: var(--accent);
 }
 
-/* A drag region takes no clicks of its own. Quick Add leads the two, outlined in dashes as the Todo mark is: what
-   it adds is Mainframe's own. While a sync runs Sync is its Stop. */
+/* A drag region takes no clicks of its own. While a sync runs, Sync is its Stop. */
 .todo-add,
 .todo-sync {
   -webkit-app-region: no-drag;
 }
 
-/* Over .btn, which comes later. */
+/* Quick Add leads the two, outlined in dashes as the Todo mark is: what it adds is Mainframe's own. Written over
+   .btn, which comes later. */
 .btn.todo-add {
   margin-left: auto;
   border-style: dashed;
@@ -634,7 +634,7 @@ button {
   text-wrap: pretty;
 }
 
-/* The cards in the source's order, then the notes, then Add note; they scroll under the header. */
+/* The cards in the source's order, then the todos of the owner's own; they scroll under the header. */
 .todo-scroll {
   flex: 1;
   min-height: 0;
