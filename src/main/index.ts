@@ -234,10 +234,6 @@ async function start(
     return project;
   }
 
-  for (const dir of projectDirs) {
-    await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
-  }
-
   // The project picked is brought on screen, whether it opens now or was open already.
   const openPicked = async () => {
     try {
@@ -250,6 +246,8 @@ async function start(
     }
   };
   Menu.setApplicationMenu(buildMenu(() => void openPicked()));
+  // Before the projects open: the page asks for each project's tasks, manager and list as soon as
+  // `projects:changed` tells it of the project, and the handlers answer for the projects open by then.
   registerIpc(
     toWindow,
     projects,
@@ -259,6 +257,10 @@ async function start(
     // Looked up at each call, so an e2e run can stand in for the browser.
     (url) => shell.openExternal(url),
   );
+
+  for (const dir of projectDirs) {
+    await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
+  }
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -283,6 +285,16 @@ async function launch(config: AppConfig): Promise<void> {
     if (win.isMinimized()) win.restore();
     win.focus();
   });
+  // The checks and a pending dialog can outlast the start of a quit. Projects opened then would write
+  // projects.json with only those open so far, with nothing to record or end their sessions: `start`
+  // sets up its own quit handling, but only once it runs, so it can't cover a quit that began before.
+  let quitting = false;
+  const quitBegins = () => {
+    quitting = true;
+  };
+  app.on('before-quit', quitBegins);
+  // Windows' shutdown, restart and log-off send this and no before-quit.
+  win.on('session-end', quitBegins);
   const flow = new SetupFlow({
     dataDir: config.dataDir,
     envClaudeBin: config.claudeBin,
@@ -291,7 +303,9 @@ async function launch(config: AppConfig): Promise<void> {
     pickClaude: () => pickClaude(win),
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),
-    start: (claudeBin, dirs) => start(config, { ...programs, claudeBin }, dirs, win),
+    start: async (claudeBin, dirs) => {
+      if (!quitting) await start(config, { ...programs, claudeBin }, dirs, win);
+    },
     warn: console.warn,
   });
   // The calls are registered in the same turn, before the page can make one.
