@@ -193,9 +193,17 @@ export class TodoService {
   }
 
   private launch(step: SyncStep): Promise<SyncOutcome> {
-    mkdirSync(this.dir, { recursive: true });
     const settingsPath = join(this.dir, SETTINGS_FILE);
-    writeFileSync(settingsPath, syncSettings(step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
+    try {
+      mkdirSync(this.dir, { recursive: true });
+      writeFileSync(settingsPath, syncSettings(step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
+    } catch (err) {
+      // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
+      this.ask = null;
+      const refused = this.refuse(`Could not write the sync's settings: ${(err as Error).message}`);
+      this.changed();
+      return Promise.resolve(refused);
+    }
     const { done, cancel } = (this.deps.run ?? runClaude)({
       argv: syncArgv(this.deps.claudeBin, settingsPath),
       cwd: this.deps.projectDir,

@@ -354,6 +354,14 @@ it.each([
   expect(readFileSync(t.file, 'utf8')).toBe(kept);
 });
 
+it("a sync whose settings can't be written says why in the view, and runs nothing", async () => {
+  const t = setup();
+  mkdirSync(t.settingsFile, { recursive: true });
+  await expect(t.service.sync()).resolves.toEqual({ error: expect.stringMatching(/^Could not write the sync's settings: EISDIR/) });
+  expect(t.calls).toHaveLength(0);
+  expect(t.changes.at(-1)).toMatchObject({ syncing: false, error: expect.stringMatching(/^Could not write the sync's settings/) });
+});
+
 it('a second Sync while one runs joins it', async () => {
   const t = setup();
 

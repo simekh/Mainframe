@@ -92,14 +92,15 @@ it("list_sessions takes no input and returns the reports as JSON, each with its 
   expect(result.sessions[0].card).toEqual({ number: '#128', url: 'https://tracker.example/c/128' });
 });
 
-it('start_task takes a title of 1 to 200 characters, a brief of up to 20000 and an optional noQuestions', () => {
+it('start_task takes a title of 1 to 200 characters, an optional brief of up to 20000 and an optional noQuestions', () => {
   const schema = setup().tools.get('start_task')!.config.inputSchema!;
   expect(schema.safeParse({ title: 'Fix login', brief: '' }).success).toBe(true);
   expect(schema.safeParse({ title: 'x'.repeat(200), brief: 'y'.repeat(20000), noQuestions: true }).success).toBe(true);
   expect(schema.safeParse({ title: '', brief: 'b' }).success).toBe(false);
   expect(schema.safeParse({ title: 'x'.repeat(201), brief: 'b' }).success).toBe(false);
   expect(schema.safeParse({ title: 't', brief: 'y'.repeat(20001) }).success).toBe(false);
-  expect(schema.safeParse({ title: 't' }).success).toBe(false);
+  // As the new task dialog, whose description may stay empty.
+  expect(schema.safeParse({ title: 't' }).success).toBe(true);
   expect(schema.safeParse({ title: 't', brief: 'b', noQuestions: 'yes' }).success).toBe(false);
 });
 
@@ -121,9 +122,9 @@ it('start_task refuses a start with neither a title nor a cardId', async () => {
   expect(calls).toEqual(['startCheck']);
 });
 
-it('start_task with a cardId and no title starts from that card', async () => {
+it('start_task with only a cardId starts from that card, with no brief', async () => {
   const { call, startedItems } = setup();
-  const result = await call('start_task', { brief: '', cardId: '#131' });
+  const result = await call('start_task', { cardId: '#131' });
   expect(result.isError).toBeUndefined();
   expect(startedItems).toEqual([{ item: { kind: 'card', id: '#131' }, opts: { noQuestions: false, brief: '' } }]);
 });

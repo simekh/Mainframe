@@ -977,6 +977,8 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
     '',
     'See [the report](https://example.com/x) for more, or [a bad one](javascript:window.__pwned=1).',
     '',
+    'Built: [![build](https://ci.example/badge.svg)](https://ci.example/run/1), ![](https://example.com/blank.png) ![a shot](https://example.com/shot.png)',
+    '',
     '<img src=x onerror="window.__pwned=1">',
   ].join('\n');
   await syncFirstTime(page, dataDir, { ...CARDS, cards: [{ ...CARDS.cards[0], description }] });
@@ -984,7 +986,7 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
   // The row: what a reader sees, with no `**`, no backticks and no `#`.
   const row = itemRow(page, 'card:c128');
   await expect(row.locator('.todo-body')).toHaveText(
-    'Steps to reproduce Open Search Type creme See the report for more, or a bad one. <img src=x onerror="window.__pwned=1">',
+    'Steps to reproduce Open Search Type creme See the report for more, or a bad one. Built: build, a shot <img src=x onerror="window.__pwned=1">',
   );
 
   await row.click();
@@ -997,11 +999,15 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
 
   // A web link opens in the owner's browser, as Open in Tracker does, and the window itself goes nowhere. Any other
   // address is text, not a link.
-  await expect(desc.getByRole('link')).toHaveCount(1);
+  await expect(desc.getByRole('link')).toHaveCount(2);
   await expect(desc.getByText('a bad one')).toBeVisible();
   await desc.getByRole('link', { name: 'the report' }).click();
   await expect.poll(() => openedLinks(app)).toEqual(['https://example.com/x']);
   await expect(ticket).toBeVisible();
+  // An image is its alt text, and no link of its own: a badge opens where its link goes, not the picture.
+  await expect(desc.getByRole('link', { name: 'build' })).toHaveAttribute('href', 'https://ci.example/run/1');
+  await expect(desc.locator('p', { hasText: 'Built:' })).toHaveText('Built: build, a shot');
+  await expect(desc.locator('a a, a:empty')).toHaveCount(0);
 
   // The text of an image tag shows as text: no image is made, and nothing it carries runs.
   await expect(desc.getByText('<img src=x onerror="window.__pwned=1">', { exact: true })).toBeVisible();

@@ -68,7 +68,10 @@ export function saveTodo(file: string, record: TodoRecord): void {
   writeJsonAtomic(file, record);
 }
 
-/** A list Mainframe can sync again is no reason for a project not to open: a file that can't be set aside is only said. */
+/**
+ * A Todo file Mainframe can't read is no reason for a project not to open. It is kept aside whole, the owner's notes in
+ * it too, where they can be had back by hand; one that can't be set aside is only said.
+ */
 function keepAside(file: string, now: number, warn: (msg: string) => void, why: string): TodoRecord {
   const aside = `${file}.bad-${now}`;
   try {

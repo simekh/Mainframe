@@ -89,12 +89,14 @@ function renderToken(token: Token): JSX.Element {
       return <code>{t.text}</code>;
     case 'br':
       return <br />;
-    case 'link':
-    case 'image': {
-      // An image is never loaded: its alt text stands for it. Either is a link only where the address is one to follow.
+    case 'link': {
+      // A link only where the address is one to follow.
       const href = httpUrl(t.href);
       return href ? <Link href={href}>{renderAll(t.tokens)}</Link> : renderAll(t.tokens);
     }
+    case 'image':
+      // Never loaded, and no link of its own: its alt text stands for it, inside the link around it if there is one.
+      return t.text;
     case 'html':
       // The text of the tag, as written: a block of it has a paragraph of its own.
       return t.block ? <p>{t.text}</p> : t.text;
