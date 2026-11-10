@@ -130,7 +130,7 @@ Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and 
 
 macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Runs 3 and 4 are green on all three systems. Both Linux start steps passed in every run.
 
-**What the tests showed off the Mac.** The tests that skip on the Mac all ran on Windows, in every run. They all ran on Linux too, but the scaling test skips there from run 3 on (below). The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch. All of them passed, but for the scaling test on Linux:
+**What the tests showed off the Mac.** The four tests that skip on the Mac all ran on Windows, in every run. They all ran on Linux too, but the scaling test skips there from run 3 on (below). Run 1's six quit-step tests, left out of its e2e step on every system, ran only in the separate quit step. The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch. All of them passed, but for the scaling test on Linux:
 
 - Task 1, the window: `app.e2e.ts`'s window test (no application menu, `isMenuBarVisible()` false, the project list's top row with no room for window buttons, the top bar no drag region, `data-platform`); the setup screen's 8 px title row; no drag regions in `manager.e2e.ts` and `session-panel.e2e.ts`; Open Project… through the project list's button.
 - Task 2, the keys: Ctrl+Shift+O opens Open Project… (`app.e2e.ts`), and on the setup screen opens no dialog and raises no error (`setup.e2e.ts`); the Control branches of `projects.e2e.ts`, `links.e2e.ts` (Ctrl+click) and `tasks.e2e.ts`.
@@ -193,7 +193,7 @@ On Windows (spec §10.4), with a real Claude Code:
 - A wheel notch scrolls about three rows.
 - Alt moves the focus nowhere, since there is no menu bar.
 - AltGr on a Nordic or German layout types `@ { [ ] } \ |` in a terminal and in the New task box, and no shortcut fires.
-- On a non-Latin layout (Russian, say), Ctrl+Shift+W, Ctrl+Shift+O, Ctrl+C and Ctrl+V match by the key's letter, so they may not fire there.
+- On a Russian layout (or any without Latin letters), Ctrl+C copies a selection, Ctrl+V pastes, and Ctrl+Shift+W and Ctrl+Shift+O take a pane off screen and open a project. The final review's fix makes them take the letter on the key itself there (`e.code`); a Latin layout's own letters (Dvorak, AZERTY) still count as they are. Only unit tests cover it.
 - A real change of scaling re-fits the terminal: the window moved to a screen with other scaling, or Windows' scaling changed.
 - A quit with sessions running:
   - whether Windows shows a crash dialog or report (the 0xC0000409 above);

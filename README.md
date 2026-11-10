@@ -80,7 +80,7 @@ The Mac has Cmd keys. Windows and Linux have Ctrl keys, as Windows Terminal and 
 | Scroll a line | Cmd+Shift+↑ / ↓ | Ctrl+Shift+↑ / ↓ |
 | Scroll a page | Cmd+Shift+PgUp / PgDn | Shift+PgUp / PgDn |
 
-On Windows and Linux none of these Ctrl shortcuts fires while Alt is held too, so AltGr, which Windows reports as Ctrl+Alt, types `@`, `{`, `[` and the rest as usual.
+On Windows and Linux no key shortcut takes AltGr, which Windows reports as Ctrl+Alt, so it types `@`, `{`, `[` and the rest as usual.
 
 ## Set up the Todo panel
 
@@ -111,6 +111,6 @@ npm run test:e2e    # builds, then runs the end-to-end tests (Playwright + Elect
 
 DevTools open from the View menu on a Mac, and with Ctrl+Shift+I on Windows and Linux.
 
-On Windows the end-to-end tests need [Git for Windows](https://gitforwindows.org/), because their stand-in for `claude` opens Git Bash.
+On Windows the end-to-end tests need [Git for Windows](https://gitforwindows.org/), because their stand-in for `claude` opens Git Bash. They find its `bash.exe` from the `git` on PATH; if that finds none, for a Git that isn't laid out like Git for Windows' own, set `FAKE_CLAUDE_SHELL` to the full path of a `bash.exe`.
 
 Mainframe adapts some code from Parallel Code; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
