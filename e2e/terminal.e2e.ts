@@ -147,18 +147,26 @@ test('a program that reads the terminal raw, as Claude Code does, sees a resize 
   await app.close();
 });
 
-test("on Windows and Linux, a terminal on screen fits again when the window's scaling changes", async () => {
-  test.skip(process.platform === 'darwin', "Windows and Linux behaviour: the Mac keeps today's fit, which a change of scaling alone leaves as it is");
-  const { app, page } = await launchApp();
-  const a = await startTask(page);
-  const before = (await termSize(page, a))!;
-  // As a move to a screen with other scaling: the pixel ratio changes and the window's size in CSS
-  // pixels doesn't. Any ratio but the screen's own.
+/**
+ * Changes the page's pixel ratio as a move to a screen with other scaling does: the window's size in CSS
+ * pixels stays. Any ratio but the screen's own. Resolves once the change has been measured and any fit
+ * it caused has run, with the session that holds the override, for `clearDeviceMetricsOverride`.
+ */
+async function changeScaling(page: Page) {
   const scale = (await page.evaluate(() => window.devicePixelRatio)) === 2 ? 1.5 : 2;
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 0, height: 0, deviceScaleFactor: scale, mobile: false });
   await expect.poll(() => page.evaluate(() => window.devicePixelRatio)).toBe(scale);
   await settled(page);
+  return cdp;
+}
+
+test("on Windows and Linux, a terminal on screen fits again when the window's scaling changes", async () => {
+  test.skip(process.platform === 'darwin', "Windows and Linux behaviour: the Mac keeps today's fit, which a change of scaling alone leaves as it is");
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  const before = (await termSize(page, a))!;
+  const cdp = await changeScaling(page);
   // xterm has re-measured its cells at the new ratio, rounding them to whole device pixels. A skip
   // leaves nothing behind: the override goes with the app, which cleanUp closes.
   const fitted = (await fitSize(page, a))!;
@@ -175,6 +183,21 @@ test("on Windows and Linux, a terminal on screen fits again when the window's sc
   await app.close();
 });
 
+test("on the Mac, a terminal on screen keeps its size when the window's scaling changes, as it always has", async () => {
+  test.skip(process.platform !== 'darwin', "the Mac's behaviour: Windows and Linux fit again, which the test before this one shows");
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  const before = (await termSize(page, a))!;
+  await changeScaling(page);
+  // A fit now would give another size, so a terminal that kept its own was not fitted again.
+  test.skip(
+    isDeepStrictEqual(await fitSize(page, a), before),
+    "the renderer here rounds a cell to the same size at both ratios, so a fit now would give the size the terminal has and this test could not tell the two apart",
+  );
+  expect(await termSize(page, a)).toEqual(before);
+  await app.close();
+});
+
 test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C with none interrupts, and Ctrl+V and Ctrl+Shift+V paste', async () => {
   test.skip(process.platform === 'darwin', "Windows and Linux keys: the Mac's copy and paste are the Edit menu's Cmd+C and Cmd+V, which keys pressed in the page never reach");
   const { app, page } = await launchApp();
@@ -183,41 +206,48 @@ test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C w
   const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText());
   const setClipboard = (text: string) => app.evaluate(({ clipboard }, t) => clipboard.writeText(t), text);
 
-  await run(page, 'echo copy-me-$((6*7))');
-  await expect.poll(() => screen(page, a)).toMatch(/^copy-me-42$/m);
-  // cat starts before anything is selected, as a typed key clears xterm's selection itself. It runs
-  // once it has numbered a line.
-  await run(page, 'cat -n');
-  await run(page, 'in-cat');
-  await expect.poll(() => screen(page, a)).toMatch(/^\s*1\s+in-cat$/m);
-  const row = (await screen(page, a)).split('\n').indexOf('copy-me-42');
-  await page.evaluate(([id, r]) => window.__mainframeE2E.select(id, 0, r, 'copy-me-42'.length), [a, row] as const);
+  // The developer's own clipboard is theirs: put back what was on it, whether the test passes or not.
+  const original = await clipboard();
+  try {
+    await run(page, 'echo copy-me-$((6*7))');
+    await expect.poll(() => screen(page, a)).toMatch(/^copy-me-42$/m);
+    // cat starts before anything is selected, as a typed key clears xterm's selection itself. It runs
+    // once it has numbered a line.
+    await run(page, 'cat -n');
+    await run(page, 'in-cat');
+    await expect.poll(() => screen(page, a)).toMatch(/^\s*1\s+in-cat$/m);
+    const row = (await screen(page, a)).split('\n').indexOf('copy-me-42');
+    await page.evaluate(([id, r]) => window.__mainframeE2E.select(id, 0, r, 'copy-me-42'.length), [a, row] as const);
 
-  await setClipboard('x');
-  await page.keyboard.press('Control+Shift+C');
-  await expect.poll(clipboard).toBe('copy-me-42');
-  await setClipboard('x');
-  await page.keyboard.press('Control+C');
-  await expect.poll(clipboard).toBe('copy-me-42');
-  // Neither copy interrupted cat. The line goes through the bridge, as typing would clear the selection.
-  await sendLine(page, a, 'still-in-cat');
-  await expect.poll(() => screen(page, a)).toMatch(/^\s*2\s+still-in-cat$/m);
-  // That Ctrl+C cleared the selection, so this one interrupts cat, and the shell runs the next line.
-  await page.keyboard.press('Control+C');
-  await run(page, 'echo after-$((6*7))');
-  await expect.poll(() => screen(page, a)).toMatch(/^after-42$/m);
+    await setClipboard('x');
+    await page.keyboard.press('Control+Shift+C');
+    await expect.poll(clipboard).toBe('copy-me-42');
+    await setClipboard('x');
+    await page.keyboard.press('Control+C');
+    await expect.poll(clipboard).toBe('copy-me-42');
+    // Neither copy interrupted cat. The line goes through the bridge, as typing would clear the selection.
+    await sendLine(page, a, 'still-in-cat');
+    await expect.poll(() => screen(page, a)).toMatch(/^\s*2\s+still-in-cat$/m);
+    // That Ctrl+C cleared the selection, so this one interrupts cat, and the shell runs the next line.
+    await page.keyboard.press('Control+C');
+    await run(page, 'echo after-$((6*7))');
+    await expect.poll(() => screen(page, a)).toMatch(/^after-42$/m);
 
-  // Pasted once: a second paste would run on into the line's output.
-  const pasteAndRun = async (keys: string, line: string) => {
-    await setClipboard(line);
-    await page.keyboard.press(keys);
-    await expect.poll(() => screen(page, a)).toContain(`$ ${line}`);
-    await page.keyboard.press('Enter');
-  };
-  await pasteAndRun('Control+V', 'echo pasted-$((6*7))');
-  await expect.poll(() => screen(page, a)).toMatch(/^pasted-42$/m);
-  await pasteAndRun('Control+Shift+V', 'echo pasted-$((7*7))');
-  await expect.poll(() => screen(page, a)).toMatch(/^pasted-49$/m);
+    // Pasted once: a second paste would run on into the line's output.
+    const pasteAndRun = async (keys: string, line: string) => {
+      await setClipboard(line);
+      await page.keyboard.press(keys);
+      await expect.poll(() => screen(page, a)).toContain(`$ ${line}`);
+      await page.keyboard.press('Enter');
+    };
+    await pasteAndRun('Control+V', 'echo pasted-$((6*7))');
+    await expect.poll(() => screen(page, a)).toMatch(/^pasted-42$/m);
+    await pasteAndRun('Control+Shift+V', 'echo pasted-$((7*7))');
+    await expect.poll(() => screen(page, a)).toMatch(/^pasted-49$/m);
+  } finally {
+    // The app is still up here, unless it crashed: then the failure that matters is the crash.
+    await setClipboard(original).catch(() => {});
+  }
   await app.close();
 });
 
