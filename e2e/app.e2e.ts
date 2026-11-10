@@ -1,15 +1,43 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import { test, expect } from '@playwright/test';
+import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { cleanUp, launchAgain, launchApp, removeAfterTest } from './launch';
 import { launches, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
+/** Picks Open Project…: in the Mac's File menu, and on Windows and Linux, which have no menu, under the project list. */
+async function clickOpenProject(app: ElectronApplication, page: Page): Promise<void> {
+  if (process.platform === 'darwin') {
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('open-project')!.click());
+  } else {
+    await page.getByTestId('open-project').click();
+  }
+}
+
 test('opens the Mainframe window', async () => {
   const { app, page } = await launchApp();
   expect(await page.title()).toBe('Mainframe');
+  await app.close();
+});
+
+test('the window follows its system: the Mac keeps its menu and the room for its window buttons; Windows and Linux have neither', async () => {
+  const { app, page } = await launchApp();
+  const onMac = process.platform === 'darwin';
+  if (onMac) {
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('open-project') != null)).toBe(true);
+  } else {
+    const bar = await app.evaluate(({ BrowserWindow, Menu }) => ({
+      appMenu: Menu.getApplicationMenu() !== null,
+      menuBarVisible: BrowserWindow.getAllWindows()[0].isMenuBarVisible(),
+    }));
+    expect(bar).toEqual({ appMenu: false, menuBarVisible: false });
+  }
+  await expect(page.locator('html')).toHaveAttribute('data-platform', process.platform);
+  await expect(page.locator('.rail-titlebar')).toHaveCSS('padding-left', onMac ? '80px' : '0px');
+  // Windows still drags a framed window by a page's drag region, so the page has them on the Mac only.
+  await expect(page.locator('.topbar')).toHaveCSS('-webkit-app-region', onMac ? 'drag' : 'none');
   await app.close();
 });
 
@@ -39,10 +67,10 @@ test('Open Project… opens the picked folder beside the open one and shows it, 
   const [first] = JSON.parse(readFileSync(projectsFile, 'utf8')).open;
   const picked = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-project-')));
   // Main looks the dialog up at each call.
-  await app.evaluate(({ dialog, Menu }, folder) => {
+  await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-    Menu.getApplicationMenu()!.getMenuItemById('open-project')!.click();
   }, picked);
+  await clickOpenProject(app, page);
 
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
   await expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(picked)}]`)).toHaveAttribute('data-shown', 'true');
@@ -51,16 +79,16 @@ test('Open Project… opens the picked folder beside the open one and shows it, 
 });
 
 test('Open Project… says why it could not open the folder', async () => {
-  const { app } = await launchApp();
-  await app.evaluate(({ dialog, Menu }) => {
+  const { app, page } = await launchApp();
+  await app.evaluate(({ dialog }) => {
     const seen = globalThis as { errorBoxes?: string[] };
     seen.errorBoxes = [];
     dialog.showOpenDialog = async () => {
       throw new Error('the dialog failed');
     };
     dialog.showErrorBox = (title, content) => void seen.errorBoxes!.push(`${title}: ${content}`);
-    Menu.getApplicationMenu()!.getMenuItemById('open-project')!.click();
   });
+  await clickOpenProject(app, page);
 
   await expect
     .poll(() => app.evaluate(() => (globalThis as { errorBoxes?: string[] }).errorBoxes))

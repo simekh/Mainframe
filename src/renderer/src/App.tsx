@@ -79,9 +79,9 @@ export default function App() {
   const [config] = createResource(async () => {
     const [c] = await Promise.all([window.mainframe.getConfig(), loadTerminalFont(document.fonts)]);
     if (c.e2e) {
-      // Test-only, and still needed: main sets the application menu once it starts the projects, which
-      // waits on its checks of git and claude, while the config and the font are in sooner. A test
-      // that uses the menu right after launchApp, which waits for these hooks, must find it there.
+      // Test-only, and still needed: main sets the Mac's application menu once it starts the projects,
+      // which waits on its checks of git and claude, while the config and the font are in sooner. A
+      // test that uses the menu right after launchApp, which waits for these hooks, must find it there.
       await setup;
       installE2eHooks();
     }

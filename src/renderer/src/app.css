@@ -26,9 +26,9 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-display: 'Sora', var(--font-ui);
-  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --motion-fast: 120ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   color-scheme: dark;
@@ -91,10 +91,21 @@ button {
   opacity: 0.7;
 }
 
+/* --- The window's title bar ------------------------------------------------------------------- */
+
+/* On the Mac the window has no title bar of its own: the page's top rows are where it drags, and
+   their no-drag rules carve out what takes clicks. Windows and Linux keep the system's title bar
+   above the page, so the rows stay plain page there: Electron still honours a drag region in a
+   framed window on Windows, which would make a second title bar under the system's. */
+html[data-platform='darwin'] :is(.rail-titlebar, .setup-titlebar, .todo-tabs, .topbar, .p-title-bar, .manager-title-bar) {
+  -webkit-app-region: drag;
+}
+
 /* --- The project list, at the window's left -------------------------------------------------- */
 
-/* On the frame, not an island: the islands are each project's own columns. Its top row is the
-   window's title bar, a drag region with the window buttons in its first 80 px. */
+/* On the frame, not an island: the islands are each project's own columns. Its top row lines up
+   with the columns' title bars; on the Mac it is the window's title bar, with the window buttons in
+   its first 80 px. */
 .rail {
   flex: none;
   width: 196px;
@@ -110,8 +121,11 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 6px 0 4px 80px;
-  -webkit-app-region: drag;
+  padding: 6px 0 4px;
+}
+
+html[data-platform='darwin'] .rail-titlebar {
+  padding-left: 80px;
 }
 
 /* How two or more projects on screen share the window. */
@@ -318,8 +332,9 @@ button {
 
 /* --- The setup screen: what Mainframe found, in place of the board until it can start ---------- */
 
-/* The window's frame with one terminal island in it, as the board's islands sit in it. The row
-   above it is the title bar: a drag region, with the window buttons at its left. */
+/* The window's frame with one terminal island in it, as the board's islands sit in it. On the Mac
+   the row above it is the title bar, with the window buttons at its left; elsewhere the system's
+   title bar is above the page, and the row is the frame's 8 px, as at the island's other edges. */
 .setup {
   flex: 1;
   min-width: 0;
@@ -331,8 +346,11 @@ button {
 
 .setup-titlebar {
   flex: none;
+  height: 8px;
+}
+
+html[data-platform='darwin'] .setup-titlebar {
   height: 46px;
-  -webkit-app-region: drag;
 }
 
 .setup-term {
@@ -520,7 +538,7 @@ button {
   margin: 8px 0 8px 8px;
 }
 
-/* The window's title bar, laid out as the panel's is, and a drag region up to the pin. */
+/* The window's title bar, laid out as the panel's is, and on the Mac a drag region up to the pin. */
 .manager-title-bar {
   margin-right: var(--panel-pin-room);
   padding: 6px 0 4px 16px;
@@ -581,8 +599,8 @@ button {
   display: none;
 }
 
-/* The tab strip is the island's title bar, laid out as the manager's, and a drag region up to the
-   pin: its one tab sits on the manager's title line, and Quick Add and Sync just left of the pin. */
+/* The tab strip is the island's title bar, laid out as the manager's, and on the Mac a drag region up
+   to the pin: its one tab sits on the manager's title line, and Quick Add and Sync just left of the pin. */
 .todo-tabs {
   flex: none;
   display: flex;
@@ -592,7 +610,6 @@ button {
   min-width: 0;
   margin-right: var(--panel-pin-room);
   padding: 6px 0 4px 16px;
-  -webkit-app-region: drag;
 }
 
 /* The tab on show, marked under its name without moving it off that line. */
@@ -1306,7 +1323,7 @@ button {
   flex-direction: column;
 }
 
-/* The board's title bar, a window drag region like the panels' title bars. */
+/* The board's title bar, on the Mac a window drag region like the panels' title bars. */
 .topbar {
   flex: none;
   height: 46px;
@@ -1315,7 +1332,6 @@ button {
   gap: 8px;
   min-width: 0;
   padding: 0 12px;
-  -webkit-app-region: drag;
 }
 
 /* A drag region takes no pointer events: only the bar's empty space drags, so the chip keeps its tooltip, the buttons
@@ -2254,8 +2270,8 @@ kbd {
   visibility: hidden;
 }
 
-/* The panel's title bar, and the manager's laid out alike: its empty space a window drag region like
-   the top bar's. */
+/* The panel's title bar, and the manager's laid out alike: on the Mac its empty space is a window drag
+   region like the top bar's. */
 .p-title-bar,
 .manager-title-bar {
   flex: none;
@@ -2264,7 +2280,6 @@ kbd {
   gap: 8px;
   height: 46px;
   min-width: 0;
-  -webkit-app-region: drag;
 }
 
 /* The panel's starts past the 3px the resize handle reaches into the panel and ends where the shell's

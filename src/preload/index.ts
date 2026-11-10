@@ -8,6 +8,7 @@ function listen<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const api: MainframeApi = {
+  platform: process.platform,
   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
   getSetup: () => ipcRenderer.invoke(IPC.getSetup),
   onSetup: (cb) => listen(IPC.setupChanged, cb),

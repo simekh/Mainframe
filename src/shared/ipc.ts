@@ -66,6 +66,8 @@ export const IPC = {
  * which no two projects share.
  */
 export interface MainframeApi {
+  /** The system Mainframe runs on, there from the start: the page needn't wait for it. */
+  platform: NodeJS.Platform;
   getConfig(): Promise<RendererConfig>;
   /**
    * The setup screen to show, once main has checked git and claude: null when none is needed, which

@@ -253,7 +253,8 @@ test('the title bar drags the window, and its title, buttons and the pin take cl
   expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.classList.contains('p-title-bar'), empty)).toBe(
     true,
   );
-  expect(await appRegion(bar)).toBe('drag');
+  // A drag region on the Mac only; elsewhere it inherits the panel's no-drag.
+  expect(await appRegion(bar)).toBe(process.platform === 'darwin' ? 'drag' : 'no-drag');
   for (const el of [title, page.getByTestId('side-panel').getByTestId('task-glyph'), close, pin]) {
     expect(await appRegion(el)).toBe('no-drag');
   }

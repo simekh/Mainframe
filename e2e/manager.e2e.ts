@@ -213,7 +213,10 @@ test('the manager column sits left of the board, and its top strip holds the win
   expect(column.x + column.width).toBeLessThanOrEqual((await box(page, 'board')).x);
 
   const strip = page.getByTestId('manager-title-bar');
-  expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
+  // A drag region on the Mac only; elsewhere it inherits its column's no-drag.
+  expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe(
+    process.platform === 'darwin' ? 'drag' : 'no-drag',
+  );
   expect((await strip.boundingBox())!.height).toBe(46);
   // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
   // out of it in that order. None starts within its first 90 px, where the window buttons are. Over

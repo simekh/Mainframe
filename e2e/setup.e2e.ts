@@ -103,6 +103,8 @@ test('a first start welcomes you, finds everything and asks for the first projec
   const { app, page, dataDir } = await launchApp(pc.env, undefined, { firstStart: true });
 
   await expect(page.getByTestId('setup')).toBeVisible();
+  // Room for the Mac's window buttons above the island; on Windows and Linux the system's title bar is above the page.
+  await expect(page.locator('.setup-titlebar')).toHaveCSS('height', process.platform === 'darwin' ? '46px' : '8px');
   await expect(welcome(page)).toBeVisible();
   await expect(check(page, 'git')).toHaveAttribute('data-state', 'found');
   await expect(check(page, 'claude')).toHaveAttribute('data-state', 'found');

@@ -21,8 +21,10 @@ import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
+import { isDevToolsKey } from './windowKeys';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
+const onMac = process.platform === 'darwin';
 
 // Every on-screen terminal holds a WebGL context; Chromium's default limit (16) is too low.
 app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
@@ -51,8 +53,9 @@ function createWindow(e2e: boolean): BrowserWindow {
     // macOS only: in an e2e run the window may be larger than the runner's screen (MAINFRAME_E2E=1).
     enableLargerThanScreen: e2e,
     backgroundColor: APP_BACKGROUND,
-    // The window buttons sit in the manager's column, which runs to the top edge as the panel does.
-    titleBarStyle: 'hiddenInset',
+    // On the Mac the window buttons sit in the manager's column, which runs to the top edge as the panel
+    // does. Windows and Linux keep the system's own title bar, with its buttons.
+    titleBarStyle: onMac ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -64,6 +67,14 @@ function createWindow(e2e: boolean): BrowserWindow {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+  // With no menu off the Mac, DevTools are Ctrl+Shift+I there; the Mac keeps its View menu's.
+  if (!onMac) {
+    win.webContents.on('before-input-event', (event, input) => {
+      if (!isDevToolsKey(input)) return;
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+    });
+  }
 
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
@@ -255,7 +266,7 @@ async function start(
       dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
     }
   };
-  Menu.setApplicationMenu(buildMenu(() => void openPicked()));
+  if (onMac) Menu.setApplicationMenu(buildMenu(() => void openPicked()));
   // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
     toWindow,
@@ -286,6 +297,10 @@ function failStart(err: unknown): void {
  */
 async function launch(config: AppConfig): Promise<void> {
   const programs = findPrograms();
+  // Windows and Linux get no menu, so no menu bar (set before the window, which would get Electron's
+  // default one): its Ctrl+W would close the window, which quits Mainframe and ends every session, and
+  // it would bring Ctrl+M and Ctrl+R's reload. Open Project… is the project list's button there.
+  if (!onMac) Menu.setApplicationMenu(null);
   const win = createWindow(config.e2e);
   // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {

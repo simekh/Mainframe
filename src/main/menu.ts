@@ -1,10 +1,10 @@
 import { Menu } from 'electron';
 
 /**
- * The macOS app menu. Its key equivalents reach the app before the page does, so Cmd+C/Cmd+V stay
- * with the Edit menu (the terminal handles the DOM copy/paste events). The File menu holds only Open
- * Project…, so Cmd+W is unbound; no reload and no zoom. Open Project… is Cmd+O alone: CmdOrCtrl would take
- * Ctrl+O, which Claude Code uses, from the terminal on Linux and Windows.
+ * The Mac's app menu; Windows and Linux have none (`launch` in index.ts). Its key equivalents reach the
+ * app before the page does, so Cmd+C/Cmd+V stay with the Edit menu (the terminal handles the DOM
+ * copy/paste events). The File menu holds only Open Project… (Cmd+O), so Cmd+W is unbound; no reload
+ * and no zoom.
  */
 export function buildMenu(openProject: () => void): Menu {
   return Menu.buildFromTemplate([
