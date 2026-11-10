@@ -162,10 +162,36 @@ test("on Windows and Linux, a terminal on screen fits again when the window's sc
   // As a move to a screen with other scaling: the pixel ratio changes and the window's size in CSS
   // pixels doesn't. Any ratio but the screen's own.
   const scale = (await page.evaluate(() => window.devicePixelRatio)) === 2 ? 1.5 : 2;
+  // TEMPORARY DIAGNOSTIC (2c CI push 2), removed afterwards: the terminal's renderer and cell, and whether
+  // the page sees the change through the media query xterm listens to (Linux CI: the fit didn't change).
+  await page.evaluate(() => {
+    const w = window as unknown as { dprChanges: string[] };
+    w.dprChanges = [];
+    const mq = window.matchMedia(`screen and (resolution: ${window.devicePixelRatio}dppx)`);
+    mq.addEventListener('change', () => w.dprChanges.push(`change at ${window.devicePixelRatio}`));
+  });
+  const probe = () =>
+    page.evaluate(() => {
+      const term = document.querySelector('.well > .terminal:not(.terminal--hidden)');
+      const measure = term?.querySelector('.xterm-char-measure-element')?.getBoundingClientRect();
+      const row = term?.querySelector('.xterm-rows > div')?.getBoundingClientRect();
+      return JSON.stringify({
+        dpr: window.devicePixelRatio,
+        canvases: term?.querySelectorAll('canvas').length,
+        domRows: !!term?.querySelector('.xterm-rows'),
+        charW: measure?.width,
+        charH: measure?.height,
+        rowH: row?.height,
+        changes: (window as unknown as { dprChanges: string[] }).dprChanges,
+        webgl2: !!document.createElement('canvas').getContext('webgl2'),
+      });
+    });
+  console.log(`[scalediag] ${process.platform} before ${await probe()} size ${JSON.stringify(before)}`);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 0, height: 0, deviceScaleFactor: scale, mobile: false });
   await expect.poll(() => page.evaluate(() => window.devicePixelRatio)).toBe(scale);
   await settled(page);
+  console.log(`[scalediag] ${process.platform} after ${await probe()} fit ${JSON.stringify(await fitSize(page, a))}`);
   // xterm has re-measured its cells at the new ratio, so a fit now gives another size.
   const fitted = (await fitSize(page, a))!;
   expect(fitted).not.toEqual(before);
