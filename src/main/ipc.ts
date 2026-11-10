@@ -11,7 +11,8 @@ import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
 
 export interface ClipboardDeps {
-  clipboard: ClipboardReader;
+  /** Electron's clipboard: a paste reads it, and a terminal's copy keys write it. */
+  clipboard: ClipboardReader & { writeText(text: string): Promise<void> };
   writeFile: (path: string, data: Buffer) => Promise<void>;
   newImagePath: () => string;
 }
@@ -165,6 +166,9 @@ export function registerIpc(
   ipcMain.handle(IPC.resolvePaste, () =>
     resolveClipboardPaste(clipboardDeps.clipboard, clipboardDeps.writeFile, clipboardDeps.newImagePath),
   );
+  ipcMain.on(IPC.copyText, (_e, text: string) => {
+    clipboardDeps.clipboard.writeText(text).catch((err: unknown) => console.error('[clipboard] copy failed', err));
+  });
 
   ipcMain.on(IPC.write, (_e, sessionId: string, data: string) => host.write(sessionId, data));
   ipcMain.on(IPC.resize, (_e, sessionId: string, cols: number, rows: number) => host.resize(sessionId, cols, rows));

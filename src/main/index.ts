@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
 import { loadConfig, type AppConfig } from './config';
+import { editMenuItems } from './contextMenu';
 import { gitQueries } from './git';
 import { registerIpc, registerSetupIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
@@ -73,6 +74,13 @@ function createWindow(e2e: boolean): BrowserWindow {
       if (!isDevToolsKey(input)) return;
       event.preventDefault();
       win.webContents.toggleDevTools();
+    });
+    // A right-click on something editable gets Copy and Paste there; the Mac gets no menu. In a
+    // terminal xterm has already focused its textarea and filled it with the selection, so the roles'
+    // DOM copy and paste reach the terminal's own handlers, as the Mac's Edit menu does.
+    win.webContents.on('context-menu', (_e, params) => {
+      const items = editMenuItems(params);
+      if (items) Menu.buildFromTemplate(items).popup({ window: win });
     });
   }
 

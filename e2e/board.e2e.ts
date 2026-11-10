@@ -152,7 +152,7 @@ test('a suggestion puts a ring on its card, and answering it takes the ring away
   await expect(working.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
 
   // Scrolling the view back doesn't move the screen: the block is still on it.
-  await page.keyboard.press('Meta+Shift+PageUp');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+PageUp' : 'Shift+PageUp');
   await sendLine(page, id, 'echo scrolled-back');
   await expect.poll(() => screen(page, id)).toContain('scrolled-back');
   await page.waitForTimeout(500);

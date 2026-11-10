@@ -173,11 +173,15 @@ export default function TerminalView(props: {
 
     term.attachCustomKeyEventHandler((e) => {
       if (swallowsKeyEvent(e)) return false;
-      const action = matchTerminalBinding(e);
+      const action = matchTerminalBinding(e, api.platform, term.hasSelection());
       if (!action) return true;
+      // Also stops Chromium's own paste of a Ctrl+V into xterm's textarea, which would paste it twice.
       e.preventDefault();
       if ('send' in action) {
         term.input(action.send, true);
+      } else if ('clipboard' in action) {
+        if (action.clipboard === 'paste') pasteClipboard();
+        else copySelection(action.clipboard === 'copy-and-clear');
       } else if (action.scroll === 'line-up') term.scrollLines(-1);
       else if (action.scroll === 'line-down') term.scrollLines(1);
       else if (action.scroll === 'page-up') term.scrollPages(-1);
@@ -260,12 +264,13 @@ export default function TerminalView(props: {
     });
 
     // --- Clipboard and drop ------------------------------------------------------------------
-    // Cmd+V belongs to the Edit menu, which fires a DOM paste event. Main resolves the clipboard:
-    // a Finder file or an image becomes a path. term.paste adds bracketed-paste markers when the
-    // program asked for them; without them Claude Code doesn't attach a pasted path as an image.
-    const onPaste = (e: ClipboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+    // The Mac's copy and paste go through the Edit menu, which fires DOM copy and paste events.
+    // Windows and Linux use the terminal's own keys (the key handler above) and the right-click
+    // menu, whose Copy and Paste fire the same events.
+    // Main resolves the clipboard: a Finder file or an image becomes a path. term.paste adds
+    // bracketed-paste markers when the program asked for them; without them Claude Code doesn't
+    // attach a pasted path as an image.
+    const pasteClipboard = () => {
       api
         .resolvePaste()
         .then((paste) => {
@@ -274,13 +279,25 @@ export default function TerminalView(props: {
         })
         .catch((err: unknown) => console.warn('[terminal] paste failed', err));
     };
-    // Cmd+C (Edit menu): copy the selection without TUI padding and with wrapped lines rejoined.
+    const onPaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      pasteClipboard();
+    };
+    // The selection is copied without TUI padding and with wrapped lines rejoined.
     const onCopy = (e: ClipboardEvent) => {
       const selection = term.getSelection();
       if (!selection || !e.clipboardData) return;
       e.preventDefault();
       e.stopPropagation();
       e.clipboardData.setData('text/plain', cleanCopiedTerminalText(selection));
+    };
+    // The copy keys of Windows and Linux. Main writes the clipboard: the page's own refuses when the
+    // document isn't focused. A Ctrl+C clears the selection, so the next one interrupts.
+    const copySelection = (clear: boolean) => {
+      const selection = term.getSelection();
+      if (selection) api.copyText(cleanCopiedTerminalText(selection));
+      if (clear) term.clearSelection();
     };
     // Finder files dropped on the terminal become their escaped paths.
     const onDragOver = (e: DragEvent) => {

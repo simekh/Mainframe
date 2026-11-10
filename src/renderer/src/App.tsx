@@ -45,6 +45,7 @@ function installE2eHooks(): void {
     termSize: (taskId) => sizeOf(terminalOfTask(taskId)),
     managerScreen: () => textOf(managerTerminal()),
     managerTermSize: () => sizeOf(managerTerminal()),
+    select: (taskId, column, row, length) => terminalOfTask(taskId)?.select(column, row, length),
     cell: (taskId, row, col) => {
       const cell = terminalOfTask(taskId)?.buffer.active.getLine(row)?.getCell(col);
       if (!cell) return null;

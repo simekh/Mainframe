@@ -57,6 +57,7 @@ export const IPC = {
   exit: 'pty:exit',
   status: 'session:status',
   resolvePaste: 'clipboard:resolve-paste',
+  copyText: 'clipboard:copy-text',
   openLink: 'shell:open-link',
 } as const;
 
@@ -134,6 +135,8 @@ export interface MainframeApi {
   pause(sessionId: string): void;
   resume(sessionId: string): void;
   resolvePaste(): Promise<ClipboardPaste>;
+  /** Puts the text on the clipboard, through main: the page's `navigator.clipboard` refuses when the document isn't focused. */
+  copyText(text: string): void;
   /** Opens a web page in the owner's browser; main passes on only http: and https: addresses. */
   openLink(url: string): Promise<void>;
   getPathForFile(file: File): string;

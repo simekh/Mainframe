@@ -12,6 +12,8 @@ declare global {
       /** The manager's terminal buffer, its running session's or the last one's: the project's, or the first open one's. */
       managerScreen(): string;
       managerTermSize(): { cols: number; rows: number } | null;
+      /** Selects `length` cells of the task's terminal from `column` of the row screenText gives its line, as a drag would. */
+      select(taskId: string, column: number, row: number, length: number): void;
       /**
        * A cell of the task's terminal buffer, at the row screenText gives its line: its
        * foreground (`#rrggbb`, `default` or `palette n`), and whether xterm draws it bold and underlined.

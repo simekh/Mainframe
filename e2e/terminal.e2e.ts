@@ -154,6 +154,52 @@ test('a program that reads the terminal raw, as Claude Code does, sees a resize 
   await app.close();
 });
 
+test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C with none interrupts, and Ctrl+V and Ctrl+Shift+V paste', async () => {
+  test.skip(process.platform === 'darwin', "Windows and Linux keys: the Mac's copy and paste are the Edit menu's Cmd+C and Cmd+V, which keys pressed in the page never reach");
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  // Sent, not invoked: a copy lands on the clipboard a moment after its key.
+  const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText());
+  const setClipboard = (text: string) => app.evaluate(({ clipboard }, t) => clipboard.writeText(t), text);
+
+  await run(page, 'echo copy-me-$((6*7))');
+  await expect.poll(() => screen(page, a)).toMatch(/^copy-me-42$/m);
+  // cat starts before anything is selected, as a typed key clears xterm's selection itself. It runs
+  // once it has numbered a line.
+  await run(page, 'cat -n');
+  await run(page, 'in-cat');
+  await expect.poll(() => screen(page, a)).toMatch(/^\s*1\s+in-cat$/m);
+  const row = (await screen(page, a)).split('\n').indexOf('copy-me-42');
+  await page.evaluate(([id, r]) => window.__mainframeE2E.select(id, 0, r, 'copy-me-42'.length), [a, row] as const);
+
+  await setClipboard('x');
+  await page.keyboard.press('Control+Shift+C');
+  await expect.poll(clipboard).toBe('copy-me-42');
+  await setClipboard('x');
+  await page.keyboard.press('Control+C');
+  await expect.poll(clipboard).toBe('copy-me-42');
+  // Neither copy interrupted cat. The line goes through the bridge, as typing would clear the selection.
+  await sendLine(page, a, 'still-in-cat');
+  await expect.poll(() => screen(page, a)).toMatch(/^\s*2\s+still-in-cat$/m);
+  // That Ctrl+C cleared the selection, so this one interrupts cat, and the shell runs the next line.
+  await page.keyboard.press('Control+C');
+  await run(page, 'echo after-$((6*7))');
+  await expect.poll(() => screen(page, a)).toMatch(/^after-42$/m);
+
+  // Pasted once: a second paste would run on into the line's output.
+  const pasteAndRun = async (keys: string, line: string) => {
+    await setClipboard(line);
+    await page.keyboard.press(keys);
+    await expect.poll(() => screen(page, a)).toContain(`$ ${line}`);
+    await page.keyboard.press('Enter');
+  };
+  await pasteAndRun('Control+V', 'echo pasted-$((6*7))');
+  await expect.poll(() => screen(page, a)).toMatch(/^pasted-42$/m);
+  await pasteAndRun('Control+Shift+V', 'echo pasted-$((7*7))');
+  await expect.poll(() => screen(page, a)).toMatch(/^pasted-49$/m);
+  await app.close();
+});
+
 test('quitting leaves no session process behind', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
