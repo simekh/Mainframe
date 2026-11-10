@@ -35,7 +35,8 @@ export function installBoardShortcuts(target: Window, actions: BoardActions, pla
   const onMac = platform === 'darwin';
   const onKeyDown = (e: KeyboardEvent) => {
     const digit = DIGIT.exec(e.code);
-    const command = commandHeld(e, platform);
+    // Stricter than commandHeld on macOS, as the board has always been: Cmd without Ctrl or Option.
+    const command = onMac ? e.metaKey && !e.ctrlKey && !e.altKey : commandHeld(e, platform);
     const commandAlone = command && !e.shiftKey;
     const commandShift = !onMac && command && e.shiftKey;
     const char = e.key.toLowerCase();

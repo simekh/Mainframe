@@ -1,10 +1,10 @@
 /**
- * The system's command key is held, without the other two of Cmd, Ctrl and Alt: Cmd on macOS, Ctrl
- * on Windows and Linux. Never with Alt: Option types characters on the Mac's Swedish layout, and on
- * Windows AltGr arrives as Ctrl+Alt, typing `@ { [ ] }` on Nordic and German layouts.
+ * The system's command key is held. On macOS that is Cmd, whatever else is held, as the Mac has always
+ * had it. On Windows and Linux it is Ctrl without Meta or Alt: on Windows AltGr arrives as Ctrl+Alt,
+ * typing `@ { [ ] }` on Nordic and German layouts.
  */
 export function commandHeld(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }, platform: NodeJS.Platform): boolean {
-  return platform === 'darwin' ? e.metaKey && !e.ctrlKey && !e.altKey : e.ctrlKey && !e.metaKey && !e.altKey;
+  return platform === 'darwin' ? e.metaKey : e.ctrlKey && !e.metaKey && !e.altKey;
 }
 
 /** The command key as on-screen hints name it. */

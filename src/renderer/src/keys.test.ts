@@ -9,11 +9,11 @@ const mods = (held: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey', boolean>> =
 });
 
 describe('commandHeld', () => {
-  it('on the Mac is Cmd, alone of Cmd, Ctrl and Option', () => {
+  it('on the Mac is Cmd, whatever else is held, as before', () => {
     expect(commandHeld(mods({ metaKey: true }), 'darwin')).toBe(true);
+    expect(commandHeld(mods({ metaKey: true, ctrlKey: true }), 'darwin')).toBe(true);
+    expect(commandHeld(mods({ metaKey: true, altKey: true }), 'darwin')).toBe(true);
     expect(commandHeld(mods({ ctrlKey: true }), 'darwin')).toBe(false);
-    expect(commandHeld(mods({ metaKey: true, ctrlKey: true }), 'darwin')).toBe(false);
-    expect(commandHeld(mods({ metaKey: true, altKey: true }), 'darwin')).toBe(false);
     expect(commandHeld(mods(), 'darwin')).toBe(false);
   });
 
