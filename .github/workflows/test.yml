@@ -84,6 +84,15 @@ jobs:
         if: ${{ !cancelled() && runner.os != 'Linux' }}
         run: npm run test:e2e
 
+      # TEMPORARY DIAGNOSTIC (2c CI push 1), removed afterwards: quits repeated with and without
+      # sessions, through Playwright and as a user's close of the window, with each exit code.
+      - name: Quit probe (Windows)
+        if: ${{ !cancelled() && runner.os == 'Windows' }}
+        continue-on-error: true
+        env:
+          MAINFRAME_QUIT_PROBE: '1'
+        run: npx playwright test e2e/quitprobe.e2e.ts --reporter=list
+
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
