@@ -52,28 +52,36 @@ it('writeJsonAtomic replaces the file whole, leaving no temp file', () => {
 
 const failure = (code: string) => Object.assign(new Error(`${code}: rename 'state.json.tmp' -> 'state.json'`), { code });
 
-it.each(['EPERM', 'EACCES', 'EBUSY'])('renameWithRetry waits while another program holds the file (%s), and renames it once it lets go', (code) => {
+it.each(['EPERM', 'EACCES', 'EBUSY'])('on Windows renameWithRetry waits while another program holds the file (%s), and renames it once it lets go', (code) => {
   const rename = vi.fn()
     .mockImplementationOnce(() => { throw failure(code); })
     .mockImplementationOnce(() => { throw failure(code); });
   const wait = vi.fn();
-  renameWithRetry('state.json.tmp', 'state.json', rename, wait);
+  renameWithRetry('state.json.tmp', 'state.json', rename, wait, 'win32');
   expect(rename.mock.calls).toEqual(Array(3).fill(['state.json.tmp', 'state.json']));
   expect(wait.mock.calls).toEqual([[100], [100]]);
 });
 
-it('renameWithRetry gives up after 10 retries and throws what the rename threw', () => {
+it.each(['darwin', 'linux'] as const)('on %s renameWithRetry throws a held file at once, as the rename always did there', (platform) => {
   const rename = vi.fn(() => { throw failure('EBUSY'); });
   const wait = vi.fn();
-  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait)).toThrow(expect.objectContaining({ code: 'EBUSY' }));
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, platform)).toThrow(expect.objectContaining({ code: 'EBUSY' }));
+  expect(rename).toHaveBeenCalledTimes(1);
+  expect(wait).not.toHaveBeenCalled();
+});
+
+it('on Windows renameWithRetry gives up after 10 retries and throws what the rename threw', () => {
+  const rename = vi.fn(() => { throw failure('EBUSY'); });
+  const wait = vi.fn();
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, 'win32')).toThrow(expect.objectContaining({ code: 'EBUSY' }));
   expect(rename).toHaveBeenCalledTimes(11);
   expect(wait).toHaveBeenCalledTimes(10);
 });
 
-it('renameWithRetry throws any other error at once', () => {
+it('on Windows renameWithRetry throws any other error at once', () => {
   const rename = vi.fn(() => { throw failure('ENOENT'); });
   const wait = vi.fn();
-  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait)).toThrow(expect.objectContaining({ code: 'ENOENT' }));
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, 'win32')).toThrow(expect.objectContaining({ code: 'ENOENT' }));
   expect(rename).toHaveBeenCalledTimes(1);
   expect(wait).not.toHaveBeenCalled();
 });

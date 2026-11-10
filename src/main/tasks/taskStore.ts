@@ -107,21 +107,23 @@ const RETRIES = 10;
 const RETRY_MS = 100;
 
 /**
- * Renames `from` to `to`, trying again for a second while the file is held. Every save is synchronous,
- * so the wait blocks too. Any other error, or a file held past the retries, is thrown.
+ * Renames `from` to `to`. On Windows it tries again for a second while the file is held; every save is
+ * synchronous, so the wait blocks too. Elsewhere nothing holds a file, and the first failure is thrown
+ * at once. Any other error, or a file held past the retries, is thrown.
  */
 export function renameWithRetry(
   from: string,
   to: string,
   rename = renameSync,
   wait = (ms: number) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  platform: NodeJS.Platform = process.platform,
 ): void {
   for (let attempt = 0; ; attempt++) {
     try {
       rename(from, to);
       return;
     } catch (err) {
-      if (attempt === RETRIES || !HELD_CODES.has((err as NodeJS.ErrnoException).code ?? '')) throw err;
+      if (platform !== 'win32' || attempt === RETRIES || !HELD_CODES.has((err as NodeJS.ErrnoException).code ?? '')) throw err;
       wait(RETRY_MS);
     }
   }
