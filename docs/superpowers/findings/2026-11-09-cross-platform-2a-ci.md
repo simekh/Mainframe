@@ -85,12 +85,12 @@ Also seen on the Mac, locally: `projects.e2e.ts` "each open project has its own 
 The Windows failures themselves are done: diagnosed and fixed by cause (runs 6–9, above). Both causes were in the tests' shell; Mainframe needed no change.
 
 - **A later Windows diagnostic run:** Electron's exit code after `app.close()` in a restart test (the open question under the localStorage fix, above) is answered in the 2b section below: 0xC0000409 at some quits. What stays open is its cause.
-- **2c:** `npm run dev` on a fresh clone (Electron's binary isn't there yet); the README's Linux note, since the setuid helper exists only after the first `npm start`; Ctrl+click opens a link on Windows and Linux (spec §6), and `e2e/links.e2e.ts`'s click, which holds the Meta key on every system, must follow it.
+- **2c:** `npm run dev` on a fresh clone (Electron's binary isn't there yet); the README's Linux note, since the setuid helper exists only after the first `npm start`; Ctrl+click opens a link on Windows and Linux (spec §6), and `e2e/links.e2e.ts`'s click, which holds the Meta key on every system, must follow it. (The 2c section at the end says where each of these stands.)
 - **The owner's Windows PC:** a real Claude Code under the bundled ConPTY with its status on the board; that the layout, widths and pins survive a quit and a Windows shutdown (`session-end`); clicking in a Claude Code session that asks for the mouse; closing a project while one of its sessions is busy, then checking that no `claude.exe` is left (the one case where the one-kill-per-pty rule could leak a process); with a real Claude Code session open, narrowing its panel and typing at once, with no first key lost (the e2e guard uses a raw-reading stand-in for Claude Code, so this checks the real thing).
 
 ## 2b: the setup window's CI runs
 
-Plan 2b (the setup screen, Tasks 1–6) was pushed eight times; Node 26.13.0 on every system again. macOS and Linux were green from the first run. Windows found three things in the tests' own set-up, and one bug in the product (the layout lost across a restart), which is fixed.
+Plan 2b (the setup screen, Tasks 1–6, then its final review's fixes) was pushed nine times; Node 26.13.0 on every system again. macOS and Linux were green from the first run. Windows found three things in the tests' own set-up, and one bug in the product (the layout lost across a restart), which is fixed.
 
 | Run | Commit | What it carried | macOS | Windows | Linux |
 |---|---|---|---|---|---|
@@ -102,8 +102,9 @@ Plan 2b (the setup screen, Tasks 1–6) was pushed eight times; Node 26.13.0 on 
 | 6 [42699856141](https://github.com/simekh/Mainframe/actions/runs/42699856141) | c9d816d | diagnostics of the layout test, repeated 8 times (its repeat step does not fail the job) | 99 pass | 99 pass; the repeat failed 1 of 8 | 99 pass |
 | 7 [42703250267](https://github.com/simekh/Mainframe/actions/runs/42703250267) | 03464dc | the layout fix, and a Windows step repeating the two layout restart tests 15 times each | 99 pass | 99 pass; the repeat 29 of 30 (a hang, below). The same job run again: 99 pass, repeat 30 of 30 | 99 pass |
 | 8 [42706910856](https://github.com/simekh/Mainframe/actions/runs/42706910856) | f55721a | the repeat step removed: the fix on its own | 99 pass | 99 pass | 99 pass |
+| 9 [42712677180](https://github.com/simekh/Mainframe/actions/runs/42712677180) | 9dacaff | the final review's fixes (an absolute `MAINFRAME_CLAUDE_BIN`, npm prefixes on Windows, a failed pick shows its path, the Find claude… dialog's options) and this doc's corrections | 99 pass | first attempt 98 pass, 1 fail: `shortcuts.e2e.ts:49` (Tab-completion after Ctrl+Tab, a flake); the same job run again: 99 pass | 99 pass |
 
-Run 8 is green on all three systems, 921 unit tests and 99 e2e tests each.
+Run 8 is green on all three systems, 921 unit tests and 99 e2e tests each. Run 9 is too, with 933 unit tests and 99 e2e tests each, once its Windows job had run again.
 
 - **Electron crashes at launch on Windows when `USERPROFILE` names a folder with no `AppData\Roaming` in it** (run 1, all 8 setup tests: `electron.launch: Process failed to launch`, exit code 0x80000003, a Chromium CHECK). The setup tests give the app a stand-in computer: empty home, `HOME`, `USERPROFILE` and `APPDATA` pointing at it. Run 2's diagnostic launched Electron with one variable changed at a time: `PATH` restricted (with and without System32), `HOME` and `APPDATA` alone launched; `USERPROFILE` alone crashed. Run 3 gave `USERPROFILE` a folder with `AppData\Roaming` alone (launched), `AppData\Local` alone (crashed), both (launched), a full profile skeleton (launched), an empty folder (crashed) and `C:\Users\Public` (crashed). Why Electron needs it was not traced; Windows resolves the roaming-AppData known folder from `USERPROFILE`, so the cause is probably in what Electron does with that folder at start. Fix (test only): `computer()` in `e2e/setup.e2e.ts` creates `AppData\Roaming` in the stand-in home on Windows, with the evidence as a comment. After it, all 8 setup tests pass on Windows (the Windows paths: `claude.exe` in `.local\bin`, the `Path` key, a PATH of node's and Git's folders), and the git-missing and moved-claude tests behave as on the Mac.
 - **`rmSync` of a running program fails on Windows** (run 1, two tasks tests, `EPERM` at `rmSync(claude)` in `launchWithClaudeGone`). The copied stand-in `claude.exe` is what the project's manager is running when the test deletes it, and Windows won't delete a running program. Windows does let one be renamed, which takes it off its path just the same (the folder goes with the test). Fix (test only): rename on Windows, delete elsewhere; clean-up's folder removal retries (`maxRetries`), since Windows keeps a program's file locked until its process has gone. Both tests pass from run 2.
@@ -114,4 +115,89 @@ Run 8 is green on all three systems, 921 unit tests and 99 e2e tests each.
 
 **What cannot behave as on the Mac:** the stand-in computer on Windows has the `AppData\Roaming` folder Electron needs; the "claude can't start" tests rename the file where POSIX deletes it; the stand-in computer's PATH on Windows holds node's own folder and Git's own folder, where POSIX has a folder of links to them. Nothing in the product differs.
 
-**For 2c, and the owner's Windows PC:** look into the 0xC0000409 at quit and the one hang; a real Claude Code under the setup screen on Windows (`%USERPROFILE%\.local\bin\claude.exe` found without any PATH) is still unchecked.
+**For 2c, and the owner's Windows PC:** look into the 0xC0000409 at quit and the one hang; a real Claude Code under the setup screen on Windows (`%USERPROFILE%\.local\bin\claude.exe` found without any PATH) is still unchecked. (2c traced the crash to node-pty; see the 2c section below.)
+
+## 2c: native keys, window and terminals on Windows and Linux
+
+Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and paste, the Windows terminal, the Windows file and git fixes, the README) was pushed three times; Node 26.13.0 on every system, 1055 unit tests on each.
+
+| Run | Commit | What it carried | macOS | Windows | Linux |
+|---|---|---|---|---|---|
+| 1 [42805058246](https://github.com/simekh/Mainframe/actions/runs/42805058246) | c93943f | Tasks 1–6, and a temporary Windows step that repeated quits (the crash, below) | 101 pass | 104 pass, 1 fail: `todo.e2e.ts:285` | 104 pass, 1 fail: `terminal.e2e.ts:157` |
+| 2 [42808065681](https://github.com/simekh/Mainframe/actions/runs/42808065681) | 08f5438 | the quit step removed; the Todo panel test waits for the panel's slide; a temporary diagnostic in the scaling test | 101 pass | 105 pass | 104 pass, 1 fail: the scaling test again |
+| 3 [42809769043](https://github.com/simekh/Mainframe/actions/runs/42809769043) | 5091b6d | the scaling test's fix, the diagnostic removed | 101 pass | 105 pass | 104 pass, the scaling test skipped (no WebGL2, below) |
+
+macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Run 3 is green on all three systems, and both Linux start steps passed in every run.
+
+**What the tests showed off the Mac.** The tests that skip on the Mac all ran on Windows and Linux. The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch, and all of them passed, but for the scaling test on Linux (below):
+
+- Task 1, the window: `app.e2e.ts`'s window test (no application menu, `isMenuBarVisible()` false, the project list's top row with no room for window buttons, the top bar no drag region, `data-platform`); the setup screen's 8 px title row; no drag regions in `manager.e2e.ts` and `session-panel.e2e.ts`; Open Project… through the project list's button.
+- Task 2, the keys: Ctrl+Shift+O opens Open Project… (`app.e2e.ts`), and on the setup screen opens no dialog and raises no error (`setup.e2e.ts`); the Control branches of `projects.e2e.ts`, `links.e2e.ts` (Ctrl+click) and `tasks.e2e.ts`.
+- Task 3, copy and paste: `terminal.e2e.ts`'s Ctrl+Shift+C, Ctrl+C with and without a selection, Ctrl+V and Ctrl+Shift+V. On Windows the Ctrl+C that interrupts `cat` left the stand-in `claude` running: ConPTY's Ctrl+C did not end it, so `e2e/fake-claude.cjs` is unchanged. `board.e2e.ts`'s Shift+PageUp.
+- Task 4: the scaling re-fit on Windows (with WebGL, 54x41 became 50x41 at twice the pixel ratio). On Linux CI it can't be shown (below).
+
+### What failed, by cause, and the fix
+
+- **The Todo panel test measured the floating panel while it slid in** (Windows, run 1: `todo.e2e.ts:285`, width 303.99998474121094 where 304 was expected). The floating panel is visible from the start of its 220 ms slide (`transform: translateX`), and under a fractional transform Chromium's box is off by one float32 step (304 − 2⁻¹⁶). The slower Windows runner measured it mid-slide. Fix (test only, `230ecc2`): the test waits for the panel's animations to finish before both width checks, as `panel.e2e.ts` already does. It passed on Windows in runs 2 and 3.
+- **The scaling re-fit test can't show a re-fit on Linux CI** (runs 1 and 2: the fit after the pixel ratio went from 1 to 2 was still 50x43). Run 2's diagnostic showed the cause. Linux CI's virtual display has no WebGL2, so xterm keeps its DOM renderer, and the DOM renderer's cells measure the same in CSS pixels at any ratio: rows 17 px high at 1x and at 2x. The page did see the change, through the same media query xterm listens to (`screen and (resolution: 1dppx)` fired its change). On Windows CI, WebGL's cells are whole device pixels, and the same change gave 54x41, then 50x41. So the product is right: on the DOM renderer a change of scaling alone changes no fit, and there is nothing to re-fit. Fix (test only, `5091b6d`): the test runs where the terminal has WebGL, and otherwise skips, saying why (spec §10.2). It passes on Windows and skips on Linux CI. Whether a Linux desktop with a GPU gets WebGL, and re-fits there, is for a friend's first try.
+
+No known flake came back in runs 1–3 (`projects.e2e.ts`' row-button hover, `session-panel.e2e.ts:117`'s 12 s budget, `shortcuts.e2e.ts:49` and `:109`, `board.e2e.ts:139`, `todo.e2e.ts:254`).
+
+### The crash at a Windows quit (0xC0000409): node-pty's, at a quit with sessions still running
+
+Run 1's temporary Windows step quit Mainframe over and over and logged Electron's exit code each time. Its stderr was taken with `ELECTRON_ENABLE_STACK_DUMPING=1`.
+
+| Quit | Exit 0xC0000409 |
+|---|---|
+| At the setup screen, no project and no session (through Playwright's `app.close()`) | 0 of 8 |
+| With the manager's and a task's session running | 6 of 10 |
+| After both sessions ended on their own (`exit` typed) | 0 of 8 |
+| 3 s after Close project ended both sessions | 0 of 8 |
+| A user's close of the window (`taskkill` without `/F` sends WM_CLOSE; no Playwright), two projects' managers running | 2 of 10 |
+| A user's close of the window at the setup screen | 0 of 5 |
+
+So the crash comes only when sessions are still running at the quit, and a user's own quit gets it too, so it isn't something Playwright causes. A crashing quit took about 600 ms; the others took about 160 ms (WM_CLOSE: about 210 ms). None of the 49 quits hung, and 2b's one hang did not come back.
+
+- **What crashes.** stderr says `Received fatal exception 0xe06d7363`, a C++ exception, raised through `KERNELBASE!RaiseException`. The exception record's image base and type pointer point into node-pty 1.1.0's `prebuilds/win32-x64/conpty.node`. Its type information there names `Napi::Error`, and the frames, mapped with the package's own `conpty.pdb`, are `_CxxThrowException` called from `Napi::Error::ThrowAsJavaScriptException`. A C++ exception that nothing catches ends the process with `abort()`, which is the 0xC0000409 (`FAST_FAIL_FATAL_APP_EXIT`).
+- **Why.** This is node-pty's open issue [#951](https://github.com/microsoft/node-pty/issues/951). On Windows, node-pty reports a pty's exit through a thread-safe function. When that exit arrives while Node's environment is being torn down, node-addon-api can no longer throw to JavaScript and throws a C++ exception instead, which aborts the process. node-addon-api has a guard for exactly this, `NODE_API_SWALLOW_UNTHROWABLE_EXCEPTIONS`, and node-pty doesn't build with it. The one-line fix, [PR #954](https://github.com/microsoft/node-pty/pull/954), is open and in no release: 1.1.0 is the latest, and 1.2.0-beta.18 is a beta.
+- **Mainframe's part.** At a quit, `beginQuit` kills every pty and Electron exits at once, so the ptys' exits land in the teardown. Sessions that had ended before the quit never crashed it.
+- **What it costs today.** Nothing was lost in any quit seen: `beginQuit` records the tasks and flushes the page's storage before the kills (2b checked 24 of 24 writes). What a user sees is for the owner's Windows PC (below).
+- **The owner's open choice.** (a) Leave it until a node-pty release carries PR #954; updating node-pty is the owner's separate decision anyway. Or (b) a Windows-only quit that holds Electron's exit until every killed pty has reported its exit, with a time limit of a second or two, so no exit lands in the teardown. (b) makes a Windows quit with sessions slower by about the time the exits take, and is code that works around a dependency's bug. Not done in 2c: the crash is node-pty's, and the plan said to record it and stop there.
+
+### Still open: the owner's Windows PC, and a friend's Linux
+
+On Windows (spec §10.4), with a real Claude Code:
+
+- A session under the bundled ConPTY, with its status on the board. The setup screen finds `%USERPROFILE%\.local\bin\claude.exe` with no PATH.
+- Copy and paste in a session:
+  - Ctrl+C with a selection copies once and clears it, and the next Ctrl+C interrupts.
+  - Ctrl+Shift+C always copies.
+  - Ctrl+V and Ctrl+Shift+V paste once.
+- The right-click menu over a terminal:
+  - Copy is enabled only with a selection, and it copies the cleaned text.
+  - Copy is disabled with nothing selected.
+  - Paste pastes once: text, an image, a file.
+- Paths into a session:
+  - A file or an image copied in Windows' Explorer pastes as its path at all.
+  - Claude Code attaches a dropped or pasted image path in double quotes.
+  - A dropped path with spaces (`C:\Users\Anna Berg\Pictures\shot 1.png`) is attached.
+- Ctrl+Backspace deletes a word.
+- A wheel notch scrolls about three rows.
+- Alt moves the focus nowhere, since there is no menu bar.
+- AltGr on a Nordic or German layout types `@ { [ ] } \ |` in a terminal and in the New task box, and no shortcut fires.
+- On a non-Latin layout (Russian, say), Ctrl+Shift+W, Ctrl+Shift+O, Ctrl+C and Ctrl+V match by the key's letter, so they may not fire there.
+- A real change of scaling re-fits the terminal: the window moved to a screen with other scaling, or Windows' scaling changed.
+- A quit with sessions running:
+  - whether Windows shows a crash dialog or report (the 0xC0000409 above);
+  - that the next start is clean, with every task back.
+- How long a quit takes with several sessions, when a data file is held for good by another program (an antivirus or a sync tool): each save then costs about a second.
+- The layout, widths and pins survive a quit and a Windows shutdown (`session-end`).
+- Clicking in a session that asks for the mouse.
+- Closing a project while one of its sessions is busy leaves no `claude.exe` behind.
+- Narrowing a session's panel while typing loses no first key.
+- `npm run dev` on a fresh clone: CI runs only `npm start` and the e2e build.
+- The README's note on Windows PowerShell's execution policy works as written.
+
+On Linux: a friend's first try, including whether a desktop with a GPU gives the terminals WebGL and re-fits them when the scaling changes.
+
+**What cannot behave as on the Mac in 2c's tests:** the scaling re-fit test runs only where the terminal has WebGL (above). The Mac skips the four tests of Windows and Linux keys and behaviour, since Playwright's keys never reach the Mac's menu and the Mac keeps today's fit.
