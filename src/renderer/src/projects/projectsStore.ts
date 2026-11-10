@@ -81,9 +81,10 @@ export function revealProject(dir: string): void {
 }
 
 /**
- * Focuses the project from the list or Cmd+1 to Cmd+9, and puts the cursor where its typing goes: the
- * selected task's terminal, brought out as Ctrl+Tab brings it, or else its manager's. With neither,
- * the cursor leaves the project it was in, so no typing lands there unseen.
+ * Focuses the project from the list or Cmd+1 to Cmd+9 (Ctrl+1 to Ctrl+9 on Windows and Linux), and
+ * puts the cursor where its typing goes: the selected task's terminal, brought out as Ctrl+Tab brings
+ * it, or else its manager's. With neither, the cursor leaves the project it was in, so no typing lands
+ * there unseen.
  */
 export function focusProject(dir: string): void {
   revealProject(dir);
@@ -108,8 +109,9 @@ export const jump = (step: 1 | -1) =>
   );
 
 /**
- * Takes the focused project off screen, as Cmd+W does; it stays open, its sessions running. The
- * neighbour that takes the focus takes the cursor too. The last one on screen stays.
+ * Takes the focused project off screen, as Cmd+W (Ctrl+Shift+W on Windows and Linux) does; it stays
+ * open, its sessions running. The neighbour that takes the focus takes the cursor too. The last one on
+ * screen stays.
  */
 export function closeFocusedPane(): void {
   const { focused, shown } = store.layout;

@@ -90,7 +90,7 @@ test("Cmd+click (Ctrl+click on Windows and Linux) opens a link from the terminal
   expect(await click(page, a, plain, false)).toBe(true);
   expect(await click(page, a, osc8, false)).toBe(true);
 
-  // With Cmd held each opens once. xterm refuses the file link, so it is never even marked. A
+  // With Cmd (Ctrl on Windows and Linux) held each opens once. xterm refuses the file link, so it is never even marked. A
   // record of it would sit between the two others, since main handles the clicks in order.
   expect(await click(page, a, plain, true)).toBe(true);
   expect(await click(page, a, bad, true)).toBe(false);

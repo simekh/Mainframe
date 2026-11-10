@@ -5,7 +5,10 @@ import { httpUrl, MAX_HTTP_URL_LENGTH } from '../../../shared/httpUrl';
 export interface TermStyleColors {
   /** Bold text that would draw in the default foreground. */
   bold: string;
-  /** Text of an OSC 8 link to a web page (one `httpUrl` accepts, so one a Cmd+click opens). */
+  /**
+   * Text of an OSC 8 link to a web page (one `httpUrl` accepts, so one a Cmd+click opens, or a Ctrl+click
+   * on Windows and Linux).
+   */
   link: string;
 }
 

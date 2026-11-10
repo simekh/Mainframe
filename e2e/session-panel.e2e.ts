@@ -237,7 +237,7 @@ async function box(locator: Locator) {
 }
 
 // CDP clicks skip native drag regions, so this pins the styles; Task 10 checks them with a real mouse.
-test('the title bar drags the window, and its title, buttons and the pin take clicks', async () => {
+test('the title bar drags the window on the Mac and not elsewhere, and its title, buttons and the pin take clicks', async () => {
   const { app, page } = await launchApp();
   await startTask(page, 'Fix login');
   const bar = page.locator('.p-title-bar');

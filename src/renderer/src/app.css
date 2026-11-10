@@ -2029,8 +2029,8 @@ kbd {
   visibility: hidden;
 }
 
-/* The top bar is a window drag region, and macOS hit-tests it natively whatever lies above it:
-   carve out the islands and the edge that overhangs them, so the drag region doesn't swallow their
+/* On the Mac the top bar is a window drag region, and macOS hit-tests it natively whatever lies above
+   it: carve out the islands and the edge that overhangs them, so the drag region doesn't swallow their
    clicks. Everything in an island inherits it; a title bar in one can make itself a drag region
    again. */
 .side-panel,
