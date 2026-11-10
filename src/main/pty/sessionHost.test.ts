@@ -136,9 +136,24 @@ it('passes write, resize, pause and resume through', () => {
   expect(log).toEqual(['write:ls\r', 'resize:90x20', 'pause', 'resume']);
 });
 
-it('drops the error of a pty that has just exited when written to or resized', () => {
-  const { host, ptys, log, listener } = setup();
+// Only Windows' ConPTY refuses a write or resize in the second before node-pty reports the exit.
+// Elsewhere a pty's error is a real one and goes up as it comes.
+it.each<NodeJS.Platform>(['darwin', 'linux'])('on %s the error of a pty that refuses a write or a resize goes up', (platform) => {
+  const { host, ptys, log, listener } = setup({ PATH: '/usr/bin' }, undefined, platform);
   host.spawn('s1', spec, listener);
+  ptys[0].broken = true;
+  expect(() => host.write('s1', 'x')).toThrow('Cannot resize a pty that has already exited');
+  expect(() => host.resize('s1', 90, 20)).toThrow('Cannot resize a pty that has already exited');
+  expect(log).toEqual([]);
+});
+
+it('on Windows it drops the error of a pty that has just exited when written to or resized', () => {
+  const { host, ptys, log, listener } = setup(
+    { Path: 'C:\\bin' },
+    { executables: ['C:\\bin\\claude.exe'], folders: ['C:\\repo'] },
+    'win32',
+  );
+  host.spawn('s1', { ...spec, cwd: 'C:\\repo' }, listener);
   ptys[0].broken = true;
   expect(() => host.write('s1', 'x')).not.toThrow();
   expect(() => host.resize('s1', 90, 20)).not.toThrow();

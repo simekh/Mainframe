@@ -135,15 +135,15 @@ export class SessionHost {
   }
 
   /**
-   * A pty that has just exited refuses a write or a resize while its exit is still on the way
-   * (node-pty reports it up to about a second late with Windows' ConPTY). The exit follows, so
-   * the error says nothing the session's end won't.
+   * Windows' ConPTY refuses a write or a resize for up to about a second after the pty has exited,
+   * before node-pty reports the exit. The exit follows, so there the error says nothing the
+   * session's end won't. On other systems the error goes up as it comes.
    */
   private ignoringExit(act: () => void): void {
     try {
       act();
-    } catch {
-      // The pty has exited.
+    } catch (err) {
+      if (this.opts.platform !== 'win32') throw err;
     }
   }
 
