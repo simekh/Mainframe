@@ -8,7 +8,7 @@ import { pathKey } from '../src/main/pty/spawnEnv';
 import { readSettings } from '../src/main/setup/settings';
 import { MIN_CLAUDE_VERSION } from '../src/shared/types';
 import { cleanUp, fakeClaude, launchApp, removeAfterTest } from './launch';
-import { answerDialogs, openedLinks, repo } from './tasks';
+import { answerDialogs, openedLinks, projectPane, repo } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -82,7 +82,7 @@ const welcome = (page: Page) => page.getByText("Hi, I'm Mainframe.");
 
 /** The project's pane is the one on show: the board has opened it. */
 const boardShows = (page: Page, project: string) =>
-  expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(project)}]`)).toHaveAttribute('data-shown', 'true');
+  expect(projectPane(page, project)).toHaveAttribute('data-shown', 'true');
 
 test('a first start welcomes you, finds everything and asks for the first project', async () => {
   const pc = computer();
