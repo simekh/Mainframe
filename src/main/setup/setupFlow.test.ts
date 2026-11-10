@@ -345,6 +345,21 @@ describe('lookAgain', () => {
     await h.flow.lookAgain();
     expect(h.start).toHaveBeenCalledWith(PICKED, [acme, globex]);
   });
+
+  it('tries the saved claude again after a claude picked by hand has failed', async () => {
+    const SAVED = '/saved/claude';
+    writeSettings(dataDir, { claudeBin: SAVED });
+    const h = harness({ programs: { [GIT]: 'git version 2.56.0\n', [SAVED]: 'hello\n' } });
+    await h.flow.begin();
+    expect(h.flow.view()?.claude).toEqual({ state: 'broken', path: SAVED });
+    h.programs[PICKED] = 'hello\n';
+    h.picks.claude = PICKED;
+    await h.flow.findClaude();
+    expect(h.flow.view()?.claude).toEqual({ state: 'broken', path: PICKED });
+    h.programs[SAVED] = CURRENT;
+    await h.flow.lookAgain();
+    expect(h.flow.view()?.claude).toEqual(foundClaude(SAVED));
+  });
 });
 
 describe('findClaude', () => {

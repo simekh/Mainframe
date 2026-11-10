@@ -109,14 +109,16 @@ export class SetupFlow {
     await this.deps.start(claudeBin, projectDirs);
   }
 
-  /** Looks again at what is not found. A failing claude is tried at its own path first: a file picked by hand may have been updated. */
+  /**
+   * Looks again at what is not found. A failing claude is tried at its own path first, since a file
+   * picked by hand may have been updated, and then at the saved one, which may have failed only for a moment.
+   */
   private async recheck(): Promise<void> {
     const { envClaudeBin, lookup, run } = this.deps;
+    const saved = [this.claude.path, this.settings.claudeBin].filter((path) => path !== undefined);
     [this.git, this.claude] = await Promise.all([
       this.git.state === 'found' ? this.git : checkGit(lookup, run),
-      this.claude.state === 'found'
-        ? this.claude
-        : findClaude({ fromEnv: envClaudeBin, saved: this.claude.path ?? this.settings.claudeBin, lookup, run }),
+      this.claude.state === 'found' ? this.claude : findClaude({ fromEnv: envClaudeBin, saved, lookup, run }),
     ]);
   }
 

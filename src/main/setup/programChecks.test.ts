@@ -162,7 +162,7 @@ describe('findClaude', () => {
   it('with fromEnv, looks only at that path, even when the saved one and PATH are good', async () => {
     const lookup = mac(mapPath, '/env/claude', '/saved/claude', '/usr/bin/claude', NATIVE);
     const run = fakeRun({ '/env/claude': current, '/saved/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
-    expect(await findClaude({ fromEnv: '/env/claude', saved: '/saved/claude', lookup, run })).toEqual({
+    expect(await findClaude({ fromEnv: '/env/claude', saved: ['/saved/claude'], lookup, run })).toEqual({
       state: 'found',
       path: '/env/claude',
       version: '2.1.319',
@@ -173,7 +173,7 @@ describe('findClaude', () => {
   it('with fromEnv, a failure at that path is the answer, and nothing else is tried', async () => {
     const lookup = mac(mapPath, '/saved/claude', NATIVE);
     const run = fakeRun({ '/saved/claude': current, [NATIVE]: current });
-    expect(await findClaude({ fromEnv: '/env/claude', saved: '/saved/claude', lookup, run })).toEqual({
+    expect(await findClaude({ fromEnv: '/env/claude', saved: ['/saved/claude'], lookup, run })).toEqual({
       state: 'missing',
       path: '/env/claude',
     });
@@ -221,14 +221,25 @@ describe('findClaude', () => {
   it('tries the saved path first', async () => {
     const lookup = mac(mapPath, '/saved/claude', '/usr/bin/claude', NATIVE);
     const run = fakeRun({ '/saved/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
-    expect(await findClaude({ saved: '/saved/claude', lookup, run })).toEqual({ state: 'found', path: '/saved/claude', version: '2.1.319' });
+    expect(await findClaude({ saved: ['/saved/claude'], lookup, run })).toEqual({ state: 'found', path: '/saved/claude', version: '2.1.319' });
     expect(run.calls).toEqual(['/saved/claude']);
+  });
+
+  it('tries the saved paths in order, before the places', async () => {
+    const lookup = mac(mapPath, '/first/claude', '/second/claude', '/usr/bin/claude', NATIVE);
+    const run = fakeRun({ '/first/claude': null, '/second/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
+    expect(await findClaude({ saved: ['/first/claude', '/second/claude'], lookup, run })).toEqual({
+      state: 'found',
+      path: '/second/claude',
+      version: '2.1.319',
+    });
+    expect(run.calls).toEqual(['/first/claude', '/second/claude']);
   });
 
   it('a saved path that is gone falls through to the native folder', async () => {
     const lookup = mac(mapPath, NATIVE);
     const run = fakeRun({ [NATIVE]: current });
-    expect(await findClaude({ saved: '/gone/claude', lookup, run })).toEqual({ state: 'found', path: NATIVE, version: '2.1.319' });
+    expect(await findClaude({ saved: ['/gone/claude'], lookup, run })).toEqual({ state: 'found', path: NATIVE, version: '2.1.319' });
   });
 
   it("an old claude on PATH does not hide a current one in the native folder", async () => {
@@ -269,12 +280,12 @@ describe('findClaude', () => {
 
   it('with several failures, too old is more useful than broken, and broken than missing', async () => {
     const lookup = mac(mapPath, '/usr/bin/claude', NATIVE);
-    expect(await findClaude({ saved: '/gone/claude', lookup, run: fakeRun({ '/usr/bin/claude': null, [NATIVE]: old }) })).toEqual({
+    expect(await findClaude({ saved: ['/gone/claude'], lookup, run: fakeRun({ '/usr/bin/claude': null, [NATIVE]: old }) })).toEqual({
       state: 'too-old',
       path: NATIVE,
       version: '2.1.100',
     });
-    expect(await findClaude({ saved: '/gone/claude', lookup, run: fakeRun({ '/usr/bin/claude': null, [NATIVE]: null }) })).toEqual({
+    expect(await findClaude({ saved: ['/gone/claude'], lookup, run: fakeRun({ '/usr/bin/claude': null, [NATIVE]: null }) })).toEqual({
       state: 'broken',
       path: '/usr/bin/claude',
     });
@@ -282,14 +293,14 @@ describe('findClaude', () => {
 
   it('with nothing anywhere, is missing and carries no path', async () => {
     const run = fakeRun({});
-    expect(await findClaude({ saved: '/gone/claude', lookup: mac(mapPath), run })).toStrictEqual({ state: 'missing' });
+    expect(await findClaude({ saved: ['/gone/claude'], lookup: mac(mapPath), run })).toStrictEqual({ state: 'missing' });
     expect(run.calls).toEqual([]);
   });
 
   it('a saved path that is also on PATH is run once', async () => {
     const lookup = mac(mapPath, '/usr/bin/claude');
     const run = fakeRun({ '/usr/bin/claude': old });
-    await findClaude({ saved: '/usr/bin/claude', lookup, run });
+    await findClaude({ saved: ['/usr/bin/claude'], lookup, run });
     expect(run.calls).toEqual(['/usr/bin/claude']);
   });
 });
