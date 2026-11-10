@@ -58,6 +58,22 @@ test('New task launches claude -w in the main checkout with a fresh session id, 
   await app.close();
 });
 
+test("the New task box's hint names the system's key, and that key with Enter starts the task from the description", async () => {
+  const { app, page, dataDir } = await launchApp({}, repo());
+  await page.getByTestId('new-task').click();
+  await expect(page.getByTestId('new-task-shortcut')).toHaveText(`${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Enter starts it`);
+  await page.getByTestId('new-task-title').fill('Fix login');
+  // Filled last, so the cursor is in the description.
+  await page.getByTestId('new-task-description').fill('Keep the old form');
+  await page.keyboard.press('ControlOrMeta+Enter');
+
+  // On the content: fake-claude creates its file before it writes the arguments.
+  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Keep the old form');
+  expect(launches(dataDir)[0].args.slice(0, 2)).toEqual(['-w', 'fix-login']);
+  await expect(page.getByTestId('new-task-title')).toHaveCount(0);
+  await app.close();
+});
+
 test("the dialog warns when the main checkout has commits that new worktrees won't have", async () => {
   const ahead = repo();
   writeFileSync(join(ahead, 'local.txt'), 'local\n');

@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import type { StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
+import { commandHeld, commandName } from '../keys';
 import { useProject } from '../projects/projectContext';
 import { startTask } from '../tasksStore';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
@@ -8,6 +9,7 @@ import StartCheckWarning, { aheadOf } from './StartCheckWarning';
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
   const project = useProject();
+  const platform = window.mainframe.platform;
   let dialog!: HTMLDialogElement;
   let titleInput!: HTMLInputElement;
   const [title, setTitle] = createSignal('');
@@ -92,7 +94,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             value={description()}
             onInput={(e) => setDescription(e.currentTarget.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.metaKey) {
+              if (e.key === 'Enter' && commandHeld(e, platform)) {
                 e.preventDefault();
                 void start();
               }
@@ -123,7 +125,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
           )}
         </Show>
         <div class="nt-actions">
-          <span class="nt-shortcut">Cmd+Enter starts it</span>
+          <span class="nt-shortcut" data-testid="new-task-shortcut">{commandName(platform)}+Enter starts it</span>
           <button class="btn" type="button" disabled={starting()} onClick={() => dialog.close()}>
             Cancel
           </button>

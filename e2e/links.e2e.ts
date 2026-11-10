@@ -23,15 +23,18 @@ type Spot = { before: string; text: string } | { blankColumn: number };
 
 /**
  * Hovers and clicks the spot with mouse events on the task's screen, and reports whether the
- * terminal had marked a link under the pointer when it clicked.
+ * terminal had marked a link under the pointer when it clicked. With `cmd`, the click holds the
+ * system's link key: Cmd on the Mac, Ctrl on Windows and Linux.
  *
  * All in one go inside the page, so the spot is worked out from the screen as it is at that moment
  * and nothing, a real pointer included, can come between the steps. The screen is a fresh shell's,
  * which is exactly one screen of rows, so a line's index is its row.
  */
 function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<boolean> {
+  const onMac = process.platform === 'darwin';
+  const held = { metaKey: cmd && onMac, ctrlKey: cmd && !onMac };
   return page.evaluate(
-    ([id, target, metaKey]) => {
+    ([id, target, keys]) => {
       const screenEl = document.querySelector('.well > .terminal:not(.terminal--hidden) .xterm-screen')!;
       const lines = window.__mainframeE2E.screenText(id).split('\n');
       const size = window.__mainframeE2E.termSize(id)!;
@@ -42,7 +45,7 @@ function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<bo
       });
       const fire = (type: string, point: { clientX: number; clientY: number }) =>
         screenEl.dispatchEvent(
-          new MouseEvent(type, { ...point, bubbles: true, cancelable: true, view: window, button: 0, buttons: type === 'mousedown' ? 1 : 0, metaKey }),
+          new MouseEvent(type, { ...point, bubbles: true, cancelable: true, view: window, button: 0, buttons: type === 'mousedown' ? 1 : 0, ...keys }),
         );
 
       // The last row is blank, and so is the one above it: they are where a click finds no link.
@@ -70,11 +73,11 @@ function click(page: Page, taskId: string, spot: Spot, cmd: boolean): Promise<bo
       fire('mouseup', pointAt(row, col));
       return hovered;
     },
-    [taskId, spot, cmd] as const,
+    [taskId, spot, held] as const,
   );
 }
 
-test("Cmd+click opens a link from the terminal; a plain click doesn't", async () => {
+test("Cmd+click (Ctrl+click on Windows and Linux) opens a link from the terminal; a plain click doesn't", async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
   await run(page, PRINT_LINKS);
@@ -97,7 +100,7 @@ test("Cmd+click opens a link from the terminal; a plain click doesn't", async ()
   await app.close();
 });
 
-test('a Cmd+click on a link stays out of a program that asks for the mouse, a plain click does not', async () => {
+test('a Cmd+click (Ctrl+click on Windows and Linux) on a link stays out of a program that asks for the mouse, a plain click does not', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
   await run(page, PRINT_LINK_AND_TRACK_MOUSE);

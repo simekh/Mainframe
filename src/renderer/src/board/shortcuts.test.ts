@@ -29,9 +29,9 @@ function fakeWindow() {
   return { target: target as unknown as Window, listeners, press, openModal };
 }
 
-const install = (w: ReturnType<typeof fakeWindow>) => {
-  const actions = { jump: vi.fn(), focusProject: vi.fn(), closePane: vi.fn() };
-  return { actions, remove: installBoardShortcuts(w.target, actions) };
+const install = (w: ReturnType<typeof fakeWindow>, platform: NodeJS.Platform) => {
+  const actions = { jump: vi.fn(), focusProject: vi.fn(), closePane: vi.fn(), openProject: vi.fn() };
+  return { actions, remove: installBoardShortcuts(w.target, actions, platform) };
 };
 
 const swallowed = (e: KeyboardEvent) => {
@@ -39,10 +39,19 @@ const swallowed = (e: KeyboardEvent) => {
   expect(e.stopPropagation).toHaveBeenCalledOnce();
 };
 
+/** No action ran, and every key went on as if no listener were there. */
+const untouched = (actions: ReturnType<typeof install>['actions'], keys: KeyboardEvent[]) => {
+  for (const action of Object.values(actions)) expect(action).not.toHaveBeenCalled();
+  for (const e of keys) {
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(e.stopPropagation).not.toHaveBeenCalled();
+  }
+};
+
 describe('installBoardShortcuts', () => {
   it('Ctrl+Tab jumps forward and Ctrl+Shift+Tab back, and the key goes no further', () => {
     const w = fakeWindow();
-    const { actions } = install(w);
+    const { actions } = install(w, 'darwin');
 
     swallowed(w.press('Tab', { ctrlKey: true }));
     expect(actions.jump).toHaveBeenLastCalledWith(1);
@@ -53,7 +62,7 @@ describe('installBoardShortcuts', () => {
 
   it('Cmd+1 to Cmd+9 focus the open projects in the order the list shows them, and the key goes no further', () => {
     const w = fakeWindow();
-    const { actions } = install(w);
+    const { actions } = install(w, 'darwin');
 
     swallowed(w.press('1', { metaKey: true }, 'Digit1'));
     expect(actions.focusProject).toHaveBeenLastCalledWith(0);
@@ -67,7 +76,7 @@ describe('installBoardShortcuts', () => {
 
   it("Cmd+W takes the focused project's pane off screen, and the key goes no further", () => {
     const w = fakeWindow();
-    const { actions } = install(w);
+    const { actions } = install(w, 'darwin');
     swallowed(w.press('w', { metaKey: true }, 'KeyW'));
     // By the character, as macOS's own shortcuts go: W sits elsewhere on some layouts.
     swallowed(w.press('w', { metaKey: true }, 'KeyZ'));
@@ -76,7 +85,7 @@ describe('installBoardShortcuts', () => {
 
   it('does nothing while a modal dialog is open, as it blocks what lies behind it, and the key goes no further', () => {
     const w = fakeWindow();
-    const { actions } = install(w);
+    const { actions } = install(w, 'darwin');
     w.openModal();
     swallowed(w.press('Tab', { ctrlKey: true }));
     swallowed(w.press('1', { metaKey: true }, 'Digit1'));
@@ -88,13 +97,13 @@ describe('installBoardShortcuts', () => {
 
   it('listens in the capture phase, so the terminal never sees the key', () => {
     const w = fakeWindow();
-    install(w);
+    install(w, 'darwin');
     expect([...w.listeners].map((l) => l.capture)).toEqual([true]);
   });
 
   it('every other key passes through untouched, Cmd+Tab, Option+Tab, Cmd+0 and Ctrl+W included', () => {
     const w = fakeWindow();
-    const { actions } = install(w);
+    const { actions } = install(w, 'darwin');
     const others = [
       w.press('Tab'),
       w.press('Tab', { shiftKey: true }),
@@ -124,9 +133,20 @@ describe('installBoardShortcuts', () => {
     }
   });
 
+  it("on the Mac, Windows and Linux's Ctrl+1, Ctrl+Shift+W and Ctrl+Shift+O pass through untouched", () => {
+    const w = fakeWindow();
+    const { actions } = install(w, 'darwin');
+    const others = [
+      w.press('1', { ctrlKey: true }, 'Digit1'),
+      w.press('W', { ctrlKey: true, shiftKey: true }, 'KeyW'),
+      w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyO'),
+    ];
+    untouched(actions, others);
+  });
+
   it('the returned function removes the listener', () => {
     const w = fakeWindow();
-    const { actions, remove } = install(w);
+    const { actions, remove } = install(w, 'darwin');
     remove();
     expect(w.listeners.size).toBe(0);
     w.press('Tab', { ctrlKey: true });
@@ -135,5 +155,78 @@ describe('installBoardShortcuts', () => {
     expect(actions.jump).not.toHaveBeenCalled();
     expect(actions.focusProject).not.toHaveBeenCalled();
     expect(actions.closePane).not.toHaveBeenCalled();
+  });
+});
+
+describe.each(['win32', 'linux'] as const)('installBoardShortcuts on %s', (platform) => {
+  it('Ctrl+1 to Ctrl+9 focus the open projects in the order the list shows them, and the key goes no further', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+
+    swallowed(w.press('1', { ctrlKey: true }, 'Digit1'));
+    expect(actions.focusProject).toHaveBeenLastCalledWith(0);
+    swallowed(w.press('9', { ctrlKey: true }, 'Digit9'));
+    expect(actions.focusProject).toHaveBeenLastCalledWith(8);
+    // The key, not the character, as on the Mac.
+    swallowed(w.press('&', { ctrlKey: true }, 'Digit1'));
+    expect(actions.focusProject).toHaveBeenLastCalledWith(0);
+    expect(actions.focusProject).toHaveBeenCalledTimes(3);
+  });
+
+  it("Ctrl+Shift+W takes the focused project's pane off screen, with Caps Lock on too, and the key goes no further", () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    swallowed(w.press('W', { ctrlKey: true, shiftKey: true }, 'KeyW'));
+    swallowed(w.press('w', { ctrlKey: true, shiftKey: true }, 'KeyW'));
+    expect(actions.closePane).toHaveBeenCalledTimes(2);
+  });
+
+  it('Ctrl+Shift+O opens a project, with Caps Lock on too, and the key goes no further', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    swallowed(w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyO'));
+    swallowed(w.press('o', { ctrlKey: true, shiftKey: true }, 'KeyO'));
+    expect(actions.openProject).toHaveBeenCalledTimes(2);
+  });
+
+  it('Ctrl+Tab jumps forward and Ctrl+Shift+Tab back, as on the Mac', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    swallowed(w.press('Tab', { ctrlKey: true }));
+    expect(actions.jump).toHaveBeenLastCalledWith(1);
+    swallowed(w.press('Tab', { ctrlKey: true, shiftKey: true }));
+    expect(actions.jump).toHaveBeenLastCalledWith(-1);
+    expect(actions.jump).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing while a modal dialog is open, Open Project included, and the key goes no further', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    w.openModal();
+    swallowed(w.press('Tab', { ctrlKey: true }));
+    swallowed(w.press('1', { ctrlKey: true }, 'Digit1'));
+    swallowed(w.press('W', { ctrlKey: true, shiftKey: true }, 'KeyW'));
+    swallowed(w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyO'));
+    for (const action of Object.values(actions)) expect(action).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+W, Ctrl+O, the Meta key and AltGr pass through untouched', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    const others = [
+      // Ctrl+W deletes the word before the cursor in the terminal, and Ctrl+O is Claude Code's.
+      w.press('w', { ctrlKey: true }, 'KeyW'),
+      w.press('o', { ctrlKey: true }, 'KeyO'),
+      w.press('!', { ctrlKey: true, shiftKey: true }, 'Digit1'),
+      // The Mac's keys, with the Windows or Super key in Cmd's place.
+      w.press('1', { metaKey: true }, 'Digit1'),
+      w.press('w', { metaKey: true }, 'KeyW'),
+      // AltGr arrives as Ctrl+Alt on Windows: AltGr+2, 7 and 0 type @ { } on Nordic and German layouts.
+      w.press('@', { ctrlKey: true, altKey: true }, 'Digit2'),
+      w.press('{', { ctrlKey: true, altKey: true }, 'Digit7'),
+      w.press('}', { ctrlKey: true, altKey: true }, 'Digit0'),
+      w.press('W', { ctrlKey: true, altKey: true, shiftKey: true }, 'KeyW'),
+    ];
+    untouched(actions, others);
   });
 });

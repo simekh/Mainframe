@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
+import { linkClickHeld } from '../keys';
 import { subscribePty } from '../ptyEvents';
 import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
@@ -60,12 +61,13 @@ export default function TerminalView(props: {
 
   onMount(() => {
     const id = props.sessionId;
-    // Cmd+click opens a link in the browser: a plain URL, found by the web-links addon, and an OSC 8
-    // link Claude Code prints, which xterm hands to linkHandler (never a non-http one). A plain
-    // click still selects and focuses.
+    // Cmd+click (Ctrl+click on Windows and Linux) opens a link in the browser: a plain URL, found by
+    // the web-links addon, and an OSC 8 link Claude Code prints, which xterm hands to linkHandler
+    // (never a non-http one). A plain click still selects and focuses.
     const openLink = createTerminalHttpLinkHandler({
       openExternal: (url) => api.openLink(url),
       onOpenError: (err) => console.warn(`[terminal] could not open the link: ${errorMessage(err)}`),
+      platform: api.platform,
     });
     const term = new Terminal({ ...TERMINAL_OPTIONS, linkHandler: { activate: openLink, allowNonHttpProtocols: false } });
     const fit = new FitAddon();
@@ -78,13 +80,14 @@ export default function TerminalView(props: {
     term.open(container);
     registerTerminal(id, { term, fit });
 
-    // A Cmd+click on a link is ours alone. xterm's own mousedown, on the .xterm element above the
-    // screen, would also report it to a program that asks for the mouse, as Claude Code does in
-    // fullscreen. This one sits on the screen itself, after the link handling there, so the link
-    // still activates on the mouseup, and it stops the event before it rises to the .xterm element.
+    // A Cmd+click (Ctrl+click on Windows and Linux) on a link is ours alone. xterm's own mousedown, on
+    // the .xterm element above the screen, would also report it to a program that asks for the mouse,
+    // as Claude Code does in fullscreen. This one sits on the screen itself, after the link handling
+    // there, so the link still activates on the mouseup, and it stops the event before it rises to the
+    // .xterm element.
     const linkScreen = term.element!.querySelector<HTMLElement>('.xterm-screen')!;
     const keepLinkClickHere = (e: MouseEvent) => {
-      if (e.button !== 0 || !e.metaKey || !linkScreen.classList.contains('xterm-cursor-pointer')) return;
+      if (e.button !== 0 || !linkClickHeld(e, api.platform) || !linkScreen.classList.contains('xterm-cursor-pointer')) return;
       e.preventDefault();
       e.stopPropagation();
       term.focus();

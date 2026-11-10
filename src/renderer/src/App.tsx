@@ -4,7 +4,7 @@ import { installBoardShortcuts } from './board/shortcuts';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { closeFocusedPane, focusProject, jump, projectsStore } from './projects/projectsStore';
+import { closeFocusedPane, focusProject, jump, openProject, projectsStore } from './projects/projectsStore';
 import SetupScreen from './setup/SetupScreen';
 import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
@@ -88,14 +88,22 @@ export default function App() {
     return c;
   });
   onCleanup(
-    installBoardShortcuts(window, {
-      jump,
-      focusProject: (index) => {
-        const project = projectsStore.projects[index];
-        if (project) focusProject(project.dir);
+    installBoardShortcuts(
+      window,
+      {
+        jump,
+        focusProject: (index) => {
+          const project = projectsStore.projects[index];
+          if (project) focusProject(project.dir);
+        },
+        closePane: closeFocusedPane,
+        // Main registers the project calls only once the setup is over.
+        openProject: () => {
+          if (setupView() === null) void openProject();
+        },
       },
-      closePane: closeFocusedPane,
-    }),
+      window.mainframe.platform,
+    ),
   );
 
   return (

@@ -279,3 +279,23 @@ test('cancelling the folder dialog keeps the screen; quitting before choosing sh
   await expect(button(second.page, 'choose-project')).toBeVisible();
   await second.app.close();
 });
+
+test('Ctrl+Shift+O on the setup screen, before any project has started, opens no dialog and raises no error', async () => {
+  test.skip(process.platform === 'darwin', "a Windows and Linux key: the Mac's is the menu's Cmd+O, which keys pressed in the page never reach");
+  const pc = computer();
+  pc.installClaude();
+  const { app, page } = await launchApp(pc.env, undefined, { firstStart: true });
+  const errors: Error[] = [];
+  page.on('pageerror', (err) => errors.push(err));
+  await expect(button(page, 'choose-project')).toBeVisible();
+  await answerDialogs(app, null);
+
+  await page.keyboard.press('Control+Shift+O');
+  // A call the key made would reach main, and its answer the page, before this one's.
+  await page.evaluate(() => window.mainframe.getSetup());
+  expect(await dialogCalls(app)).toBe(0);
+  expect(errors).toEqual([]);
+  await expect(page.getByTestId('setup')).toBeVisible();
+  await expect(button(page, 'choose-project')).toBeVisible();
+  await app.close();
+});

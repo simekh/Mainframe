@@ -131,7 +131,7 @@ const cursor = (page: Page) =>
     inTask: document.activeElement?.closest('.well') != null,
   }));
 
-test('a click in the list focuses a project and leaves the others on screen; Cmd+1 to Cmd+9 focus by place', async () => {
+test('a click in the list focuses a project and leaves the others on screen; Cmd+1 to Cmd+9 (Ctrl+1 to Ctrl+9 on Windows and Linux) focus by place', async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
@@ -156,16 +156,16 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await pane(page, b).locator(`[data-testid=task-card][data-task-id="${id}"]`).click();
   await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
 
-  // Cmd+1 brings the list's first in place of b. Nothing selected there and no manager beside others:
-  // the cursor leaves b, so no typing lands there unseen.
-  await page.keyboard.press('Meta+1');
+  // Cmd+1 (Ctrl+1) brings the list's first in place of b. Nothing selected there and no manager beside
+  // others: the cursor leaves b, so no typing lands there unseen.
+  await page.keyboard.press('ControlOrMeta+1');
   await expect(pane(page, a)).toHaveAttribute('data-focused', 'true');
   await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
   expect((await boxOf(pane(page, c))).x).toBeLessThan((await boxOf(pane(page, a))).x);
   await expect.poll(() => cursor(page)).toEqual({ project: null, inTask: false });
 
-  // Cmd+2 brings b back, with the cursor in its selected task's terminal.
-  await page.keyboard.press('Meta+2');
+  // Cmd+2 (Ctrl+2) brings b back, with the cursor in its selected task's terminal.
+  await page.keyboard.press('ControlOrMeta+2');
   await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
   await expect.poll(() => cursor(page)).toEqual({ project: b, inTask: true });
 
@@ -174,7 +174,10 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await app.close();
 });
 
-test("Cmd+W takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
+/** Takes the focused project's pane off screen: Cmd+W on the Mac, Ctrl+Shift+W on Windows and Linux. */
+const closePaneKey = process.platform === 'darwin' ? 'Meta+w' : 'Control+Shift+W';
+
+test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
@@ -185,26 +188,26 @@ test("Cmd+W takes the focused project's pane off screen and leaves it open; the 
   await pane(page, b).getByTestId('new-task').click();
   const title = pane(page, b).getByTestId('new-task-title');
   await expect(title).toBeFocused();
-  await page.keyboard.press('Meta+w');
+  await page.keyboard.press(closePaneKey);
   await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
   await expect(title).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(title).toHaveCount(0);
 
   // The focus goes to the neighbour before it.
-  await page.keyboard.press('Meta+w');
+  await page.keyboard.press(closePaneKey);
   await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
   await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
   await expect(page.getByTestId('rail-project')).toHaveCount(3);
   expect(openProjects(dataDir)).toEqual([a, b, c]);
 
   // Alone on screen, c shows its manager, and the cursor goes there.
-  await page.keyboard.press('Meta+w');
+  await page.keyboard.press(closePaneKey);
   await expect(pane(page, a)).toHaveAttribute('data-shown', 'false');
   await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
   await expect.poll(() => cursor(page)).toEqual({ project: c, inTask: false });
 
-  await page.keyboard.press('Meta+w');
+  await page.keyboard.press(closePaneKey);
   await expect(pane(page, c)).toHaveAttribute('data-shown', 'true');
   await app.close();
 });

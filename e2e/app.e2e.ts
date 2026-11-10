@@ -78,6 +78,20 @@ test('Open Project… opens the picked folder beside the open one and shows it, 
   await app.close();
 });
 
+test('Ctrl+Shift+O opens Open Project… on Windows and Linux', async () => {
+  test.skip(process.platform === 'darwin', "a Windows and Linux key: the Mac's is the menu's Cmd+O, which keys pressed in the page never reach");
+  const { app, page } = await launchApp();
+  const picked = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-project-')));
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+  }, picked);
+  await page.keyboard.press('Control+Shift+O');
+
+  await expect(page.getByTestId('rail-project')).toHaveCount(2);
+  await expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(picked)}]`)).toHaveAttribute('data-shown', 'true');
+  await app.close();
+});
+
 test('Open Project… says why it could not open the folder', async () => {
   const { app, page } = await launchApp();
   await app.evaluate(({ dialog }) => {
