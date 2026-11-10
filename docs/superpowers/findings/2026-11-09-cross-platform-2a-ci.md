@@ -119,7 +119,7 @@ Run 8 is green on all three systems, 921 unit tests and 99 e2e tests each. Run 9
 
 ## 2c: native keys, window and terminals on Windows and Linux
 
-Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and paste, the Windows terminal, the Windows file and git fixes, the README) was pushed four times, the last for its task review's fix; Node 26.13.0 on every system, 1055 unit tests on each.
+Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and paste, the Windows terminal, the Windows file and git fixes, the README) was pushed four times, the last for its task review's fix, and a fifth time for its final review's fixes (push 5 of the 9 the owner's waiver allows); Node 26.13.0 on every system, 1055 unit tests on each in runs 1–4 and 1074 in run 5.
 
 | Run | Commit | What it carried | macOS | Windows | Linux |
 |---|---|---|---|---|---|
@@ -127,8 +127,9 @@ Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and 
 | 2 [42808065681](https://github.com/simekh/Mainframe/actions/runs/42808065681) | 08f5438 | the quit step removed; the Todo panel test waits for the panel's slide; a temporary diagnostic in the scaling test | 101 pass | 105 pass | 104 pass, 1 fail: the scaling test again |
 | 3 [42809769043](https://github.com/simekh/Mainframe/actions/runs/42809769043) | 5091b6d | the scaling test's fix, the diagnostic removed | 101 pass | 105 pass | 104 pass, the scaling test skipped (no WebGL2, below) |
 | 4 [42813197626](https://github.com/simekh/Mainframe/actions/runs/42813197626) | 543f286 | the scaling test skips only on Linux, and only when the fit after the change is the size before it; this section's first version (`2165f40`) | 101 pass | 105 pass, the scaling test among them | 104 pass, the scaling test skipped on its precondition (the fit after the change is the size before it) |
+| 5 [42824535442](https://github.com/simekh/Mainframe/actions/runs/42824535442) | fd42c27 | the final review's fixes: the Mac's menu from the first moment, the rename retry on Windows only, Windows' stand-in shell from the git on PATH, Ctrl letters on layouts without Latin letters, the clipboard given back, a Mac test of the scaling re-fit's exclusion | 102 pass, 4 skipped | 105 pass, 1 skipped | 104 pass, 2 skipped |
 
-macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Runs 3 and 4 are green on all three systems. Both Linux start steps passed in every run.
+macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Runs 3, 4 and 5 are green on all three systems. Both Linux start steps passed in every run. Run 5 added one test, the Mac's: a terminal keeps its size when the scaling changes. It ran on the Mac (102 passed) and skips on Windows and Linux, so Windows' one skip and Linux's second are that test, and Windows still skipped none of the others. (CI's reporter does not name skipped tests; this is read from the counts: 106 tests on each system, 105 before.) On Windows, run 5 also derived the stand-in's Git Bash from the git on PATH instead of the fixed Program Files path: every shell-based test passed.
 
 **What the tests showed off the Mac.** The four tests that skip on the Mac all ran on Windows, in every run. They all ran on Linux too, but the scaling test skips there from run 3 on (below). Run 1's six quit-step tests, left out of its e2e step on every system, ran only in the separate quit step. The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch. All of them passed, but for the scaling test on Linux:
 
