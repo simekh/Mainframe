@@ -102,7 +102,9 @@ export default function TerminalView(props: {
     // The tasks' terminals sit in the session panel's one well, whose height follows the selected
     // task's files; the manager's sits in its own column. A terminal off screen keeps the size it
     // last fitted at, so its session isn't resized on every switch; once on screen again it fits
-    // only if its container or the scaling (a move to another screen) changed meanwhile.
+    // only if its container changed meanwhile, or on Windows and Linux the scaling (a move to
+    // another screen). The Mac keeps today's fit, as nothing changes on the Mac.
+    const followsScaling = api.platform !== 'darwin';
     let fitted = { width: 0, height: 0, ratio: 0 };
     const fitToContainer = () => {
       fitted = { width: container.clientWidth, height: container.clientHeight, ratio: window.devicePixelRatio };
@@ -112,7 +114,7 @@ export default function TerminalView(props: {
       if (
         container.clientWidth !== fitted.width ||
         container.clientHeight !== fitted.height ||
-        window.devicePixelRatio !== fitted.ratio
+        (followsScaling && window.devicePixelRatio !== fitted.ratio)
       ) {
         fitToContainer();
       }
@@ -266,19 +268,22 @@ export default function TerminalView(props: {
     });
     observer.observe(container);
     // A change of scaling alone (a move to a screen with other scaling) leaves the container's size
-    // as it is. Its signal is the resolution media query, the one xterm uses: Chromium's device-pixel
-    // box doesn't follow every scale change (an emulated one, for one). xterm's own listener, added by
-    // term.open, runs first, so its cells are re-measured by the time this fits. A query matches one
-    // ratio, so each change re-arms it for the new one.
-    const scalingQuery = () => window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-    let scaling = scalingQuery();
-    const onScalingChange = () => {
-      scaling.removeEventListener('change', onScalingChange);
-      scaling = scalingQuery();
+    // as it is, so on Windows and Linux the resolution media query re-fits, the one xterm uses:
+    // Chromium's device-pixel box doesn't follow every scale change (an emulated one, for one).
+    // xterm's own listener, added by term.open, runs first, so its cells are re-measured by the time
+    // this fits. A query matches one ratio, so each change re-arms it for the new one. The Mac has
+    // none: it keeps today's fit, as nothing changes on the Mac.
+    let scaling: MediaQueryList | undefined;
+    const watchScaling = () => {
+      scaling?.removeEventListener('change', onScalingChange);
+      scaling = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
       scaling.addEventListener('change', onScalingChange);
+    };
+    const onScalingChange = () => {
+      watchScaling();
       if (props.selected) fitIfResized();
     };
-    scaling.addEventListener('change', onScalingChange);
+    if (followsScaling) watchScaling();
 
     // An e2e run spawns through its test hooks, which record the size.
     const spawn = window.__mainframeE2E?.spawn ?? api.spawn;
@@ -386,7 +391,7 @@ export default function TerminalView(props: {
       unsubscribe();
       cancelFlush?.();
       observer.disconnect();
-      scaling.removeEventListener('change', onScalingChange);
+      scaling?.removeEventListener('change', onScalingChange);
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
       clearTimeout(scanTimer);

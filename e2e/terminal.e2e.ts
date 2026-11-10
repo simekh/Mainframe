@@ -154,7 +154,8 @@ test('a program that reads the terminal raw, as Claude Code does, sees a resize 
   await app.close();
 });
 
-test("a terminal on screen fits again when the window's scaling changes", async () => {
+test("on Windows and Linux, a terminal on screen fits again when the window's scaling changes", async () => {
+  test.skip(process.platform === 'darwin', "Windows and Linux behaviour: the Mac keeps today's fit, which a change of scaling alone leaves as it is");
   const { app, page } = await launchApp();
   const a = await startTask(page);
   const before = (await termSize(page, a))!;
