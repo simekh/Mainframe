@@ -53,3 +53,13 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
     brightWhite: '#f0f4f7',
   },
 };
+
+/**
+ * What a terminal on this system adds to TERMINAL_OPTIONS. On Windows the session runs on ConPTY,
+ * which reprints the screen on a resize in its own way, and one wheel notch scrolls 50 px, about
+ * three rows, as in Windows Terminal. The Mac and Linux keep TERMINAL_OPTIONS as they are.
+ */
+export function platformTerminalOptions(platform: NodeJS.Platform, windowsBuild: number | null): ITerminalOptions {
+  if (platform !== 'win32') return {};
+  return { windowsPty: { backend: 'conpty', buildNumber: windowsBuild ?? undefined }, scrollSensitivity: 1 };
+}

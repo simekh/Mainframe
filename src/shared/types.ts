@@ -26,6 +26,8 @@ export type ClipboardPaste =
 export interface RendererConfig {
   inputBatchMs: number;
   e2e: boolean;
+  /** The Windows build Mainframe runs on, for xterm's ConPTY handling; null on other systems. */
+  windowsBuild: number | null;
 }
 
 /** An open project. Its folder is its id in every call and event that concerns it. */

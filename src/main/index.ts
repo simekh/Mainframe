@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
@@ -342,7 +343,12 @@ async function launch(config: AppConfig): Promise<void> {
   // The calls are registered in the same turn, before the page can make one.
   const begun = flow.begin();
   registerSetupIpc(
-    { inputBatchMs: config.inputBatchMs, e2e: config.e2e },
+    {
+      inputBatchMs: config.inputBatchMs,
+      e2e: config.e2e,
+      // os.release() is `10.0.<build>` on Windows.
+      windowsBuild: process.platform === 'win32' ? Number(os.release().split('.')[2]) : null,
+    },
     flow,
     begun,
     failStart,

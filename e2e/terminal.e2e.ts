@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, ids, run, screen, sendLine, startTask, styleOf, termSize } from './tasks';
+import { card, cardIn, fitSize, ids, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -151,6 +151,25 @@ test('a program that reads the terminal raw, as Claude Code does, sees a resize 
   await expect.poll(() => screen(page, a)).toContain(`resized: ${size.cols}x${size.rows}`);
   await sendLine(page, a, 'stty size');
   await expect.poll(async () => rawReads(await screen(page, a))).toBe('stty size\r');
+  await app.close();
+});
+
+test("a terminal on screen fits again when the window's scaling changes", async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  const before = (await termSize(page, a))!;
+  // As a move to a screen with other scaling: the pixel ratio changes and the window's size in CSS
+  // pixels doesn't. Any ratio but the screen's own.
+  const scale = (await page.evaluate(() => window.devicePixelRatio)) === 2 ? 1.5 : 2;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 0, height: 0, deviceScaleFactor: scale, mobile: false });
+  await expect.poll(() => page.evaluate(() => window.devicePixelRatio)).toBe(scale);
+  await settled(page);
+  // xterm has re-measured its cells at the new ratio, so a fit now gives another size.
+  const fitted = (await fitSize(page, a))!;
+  expect(fitted).not.toEqual(before);
+  await expect.poll(() => termSize(page, a)).toEqual(fitted);
+  await cdp.send('Emulation.clearDeviceMetricsOverride');
   await app.close();
 });
 
