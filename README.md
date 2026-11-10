@@ -52,6 +52,8 @@ npm install
 npm start
 ```
 
+On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
+
 At the first start, Mainframe opens a setup screen. It looks for `git` and `claude`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…** (**Find claude.exe…** on Windows) to point it at a Claude Code it missed, **How to install** to open the install page, and **Look again** once you've fixed it. When both work, it asks which project to start with: any folder that is a git repository.
 
 Mainframe remembers the `claude` it found in `settings.json` in its data folder. At every start it checks `git` and `claude` again, and shows the setup screen only when one of them has moved or stopped working.
@@ -90,7 +92,7 @@ Each sync is a short background `claude` run. It may use only the read tools you
 
 ## Settings
 
-Set these as environment variables before `npm start`. In bash and zsh, put them in front of the command: `MAINFRAME_LOG_OSC=1 npm start`. In PowerShell, set them first: `$env:MAINFRAME_LOG_OSC = '1'; npm start` (the variable then stays set in that window).
+Set these as environment variables before `npm start`. In bash and zsh, put them in front of the command: `MAINFRAME_LOG_OSC=1 npm start`. In PowerShell, set them first: `$env:MAINFRAME_LOG_OSC = '1'; npm start` (the variable then stays set in that window; if PowerShell won't run `npm`, see "Run it").
 
 | Variable | What it does |
 |---|---|
