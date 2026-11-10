@@ -1,17 +1,10 @@
+import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
+import { isProcessRunning } from '../src/main/testing/isProcessRunning';
 import { cleanUp, launchApp } from './launch';
 import { card, cardIn, fitSize, ids, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
 
 test.afterEach(cleanUp);
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return 'alive';
-  } catch {
-    return 'gone';
-  }
-};
 
 async function shellPid(page: Page, taskId: string, tag: string): Promise<number> {
   // In Git Bash, `$$` is an MSYS process id; process.kill takes the Windows one, which it keeps in /proc.
@@ -166,15 +159,11 @@ test("on Windows and Linux, a terminal on screen fits again when the window's sc
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 0, height: 0, deviceScaleFactor: scale, mobile: false });
   await expect.poll(() => page.evaluate(() => window.devicePixelRatio)).toBe(scale);
   await settled(page);
-  // xterm has re-measured its cells at the new ratio, rounding them to whole device pixels, so a fit now
-  // gives another size. Unless the rounding comes out alike at both ratios: Linux CI's virtual display has no
-  // WebGL2, and with its font the DOM renderer's rounded cell is 17 px high at 1x and at 2x (CI run 2:
-  // 50x43 at both), so this change can't show there. A skip leaves nothing behind: the override goes
-  // with the app, which cleanUp closes.
+  // xterm has re-measured its cells at the new ratio, rounding them to whole device pixels. A skip
+  // leaves nothing behind: the override goes with the app, which cleanUp closes.
   const fitted = (await fitSize(page, a))!;
-  const sameFit = fitted.cols === before.cols && fitted.rows === before.rows;
   test.skip(
-    process.platform === 'linux' && sameFit,
+    process.platform === 'linux' && isDeepStrictEqual(fitted, before),
     "the renderer here rounds a cell to the same size at both ratios (on Linux CI: the DOM renderer, 17 px high at 1x and at 2x with its font), so a change of scaling alone gives the same fit",
   );
   expect(
@@ -237,7 +226,7 @@ test('quitting leaves no session process behind', async () => {
   const a = await startTask(page);
   const pid = await shellPid(page, a, 'a');
   await app.close();
-  await expect.poll(() => alive(pid)).toBe('gone');
+  await expect.poll(() => isProcessRunning(pid)).toBe(false);
 });
 
 test('Close session ends the process and keeps the task, and the other tasks keep running', async () => {
@@ -255,13 +244,13 @@ test('Close session ends the process and keeps the task, and the other tasks kee
 
   await expect(cardIn(page, 'closed', b).getByTestId('task-ask')).toHaveText('Closed');
   await expect.poll(() => screen(page, b)).toContain('[Process exited]');
-  await expect.poll(() => alive(bPid)).toBe('gone');
+  await expect.poll(() => isProcessRunning(bPid)).toBe(false);
   expect(await ids(page)).toEqual([a, b, c]);
   await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('close-session')).toHaveCount(0);
 
   // The others keep their screens and processes, and still take input.
-  expect([alive(aPid), alive(cPid)]).toEqual(['alive', 'alive']);
+  expect([isProcessRunning(aPid), isProcessRunning(cPid)]).toEqual([true, true]);
   for (const [id, tag] of [[a, 'a'], [c, 'c']]) {
     await expect(cardIn(page, 'working', id).getByTestId('task-activity')).toHaveText('Starting…');
     await expect(card(page, id).getByTestId('task-ask')).toHaveCount(0);

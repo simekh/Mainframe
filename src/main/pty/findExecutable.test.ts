@@ -1,11 +1,6 @@
 import { expect, it } from 'vitest';
-import { findExecutable, resolveExecutable, type ExecutableFiles } from './findExecutable';
-
-const files = (...paths: string[]): ExecutableFiles => ({ isExecutableFile: (p) => paths.includes(p) });
-const mac = (env: Record<string, string>, ...existing: string[]) =>
-  ({ env, cwd: '/repo', platform: 'darwin' as const, files: files(...existing) });
-const win = (env: Record<string, string>, ...existing: string[]) =>
-  ({ env, cwd: 'C:\\repo', platform: 'win32' as const, files: files(...existing) });
+import { files, mac, win } from '../testing/lookups';
+import { findExecutable, resolveExecutable } from './findExecutable';
 
 it('darwin: finds a bare name in the PATH directory that has it', () => {
   expect(findExecutable('claude', mac({ PATH: '/a:/b' }, '/b/claude'))).toBe('/b/claude');

@@ -3,10 +3,9 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it, expect } from 'vitest';
+import { NODE } from '../testing/lookups';
 import { hookSettings, managerArgv, readRecordedSession, readSessionStart, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 
-/** Where nothing runs: the path is only written into settings. */
-const NODE = '/usr/local/bin/node';
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
 const MCP = '/data/managers/acme-0a1b2c3d/mcp.json';

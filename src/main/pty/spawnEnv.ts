@@ -27,9 +27,12 @@ export function pathKey(env: Record<string, string | undefined>, platform: NodeJ
   return Object.keys(env).find((key) => key.toUpperCase() === 'PATH');
 }
 
+/** The path module for the platform's own paths: Windows' backslashes and `;`, or POSIX's. */
+export const pathFor = (platform: NodeJS.Platform) => (platform === 'win32' ? win32 : posix);
+
 // npm puts every node_modules/.bin up the tree and its node-gyp shim at the front of PATH.
 function cleanPath(path: string, platform: NodeJS.Platform): string {
-  const { delimiter } = platform === 'win32' ? win32 : posix;
+  const { delimiter } = pathFor(platform);
   return path
     .split(delimiter)
     .filter((entry) => {

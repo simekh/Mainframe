@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeJsonAtomic } from '../tasks/taskStore';
+import { readVersionedJson, writeJsonAtomic } from '../tasks/taskStore';
 
 /**
  * `settings.json`, in the data folder: what Mainframe remembers for every open project alike. Nothing
@@ -21,29 +20,19 @@ export interface AppSettings {
  * wrote: that is neither read nor touched, so that build still has it whole.
  */
 export function readSettings(dataDir: string, warn: (msg: string) => void): AppSettings {
-  const file = join(dataDir, FILE);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(file, 'utf8'));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn(`Could not read ${file} (${String(err)}); treating it as missing`);
-    return {};
-  }
-
-  const record = (parsed ?? {}) as Record<string, unknown>;
-  if (typeof record.version === 'number' && record.version > VERSION) {
-    throw new Error('settings.json was written by a newer Mainframe; update this one, or move the file away');
-  }
-  const { claudeBin, welcomeSeen } = record;
-  if (
-    record.version !== VERSION ||
-    (claudeBin !== undefined && typeof claudeBin !== 'string') ||
-    (welcomeSeen !== undefined && typeof welcomeSeen !== 'boolean')
-  ) {
-    warn(`Could not use ${file} (it does not hold version ${VERSION} settings); treating it as missing`);
-    return {};
-  }
-  return { ...(claudeBin !== undefined && { claudeBin }), ...(welcomeSeen !== undefined && { welcomeSeen }) };
+  return (
+    readVersionedJson<AppSettings>(
+      join(dataDir, FILE),
+      VERSION,
+      warn,
+      () => 'settings.json was written by a newer Mainframe; update this one, or move the file away',
+      `it does not hold version ${VERSION} settings`,
+      ({ claudeBin, welcomeSeen }) =>
+        (claudeBin !== undefined && typeof claudeBin !== 'string') || (welcomeSeen !== undefined && typeof welcomeSeen !== 'boolean')
+          ? undefined
+          : { ...(claudeBin !== undefined && { claudeBin }), ...(welcomeSeen !== undefined && { welcomeSeen }) },
+    ) ?? {}
+  );
 }
 
 export function writeSettings(dataDir: string, settings: AppSettings): void {

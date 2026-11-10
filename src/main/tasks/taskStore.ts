@@ -101,6 +101,35 @@ export function writeJsonAtomic(file: string, value: unknown): void {
   renameWithRetry(tmp, file);
 }
 
+/**
+ * Reads a data-folder file that holds `{ version, ...fields }`: what `use` makes of its record, or
+ * undefined when the file is missing, cannot be read, is not this `version`, or has fields `use`
+ * finds not as expected. Each but a missing file is warned of, the last two saying `unusable`.
+ * Throws `newer(found)` for one a newer Mainframe wrote: that is neither read nor touched.
+ */
+export function readVersionedJson<T>(
+  file: string,
+  version: number,
+  warn: (msg: string) => void,
+  newer: (found: number) => string,
+  unusable: string,
+  use: (record: Record<string, unknown>) => T | undefined,
+): T | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn(`Could not read ${file} (${String(err)}); treating it as missing`);
+    return undefined;
+  }
+
+  const record = (parsed ?? {}) as Record<string, unknown>;
+  if (typeof record.version === 'number' && record.version > version) throw new Error(newer(record.version));
+  const used = record.version === version ? use(record) : undefined;
+  if (used === undefined) warn(`Could not use ${file} (${unusable}); treating it as missing`);
+  return used;
+}
+
 /** What a rename fails with while another program (an antivirus, the indexer, a sync tool) holds the file on Windows. */
 const HELD_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
 const RETRIES = 10;

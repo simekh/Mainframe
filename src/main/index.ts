@@ -149,6 +149,17 @@ function sendTo(win: BrowserWindow, channel: string, payload: unknown): void {
 }
 
 /**
+ * Calls `onBegin` when a quit begins: on `before-quit`, and on the window's `session-end`, which is all
+ * a Windows shutdown, restart or log-off sends (no `before-quit`) and which never fires on macOS or
+ * Linux. Once it fires the session ends whatever happens, so `onBegin` must finish its work
+ * synchronously. Either event can come first, and both may come.
+ */
+function onQuitBegins(win: BrowserWindow, onBegin: () => void): void {
+  app.on('before-quit', onBegin);
+  win.on('session-end', onBegin);
+}
+
+/**
  * Starts the projects in the window, once the setup has a claude that works. Throws when Mainframe
  * can't start; a project that can't open is said and left out.
  */
@@ -201,11 +212,7 @@ async function start(
     projects.beginQuit();
     host.killAll();
   };
-  app.on('before-quit', beginQuit);
-  // On Windows a shutdown, restart or log-off sends this and no before-quit. Once it fires the
-  // session ends whatever happens, so beginQuit records where the sessions were, synchronously.
-  // It never fires on macOS or Linux.
-  win.on('session-end', beginQuit);
+  onQuitBegins(win, beginQuit);
 
   async function makeProject(dir: string): Promise<Project> {
     // Only while it is the project open on its folder: a closed one's last exits change nothing on screen.
@@ -324,9 +331,7 @@ async function launch(config: AppConfig): Promise<void> {
   const quitBegins = () => {
     quitting = true;
   };
-  app.on('before-quit', quitBegins);
-  // Windows' shutdown, restart and log-off send this and no before-quit.
-  win.on('session-end', quitBegins);
+  onQuitBegins(win, quitBegins);
   const flow = new SetupFlow({
     dataDir: config.dataDir,
     envClaudeBin: config.claudeBin,

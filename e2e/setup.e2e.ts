@@ -8,7 +8,7 @@ import { pathKey } from '../src/main/pty/spawnEnv';
 import { readSettings } from '../src/main/setup/settings';
 import { MIN_CLAUDE_VERSION } from '../src/shared/types';
 import { cleanUp, fakeClaude, launchApp, removeAfterTest } from './launch';
-import { openedLinks, repo } from './tasks';
+import { answerDialogs, openedLinks, repo } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -69,18 +69,6 @@ function computer(o: { git?: boolean } = {}) {
   };
 }
 
-/** Answers the file or folder dialog, which main looks up at each call: with `picked`, or null for a cancel. */
-function answerDialogs(app: ElectronApplication, picked: string | null): Promise<void> {
-  return app.evaluate(({ dialog }, answer) => {
-    const seen = globalThis as { dialogCalls?: number };
-    seen.dialogCalls = 0;
-    dialog.showOpenDialog = async () => {
-      seen.dialogCalls! += 1;
-      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
-    };
-  }, picked);
-}
-
 const dialogCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { dialogCalls?: number }).dialogCalls);
 
 const savedSettings = (dataDir: string) =>
@@ -88,8 +76,8 @@ const savedSettings = (dataDir: string) =>
     throw new Error(msg);
   });
 
-const check = (page: Page, name: 'git' | 'claude') => page.getByTestId(`setup-${name}`);
-const button = (page: Page, name: string) => page.getByTestId(`setup-${name}`);
+/** One of the setup screen's parts: a check or a button. */
+const setupItem = (page: Page, name: string) => page.getByTestId(`setup-${name}`);
 const welcome = (page: Page) => page.getByText("Hi, I'm Mainframe.");
 
 /** The project's pane is the one on show: the board has opened it. */
@@ -106,15 +94,15 @@ test('a first start welcomes you, finds everything and asks for the first projec
   // Room for the Mac's window buttons above the island; on Windows and Linux the system's title bar is above the page.
   await expect(page.locator('.setup-titlebar')).toHaveCSS('height', process.platform === 'darwin' ? '46px' : '8px');
   await expect(welcome(page)).toBeVisible();
-  await expect(check(page, 'git')).toHaveAttribute('data-state', 'found');
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'found');
-  await expect(check(page, 'claude')).toContainText(`${claude} · v2.1.999`);
+  await expect(setupItem(page, 'git')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'claude')).toContainText(`${claude} · v2.1.999`);
   await expect(page.getByTestId('new-task')).toHaveCount(0);
   // The welcome counts as seen only once a project is chosen.
   expect(savedSettings(dataDir)).toEqual({});
 
   await answerDialogs(app, project);
-  await button(page, 'choose-project').click();
+  await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
@@ -128,26 +116,26 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
   const project = repo();
   const { app, page, dataDir } = await launchApp(pc.env, undefined, { firstStart: true });
 
-  await expect(check(page, 'git')).toHaveAttribute('data-state', 'found');
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'missing');
-  await expect(check(page, 'claude')).toContainText('not found');
-  await expect(button(page, 'find-claude')).toBeVisible();
-  await expect(button(page, 'install-claude')).toBeVisible();
-  await expect(button(page, 'look-again')).toBeVisible();
-  await expect(button(page, 'choose-project')).toHaveCount(0);
+  await expect(setupItem(page, 'git')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
+  await expect(setupItem(page, 'claude')).toContainText('not found');
+  await expect(setupItem(page, 'find-claude')).toBeVisible();
+  await expect(setupItem(page, 'install-claude')).toBeVisible();
+  await expect(setupItem(page, 'look-again')).toBeVisible();
+  await expect(setupItem(page, 'choose-project')).toHaveCount(0);
 
-  await button(page, 'install-claude').click();
+  await setupItem(page, 'install-claude').click();
   await expect.poll(() => openedLinks(app)).toEqual(['https://code.claude.com/docs/en/setup']);
 
   await answerDialogs(app, fakeClaude);
-  await button(page, 'find-claude').click();
+  await setupItem(page, 'find-claude').click();
 
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'found');
-  await expect(check(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
   expect(savedSettings(dataDir)).toEqual({ claudeBin: fakeClaude });
 
   await answerDialogs(app, project);
-  await button(page, 'choose-project').click();
+  await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
   expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: fakeClaude });
@@ -162,20 +150,20 @@ test('a claude too old says to update', async () => {
   const { app, page } = await launchApp(env, undefined, { firstStart: true });
 
   const update = `This Claude Code is v2.1.200, and I need v${MIN_CLAUDE_VERSION} or newer. Run claude update in a terminal, then I'll look again.`;
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'too-old');
-  await expect(check(page, 'claude')).toContainText(`${claude} · v2.1.200, too old`);
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'too-old');
+  await expect(setupItem(page, 'claude')).toContainText(`${claude} · v2.1.200, too old`);
   await expect(page.getByTestId('setup')).toContainText(update);
-  await expect(button(page, 'look-again')).toBeVisible();
-  await expect(button(page, 'find-claude')).toBeVisible();
-  await expect(button(page, 'install-claude')).toHaveCount(0);
+  await expect(setupItem(page, 'look-again')).toBeVisible();
+  await expect(setupItem(page, 'find-claude')).toBeVisible();
+  await expect(setupItem(page, 'install-claude')).toHaveCount(0);
 
-  await button(page, 'look-again').click();
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'looking');
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'too-old');
-  await expect(check(page, 'claude')).toContainText(`${claude} · v2.1.200, too old`);
+  await setupItem(page, 'look-again').click();
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'looking');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'too-old');
+  await expect(setupItem(page, 'claude')).toContainText(`${claude} · v2.1.200, too old`);
   await expect(page.getByTestId('setup')).toContainText(update);
   // The new view changes the screen's lines in place, so the button pressed keeps the focus.
-  await expect(button(page, 'look-again')).toBeFocused();
+  await expect(setupItem(page, 'look-again')).toBeFocused();
   await app.close();
 });
 
@@ -184,20 +172,20 @@ test('git missing offers only How to install and Look again', async () => {
   pc.installClaude();
   const { app, page } = await launchApp(pc.env, undefined, { firstStart: true });
 
-  await expect(check(page, 'git')).toHaveAttribute('data-state', 'missing');
-  await expect(check(page, 'git')).toContainText('not found');
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'found');
-  await expect(button(page, 'install-git')).toBeVisible();
-  await expect(button(page, 'look-again')).toBeVisible();
-  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(button(page, other)).toHaveCount(0);
+  await expect(setupItem(page, 'git')).toHaveAttribute('data-state', 'missing');
+  await expect(setupItem(page, 'git')).toContainText('not found');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'install-git')).toBeVisible();
+  await expect(setupItem(page, 'look-again')).toBeVisible();
+  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
 
-  await button(page, 'install-git').click();
+  await setupItem(page, 'install-git').click();
   await expect.poll(() => openedLinks(app)).toEqual(['https://git-scm.com/downloads']);
 
   // Git is still not on PATH: the screen says so, and that a program installed since needs a new start.
-  await button(page, 'look-again').click();
+  await setupItem(page, 'look-again').click();
   await expect(page.getByTestId('setup')).toContainText('Just installed it?');
-  await expect(check(page, 'git')).toHaveAttribute('data-state', 'missing');
+  await expect(setupItem(page, 'git')).toHaveAttribute('data-state', 'missing');
   await app.close();
 });
 
@@ -208,12 +196,12 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   const { app, page, dataDir } = await launchApp(pc.env, project, { settings: { welcomeSeen: true, claudeBin: gone } });
 
   await expect(page.getByText('Something moved since last time, so I had another look around.')).toBeVisible();
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'missing');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
   await expect(welcome(page)).toHaveCount(0);
   await expect(page.getByTestId('new-task')).toHaveCount(0);
 
   const claude = pc.installClaude();
-  await button(page, 'look-again').click();
+  await setupItem(page, 'look-again').click();
 
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
@@ -229,11 +217,11 @@ test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
   const { app, page, dataDir } = await launchApp(env, undefined, { firstStart: true });
 
   await expect(welcome(page)).toBeVisible();
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'found');
-  await expect(check(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
+  await expect(setupItem(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
 
   await answerDialogs(app, project);
-  await button(page, 'choose-project').click();
+  await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
   expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true });
@@ -247,10 +235,10 @@ test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and n
   const nowhere = join(pc.home, 'nowhere', claudeFile);
   const { app, page, dataDir } = await launchApp({ ...pc.env, MAINFRAME_CLAUDE_BIN: nowhere }, undefined, { firstStart: true });
 
-  await expect(check(page, 'claude')).toHaveAttribute('data-state', 'missing');
+  await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
   await expect(page.getByTestId('setup')).toContainText(`MAINFRAME_CLAUDE_BIN is set to ${nowhere}`);
-  await expect(button(page, 'look-again')).toBeVisible();
-  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(button(page, other)).toHaveCount(0);
+  await expect(setupItem(page, 'look-again')).toBeVisible();
+  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
   expect(savedSettings(dataDir)).toEqual({});
   await app.close();
 });
@@ -261,14 +249,14 @@ test('cancelling the folder dialog keeps the screen; quitting before choosing sh
   const first = await launchApp(pc.env, undefined, { firstStart: true });
   const { dataDir } = first;
 
-  await expect(button(first.page, 'choose-project')).toBeVisible();
+  await expect(setupItem(first.page, 'choose-project')).toBeVisible();
   await answerDialogs(first.app, null);
-  await button(first.page, 'choose-project').click();
+  await setupItem(first.page, 'choose-project').click();
   await expect.poll(() => dialogCalls(first.app)).toBe(1);
 
   // Asked again, so the cancel has been dealt with and the screen still takes the answer.
-  await expect(button(first.page, 'choose-project')).toBeVisible();
-  await button(first.page, 'choose-project').click();
+  await expect(setupItem(first.page, 'choose-project')).toBeVisible();
+  await setupItem(first.page, 'choose-project').click();
   await expect.poll(() => dialogCalls(first.app)).toBe(2);
   await expect(first.page.getByTestId('new-task')).toHaveCount(0);
   expect(savedSettings(dataDir)).toEqual({});
@@ -276,7 +264,7 @@ test('cancelling the folder dialog keeps the screen; quitting before choosing sh
 
   const second = await launchApp({ ...pc.env, MAINFRAME_DATA_DIR: dataDir }, undefined, { firstStart: true });
   await expect(welcome(second.page)).toBeVisible();
-  await expect(button(second.page, 'choose-project')).toBeVisible();
+  await expect(setupItem(second.page, 'choose-project')).toBeVisible();
   await second.app.close();
 });
 
@@ -287,7 +275,7 @@ test('Ctrl+Shift+O on the setup screen, before any project has started, opens no
   const { app, page } = await launchApp(pc.env, undefined, { firstStart: true });
   const errors: Error[] = [];
   page.on('pageerror', (err) => errors.push(err));
-  await expect(button(page, 'choose-project')).toBeVisible();
+  await expect(setupItem(page, 'choose-project')).toBeVisible();
   await answerDialogs(app, null);
 
   await page.keyboard.press('Control+Shift+O');
@@ -296,6 +284,6 @@ test('Ctrl+Shift+O on the setup screen, before any project has started, opens no
   expect(await dialogCalls(app)).toBe(0);
   expect(errors).toEqual([]);
   await expect(page.getByTestId('setup')).toBeVisible();
-  await expect(button(page, 'choose-project')).toBeVisible();
+  await expect(setupItem(page, 'choose-project')).toBeVisible();
   await app.close();
 });

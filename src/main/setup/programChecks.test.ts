@@ -2,8 +2,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MIN_CLAUDE_VERSION } from '../../shared/types';
-import type { ExecutableFiles } from '../pty/findExecutable';
 import { buildSpawnEnv } from '../pty/spawnEnv';
+import { files, mac, win } from '../testing/lookups';
 import {
   checkClaude,
   checkGit,
@@ -14,12 +14,6 @@ import {
   runVersion,
   type VersionRunner,
 } from './programChecks';
-
-const files = (...paths: string[]): ExecutableFiles => ({ isExecutableFile: (p) => paths.includes(p) });
-const mac = (env: Record<string, string>, ...existing: string[]) =>
-  ({ env, cwd: '/repo', platform: 'darwin' as const, files: files(...existing) });
-const win = (env: Record<string, string>, ...existing: string[]) =>
-  ({ env, cwd: 'C:\\repo', platform: 'win32' as const, files: files(...existing) });
 
 /** A fake `run`: each file's stdout, or null for a file that can't run. It records what it was asked to run. */
 function fakeRun(outputs: Record<string, string | null>): VersionRunner & { calls: string[] } {

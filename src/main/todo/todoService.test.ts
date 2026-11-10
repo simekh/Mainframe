@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import type { TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
+import { NODE } from '../testing/lookups';
 import { SYNC_TIMEOUT_MS, syncArgv, syncPrompt, syncSettings, type runClaude } from './syncRun';
 import { TodoService } from './todoService';
 
@@ -14,8 +15,6 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-/** Where nothing runs: the path is only written into settings. */
-const NODE = '/usr/local/bin/node';
 const ENV = { PATH: '/usr/bin', HOME: '/home/owner' };
 const NOW = 1_700_000_000_000;
 

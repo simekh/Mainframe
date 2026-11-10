@@ -4,13 +4,11 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
 import type { ChangedFile, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
+import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
-
-/** Where nothing runs: the path is only written into settings. */
-const NODE = '/usr/local/bin/node';
 
 const cleanup: string[] = [];
 

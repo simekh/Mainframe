@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { isProcessRunning } from '../src/main/testing/isProcessRunning';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { removeAfterTest } from './launch';
 
@@ -68,6 +69,14 @@ export const card = (page: Page, taskId: string) => page.locator(`[data-testid=t
 /** The task's card, found only inside the given lane of the board. */
 export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'closed', taskId: string) =>
   page.locator(`[data-testid=lane][data-lane=${lane}] [data-testid=task-card][data-task-id="${taskId}"]`);
+
+/** A project's pane, found by its folder. `JSON.stringify` quotes the folder, as a Windows path's backslashes need. */
+export const projectPane = (page: Page, dir: string) =>
+  page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(dir)}]`);
+
+/** A project's row in the list of open projects, found by its folder. */
+export const railRow = (page: Page, dir: string) =>
+  page.locator(`[data-testid=rail-project][data-project=${JSON.stringify(dir)}]`);
 
 /** Two frames: a layout change has been measured and any fit it caused has run. */
 export const settled = (page: Page) =>
@@ -141,6 +150,18 @@ export const closeTask = (page: Page, taskId: string) =>
     }
   }, taskId);
 
+/** Answers the file or folder dialog, which main looks up at each call: with `picked`, or null for a cancel. */
+export function answerDialogs(app: ElectronApplication, picked: string | null): Promise<void> {
+  return app.evaluate(({ dialog }, answer) => {
+    const seen = globalThis as { dialogCalls?: number };
+    seen.dialogCalls = 0;
+    dialog.showOpenDialog = async () => {
+      seen.dialogCalls! += 1;
+      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
+    };
+  }, picked);
+}
+
 /** The links the app was asked to open, oldest first. `launchApp` keeps them from the owner's browser. */
 export const openedLinks = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { openedLinks?: string[] }).openedLinks ?? []);
@@ -204,15 +225,6 @@ const syncMarks = (dataDir: string, ext: string) => readdirSync(fakeLogDir(dataD
 /** How many sync runs are waiting, held. Stopping one before it waits could find it before it can record the stop. */
 export const heldSyncs = (dataDir: string) => syncMarks(dataDir, '.holding').length;
 
-const isGone = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch {
-    return true;
-  }
-};
-
 /**
  * How many sync runs were stopped. Mainframe stops one with SIGTERM, which the run records. Windows
  * can't run a handler when a process is stopped, so there it counts the held runs whose process has
@@ -220,7 +232,7 @@ const isGone = (pid: number) => {
  */
 export const stoppedSyncs = (dataDir: string) =>
   process.platform === 'win32'
-    ? syncMarks(dataDir, '.holding').filter((name) => isGone(Number.parseInt(name, 10))).length
+    ? syncMarks(dataDir, '.holding').filter((name) => !isProcessRunning(Number.parseInt(name, 10))).length
     : syncMarks(dataDir, '.sigterm').length;
 
 /** The Todo folder in this data folder, where an e2e run's one synced project keeps its list and the sync's settings. */

@@ -1,5 +1,5 @@
-import { posix, win32 } from 'node:path';
-import { pathKey } from './spawnEnv';
+import { win32 } from 'node:path';
+import { pathFor, pathKey } from './spawnEnv';
 
 /** What the lookup asks of the file system. */
 export interface ExecutableFiles {
@@ -36,7 +36,7 @@ function pathValue({ env, platform }: ExecutableLookup): string {
 
 /** The folders a bare name is searched in, in PATH's order. */
 export function searchDirs(o: ExecutableLookup): string[] {
-  const dirs = pathValue(o).split(o.platform === 'win32' ? win32.delimiter : posix.delimiter);
+  const dirs = pathValue(o).split(pathFor(o.platform).delimiter);
   if (o.platform !== 'win32') return dirs.map((dir) => dir || '.');
   // Entries may be quoted. Only an absolute one is searched: an empty or relative entry
   // (`.`, `bin`) is the session's folder, where a planted claude.exe would be run.
@@ -49,7 +49,7 @@ export function searchDirs(o: ExecutableLookup): string[] {
  * `~/.local/bin/claude` stays that path, so `claude update` keeps working.
  */
 export function findExecutable(name: string, o: ExecutableLookup): string | null {
-  const path = o.platform === 'win32' ? win32 : posix;
+  const path = pathFor(o.platform);
   const names = executableNames(name, o.platform);
   const candidates = isPathName(name, o.platform)
     ? names.map((file) => path.resolve(o.cwd, file))

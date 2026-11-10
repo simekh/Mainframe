@@ -126,20 +126,22 @@ export class SessionHost {
     });
   }
 
-  // A pty that has just exited refuses a write or a resize while its exit is still on the way
-  // (node-pty reports it up to about a second late with Windows' ConPTY). The exit follows, so
-  // the error says nothing the session's end won't.
   write(id: string, data: string): void {
-    try {
-      this.sessions.get(id)?.proc.write(data);
-    } catch {
-      // The pty has exited.
-    }
+    this.ignoringExit(() => this.sessions.get(id)?.proc.write(data));
   }
 
   resize(id: string, cols: number, rows: number): void {
+    this.ignoringExit(() => this.sessions.get(id)?.proc.resize(cols, rows));
+  }
+
+  /**
+   * A pty that has just exited refuses a write or a resize while its exit is still on the way
+   * (node-pty reports it up to about a second late with Windows' ConPTY). The exit follows, so
+   * the error says nothing the session's end won't.
+   */
+  private ignoringExit(act: () => void): void {
     try {
-      this.sessions.get(id)?.proc.resize(cols, rows);
+      act();
     } catch {
       // The pty has exited.
     }

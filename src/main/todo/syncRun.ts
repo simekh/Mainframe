@@ -41,7 +41,7 @@ export function syncArgv(claudeBin: string, settingsPath: string): string[] {
   ];
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * The run's `--settings`, as JSON text. A PreToolUse hook blocks every tool but the answer's own and the confirmed

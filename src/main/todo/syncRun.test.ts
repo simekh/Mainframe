@@ -3,16 +3,15 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isProcessRunning } from '../testing/isProcessRunning';
+import { NODE } from '../testing/lookups';
 import { SYNC_ANSWER_JSON } from './todoSchema';
-import { isMcpToolName, readSyncAnswer, runClaude, syncArgv, syncPrompt, syncSettings } from './syncRun';
+import { escapeRegExp, isMcpToolName, readSyncAnswer, runClaude, syncArgv, syncPrompt, syncSettings } from './syncRun';
 
 interface Settings {
   permissions?: { allow: string[] };
   hooks: { PreToolUse: { matcher: string; hooks: { type: string; command: string; args: string[]; timeout: number; onFailure?: string }[] }[] };
 }
-
-/** Where nothing runs: the path is only written into settings. */
-const NODE = '/usr/local/bin/node';
 
 const hook = (settings: string) => (JSON.parse(settings) as Settings).hooks.PreToolUse[0];
 
@@ -270,17 +269,6 @@ describe('runClaude', () => {
     ...over,
   });
 
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  const isRunning = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   it('passes the input on stdin, runs in cwd with env, and resolves with stdout', async () => {
     const cwd = folder();
     const program = stub(`
@@ -392,7 +380,7 @@ describe('runClaude', () => {
     await vi.waitFor(() => expect(existsSync(join(cwd, 'pids'))).toBe(true), { timeout: 5000 });
     const pids = JSON.parse(readFileSync(join(cwd, 'pids'), 'utf8')) as { run: number; connector: number };
     try {
-      await vi.waitFor(() => expect(isRunning(pids.run)).toBe(false), { timeout: 5000 });
+      await vi.waitFor(() => expect(isProcessRunning(pids.run)).toBe(false), { timeout: 5000 });
       // Node learns of an exit a moment after the process is gone.
       await new Promise((resolve) => setTimeout(resolve, 100));
       run.cancel();

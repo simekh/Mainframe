@@ -3,7 +3,7 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { cleanUp, launchAgain, launchApp, removeAfterTest } from './launch';
-import { launches, screen, sendLine, startTask } from './tasks';
+import { answerDialogs, launches, projectPane, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -66,14 +66,11 @@ test('Open Project… opens the picked folder beside the open one and shows it, 
   const projectsFile = join(dataDir, 'projects.json');
   const [first] = JSON.parse(readFileSync(projectsFile, 'utf8')).open;
   const picked = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-project-')));
-  // Main looks the dialog up at each call.
-  await app.evaluate(({ dialog }, folder) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-  }, picked);
+  await answerDialogs(app, picked);
   await clickOpenProject(app, page);
 
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
-  await expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(picked)}]`)).toHaveAttribute('data-shown', 'true');
+  await expect(projectPane(page, picked)).toHaveAttribute('data-shown', 'true');
   expect(JSON.parse(readFileSync(projectsFile, 'utf8'))).toEqual({ version: 1, open: [first, picked] });
   await app.close();
 });
@@ -82,13 +79,11 @@ test('Ctrl+Shift+O opens Open Project… on Windows and Linux', async () => {
   test.skip(process.platform === 'darwin', "a Windows and Linux key: the Mac's is the menu's Cmd+O, which keys pressed in the page never reach");
   const { app, page } = await launchApp();
   const picked = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-project-')));
-  await app.evaluate(({ dialog }, folder) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-  }, picked);
+  await answerDialogs(app, picked);
   await page.keyboard.press('Control+Shift+O');
 
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
-  await expect(page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(picked)}]`)).toHaveAttribute('data-shown', 'true');
+  await expect(projectPane(page, picked)).toHaveAttribute('data-shown', 'true');
   await app.close();
 });
 

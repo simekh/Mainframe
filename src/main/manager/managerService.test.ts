@@ -6,11 +6,9 @@ import { afterEach, expect, it } from 'vitest';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { ASK_AGAIN_PROMPT, RESUME_PROMPT } from '../tasks/carryOn';
 import { hookSettings, managerArgv, SESSION_START_FILE } from '../tasks/launch';
+import { NODE } from '../testing/lookups';
 import { ManagerService } from './managerService';
 import { ROLE_PROMPT } from './rolePrompt';
-
-/** Where nothing runs: the path is only written into settings. */
-const NODE = '/usr/local/bin/node';
 
 const cleanup: string[] = [];
 
