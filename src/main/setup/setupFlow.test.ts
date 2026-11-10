@@ -17,7 +17,7 @@ const OLD = '2.1.100 (Claude Code)\n';
 const foundGit: ProgramCheck = { state: 'found', path: GIT, version: '2.56.0' };
 const foundClaude = (path = NATIVE): ProgramCheck => ({ state: 'found', path, version: '2.1.319' });
 const expectedView = (o: Partial<SetupView> = {}): SetupView => ({
-  intro: 'welcome', git: foundGit, claude: foundClaude(), claudeFromEnv: false, lookedAgain: false, askProject: false, platform: 'darwin', ...o,
+  intro: 'welcome', git: foundGit, claude: foundClaude(), claudeFromEnv: false, lookedAgain: false, askProject: false, ...o,
 });
 
 let root: string;

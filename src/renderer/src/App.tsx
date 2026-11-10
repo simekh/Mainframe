@@ -1,5 +1,5 @@
 import type { Terminal } from '@xterm/xterm';
-import { createResource, onCleanup, Show } from 'solid-js';
+import { createResource, Match, onCleanup, Switch } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
@@ -109,19 +109,13 @@ export default function App() {
 
   return (
     <div class="app">
-      <Show when={setupView() !== undefined}>
-        <Show
-          when={setupView()}
-          fallback={
-            <>
-              <ProjectRail />
-              <Panes config={config()} />
-            </>
-          }
-        >
-          {(view) => <SetupScreen view={view()} />}
-        </Show>
-      </Show>
+      <Switch>
+        <Match when={setupView() === null}>
+          <ProjectRail />
+          <Panes config={config()} />
+        </Match>
+        <Match when={setupView()}>{(view) => <SetupScreen view={view()} />}</Match>
+      </Switch>
     </div>
   );
 }

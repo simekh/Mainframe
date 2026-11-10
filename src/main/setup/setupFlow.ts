@@ -83,7 +83,7 @@ export class SetupFlow {
       if (claudeBin === null) return;
       const dir = await this.deps.pickFolder();
       if (dir === undefined) return;
-      this.save(this.deps.envClaudeBin ? { welcomeSeen: true } : { welcomeSeen: true, claudeBin });
+      this.save({ welcomeSeen: true, ...this.claudePatch(claudeBin) });
       await this.startProjects(claudeBin, [dir]);
       this.publish(null);
     });
@@ -138,9 +138,14 @@ export class SetupFlow {
     }
   }
 
+  /** What to save about claude: nothing while MAINFRAME_CLAUDE_BIN names it. */
+  private claudePatch(claudeBin: string): AppSettings {
+    return this.deps.envClaudeBin ? {} : { claudeBin };
+  }
+
   private rememberClaude(claudeBin: string): void {
-    if (this.deps.envClaudeBin || claudeBin === this.settings.claudeBin) return;
-    this.save({ claudeBin });
+    const patch = this.claudePatch(claudeBin);
+    if (patch.claudeBin !== undefined && patch.claudeBin !== this.settings.claudeBin) this.save(patch);
   }
 
   private save(patch: AppSettings): void {
@@ -157,7 +162,6 @@ export class SetupFlow {
       // The hint is for what is still missing; a claude picked by hand since may have fixed it.
       lookedAgain: this.lookedAgain && !askProject,
       askProject,
-      platform: this.deps.lookup.platform,
     });
   }
 

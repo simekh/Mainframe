@@ -40,10 +40,11 @@ export function installBoardShortcuts(target: Window, actions: BoardActions, pla
     const commandAlone = command && !e.shiftKey;
     const commandShift = !onMac && command && e.shiftKey;
     const char = e.key.toLowerCase();
+    const closeKey = onMac ? e.key === 'w' && commandAlone : commandShift && char === 'w';
     let act: () => void;
     if (e.key === 'Tab' && e.ctrlKey && !e.metaKey && !e.altKey) act = () => actions.jump(e.shiftKey ? -1 : 1);
     else if (digit && commandAlone) act = () => actions.focusProject(Number(digit[1]) - 1);
-    else if (onMac ? e.key === 'w' && commandAlone : commandShift && char === 'w') act = () => actions.closePane();
+    else if (closeKey) act = () => actions.closePane();
     else if (commandShift && char === 'o') act = () => actions.openProject();
     else return;
     e.preventDefault();

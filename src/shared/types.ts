@@ -57,7 +57,7 @@ export interface StatusEvent {
 export const MIN_CLAUDE_VERSION = '2.1.295';
 
 /** What looking for a program Mainframe needs (git, claude) found. */
-export type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
+type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
 
 export interface ProgramCheck {
   state: CheckState;
@@ -79,7 +79,6 @@ export interface SetupView {
   lookedAgain: boolean;
   /** Everything is found, and a first project is the next question. */
   askProject: boolean;
-  platform: NodeJS.Platform;
 }
 
 export interface StartCheck {

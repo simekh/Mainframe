@@ -10,6 +10,8 @@ export interface Explanation {
   lines: string[];
   /** The first is the primary one. Look again is only in the last block: it looks at every failing check. */
   buttons: SetupButton[];
+  /** The tone of each line by its place, where the block sets one. */
+  tones?: Array<'strong' | 'hint'>;
 }
 
 /** A line of the screen's opening. */
@@ -56,7 +58,7 @@ export function checkLine(name: 'git' | 'claude', check: ProgramCheck | 'looking
   }
 }
 
-export function buttonLabel(button: SetupButton, platform: SetupView['platform']): string {
+export function buttonLabel(button: SetupButton, platform: NodeJS.Platform): string {
   switch (button) {
     case 'find-claude':
       return platform === 'win32' ? 'Find claude.exe…' : 'Find claude…';
@@ -74,7 +76,7 @@ export function buttonLabel(button: SetupButton, platform: SetupView['platform']
 const NEW_TERMINAL =
   'Just installed it? A program installed after Mainframe started is often invisible to it: close Mainframe, open a new terminal and run npm start again.';
 
-function gitBlock({ git, platform }: SetupView): Explanation | null {
+function gitBlock({ git }: SetupView, platform: NodeJS.Platform): Explanation | null {
   if (git.state === 'found') return null;
   const buttons: SetupButton[] = ['install-git', 'look-again'];
   if (git.state === 'missing') {
@@ -95,8 +97,8 @@ function gitBlock({ git, platform }: SetupView): Explanation | null {
   return { check: 'git', lines, buttons };
 }
 
-function claudeBlock(view: SetupView): Explanation | null {
-  const { claude, platform } = view;
+function claudeBlock(view: SetupView, platform: NodeJS.Platform): Explanation | null {
+  const { claude } = view;
   if (claude.state === 'found') return null;
   // What MAINFRAME_CLAUDE_BIN names is the only claude looked at, so only a change there, or none, helps.
   if (view.claudeFromEnv) {
@@ -154,8 +156,8 @@ function claudeBlock(view: SetupView): Explanation | null {
  * One block per failing check, git's first. With everything found, the project question while one is
  * asked. The new-terminal hint ends the last block's lines.
  */
-export function explanations(view: SetupView): Explanation[] {
-  const failing = [gitBlock(view), claudeBlock(view)].filter((block) => block !== null);
+export function explanations(view: SetupView, platform: NodeJS.Platform): Explanation[] {
+  const failing = [gitBlock(view, platform), claudeBlock(view, platform)].filter((block) => block !== null);
   if (failing.length === 0) {
     return view.askProject
       ? [
@@ -163,6 +165,7 @@ export function explanations(view: SetupView): Explanation[] {
             check: 'project',
             lines: ['All here. Last thing: which project should we start with?', "Any folder that's a git repository. You can open more later."],
             buttons: ['choose-project'],
+            tones: ['strong', 'hint'],
           },
         ]
       : [];

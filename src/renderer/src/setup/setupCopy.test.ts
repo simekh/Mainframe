@@ -12,11 +12,10 @@ const view = (over: Partial<SetupView> = {}): SetupView => ({
   claudeFromEnv: false,
   lookedAgain: false,
   askProject: false,
-  platform: 'linux',
   ...over,
 });
 
-const blocks = (over: Partial<SetupView>) => explanations(view(over));
+const blocks = (over: Partial<SetupView>, platform: NodeJS.Platform = 'linux') => explanations(view(over), platform);
 const buttonsOf = (over: Partial<SetupView>) => blocks(over).map((b) => b.buttons);
 
 const NEW_TERMINAL =
@@ -113,6 +112,7 @@ describe('explanations', () => {
         check: 'project',
         lines: ['All here. Last thing: which project should we start with?', "Any folder that's a git repository. You can open more later."],
         buttons: ['choose-project'],
+        tones: ['strong', 'hint'],
       },
     ]);
   });
@@ -135,7 +135,7 @@ describe('explanations', () => {
     });
 
     it("didn't run: on a Mac, points at the command line tools", () => {
-      expect(blocks({ platform: 'darwin', git: { state: 'broken', path: '/usr/bin/git' } })).toEqual([
+      expect(blocks({ git: { state: 'broken', path: '/usr/bin/git' } }, 'darwin')).toEqual([
         {
           check: 'git',
           lines: [
@@ -149,7 +149,7 @@ describe('explanations', () => {
 
     it("didn't run: elsewhere, says only that", () => {
       for (const platform of ['win32', 'linux'] as const) {
-        expect(blocks({ platform, git: { state: 'broken', path: 'C:\\Git\\git.exe' } })[0].lines).toEqual([
+        expect(blocks({ git: { state: 'broken', path: 'C:\\Git\\git.exe' } }, platform)[0].lines).toEqual([
           "I found git at C:\\Git\\git.exe, but it didn't run.",
         ]);
       }
@@ -160,7 +160,7 @@ describe('explanations', () => {
     const ASK = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
 
     it('on Windows: names the three places looked in', () => {
-      expect(blocks({ platform: 'win32', claude: { state: 'missing' } })).toEqual([
+      expect(blocks({ claude: { state: 'missing' } }, 'win32')).toEqual([
         {
           check: 'claude',
           lines: [
@@ -174,7 +174,7 @@ describe('explanations', () => {
 
     it("after a file was picked that can't be run: says which file, in place of the places looked in", () => {
       for (const platform of ['darwin', 'linux', 'win32'] as const) {
-        expect(blocks({ platform, claude: { state: 'missing', path: '/opt/claude' } })).toEqual([
+        expect(blocks({ claude: { state: 'missing', path: '/opt/claude' } }, platform)).toEqual([
           {
             check: 'claude',
             lines: ["/opt/claude isn't a program I can run.", ASK],
@@ -186,7 +186,7 @@ describe('explanations', () => {
 
     it('on macOS and Linux: names the two places looked in', () => {
       for (const platform of ['darwin', 'linux'] as const) {
-        expect(blocks({ platform, claude: { state: 'missing' } })).toEqual([
+        expect(blocks({ claude: { state: 'missing' } }, platform)).toEqual([
           {
             check: 'claude',
             lines: ["Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.", ASK],
@@ -212,7 +212,7 @@ describe('explanations', () => {
 
     it("on macOS and Linux: says it didn't tell its version", () => {
       for (const platform of ['darwin', 'linux'] as const) {
-        expect(blocks({ platform, claude: broken })).toEqual([
+        expect(blocks({ claude: broken }, platform)).toEqual([
           {
             check: 'claude',
             lines: ["/opt/claude is there, but it didn't tell me its version."],
@@ -223,7 +223,7 @@ describe('explanations', () => {
     });
 
     it("on Windows: adds why an npm launcher doesn't work", () => {
-      expect(blocks({ platform: 'win32', claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' } })[0].lines).toEqual([
+      expect(blocks({ claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' } }, 'win32')[0].lines).toEqual([
         "C:\\npm\\claude.cmd is there, but it didn't tell me its version.",
         "If Claude Code came from npm, its launcher can't run on its own; Anthropic's native installer gives me a claude.exe I can use.",
       ]);

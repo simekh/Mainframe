@@ -25,7 +25,7 @@ const press: Record<SetupButton, () => void> = {
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function unitsOf(view: SetupView, looking: boolean): Unit[] {
+function unitsOf(view: SetupView, looking: boolean, platform: NodeJS.Platform): Unit[] {
   const checks = (['git', 'claude'] as const).map((name): Unit => {
     const check = view[name];
     const unseen = looking && check.state !== 'found';
@@ -37,13 +37,8 @@ function unitsOf(view: SetupView, looking: boolean): Unit[] {
       state: unseen ? 'looking' : check.state,
     };
   });
-  const blocks = explanations(view).flatMap((block): Unit[] => [
-    ...block.lines.map((text, i): Unit => ({
-      key: `${block.check}-${i}`,
-      kind: 'line',
-      text,
-      tone: block.check === 'project' ? (i === 0 ? 'strong' : 'hint') : undefined,
-    })),
+  const blocks = explanations(view, platform).flatMap((block): Unit[] => [
+    ...block.lines.map((text, i): Unit => ({ key: `${block.check}-${i}`, kind: 'line', text, tone: block.tones?.[i] })),
     { key: `${block.check}-buttons`, kind: 'buttons', buttons: block.buttons },
   ]);
   return [...intro(view).map((line, i): Unit => ({ key: `intro-${i}`, kind: 'line', ...line })), ...checks, ...blocks];
@@ -55,10 +50,11 @@ function unitsOf(view: SetupView, looking: boolean): Unit[] {
  * again or Find claude, changes the lines in place and shows at once.
  */
 export default function SetupScreen(props: { view: SetupView }) {
+  const platform = window.mainframe.platform;
   // Merged by key into the same objects, so a new view changes the text of the lines that stay and
   // leaves their elements alone: the focused button and a selection survive Look again.
   const [units, setUnits] = createStore<Unit[]>([]);
-  createComputed(() => setUnits(reconcile(unitsOf(props.view, isLooking()), { key: 'key' })));
+  createComputed(() => setUnits(reconcile(unitsOf(props.view, isLooking(), platform), { key: 'key' })));
 
   // How many units are on screen; infinite once all have been, so later views come in at once.
   const [shown, setShown] = createSignal(prefersReducedMotion() ? Infinity : 0);
@@ -108,7 +104,7 @@ export default function SetupScreen(props: { view: SetupView }) {
             <For each={unit.buttons}>
               {(button, i) => (
                 <button class={i() === 0 ? 'btn primary' : 'btn'} data-testid={`setup-${button}`} onClick={press[button]}>
-                  {buttonLabel(button, props.view.platform)}
+                  {buttonLabel(button, platform)}
                 </button>
               )}
             </For>
