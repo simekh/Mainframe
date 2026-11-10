@@ -8,9 +8,9 @@
     "node-pty": true
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/start.mjs dev",
     "build": "electron-vite build",
-    "start": "node scripts/start.mjs",
+    "start": "node scripts/start.mjs preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "electron-vite build && playwright test",
