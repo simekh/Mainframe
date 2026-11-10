@@ -83,7 +83,7 @@ It looks before it asks **(designer's call, owner agreed)**. Where it looks for 
 ### 4.3 npm-installed Claude Code on Windows
 
 `npm i -g @anthropic-ai/claude-code` on Windows puts `claude.cmd` and `claude.ps1` launchers on PATH. Neither node-pty nor Node's `child_process` can start a `.cmd` without a shell, and going through `cmd.exe` would mangle Mainframe's multi-line prompts and JSON arguments. So Mainframe never runs a `.cmd` **(designer's call, owner agreed)**:
-- The setup looks for the real executable behind npm's launcher, inside the npm package, and uses it if it is a real executable. (The package's `bin/claude.exe` stays a placeholder script until its postinstall has run, and npm 12 skips postinstall by default, so it may not be.)
+- The setup looks for the real executable behind npm's launcher, inside the npm package (`node_modules\@anthropic-ai\claude-code\bin\claude.exe`), and uses it if it is a real executable. It looks in every npm prefix on PATH that holds a `claude.cmd` (a version manager's, say), and in the default prefix, `%APPDATA%\npm` **(plan 2b's ruling R14)**. (The package's `bin/claude.exe` stays a placeholder script until its postinstall has run, and npm 12 skips postinstall by default, so it may not be.)
 - If there is none, the ✗ says that this kind of install can't be used and suggests Anthropic's native installer.
 
 On macOS and Linux, npm's `claude` is a normal executable script and works as it does today.
