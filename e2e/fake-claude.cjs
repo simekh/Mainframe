@@ -106,10 +106,8 @@ function session() {
     const started = { session_id: id, source, transcript_path: transcript };
     writeFileSync(join(dirname(settings), 'session-start.json'), JSON.stringify(started));
   }
-  // Git Bash on Windows by its full path: a `bash` on the PATH there can be WSL's.
-  const shell =
-    process.env.FAKE_CLAUDE_SHELL ||
-    (process.platform === 'win32' ? join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe') : '/bin/bash');
+  // On Windows, Git Bash by its full path (e2e/globalSetup.ts finds it and names it here): a `bash` on the PATH there can be WSL's.
+  const shell = process.env.FAKE_CLAUDE_SHELL || '/bin/bash';
   const child = spawn(shell, ['--noprofile', '--norc'], { stdio: 'inherit' });
   // Ends as the shell did. A hang-up from Mainframe ends this process, and the system then hangs up the
   // shell, which holds the terminal's foreground; on Windows node-pty's kill ends every process on the console.
