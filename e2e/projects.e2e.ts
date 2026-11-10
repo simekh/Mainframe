@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
-import { launches, managerLaunches, projectPane, railRow, report, repo, screen, sendLine } from './tasks';
+import { launches, managerLaunches, projectPane as pane, railRow as row, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -21,42 +21,42 @@ async function startIn(page: Page, dir: string, title: string): Promise<string> 
 
 /** A row's own buttons show while the pointer is on it. */
 async function rowButton(page: Page, dir: string, testId: string): Promise<Locator> {
-  await railRow(page, dir).hover();
-  return railRow(page, dir).getByTestId(testId);
+  await row(page, dir).hover();
+  return row(page, dir).getByTestId(testId);
 }
 
 test('each open project has its own board and manager; the list shows one in place of another or puts one beside it', async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [acme, globex]);
   await expect(page.getByTestId('rail-project')).toHaveCount(2);
-  await expect(projectPane(page, acme)).toHaveAttribute('data-shown', 'true');
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'false');
+  await expect(pane(page, acme)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'false');
 
   const id = await startIn(page, globex, 'Globex work');
-  await expect(projectPane(page, globex).locator(`[data-testid=task-card][data-task-id="${id}"]`)).toHaveCount(1);
-  await expect(projectPane(page, acme).getByTestId('task-card')).toHaveCount(0);
+  await expect(pane(page, globex).locator(`[data-testid=task-card][data-task-id="${id}"]`)).toHaveCount(1);
+  await expect(pane(page, acme).getByTestId('task-card')).toHaveCount(0);
   await expect.poll(() => managerLaunches(dataDir).map((l) => realpathSync(l.cwd)).sort()).toEqual(
     [acme, globex].map((dir) => realpathSync(dir)).sort(),
   );
 
-  await railRow(page, globex).getByTestId('rail-show').click();
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'true');
-  await expect(projectPane(page, acme)).toHaveAttribute('data-shown', 'false');
+  await row(page, globex).getByTestId('rail-show').click();
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, acme)).toHaveAttribute('data-shown', 'false');
 
   await (await rowButton(page, acme, 'rail-beside')).click();
-  await expect(projectPane(page, acme)).toHaveAttribute('data-shown', 'true');
-  const before = { globex: await boxOf(projectPane(page, globex)), acme: await boxOf(projectPane(page, acme)) };
+  await expect(pane(page, acme)).toHaveAttribute('data-shown', 'true');
+  const before = { globex: await boxOf(pane(page, globex)), acme: await boxOf(pane(page, acme)) };
   // Side by side in the order they came on screen, sharing the width.
   expect(before.globex.x + before.globex.width).toBeLessThanOrEqual(before.acme.x + 1);
   expect(Math.abs(before.globex.width - before.acme.width)).toBeLessThanOrEqual(2);
   // For room, each leaves its manager out and floats its panel over its board; the Manager button brings one back.
   for (const dir of [acme, globex]) {
-    await expect(projectPane(page, dir).getByTestId('manager-column')).toBeHidden();
-    await expect(projectPane(page, dir).getByTestId('side-panel')).toHaveAttribute('data-pinned', 'false');
+    await expect(pane(page, dir).getByTestId('manager-column')).toBeHidden();
+    await expect(pane(page, dir).getByTestId('side-panel')).toHaveAttribute('data-pinned', 'false');
   }
-  await projectPane(page, acme).getByTestId('manager-toggle').click();
-  await expect(projectPane(page, acme).getByTestId('manager-column')).toBeVisible();
-  await expect(projectPane(page, globex).getByTestId('manager-column')).toBeHidden();
+  await pane(page, acme).getByTestId('manager-toggle').click();
+  await expect(pane(page, acme).getByTestId('manager-column')).toBeVisible();
+  await expect(pane(page, globex).getByTestId('manager-column')).toBeHidden();
 
   const divider = await boxOf(page.getByTestId('pane-divider'));
   const [x, y] = [divider.x + divider.width / 2, divider.y + divider.height / 2];
@@ -64,15 +64,15 @@ test('each open project has its own board and manager; the list shows one in pla
   await page.mouse.down();
   await page.mouse.move(x + 100, y, { steps: 8 });
   await page.mouse.up();
-  const dragged = (await boxOf(projectPane(page, globex))).width;
+  const dragged = (await boxOf(pane(page, globex))).width;
   expect(Math.abs(dragged - (before.globex.width + 100))).toBeLessThanOrEqual(2);
   await app.close();
 
   // A restart opens both again, on screen as they were, with the divider where it was left.
   const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, openProjects(dataDir));
-  await expect(projectPane(again.page, acme)).toHaveAttribute('data-shown', 'true');
-  await expect(projectPane(again.page, globex)).toHaveAttribute('data-shown', 'true');
-  expect(Math.abs((await boxOf(projectPane(again.page, globex))).width - dragged)).toBeLessThanOrEqual(2);
+  await expect(pane(again.page, acme)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(again.page, globex)).toHaveAttribute('data-shown', 'true');
+  expect(Math.abs((await boxOf(pane(again.page, globex))).width - dragged)).toBeLessThanOrEqual(2);
   await again.app.close();
 });
 
@@ -80,15 +80,15 @@ test('a restart whose start-up check is slow still opens the projects on screen 
   const [acme, globex] = [repo(), repo()];
   const first = await launchApp({}, [acme, globex]);
   await (await rowButton(first.page, globex, 'rail-beside')).click();
-  await expect(projectPane(first.page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(first.page, globex)).toHaveAttribute('data-shown', 'true');
   await first.app.close();
 
   // The window is up while the check waits for claude, and the projects then open one at a time:
   // the page must not take the list so far, with one project in it, for the whole list.
   const env = { MAINFRAME_DATA_DIR: first.dataDir, FAKE_CLAUDE_VERSION_DELAY_MS: '1500' };
   const again = await launchApp(env, openProjects(first.dataDir));
-  await expect(projectPane(again.page, acme)).toHaveAttribute('data-shown', 'true');
-  await expect(projectPane(again.page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(again.page, acme)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(again.page, globex)).toHaveAttribute('data-shown', 'true');
   await again.app.close();
 });
 
@@ -98,15 +98,15 @@ test('a project off screen shows how many of its sessions need you, and Ctrl+Tab
   const id = await startIn(page, globex, 'Question');
   await sendLine(page, id, report('blocked:kind=question'));
 
-  await expect(railRow(page, globex).getByTestId('rail-count')).toHaveText('1');
-  await expect(railRow(page, acme).getByTestId('rail-count')).toHaveCount(0);
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'false');
+  await expect(row(page, globex).getByTestId('rail-count')).toHaveText('1');
+  await expect(row(page, acme).getByTestId('rail-count')).toHaveCount(0);
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'false');
 
   await page.keyboard.press('Control+Tab');
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'true');
-  await expect(railRow(page, globex)).toHaveAttribute('data-focused', 'true');
-  await expect(projectPane(page, globex).getByTestId('panel-title')).toHaveText('Question');
-  await expect(projectPane(page, globex).locator(`[data-testid=task-card][data-task-id="${id}"]`)).toHaveAttribute('data-selected', 'true');
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(row(page, globex)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, globex).getByTestId('panel-title')).toHaveText('Question');
+  await expect(pane(page, globex).locator(`[data-testid=task-card][data-task-id="${id}"]`)).toHaveAttribute('data-selected', 'true');
   await app.close();
 });
 
@@ -114,11 +114,11 @@ test('the way back to a manager put away shows on screen only', async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
-  await expect(projectPane(page, c)).toHaveAttribute('data-shown', 'false');
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'false');
   // Beside others, every manager starts put away, the one off screen too.
-  await expect(projectPane(page, a).getByTestId('manager-show')).toBeVisible();
-  await expect(projectPane(page, b).getByTestId('manager-show')).toBeVisible();
-  await expect(projectPane(page, c).getByTestId('manager-show')).toBeHidden();
+  await expect(pane(page, a).getByTestId('manager-show')).toBeVisible();
+  await expect(pane(page, b).getByTestId('manager-show')).toBeVisible();
+  await expect(pane(page, c).getByTestId('manager-show')).toBeHidden();
   await app.close();
 });
 
@@ -133,42 +133,42 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
-  await expect(railRow(page, b)).toHaveAttribute('data-focused', 'true');
-  await expect(projectPane(page, b)).toHaveAttribute('data-focused', 'true');
-  await expect(projectPane(page, a)).toHaveAttribute('data-focused', 'false');
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'false');
 
   // One on screen is focused where it is, and the other stays.
-  await railRow(page, a).getByTestId('rail-show').click();
-  await expect(projectPane(page, a)).toHaveAttribute('data-focused', 'true');
-  await expect(railRow(page, b)).toHaveAttribute('data-focused', 'false');
-  await expect(projectPane(page, b)).toHaveAttribute('data-shown', 'true');
+  await row(page, a).getByTestId('rail-show').click();
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'false');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
 
   // One off screen takes the focused one's place.
-  await railRow(page, c).getByTestId('rail-show').click();
-  await expect(projectPane(page, c)).toHaveAttribute('data-focused', 'true');
-  await expect(projectPane(page, a)).toHaveAttribute('data-shown', 'false');
-  expect((await boxOf(projectPane(page, c))).x).toBeLessThan((await boxOf(projectPane(page, b))).x);
+  await row(page, c).getByTestId('rail-show').click();
+  await expect(pane(page, c)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, a)).toHaveAttribute('data-shown', 'false');
+  expect((await boxOf(pane(page, c))).x).toBeLessThan((await boxOf(pane(page, b))).x);
 
   // A click in a pane focuses its project.
   const id = await startIn(page, b, 'Selected');
-  await projectPane(page, b).locator(`[data-testid=task-card][data-task-id="${id}"]`).click();
-  await expect(projectPane(page, b)).toHaveAttribute('data-focused', 'true');
+  await pane(page, b).locator(`[data-testid=task-card][data-task-id="${id}"]`).click();
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
 
   // Cmd+1 (Ctrl+1) brings the list's first in place of b. Nothing selected there and no manager beside
   // others: the cursor leaves b, so no typing lands there unseen.
   await page.keyboard.press('ControlOrMeta+1');
-  await expect(projectPane(page, a)).toHaveAttribute('data-focused', 'true');
-  await expect(projectPane(page, b)).toHaveAttribute('data-shown', 'false');
-  expect((await boxOf(projectPane(page, c))).x).toBeLessThan((await boxOf(projectPane(page, a))).x);
+  await expect(pane(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
+  expect((await boxOf(pane(page, c))).x).toBeLessThan((await boxOf(pane(page, a))).x);
   await expect.poll(() => cursor(page)).toEqual({ project: null, inTask: false });
 
   // Cmd+2 (Ctrl+2) brings b back, with the cursor in its selected task's terminal.
   await page.keyboard.press('ControlOrMeta+2');
-  await expect(projectPane(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
   await expect.poll(() => cursor(page)).toEqual({ project: b, inTask: true });
 
-  await projectPane(page, c).getByTestId('board').click();
-  await expect(railRow(page, c)).toHaveAttribute('data-focused', 'true');
+  await pane(page, c).getByTestId('board').click();
+  await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
   await app.close();
 });
 
@@ -180,33 +180,33 @@ test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
   await (await rowButton(page, c, 'rail-beside')).click();
-  await railRow(page, b).getByTestId('rail-show').click();
+  await row(page, b).getByTestId('rail-show').click();
 
   // Not while a dialog in it is open: it would go off screen, still blocking the window.
-  await projectPane(page, b).getByTestId('new-task').click();
-  const title = projectPane(page, b).getByTestId('new-task-title');
+  await pane(page, b).getByTestId('new-task').click();
+  const title = pane(page, b).getByTestId('new-task-title');
   await expect(title).toBeFocused();
   await page.keyboard.press(closePaneKey);
-  await expect(projectPane(page, b)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
   await expect(title).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(title).toHaveCount(0);
 
   // The focus goes to the neighbour before it.
   await page.keyboard.press(closePaneKey);
-  await expect(projectPane(page, b)).toHaveAttribute('data-shown', 'false');
-  await expect(railRow(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
   await expect(page.getByTestId('rail-project')).toHaveCount(3);
   expect(openProjects(dataDir)).toEqual([a, b, c]);
 
   // Alone on screen, c shows its manager, and the cursor goes there.
   await page.keyboard.press(closePaneKey);
-  await expect(projectPane(page, a)).toHaveAttribute('data-shown', 'false');
-  await expect(railRow(page, c)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, a)).toHaveAttribute('data-shown', 'false');
+  await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
   await expect.poll(() => cursor(page)).toEqual({ project: c, inTask: false });
 
   await page.keyboard.press(closePaneKey);
-  await expect(projectPane(page, c)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'true');
   await app.close();
 });
 
@@ -214,13 +214,13 @@ test("each project's panel keeps its own pin", async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({}, [acme, globex]);
   await setWindowWidth(app, page, 1600);
-  const pinned = (dir: string) => projectPane(page, dir).getByTestId('side-panel');
+  const pinned = (dir: string) => pane(page, dir).getByTestId('side-panel');
 
-  await projectPane(page, acme).getByTestId('panel-pin').click();
+  await pane(page, acme).getByTestId('panel-pin').click();
   await expect(pinned(acme)).toHaveAttribute('data-pinned', 'false');
-  await railRow(page, globex).getByTestId('rail-show').click();
+  await row(page, globex).getByTestId('rail-show').click();
   await expect(pinned(globex)).toHaveAttribute('data-pinned', 'true');
-  await railRow(page, acme).getByTestId('rail-show').click();
+  await row(page, acme).getByTestId('rail-show').click();
   await expect(pinned(acme)).toHaveAttribute('data-pinned', 'false');
   await app.close();
 });
@@ -232,9 +232,9 @@ test('closing a project stops its sessions, and opening it again carries them on
   expect(launches(dataDir)).toHaveLength(1);
 
   await (await rowButton(page, globex, 'rail-close')).click();
-  await railRow(page, globex).getByTestId('rail-close-confirm').click();
+  await row(page, globex).getByTestId('rail-close-confirm').click();
   await expect(page.getByTestId('rail-project')).toHaveCount(1);
-  await expect(projectPane(page, globex)).toHaveCount(0);
+  await expect(pane(page, globex)).toHaveCount(0);
   expect(openProjects(dataDir)).toEqual([acme]);
   // Still open in state.json, so it carries on when the project opens again.
   const task = () => JSON.parse(readFileSync(join(dataDir, 'state.json'), 'utf8')).tasks.find((t: { id: string }) => t.id === id);
@@ -245,7 +245,7 @@ test('closing a project stops its sessions, and opening it again carries them on
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
   }, globex);
   await page.getByTestId('open-project').click();
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
   await expect.poll(() => launches(dataDir)).toHaveLength(2);
   expect(launches(dataDir)[1].args).toContain('--resume');
   await expect.poll(() => screen(page, id)).toContain('$');
@@ -261,7 +261,7 @@ test('the grid puts three projects on screen in two rows', async () => {
 
   await expect(page.getByTestId('panes')).toHaveAttribute('data-arrangement', 'grid');
   await expect(page.getByTestId('pane-divider')).toHaveCount(0);
-  const [boxA, boxB, boxC] = [await boxOf(projectPane(page, a)), await boxOf(projectPane(page, b)), await boxOf(projectPane(page, c))];
+  const [boxA, boxB, boxC] = [await boxOf(pane(page, a)), await boxOf(pane(page, b)), await boxOf(pane(page, c))];
   expect(boxA.y).toBe(boxB.y);
   expect(boxA.x + boxA.width).toBeLessThanOrEqual(boxB.x);
   expect(boxC.y).toBeGreaterThanOrEqual(boxA.y + boxA.height);

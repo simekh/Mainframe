@@ -5,8 +5,8 @@ import { test, expect, type ElectronApplication, type Locator, type Page } from 
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, projectPane, railRow, releaseSyncs, repoAhead,
-  stoppedSyncs, syncLaunches, syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, projectPane as pane, railRow, releaseSyncs,
+  repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -264,28 +264,28 @@ test('two projects side by side keep their own lists', async () => {
   const row = railRow(page, globex);
   await row.hover();
   await row.getByTestId('rail-beside').click();
-  await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
 
-  await syncFirstTime(projectPane(page, acme), dataDir);
-  await projectPane(page, globex).getByTestId('todo-toggle').click();
-  const other = projectPane(page, globex).getByTestId('todo-panel');
+  await syncFirstTime(pane(page, acme), dataDir);
+  await pane(page, globex).getByTestId('todo-toggle').click();
+  const other = pane(page, globex).getByTestId('todo-panel');
   await expect(other).toBeVisible();
   await expect(other.getByText('Not synced yet')).toBeVisible();
   await expect(other.getByTestId('todo-item')).toHaveCount(0);
-  await expect(projectPane(page, acme).getByTestId('todo-item')).toHaveCount(2);
-  await expect(projectPane(page, acme).getByTestId('todo-source')).toHaveText('Tracker ↗ · Shop · To do');
+  await expect(pane(page, acme).getByTestId('todo-item')).toHaveCount(2);
+  await expect(pane(page, acme).getByTestId('todo-source')).toHaveText('Tracker ↗ · Shop · To do');
 
   // Each pane has its own ticket, and Esc closes the one in the project the owner works in.
-  await itemRow(projectPane(page, acme), 'card:c128').click();
-  await projectPane(page, globex).getByTestId('todo-add-note').click();
-  const [acmeTicket, globexTicket] = [acme, globex].map((dir) => projectPane(page, dir).getByTestId('ticket-panel'));
+  await itemRow(pane(page, acme), 'card:c128').click();
+  await pane(page, globex).getByTestId('todo-add-note').click();
+  const [acmeTicket, globexTicket] = [acme, globex].map((dir) => pane(page, dir).getByTestId('ticket-panel'));
   await expect(acmeTicket.getByRole('heading', { level: 3 })).toHaveText('#128 Search ignores accents');
   await expect(globexTicket.getByLabel('Title')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(globexTicket).toHaveCount(0);
   await expect(acmeTicket).toBeVisible();
   // The focus was in the ticket that went: it goes back to what opened it.
-  await expect(projectPane(page, globex).getByTestId('todo-add-note')).toBeFocused();
+  await expect(pane(page, globex).getByTestId('todo-add-note')).toBeFocused();
   await app.close();
 });
 

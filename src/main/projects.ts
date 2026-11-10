@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { localFiles } from './pty/sessionHost';
-import { readVersionedJson, writeJsonAtomic } from './tasks/taskStore';
+import { writeJsonAtomic } from './tasks/taskStore';
 
 /**
  * `projects.json`, in the data folder: the project folders Mainframe has open, in the order its
@@ -21,19 +21,28 @@ const VERSION = 1;
  */
 function readOpen(dataDir: string, warn: (msg: string) => void): string[] {
   const file = join(dataDir, FILE);
-  return (
-    readVersionedJson<string[]>(
-      file,
-      VERSION,
-      warn,
-      (found) =>
-        `The list of open projects ${file} was written by a newer Mainframe (it is version ${found}; ` +
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn(`Could not read ${file} (${String(err)}); treating it as missing`);
+    return [];
+  }
+
+  const record = (parsed ?? {}) as Record<string, unknown>;
+  if (typeof record.version === 'number' && record.version > VERSION) {
+    throw new Error(
+      `The list of open projects ${file} was written by a newer Mainframe (it is version ${record.version}; ` +
         `this one reads version ${VERSION}). It is left as it is. Open it with the newer Mainframe, ` +
         'or set MAINFRAME_DATA_DIR to another folder.',
-      `it does not hold a version ${VERSION} list of folders`,
-      ({ open }) => (Array.isArray(open) && open.every((path) => typeof path === 'string') ? open : undefined),
-    ) ?? []
-  );
+    );
+  }
+  const { open } = record;
+  if (record.version !== VERSION || !Array.isArray(open) || !open.every((path) => typeof path === 'string')) {
+    warn(`Could not use ${file} (it does not hold a version ${VERSION} list of folders); treating it as missing`);
+    return [];
+  }
+  return open;
 }
 
 export function writeOpenProjects(dataDir: string, open: string[]): void {
