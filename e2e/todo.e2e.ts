@@ -16,6 +16,15 @@ const folder = () => removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-todo-
 
 const pane = (page: Page, dir: string) => page.locator(`[data-testid=project-pane][data-project=${JSON.stringify(dir)}]`);
 
+/**
+ * Resolves once the floating panel has slid in. It is visible from the slide's start, and measured while it
+ * slides its box is off by a float's rounding (303.99998 for 304, Windows CI).
+ */
+const slidIn = (panel: Locator) =>
+  panel.evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished));
+  });
+
 /** What the first sync answers: the connector that holds the list, and its tools that only read. */
 const TOOLS = { kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_list'] };
 
@@ -299,6 +308,7 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panel).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('manager-column')).toHaveAttribute('data-pinned', 'true');
+  await slidIn(panel);
   expect((await box(page, 'todo-panel')).width).toBe(320);
   await expect(page.getByTestId('todo-resize')).toHaveAttribute('aria-valuemax', '480');
 
@@ -366,6 +376,7 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panelAgain).toBeHidden();
   await again.page.getByTestId('todo-toggle').click();
   await expect(panelAgain).toBeVisible();
+  await slidIn(panelAgain);
   expect((await box(again.page, 'todo-panel')).width).toBe(304);
   await again.page.getByTestId('todo-pin').click();
   await expect(panelAgain).toHaveAttribute('data-pinned', 'true');
