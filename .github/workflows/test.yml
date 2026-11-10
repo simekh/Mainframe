@@ -45,9 +45,10 @@ jobs:
         run: npm test
 
       # The next two steps run `npm start` the way a friend does, on an Ubuntu that blocks Chromium's
-      # sandbox. A fresh data folder has no project, so Mainframe waits at its folder dialog: `timeout`
-      # ends it after 90 seconds (exit 124) and that is the pass. Any other exit fails the step, such as
-      # Chromium's "No usable sandbox" abort.
+      # sandbox. Surviving the 90 seconds proves that Chromium starts, without its sandbox in the first
+      # step and with the setuid sandbox in the second. The runner has no claude, so Mainframe stays up
+      # at its setup screen until `timeout` ends it (exit 124), and that is the pass. Any other exit
+      # fails the step, such as Chromium's "No usable sandbox" abort.
       - name: Start as a friend does (Linux)
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         timeout-minutes: 5
