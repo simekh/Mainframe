@@ -207,30 +207,34 @@ test("the manager's terminal fits its column", async () => {
 });
 
 // CDP clicks skip native drag regions, so this pins the styles; the owner checks the window buttons' padding.
-test('the manager column sits left of the board, and its top strip holds the window buttons', async () => {
+test('the manager column sits left of the board, and on the Mac its top strip holds the window buttons', async () => {
   const { app, page } = await launchApp();
   const column = await box(page, 'manager-column');
   expect(column.x + column.width).toBeLessThanOrEqual((await box(page, 'board')).x);
 
   const strip = page.getByTestId('manager-title-bar');
-  // A drag region on the Mac only; elsewhere it inherits its column's no-drag.
+  const onMac = process.platform === 'darwin';
+  // On Windows and Linux the system's title bar holds the window buttons, and the strip is no drag
+  // region: it inherits its column's no-drag, as everything in it does.
   expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe(
-    process.platform === 'darwin' ? 'drag' : 'no-drag',
+    onMac ? 'drag' : 'no-drag',
   );
   expect((await strip.boundingBox())!.height).toBe(46);
-  // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
-  // out of it in that order. None starts within its first 90 px, where the window buttons are. Over
-  // it by a pixel or more: the text in the row under it reaches a tenth of one up into it.
-  const starts = await strip.evaluate((bar) => {
-    const s = bar.getBoundingClientRect();
-    return [...document.querySelectorAll('*')]
-      .filter((el) => bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
-      .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.left < s.right && s.left < r.right && r.top <= s.bottom - 1 && s.top <= r.bottom - 1)
-      .map((r) => r.left - s.left);
-  });
-  expect(Math.min(...starts)).toBeGreaterThanOrEqual(90);
+  if (onMac) {
+    // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
+    // out of it in that order. None starts within its first 90 px, where the window buttons are. Over
+    // it by a pixel or more: the text in the row under it reaches a tenth of one up into it.
+    const starts = await strip.evaluate((bar) => {
+      const s = bar.getBoundingClientRect();
+      return [...document.querySelectorAll('*')]
+        .filter((el) => bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.left < s.right && s.left < r.right && r.top <= s.bottom - 1 && s.top <= r.bottom - 1)
+        .map((r) => r.left - s.left);
+    });
+    expect(Math.min(...starts)).toBeGreaterThanOrEqual(90);
+  }
 
   // The board's top bar no longer makes room for them.
   expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
