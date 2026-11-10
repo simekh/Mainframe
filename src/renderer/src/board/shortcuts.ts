@@ -1,5 +1,5 @@
 // Adapted from Parallel Code (MIT): src/lib/keybindings/defaults.ts (app.nav.next-attention, app.nav.previous-attention) at 97c3558. See THIRD_PARTY_NOTICES.md.
-import { commandHeld } from '../keys';
+import { commandHeld, shortcutLetter } from '../keys';
 
 export interface BoardActions {
   jump(step: 1 | -1): void;
@@ -21,7 +21,8 @@ const DIGIT = /^Digit([1-9])$/;
  *
  * On macOS, Cmd+W takes the focused project's pane off screen, by the character as macOS's own
  * shortcuts go, and Open Project… is the menu's Cmd+O. On Windows and Linux, Ctrl+Shift+W and
- * Ctrl+Shift+O do these, by the character whether Caps Lock is on or not. Plain Ctrl+W stays with
+ * Ctrl+Shift+O do these, by the character whether Caps Lock is on or not, and on a layout without Latin
+ * letters by the letter on the key itself (`shortcutLetter`). Plain Ctrl+W stays with
  * the terminal on every system, where it deletes the word before the cursor, and plain Ctrl+O is
  * Claude Code's. No key matches with Alt held: on Windows AltGr arrives as Ctrl+Alt, typing
  * characters on Nordic and German layouts.
@@ -39,7 +40,7 @@ export function installBoardShortcuts(target: Window, actions: BoardActions, pla
     const command = onMac ? e.metaKey && !e.ctrlKey && !e.altKey : commandHeld(e, platform);
     const commandAlone = command && !e.shiftKey;
     const commandShift = !onMac && command && e.shiftKey;
-    const char = e.key.toLowerCase();
+    const char = shortcutLetter(e);
     const closeKey = onMac ? e.key === 'w' && commandAlone : commandShift && char === 'w';
     let act: () => void;
     if (e.key === 'Tab' && e.ctrlKey && !e.metaKey && !e.altKey) act = () => actions.jump(e.shiftKey ? -1 : 1);

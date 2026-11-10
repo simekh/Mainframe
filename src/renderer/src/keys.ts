@@ -7,6 +7,17 @@ export function commandHeld(e: { metaKey: boolean; ctrlKey: boolean; altKey: boo
   return platform === 'darwin' ? e.metaKey : e.ctrlKey && !e.metaKey && !e.altKey;
 }
 
+/**
+ * The letter a Ctrl shortcut on Windows and Linux means, in lower case, or '' for a key that is none. It
+ * is the character the layout gives when that is a Latin letter, so Dvorak and AZERTY keep the letter
+ * they see; otherwise, on a layout without Latin letters (Russian, Greek), the letter on the key's
+ * own place, so Ctrl+C copies there too, as in Windows Terminal and VS Code.
+ */
+export function shortcutLetter(e: { key: string; code: string }): string {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+  return /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : '';
+}
+
 /** The command key as on-screen hints name it. */
 export function commandName(platform: NodeJS.Platform): 'Cmd' | 'Ctrl' {
   return platform === 'darwin' ? 'Cmd' : 'Ctrl';

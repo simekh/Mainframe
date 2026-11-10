@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandHeld, commandName, linkClickHeld } from './keys';
+import { commandHeld, commandName, linkClickHeld, shortcutLetter } from './keys';
 
 const mods = (held: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey', boolean>> = {}) => ({
   metaKey: false,
@@ -34,6 +34,31 @@ describe('commandName', () => {
     expect(commandName('darwin')).toBe('Cmd');
     expect(commandName('win32')).toBe('Ctrl');
     expect(commandName('linux')).toBe('Ctrl');
+  });
+});
+
+describe('shortcutLetter', () => {
+  it('is the letter the key gives, lower case, whichever key it sits on: Dvorak and AZERTY keep what they see', () => {
+    expect(shortcutLetter({ key: 'c', code: 'KeyC' })).toBe('c');
+    expect(shortcutLetter({ key: 'C', code: 'KeyC' })).toBe('c');
+    expect(shortcutLetter({ key: 'c', code: 'KeyI' })).toBe('c');
+    expect(shortcutLetter({ key: 'j', code: 'KeyC' })).toBe('j');
+    expect(shortcutLetter({ key: 'z', code: 'KeyW' })).toBe('z');
+  });
+
+  it('is the letter on the key itself when the layout gives no Latin one: Russian, Greek', () => {
+    expect(shortcutLetter({ key: 'с', code: 'KeyC' })).toBe('c');
+    expect(shortcutLetter({ key: 'С', code: 'KeyC' })).toBe('c');
+    expect(shortcutLetter({ key: 'ц', code: 'KeyW' })).toBe('w');
+    expect(shortcutLetter({ key: 'ψ', code: 'KeyC' })).toBe('c');
+  });
+
+  it('is nothing for a key that is no letter, or a key that sits on no letter', () => {
+    expect(shortcutLetter({ key: 'Enter', code: 'Enter' })).toBe('');
+    expect(shortcutLetter({ key: '1', code: 'Digit1' })).toBe('');
+    expect(shortcutLetter({ key: '@', code: 'Digit2' })).toBe('');
+    expect(shortcutLetter({ key: 'с', code: 'Digit1' })).toBe('');
+    expect(shortcutLetter({ key: 'Dead', code: 'Quote' })).toBe('');
   });
 });
 

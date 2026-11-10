@@ -140,6 +140,10 @@ describe('installBoardShortcuts', () => {
       w.press('1', { ctrlKey: true }, 'Digit1'),
       w.press('W', { ctrlKey: true, shiftKey: true }, 'KeyW'),
       w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyO'),
+      // Nor by the key's place, on a layout without Latin letters.
+      w.press('Ц', { ctrlKey: true, shiftKey: true }, 'KeyW'),
+      w.press('Щ', { ctrlKey: true, shiftKey: true }, 'KeyO'),
+      w.press('ц', { metaKey: true }, 'KeyW'),
     ];
     untouched(actions, others);
   });
@@ -187,6 +191,36 @@ describe.each(['win32', 'linux'] as const)('installBoardShortcuts on %s', (platf
     swallowed(w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyO'));
     swallowed(w.press('o', { ctrlKey: true, shiftKey: true }, 'KeyO'));
     expect(actions.openProject).toHaveBeenCalledTimes(2);
+  });
+
+  it('Ctrl+Shift+W and Ctrl+Shift+O work on a layout without Latin letters, by the letter on the key itself', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    swallowed(w.press('Ц', { ctrlKey: true, shiftKey: true }, 'KeyW'));
+    swallowed(w.press('ц', { ctrlKey: true, shiftKey: true }, 'KeyW'));
+    expect(actions.closePane).toHaveBeenCalledTimes(2);
+    swallowed(w.press('Щ', { ctrlKey: true, shiftKey: true }, 'KeyO'));
+    swallowed(w.press('щ', { ctrlKey: true, shiftKey: true }, 'KeyO'));
+    expect(actions.openProject).toHaveBeenCalledTimes(2);
+  });
+
+  it('a Latin letter wins over the key it sits on: on Dvorak the W is where QWERTY has the comma, the O where it has S', () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    swallowed(w.press('W', { ctrlKey: true, shiftKey: true }, 'Comma'));
+    expect(actions.closePane).toHaveBeenCalledTimes(1);
+    swallowed(w.press('O', { ctrlKey: true, shiftKey: true }, 'KeyS'));
+    expect(actions.openProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("a key that sits where W or O does on QWERTY, but gives another Latin letter, is not theirs (AZERTY's Z, Dvorak's R)", () => {
+    const w = fakeWindow();
+    const { actions } = install(w, platform);
+    const others = [
+      w.press('Z', { ctrlKey: true, shiftKey: true }, 'KeyW'),
+      w.press('R', { ctrlKey: true, shiftKey: true }, 'KeyO'),
+    ];
+    untouched(actions, others);
   });
 
   it('Ctrl+Tab jumps forward and Ctrl+Shift+Tab back, as on the Mac', () => {

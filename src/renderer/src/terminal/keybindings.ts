@@ -1,8 +1,10 @@
 // Sequences from Parallel Code (MIT) src/lib/keybindings/defaults.ts at 97c3558. See THIRD_PARTY_NOTICES.md.
+import { shortcutLetter } from '../keys';
 
 export interface KeyLike {
   type: string;
   key: string;
+  code: string;
   metaKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
@@ -44,7 +46,8 @@ const isShiftEnter = (e: KeyLike) =>
  * Windows and Linux have no menu, so copy and paste are keys here, as in Windows Terminal. Alt and
  * Meta combinations are never matched: AltGr arrives as Ctrl+Alt on Windows, typing `@ { [ ] }` on
  * Nordic and German layouts. Ctrl+C copies only a selection, else xterm sends ^C; Home, End and
- * Shift+PgUp/PgDn are xterm's own.
+ * Shift+PgUp/PgDn are xterm's own. A letter is the character the layout gives, or on a layout without
+ * Latin letters (Russian, Greek) the letter on the key itself (`shortcutLetter`).
  */
 export function matchTerminalBinding(e: KeyLike, platform: NodeJS.Platform, hasSelection: boolean): TerminalAction | undefined {
   if (platform !== 'darwin') return matchCtrlBinding(e, platform, hasSelection);
@@ -60,7 +63,7 @@ function matchCtrlBinding(e: KeyLike, platform: NodeJS.Platform, hasSelection: b
   if (e.type !== 'keydown' || e.altKey || e.metaKey) return undefined;
   if (isShiftEnter(e)) return { send: '\x1b\r' };
   if (!e.ctrlKey) return undefined;
-  const letter = e.key.toLowerCase();
+  const letter = shortcutLetter(e);
   if (letter === 'v') return { clipboard: 'paste' };
   if (e.shiftKey) {
     if (letter === 'c') return { clipboard: 'copy' };

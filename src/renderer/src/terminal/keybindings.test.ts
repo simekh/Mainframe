@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { matchTerminalBinding, swallowsKeyEvent, type KeyLike } from './keybindings';
 
 const key = (k: Partial<KeyLike>): KeyLike =>
-  ({ type: 'keydown', key: '', metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...k });
+  ({ type: 'keydown', key: '', code: '', metaKey: false, shiftKey: false, altKey: false, ctrlKey: false, ...k });
 
 it.each([
   [{ key: 'Enter', shiftKey: true }, '\x1b\r'],
@@ -36,6 +36,11 @@ it.each([
   expect(matchTerminalBinding(key(k), 'darwin', true)).toBeUndefined();
 });
 
+it('on the Mac, a Ctrl+letter on a layout without Latin letters is left to xterm too', () => {
+  expect(matchTerminalBinding(key({ key: 'с', code: 'KeyC', ctrlKey: true }), 'darwin', true)).toBeUndefined();
+  expect(matchTerminalBinding(key({ key: 'м', code: 'KeyV', ctrlKey: true }), 'darwin', true)).toBeUndefined();
+});
+
 describe.each(['win32', 'linux'] as const)('on %s', (platform) => {
   const match = (k: Partial<KeyLike>, hasSelection = false) => matchTerminalBinding(key(k), platform, hasSelection);
 
@@ -59,6 +64,37 @@ describe.each(['win32', 'linux'] as const)('on %s', (platform) => {
 
   it.each([['ArrowUp', 'line-up'], ['ArrowDown', 'line-down']] as const)('Ctrl+Shift+%s scrolls %s', (k, scroll) => {
     expect(match({ key: k, ctrlKey: true, shiftKey: true })).toEqual({ scroll });
+  });
+
+  // On a Russian or Greek layout `key` is the layout's letter; the key's place still says which it is.
+  describe('on a layout without Latin letters, the letter on the key itself counts', () => {
+    it('Ctrl+C copies and clears a selection, and is left to xterm without one', () => {
+      expect(match({ key: 'с', code: 'KeyC', ctrlKey: true }, true)).toEqual({ clipboard: 'copy-and-clear' });
+      expect(match({ key: 'ψ', code: 'KeyC', ctrlKey: true }, true)).toEqual({ clipboard: 'copy-and-clear' });
+      expect(match({ key: 'с', code: 'KeyC', ctrlKey: true }, false)).toBeUndefined();
+    });
+
+    it.each([true, false])('Ctrl+Shift+C copies (selection: %s)', (hasSelection) => {
+      expect(match({ key: 'С', code: 'KeyC', ctrlKey: true, shiftKey: true }, hasSelection)).toEqual({ clipboard: 'copy' });
+    });
+
+    it('Ctrl+V and Ctrl+Shift+V paste', () => {
+      expect(match({ key: 'м', code: 'KeyV', ctrlKey: true })).toEqual({ clipboard: 'paste' });
+      expect(match({ key: 'М', code: 'KeyV', ctrlKey: true, shiftKey: true })).toEqual({ clipboard: 'paste' });
+    });
+
+    it('AltGr and the other letters are still left to xterm', () => {
+      expect(match({ key: 'с', code: 'KeyC', ctrlKey: true, altKey: true }, true)).toBeUndefined();
+      expect(match({ key: 'м', code: 'KeyV', ctrlKey: true, metaKey: true })).toBeUndefined();
+      expect(match({ key: 'ц', code: 'KeyW', ctrlKey: true }, true)).toBeUndefined();
+    });
+  });
+
+  it('a Latin letter wins over the key it sits on: on Dvorak the C is where QWERTY has I, and the J where it has C', () => {
+    expect(match({ key: 'c', code: 'KeyI', ctrlKey: true }, true)).toEqual({ clipboard: 'copy-and-clear' });
+    expect(match({ key: 'j', code: 'KeyC', ctrlKey: true }, true)).toBeUndefined();
+    expect(match({ key: 'v', code: 'Period', ctrlKey: true })).toEqual({ clipboard: 'paste' });
+    expect(match({ key: 'k', code: 'KeyV', ctrlKey: true })).toBeUndefined();
   });
 
   it('Shift+Enter sends ESC CR', () => {
