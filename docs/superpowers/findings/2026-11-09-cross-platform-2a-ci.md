@@ -119,17 +119,18 @@ Run 8 is green on all three systems, 921 unit tests and 99 e2e tests each. Run 9
 
 ## 2c: native keys, window and terminals on Windows and Linux
 
-Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and paste, the Windows terminal, the Windows file and git fixes, the README) was pushed three times; Node 26.13.0 on every system, 1055 unit tests on each.
+Plan 2c (Tasks 1–6: the window per system, Ctrl-based keys, terminal copy and paste, the Windows terminal, the Windows file and git fixes, the README) was pushed four times, the last for its task review's fix; Node 26.13.0 on every system, 1055 unit tests on each.
 
 | Run | Commit | What it carried | macOS | Windows | Linux |
 |---|---|---|---|---|---|
 | 1 [42805058246](https://github.com/simekh/Mainframe/actions/runs/42805058246) | c93943f | Tasks 1–6, and a temporary Windows step that repeated quits (the crash, below) | 101 pass | 104 pass, 1 fail: `todo.e2e.ts:285` | 104 pass, 1 fail: `terminal.e2e.ts:157` |
 | 2 [42808065681](https://github.com/simekh/Mainframe/actions/runs/42808065681) | 08f5438 | the quit step removed; the Todo panel test waits for the panel's slide; a temporary diagnostic in the scaling test | 101 pass | 105 pass | 104 pass, 1 fail: the scaling test again |
 | 3 [42809769043](https://github.com/simekh/Mainframe/actions/runs/42809769043) | 5091b6d | the scaling test's fix, the diagnostic removed | 101 pass | 105 pass | 104 pass, the scaling test skipped (no WebGL2, below) |
+| 4 [42813197626](https://github.com/simekh/Mainframe/actions/runs/42813197626) | 543f286 | the scaling test skips only on Linux, and only when the fit after the change is the size before it; this section's first version (`2165f40`) | 101 pass | 105 pass, the scaling test among them | 104 pass, the scaling test skipped on its precondition (the fit after the change is the size before it) |
 
-macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Run 3 is green on all three systems, and both Linux start steps passed in every run.
+macOS skips the four tests of Windows and Linux keys and behaviour (below) in every run. In run 1, six more tests were skipped on every system: the quit step's own tests, which the e2e step leaves out. Runs 3 and 4 are green on all three systems. Both Linux start steps passed in every run.
 
-**What the tests showed off the Mac.** The tests that skip on the Mac all ran on Windows and Linux. The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch, and all of them passed, but for the scaling test on Linux (below):
+**What the tests showed off the Mac.** The tests that skip on the Mac all ran on Windows, in every run. They all ran on Linux too, but the scaling test skips there from run 3 on (below). The tests with a Mac branch and a Windows/Linux branch took their Windows/Linux branch. All of them passed, but for the scaling test on Linux:
 
 - Task 1, the window: `app.e2e.ts`'s window test (no application menu, `isMenuBarVisible()` false, the project list's top row with no room for window buttons, the top bar no drag region, `data-platform`); the setup screen's 8 px title row; no drag regions in `manager.e2e.ts` and `session-panel.e2e.ts`; Open Project… through the project list's button.
 - Task 2, the keys: Ctrl+Shift+O opens Open Project… (`app.e2e.ts`), and on the setup screen opens no dialog and raises no error (`setup.e2e.ts`); the Control branches of `projects.e2e.ts`, `links.e2e.ts` (Ctrl+click) and `tasks.e2e.ts`.
@@ -138,10 +139,16 @@ macOS skips the four tests of Windows and Linux keys and behaviour (below) in ev
 
 ### What failed, by cause, and the fix
 
-- **The Todo panel test measured the floating panel while it slid in** (Windows, run 1: `todo.e2e.ts:285`, width 303.99998474121094 where 304 was expected). The floating panel is visible from the start of its 220 ms slide (`transform: translateX`), and under a fractional transform Chromium's box is off by one float32 step (304 − 2⁻¹⁶). The slower Windows runner measured it mid-slide. Fix (test only, `230ecc2`): the test waits for the panel's animations to finish before both width checks, as `panel.e2e.ts` already does. It passed on Windows in runs 2 and 3.
-- **The scaling re-fit test can't show a re-fit on Linux CI** (runs 1 and 2: the fit after the pixel ratio went from 1 to 2 was still 50x43). Run 2's diagnostic showed the cause. Linux CI's virtual display has no WebGL2, so xterm keeps its DOM renderer, and the DOM renderer's cells measure the same in CSS pixels at any ratio: rows 17 px high at 1x and at 2x. The page did see the change, through the same media query xterm listens to (`screen and (resolution: 1dppx)` fired its change). On Windows CI, WebGL's cells are whole device pixels, and the same change gave 54x41, then 50x41. So the product is right: on the DOM renderer a change of scaling alone changes no fit, and there is nothing to re-fit. Fix (test only, `5091b6d`): the test runs where the terminal has WebGL, and otherwise skips, saying why (spec §10.2). It passes on Windows and skips on Linux CI. Whether a Linux desktop with a GPU gets WebGL, and re-fits there, is for a friend's first try.
+- **The Todo panel test measured the floating panel while it slid in** (Windows, run 1: `todo.e2e.ts:285`, width 303.99998474121094 where 304 was expected). The floating panel is visible from the start of its 220 ms slide (`transform: translateX`), and under a fractional transform Chromium's box is off by one float32 step (304 − 2⁻¹⁶). The slower Windows runner measured it mid-slide. Fix (test only, `230ecc2`): the test waits for the panel's animations to finish before both width checks, as `panel.e2e.ts` already does. It passed on Windows in runs 2–4.
+- **The scaling re-fit test can't show a re-fit on Linux CI** (runs 1 and 2: the fit after the pixel ratio went from 1 to 2 was still 50x43). Run 2's diagnostic showed the cause.
+  - Linux CI's virtual display has no WebGL2, so xterm keeps its DOM renderer there. That renderer rounds a character's height up to whole device pixels at each ratio (`DomRenderer._updateDimensions`), so its cells do follow the ratio when the character's height isn't a whole number: a 16.4 px character gives 17 px at 1x and 16.5 px at 2x. With Linux CI's font, though, the DOM renderer's rounded cell is 17 px high at 1x and at 2x, so the fit is the same at both ratios.
+  - The page did see the change, through the same media query xterm listens to (`screen and (resolution: 1dppx)` fired its change).
+  - On Windows CI, WebGL's cells are whole device pixels, and the same change gave 54x41, then 50x41.
+  - So the product is right: Mainframe compares the ratio and fits again on any renderer, and on Linux CI that fit is the size the terminal already has.
+  - Fix (test only, `5091b6d`, narrowed in `543f286` after the task review): the test skips on Linux only, and only when the fit after the change is the size before it, saying why (spec §10.2). Everywhere else it asserts that the fit changes, with a message saying a same fit means the renderer changed, as when WebGL is missing. A broken re-fit still fails wherever the fit changes, since the terminal would stay at its old size.
+  - It passes on Windows and skips on Linux CI (runs 3 and 4; in run 4 on the narrowed precondition). Whether a Linux desktop re-fits when its scaling changes is for a friend's first try.
 
-No known flake came back in runs 1–3 (`projects.e2e.ts`' row-button hover, `session-panel.e2e.ts:117`'s 12 s budget, `shortcuts.e2e.ts:49` and `:109`, `board.e2e.ts:139`, `todo.e2e.ts:254`).
+No known flake came back in runs 1–4 (`projects.e2e.ts`' row-button hover, `session-panel.e2e.ts:117`'s 12 s budget, `shortcuts.e2e.ts:49` and `:109`, `board.e2e.ts:139`, `todo.e2e.ts:254`).
 
 ### The crash at a Windows quit (0xC0000409): node-pty's, at a quit with sessions still running
 
@@ -162,7 +169,7 @@ So the crash comes only when sessions are still running at the quit, and a user'
 - **Why.** This is node-pty's open issue [#951](https://github.com/microsoft/node-pty/issues/951). On Windows, node-pty reports a pty's exit through a thread-safe function. When that exit arrives while Node's environment is being torn down, node-addon-api can no longer throw to JavaScript and throws a C++ exception instead, which aborts the process. node-addon-api has a guard for exactly this, `NODE_API_SWALLOW_UNTHROWABLE_EXCEPTIONS`, and node-pty doesn't build with it. The one-line fix, [PR #954](https://github.com/microsoft/node-pty/pull/954), is open and in no release: 1.1.0 is the latest, and 1.2.0-beta.18 is a beta.
 - **Mainframe's part.** At a quit, `beginQuit` kills every pty and Electron exits at once, so the ptys' exits land in the teardown. Sessions that had ended before the quit never crashed it.
 - **What it costs today.** Nothing was lost in any quit seen: `beginQuit` records the tasks and flushes the page's storage before the kills (2b checked 24 of 24 writes). What a user sees is for the owner's Windows PC (below).
-- **The owner's open choice.** (a) Leave it until a node-pty release carries PR #954; updating node-pty is the owner's separate decision anyway. Or (b) a Windows-only quit that holds Electron's exit until every killed pty has reported its exit, with a time limit of a second or two, so no exit lands in the teardown. (b) makes a Windows quit with sessions slower by about the time the exits take, and is code that works around a dependency's bug. Not done in 2c: the crash is node-pty's, and the plan said to record it and stop there.
+- **The owner's open choice.** (a) Leave it until a node-pty release carries PR #954; updating node-pty is the owner's separate decision anyway. Or (b) a Windows-only quit that holds Electron's exit until every killed pty has reported its exit, with a time limit of a second or two, so no exit lands in the teardown. (b) makes a Windows quit with sessions slower by about the time the exits take, and is code that works around a dependency's bug. Not done in 2c: the crash is node-pty's, and the plan said to record it and stop there. (b) is Trello card #12 on the Mainframe board, "Windows: investigate the quit crash while sessions run (node-pty #951)": https://trello.com/c/zmQ786Th.
 
 ### Still open: the owner's Windows PC, and a friend's Linux
 
@@ -181,6 +188,7 @@ On Windows (spec §10.4), with a real Claude Code:
   - A file or an image copied in Windows' Explorer pastes as its path at all.
   - Claude Code attaches a dropped or pasted image path in double quotes.
   - A dropped path with spaces (`C:\Users\Anna Berg\Pictures\shot 1.png`) is attached.
+  - Two files dropped at once go in as two paths, one space apart, each in double quotes when it has a space, and Claude Code attaches both. No test covers this join.
 - Ctrl+Backspace deletes a word.
 - A wheel notch scrolls about three rows.
 - Alt moves the focus nowhere, since there is no menu bar.
@@ -198,6 +206,9 @@ On Windows (spec §10.4), with a real Claude Code:
 - `npm run dev` on a fresh clone: CI runs only `npm start` and the e2e build.
 - The README's note on Windows PowerShell's execution policy works as written.
 
-On Linux: a friend's first try, including whether a desktop with a GPU gives the terminals WebGL and re-fits them when the scaling changes.
+On Linux, a friend's first try:
 
-**What cannot behave as on the Mac in 2c's tests:** the scaling re-fit test runs only where the terminal has WebGL (above). The Mac skips the four tests of Windows and Linux keys and behaviour, since Playwright's keys never reach the Mac's menu and the Mac keeps today's fit.
+- The README's Linux note (run its two sandbox lines after the first `npm start`, which downloads Electron and its `chrome-sandbox`) is what CI's two Linux start steps do, in that order, and both passed in every run. A friend checks it on a desktop.
+- A terminal re-fits when the desktop's scaling changes.
+
+**What cannot behave as on the Mac in 2c's tests:** on Linux the scaling re-fit test skips when the change can't show there (above). The Mac skips the four tests of Windows and Linux keys and behaviour, since Playwright's keys never reach the Mac's menu and the Mac keeps today's fit.
