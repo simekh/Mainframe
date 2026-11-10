@@ -271,11 +271,16 @@ async function start(
     return project;
   }
 
+  // The dialog may show at any time, but the folder picked opens only once the remembered projects
+  // have: one opened while they open would not come on screen, as the page is told of no change until then.
+  let allOpened!: () => void;
+  const allOpen = new Promise<void>((resolve) => (allOpened = resolve));
   // The project picked is brought on screen, whether it opens now or was open already.
   const openPicked = async () => {
     try {
       const dir = await pickProjectFolder(win);
       if (dir === undefined) return;
+      await allOpen;
       await projects.open(dir);
       toWindow(IPC.showProject, dir);
     } catch (err) {
@@ -297,6 +302,7 @@ async function start(
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
   opening = false;
+  allOpened();
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
