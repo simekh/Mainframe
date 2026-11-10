@@ -60,6 +60,12 @@ describe('shortcutLetter', () => {
     expect(shortcutLetter({ key: 'с', code: 'Digit1' })).toBe('');
     expect(shortcutLetter({ key: 'Dead', code: 'Quote' })).toBe('');
   });
+
+  it("is nothing for another ASCII character on a letter's place: Dvorak's , and < sit where W is, AZERTY's , where M is", () => {
+    expect(shortcutLetter({ key: ',', code: 'KeyW' })).toBe('');
+    expect(shortcutLetter({ key: '<', code: 'KeyW' })).toBe('');
+    expect(shortcutLetter({ key: ',', code: 'KeyM' })).toBe('');
+  });
 });
 
 describe('linkClickHeld', () => {

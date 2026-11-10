@@ -10,11 +10,13 @@ export function commandHeld(e: { metaKey: boolean; ctrlKey: boolean; altKey: boo
 /**
  * The letter a Ctrl shortcut on Windows and Linux means, in lower case, or '' for a key that is none. It
  * is the character the layout gives when that is a Latin letter, so Dvorak and AZERTY keep the letter
- * they see; otherwise, on a layout without Latin letters (Russian, Greek), the letter on the key's
- * own place, so Ctrl+C copies there too, as in Windows Terminal and VS Code.
+ * they see, and nothing when it is another ASCII character (Dvorak's `,` where W is). Only when the
+ * key gives no ASCII character, on a layout without Latin letters (Russian, Greek), is it the letter on
+ * the key's own place, so Ctrl+C copies there too, as in Windows Terminal and VS Code.
  */
 export function shortcutLetter(e: { key: string; code: string }): string {
   if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+  if (/^[\x20-\x7e]$/.test(e.key)) return '';
   return /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : '';
 }
 
