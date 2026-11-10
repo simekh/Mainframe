@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { startArgs } from './startArgs.mjs';
+import { sandboxFlags } from './sandboxFlags.mjs';
 
 const [command, ...passOn] = process.argv.slice(2);
 if (command !== 'preview' && command !== 'dev') {
@@ -33,13 +33,13 @@ const helper = orNull(() => {
   return { uid, mode };
 });
 
-const args = startArgs(command, process.platform, restriction, helper);
-if (args.includes('--noSandbox')) {
+const flags = sandboxFlags(process.platform, restriction, helper);
+if (flags.length > 0) {
   console.log("Mainframe starts without Chromium's sandbox, because this Linux blocks it. The README says how to keep it.");
 }
 
 // electron-vite's `exports` don't expose its bin, so it is found through its package.json.
 const packagePath = require.resolve('electron-vite/package.json');
 const bin = join(dirname(packagePath), JSON.parse(readFileSync(packagePath, 'utf8')).bin['electron-vite']);
-const child = spawnSync(process.execPath, [bin, ...args, ...passOn], { stdio: 'inherit' });
+const child = spawnSync(process.execPath, [bin, command, ...flags, ...passOn], { stdio: 'inherit' });
 process.exit(child.status ?? 1);
