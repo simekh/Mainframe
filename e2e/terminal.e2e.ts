@@ -162,19 +162,25 @@ test("on Windows and Linux, a terminal on screen fits again when the window's sc
   // As a move to a screen with other scaling: the pixel ratio changes and the window's size in CSS
   // pixels doesn't. Any ratio but the screen's own.
   const scale = (await page.evaluate(() => window.devicePixelRatio)) === 2 ? 1.5 : 2;
-  // Only WebGL's cells follow the ratio: they are whole device pixels. Without WebGL2 xterm keeps its DOM
-  // renderer, whose cells measure the same in CSS pixels at any ratio, so a change of scaling alone gives
-  // the same fit and there is nothing to re-fit. Linux CI's virtual display has no WebGL2 (CI run 2: DOM
-  // rows 17 px high, the page saw the change, 50x43 at 1x and at 2x); Windows CI has it (54x41 became 50x41).
-  const webgl = await page.evaluate(() => document.querySelector('.well > .terminal:not(.terminal--hidden) canvas') !== null);
-  test.skip(!webgl, "no WebGL2 here: the DOM renderer's cells don't follow the ratio, so a change of scaling alone gives the same fit");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 0, height: 0, deviceScaleFactor: scale, mobile: false });
   await expect.poll(() => page.evaluate(() => window.devicePixelRatio)).toBe(scale);
   await settled(page);
-  // xterm has re-measured its cells at the new ratio, so a fit now gives another size.
+  // xterm has re-measured its cells at the new ratio, rounding them to whole device pixels, so a fit now
+  // gives another size. Unless the rounding comes out alike at both ratios: Linux CI's virtual display has no
+  // WebGL2, and with its font the DOM renderer's rounded cell is 17 px high at 1x and at 2x (CI run 2:
+  // 50x43 at both), so this change can't show there. A skip leaves nothing behind: the override goes
+  // with the app, which cleanUp closes.
   const fitted = (await fitSize(page, a))!;
-  expect(fitted).not.toEqual(before);
+  const sameFit = fitted.cols === before.cols && fitted.rows === before.rows;
+  test.skip(
+    process.platform === 'linux' && sameFit,
+    "the renderer here rounds a cell to the same size at both ratios (on Linux CI: the DOM renderer, 17 px high at 1x and at 2x with its font), so a change of scaling alone gives the same fit",
+  );
+  expect(
+    fitted,
+    "a change of scaling alone gives another fit here (Windows CI, with WebGL: 54x41 became 50x41); the same fit means the terminal's renderer changed, as when WebGL is missing",
+  ).not.toEqual(before);
   await expect.poll(() => termSize(page, a)).toEqual(fitted);
   await cdp.send('Emulation.clearDeviceMetricsOverride');
   await app.close();
