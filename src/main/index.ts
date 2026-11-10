@@ -282,6 +282,7 @@ async function start(
       dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
     }
   };
+  // The menu `launch` set, with Open Project… enabled now.
   if (onMac) Menu.setApplicationMenu(buildMenu(() => void openPicked()));
   // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
@@ -313,10 +314,12 @@ function failStart(err: unknown): void {
  */
 async function launch(config: AppConfig): Promise<void> {
   const programs = findPrograms();
-  // Windows and Linux get no menu, so no menu bar (set before the window, which would get Electron's
-  // default one): its Ctrl+W would close the window, which quits Mainframe and ends every session, and
-  // it would bring Ctrl+M and Ctrl+R's reload. Open Project… is the project list's button there.
-  if (!onMac) Menu.setApplicationMenu(null);
+  // Set before the window, which would get Electron's default menu: its Ctrl+W (Cmd+W on the Mac) would
+  // close the window, which quits Mainframe and ends every session, and it would bring reload and zoom.
+  // The Mac's own menu is there from the first moment, with Open Project… disabled until `start` sets it
+  // again with the projects to open into. Windows and Linux get no menu, so no menu bar: Open Project… is
+  // the project list's button there.
+  Menu.setApplicationMenu(onMac ? buildMenu() : null);
   const win = createWindow(config.e2e);
   // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {

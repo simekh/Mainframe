@@ -80,6 +80,13 @@ const savedSettings = (dataDir: string) =>
 const setupItem = (page: Page, name: string) => page.getByTestId(`setup-${name}`);
 const welcome = (page: Page) => page.getByText("Hi, I'm Mainframe.");
 
+/** The Mac's File ▸ Open Project… as it is now, or null where there is no such menu (Windows and Linux have none). */
+const openProjectMenuItem = (app: ElectronApplication) =>
+  app.evaluate(({ Menu }) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById('open-project');
+    return item ? { enabled: item.enabled } : null;
+  });
+
 /** The project's pane is the one on show: the board has opened it. */
 const boardShows = (page: Page, project: string) =>
   expect(projectPane(page, project)).toHaveAttribute('data-shown', 'true');
@@ -100,6 +107,9 @@ test('a first start welcomes you, finds everything and asks for the first projec
   await expect(page.getByTestId('new-task')).toHaveCount(0);
   // The welcome counts as seen only once a project is chosen.
   expect(savedSettings(dataDir)).toEqual({});
+  // The Mac has its own menu from the first moment, not Electron's default one (Cmd+R reloads, Cmd+W
+  // closes the window); its Open Project… waits for the projects to start.
+  expect(await openProjectMenuItem(app)).toEqual(process.platform === 'darwin' ? { enabled: false } : null);
 
   await answerDialogs(app, project);
   await setupItem(page, 'choose-project').click();
@@ -108,6 +118,7 @@ test('a first start welcomes you, finds everything and asks for the first projec
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
   expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: claude });
+  expect(await openProjectMenuItem(app)).toEqual(process.platform === 'darwin' ? { enabled: true } : null);
   await app.close();
 });
 
