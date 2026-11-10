@@ -1,5 +1,6 @@
 // Adapted from Parallel Code (MIT): electron/ipc/register.ts (ResolveClipboardPaste) at 97c3558. See THIRD_PARTY_NOTICES.md.
 // Rewritten for Electron 44's async clipboard, which replaced availableFormats/read(format)/readImage.
+import { mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ClipboardPaste } from '../shared/types';
 
@@ -61,4 +62,17 @@ export async function resolveClipboardPaste(
     console.error('[clipboard] resolveClipboardPaste failed:', err);
     return { kind: 'empty' };
   }
+}
+
+/**
+ * Empties the folder pasted images are saved to, and makes sure it is there. A file that can't go
+ * (an image still open on Windows) is warned of and left: the start goes on.
+ */
+export function clearPasteFolder(dir: string, warn: (m: string) => void, rm = rmSync): void {
+  try {
+    rm(dir, { recursive: true, force: true });
+  } catch (err) {
+    warn(`Could not empty ${dir} (${String(err)}); images pasted before stay in it`);
+  }
+  mkdirSync(dir, { recursive: true });
 }

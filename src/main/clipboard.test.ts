@@ -1,8 +1,49 @@
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { it, expect } from 'vitest';
-import { resolveClipboardPaste } from './clipboard';
+import { afterEach, it, expect } from 'vitest';
+import { clearPasteFolder, resolveClipboardPaste } from './clipboard';
+
+const cleanup: string[] = [];
+
+afterEach(() => {
+  for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+/** A paste folder with an image left from the last run. */
+function pasteFolder(): string {
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-paste-'));
+  cleanup.push(root);
+  const dir = join(root, 'mainframe-paste');
+  mkdirSync(dir);
+  writeFileSync(join(dir, 'old.png'), 'p');
+  return dir;
+}
+
+it('clearPasteFolder empties the folder, and makes it when it is missing', () => {
+  const warnings: string[] = [];
+  const dir = pasteFolder();
+  clearPasteFolder(dir, (m) => warnings.push(m));
+  expect(readdirSync(dir)).toEqual([]);
+
+  rmSync(dir, { recursive: true });
+  clearPasteFolder(dir, (m) => warnings.push(m));
+  expect(existsSync(dir)).toBe(true);
+  expect(warnings).toEqual([]);
+});
+
+it('clearPasteFolder warns when a file in it cannot go, as one still open on Windows, and the folder stays', () => {
+  const warnings: string[] = [];
+  const dir = pasteFolder();
+  const busy = () => {
+    throw Object.assign(new Error(`EBUSY: resource busy or locked, rm '${join(dir, 'old.png')}'`), { code: 'EBUSY' });
+  };
+  clearPasteFolder(dir, (m) => warnings.push(m), busy);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain('EBUSY');
+  expect(existsSync(dir)).toBe(true);
+});
 
 // Electron 44's clipboard: read() gives ClipboardItems; a Finder file copy is `text/uri-list`.
 const board = (o: { uriList?: string; png?: Buffer; text?: string }) => {

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
+import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { editMenuItems } from './contextMenu';
 import { gitQueries } from './git';
@@ -159,8 +160,7 @@ async function start(
 ): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
-  rmSync(pasteDir, { recursive: true, force: true });
-  mkdirSync(pasteDir, { recursive: true });
+  clearPasteFolder(pasteDir, console.warn);
 
   const host = new SessionHost({
     spawnPty: spawnNodePty(process.platform),

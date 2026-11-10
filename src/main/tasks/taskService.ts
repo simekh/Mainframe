@@ -6,7 +6,7 @@ import type { GitQueries } from '../git';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
-import { MANAGER_SLUG, sessionName, slugify, uniqueSlug } from './naming';
+import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
 
@@ -18,7 +18,10 @@ export interface TaskServiceDeps {
   claudeBin: string;
   /** What the SessionStart hook runs: a real program path, as claudeBin is. */
   nodeBin: string;
-  /** Windows caps a command line, so a task's long description goes to a file there. */
+  /**
+   * Windows caps a command line, so a task's long description goes to a file there; and it reserves
+   * names a task's folder can't take.
+   */
   platform: NodeJS.Platform;
   git: GitQueries;
   kill(sessionId: string): void;
@@ -117,6 +120,8 @@ export class TaskService {
     const taken = new Set(
       [MANAGER_SLUG, ...this.mine().map((t) => t.slug), ...branchSlugs, ...this.worktreeFolders()].map((s) => s.toLowerCase()),
     );
+    // The slug names the task's folder, which can't take a name Windows reserves.
+    if (this.deps.platform === 'win32') for (const name of WINDOWS_RESERVED_NAMES) taken.add(name);
     const slug = uniqueSlug(slugify(title), taken);
 
     const task: TaskRecord = {

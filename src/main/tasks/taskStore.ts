@@ -98,7 +98,33 @@ export function saveTasks(file: string, tasks: TaskRecord[]): void {
 export function writeJsonAtomic(file: string, value: unknown): void {
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, JSON.stringify(value, null, 2));
-  renameSync(tmp, file);
+  renameWithRetry(tmp, file);
+}
+
+/** What a rename fails with while another program (an antivirus, the indexer, a sync tool) holds the file on Windows. */
+const HELD_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RETRIES = 10;
+const RETRY_MS = 100;
+
+/**
+ * Renames `from` to `to`, trying again for a second while the file is held. Every save is synchronous,
+ * so the wait blocks too. Any other error, or a file held past the retries, is thrown.
+ */
+export function renameWithRetry(
+  from: string,
+  to: string,
+  rename = renameSync,
+  wait = (ms: number) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (err) {
+      if (attempt === RETRIES || !HELD_CODES.has((err as NodeJS.ErrnoException).code ?? '')) throw err;
+      wait(RETRY_MS);
+    }
+  }
 }
 
 /** Throws `NewerStateError` for a file a newer Mainframe wrote; sets any other bad file aside. */

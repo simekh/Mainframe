@@ -305,6 +305,17 @@ it("start keeps the manager's name for the manager: a task titled Manager gets a
   expect(readState()[0].name).toBe('acme-manager-2');
 });
 
+it("on Windows, start keeps a task's folder off the names Windows reserves", async () => {
+  const { service } = setup({}, 'win32');
+  expect((await service.start({ ...NEW_TASK, title: 'Con' })).slug).toBe('con-2');
+  expect((await service.start({ ...NEW_TASK, title: 'LPT1' })).slug).toBe('lpt1-2');
+});
+
+it('on the Mac, a task titled Con gets the slug con, as before', async () => {
+  const { service } = setup({}, 'darwin');
+  expect((await service.start({ ...NEW_TASK, title: 'Con' })).slug).toBe('con');
+});
+
 it('two starts at once get different slugs', async () => {
   const { service } = setup();
   const [a, b] = await Promise.all([service.start(NEW_TASK), service.start(NEW_TASK)]);
@@ -799,6 +810,20 @@ it('reopen resumes in the worktree while its branch exists, and in the main chec
   expect(service.launchSpec(inMain.session!.id).argv).toEqual([
     'claude', '--resume', claudeSessionId, '--settings', settingsPath,
   ]);
+});
+
+it("a reopen whose git can't run fails, and starts no session and leaves the task as recorded", async () => {
+  const noGit = Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' });
+  const { service, readState, changes } = setup({ branchExists: async () => { throw noGit; } });
+  const view = await service.start(NEW_TASK);
+  service.onSessionExit(view.session!.id);
+  const [recorded, listed, before] = [readState(), service.list(), changes.length];
+
+  await expect(service.reopen(view.id)).rejects.toBe(noGit);
+  expect(service.sessionIds()).toEqual([]);
+  expect(readState()).toEqual(recorded);
+  expect(service.list()).toEqual(listed);
+  expect(changes.length).toBe(before);
 });
 
 it('reopen asks git about the main checkout and the real branch', async () => {

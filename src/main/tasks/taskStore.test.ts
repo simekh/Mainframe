@@ -1,8 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
-import { loadTasks, NewerStateError, saveTasks, type TaskRecord } from './taskStore';
+import { afterEach, expect, it, vi } from 'vitest';
+import { loadTasks, NewerStateError, renameWithRetry, saveTasks, writeJsonAtomic, type TaskRecord } from './taskStore';
 
 const cleanup: string[] = [];
 
@@ -39,6 +39,43 @@ it('saves and loads tasks, leaving no temp file', () => {
   expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(1);
   expect(loadTasks(file, 1000, () => {})).toEqual([TASK, closed]);
   expect(readdirSync(dir)).toEqual(['state.json']);
+});
+
+it('writeJsonAtomic replaces the file whole, leaving no temp file', () => {
+  const dir = folder();
+  const file = join(dir, 'settings.json');
+  writeJsonAtomic(file, { a: 1 });
+  writeJsonAtomic(file, { b: [2] });
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ b: [2] });
+  expect(readdirSync(dir)).toEqual(['settings.json']);
+});
+
+const failure = (code: string) => Object.assign(new Error(`${code}: rename 'state.json.tmp' -> 'state.json'`), { code });
+
+it.each(['EPERM', 'EACCES', 'EBUSY'])('renameWithRetry waits while another program holds the file (%s), and renames it once it lets go', (code) => {
+  const rename = vi.fn()
+    .mockImplementationOnce(() => { throw failure(code); })
+    .mockImplementationOnce(() => { throw failure(code); });
+  const wait = vi.fn();
+  renameWithRetry('state.json.tmp', 'state.json', rename, wait);
+  expect(rename.mock.calls).toEqual(Array(3).fill(['state.json.tmp', 'state.json']));
+  expect(wait.mock.calls).toEqual([[100], [100]]);
+});
+
+it('renameWithRetry gives up after 10 retries and throws what the rename threw', () => {
+  const rename = vi.fn(() => { throw failure('EBUSY'); });
+  const wait = vi.fn();
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait)).toThrow(expect.objectContaining({ code: 'EBUSY' }));
+  expect(rename).toHaveBeenCalledTimes(11);
+  expect(wait).toHaveBeenCalledTimes(10);
+});
+
+it('renameWithRetry throws any other error at once', () => {
+  const rename = vi.fn(() => { throw failure('ENOENT'); });
+  const wait = vi.fn();
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait)).toThrow(expect.objectContaining({ code: 'ENOENT' }));
+  expect(rename).toHaveBeenCalledTimes(1);
+  expect(wait).not.toHaveBeenCalled();
 });
 
 it('a missing file loads as no tasks', () => {

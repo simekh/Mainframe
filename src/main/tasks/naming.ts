@@ -6,6 +6,13 @@ const MAX_SLUG_LENGTH = 40;
 /** The manager's slug in its session name, which no task may take: `claude --resume` finds a chat by its name. */
 export const MANAGER_SLUG = 'manager';
 
+const DIGITS = Array.from({ length: 9 }, (_, i) => i + 1);
+
+/** Device names no file or folder may take on Windows, in the lower case slugs are in. */
+export const WINDOWS_RESERVED_NAMES: readonly string[] = [
+  'con', 'prn', 'aux', 'nul', ...DIGITS.map((n) => `com${n}`), ...DIGITS.map((n) => `lpt${n}`),
+];
+
 export function slugify(title: string): string {
   const ascii = title
     .normalize('NFKD')

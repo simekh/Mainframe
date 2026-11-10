@@ -2,13 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { branchExists, changedFiles, startCheck, worktreeBranchNames } from './git';
 import { makeRepo } from './testing/makeRepo';
 
 const cleanup: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -51,6 +52,13 @@ it('branchExists sees local branches only', async () => {
   expect(await branchExists(main, 'worktree-x')).toBe(false);
   git(main, 'branch', 'worktree-x');
   expect(await branchExists(main, 'worktree-x')).toBe(true);
+});
+
+it("branchExists fails when git can't be run at all, where a missing branch is false", async () => {
+  const { main } = repo();
+  expect(await branchExists(main, 'worktree-x')).toBe(false);
+  vi.stubEnv('PATH', '');
+  await expect(branchExists(main, 'worktree-x')).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it('worktreeBranchNames lists worktree branches without the prefix', async () => {

@@ -30,11 +30,14 @@ export async function startCheck(projectDir: string): Promise<StartCheck | null>
   }
 }
 
+/** Rejects when git can't be run at all: that says nothing of the branch. */
 export async function branchExists(projectDir: string, branch: string): Promise<boolean> {
   try {
     await git(projectDir, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
     return true;
-  } catch {
+  } catch (err) {
+    // A git that ran and found no branch exits non-zero; one that never ran has a code such as ENOENT.
+    if (typeof (err as { code?: unknown }).code !== 'number') throw err;
     return false;
   }
 }
