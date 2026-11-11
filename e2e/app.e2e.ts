@@ -64,11 +64,12 @@ test('opened again on the same data folder, Mainframe quits and its tasks keep r
 
 test('Quit waits for the sessions it hangs up on to end', async () => {
   test.skip(process.platform === 'win32', 'Windows has no hang-up: its kill ends a session outright');
-  // Each session ends a second after its hang-up, as a real claude saving its chat may.
-  const { app, page, dataDir } = await launchApp({ FAKE_CLAUDE_HANGUP_DELAY_MS: '1000' });
+  // Each session ends half a second after its hang-up, as a real claude saving its chat may.
+  const { app, page, dataDir } = await launchApp({ FAKE_CLAUDE_HANGUP_DELAY_MS: '500' });
   await startTask(page);
+  // The manager's and the task's.
+  await expect.poll(() => sessionLaunches(dataDir)).toHaveLength(2);
   const sessions = sessionLaunches(dataDir);
-  expect(sessions).toHaveLength(2);
   await app.close();
   // One still running when the app goes is hung up on again, and ends with no record.
   expect(sessions.filter((s) => !existsSync(s.file.replace(/\.argv$/, '.ended')))).toEqual([]);

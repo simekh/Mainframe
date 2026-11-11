@@ -176,6 +176,13 @@ it('killAll kills every running session', () => {
   expect(ptys.map((p) => p.killed)).toEqual([true, true]);
 });
 
+it('after killAll it starts no session: the app is quitting', () => {
+  const { host, calls, listener } = setup();
+  host.killAll();
+  expect(() => host.spawn('late', spec, listener)).toThrow('Mainframe is quitting');
+  expect(calls).toEqual([]);
+});
+
 describe('whenAllEnded', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

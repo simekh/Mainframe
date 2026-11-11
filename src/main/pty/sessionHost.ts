@@ -63,6 +63,8 @@ export class SessionHost {
   private readonly sessions = new Map<string, Session>();
   /** The waits of `whenAllEnded`, ended when the last running session exits. */
   private readonly endWaits: Array<() => void> = [];
+  /** Set by killAll: the app is quitting, and no session starts. */
+  private quitting = false;
 
   constructor(
     private readonly opts: {
@@ -80,6 +82,8 @@ export class SessionHost {
     spec: { argv: string[]; cwd: string; cols: number; rows: number },
     listener: SessionListener,
   ): void {
+    // Started after the hang-ups, it would still be running as the app goes.
+    if (this.quitting) throw new Error('Mainframe is quitting');
     if (this.sessions.has(id)) throw new Error(`Session ${id} is already running`);
     const { log, env, platform, files } = this.opts;
     const [name, ...args] = spec.argv;
@@ -164,7 +168,9 @@ export class SessionHost {
     if (session) this.killSession(session, signal);
   }
 
+  /** Hangs up on every running session as the app quits; no session starts after it. */
   killAll(): void {
+    this.quitting = true;
     for (const session of this.sessions.values()) this.killSession(session);
   }
 
