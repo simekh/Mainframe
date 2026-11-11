@@ -155,6 +155,22 @@ test("on the Mac the row is the window's title bar: nothing that takes clicks st
   expect(Math.min(...starts)).toBeGreaterThanOrEqual(80);
   expect(await appRegion(pane(page, a).getByTestId('project-bar'))).toBe('drag');
 
+  // With the list off, the panes off screen start at x 0 under the window buttons; their bars' children must not
+  // carve no-drag holes there, as only the bars of panes on screen are part of the drag region.
+  await page.getByTestId('projects-toggle').click();
+  await expect(page.getByTestId('projects-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'false');
+  const offScreen = await pane(page, b)
+    .getByTestId('project-bar')
+    .evaluate((bar) =>
+      [...bar.children]
+        .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
+        .map((el) => el.getBoundingClientRect().left),
+    );
+  expect(offScreen.filter((left) => left < 80)).toEqual([]);
+  await page.getByTestId('projects-toggle').click();
+  await expect(page.getByTestId('projects-toggle')).toHaveAttribute('aria-pressed', 'true');
+
   // In the grid, the top row's parts are the window's title bar; a lower row's is not.
   await (await rowButton(page, b, 'rail-beside')).click();
   await (await rowButton(page, c, 'rail-beside')).click();

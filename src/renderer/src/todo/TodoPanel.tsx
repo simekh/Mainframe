@@ -268,6 +268,7 @@ export default function TodoPanel(props: {
                   class="btn todo-sync"
                   data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
                   aria-label={v().syncing ? 'Stop the sync' : 'Sync'}
+                  title={v().syncing ? 'Stop the sync' : 'Sync'}
                   onMouseDown={keepFocus}
                   onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
                 >

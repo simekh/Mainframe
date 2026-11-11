@@ -117,7 +117,7 @@ html[data-platform='darwin'] :is(.setup-titlebar, .top-row, .project-pane[data-t
   -webkit-app-region: drag;
 }
 
-:is(.top-row, .project-bar) > * {
+html[data-platform='darwin'] :is(.top-row, .project-pane[data-top='true'] > .project-bar) > * {
   -webkit-app-region: no-drag;
 }
 
