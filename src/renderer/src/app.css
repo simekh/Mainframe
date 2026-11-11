@@ -85,6 +85,10 @@ button {
   overflow: clip;
 }
 
+.app[data-rail='folded'] {
+  --rail-w: calc(var(--strip-w) + 8px);
+}
+
 .app[data-rail='off'] {
   --rail-w: 0px;
 }
@@ -145,6 +149,7 @@ html[data-platform='darwin'] .top-start {
 /* An island under the top row, as the panels are; --rail-w is its width with its margin. Its header is laid out as
    theirs: the title 16 px in, its buttons on the pins' line. */
 .rail {
+  position: relative;
   flex: none;
   width: calc(var(--rail-w) - 8px);
   min-height: 0;
@@ -157,14 +162,21 @@ html[data-platform='darwin'] .top-start {
   border-radius: var(--radius-lg);
 }
 
+/* Its right padding is the fold button's room: 8 px in, 28 px wide and 4 px apart, less the island's 6 px. With the
+   gap that tight too, the whole title fits beside the arrange buttons. */
 .rail-header {
   flex: none;
   height: 46px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
-  padding: 6px 2px 4px 10px;
+  padding: 6px 34px 4px 10px;
+}
+
+/* The list has no pin: its fold button takes the pin's place. */
+.rail-header > .panel-fold {
+  right: 8px;
 }
 
 /* How two or more projects on screen share the window. */
@@ -2224,6 +2236,16 @@ kbd {
 
 .panel-strip[data-side='right'] {
   margin: 0 8px 8px 0;
+}
+
+/* The projects list's, at the window's left under the top row. Its count of the sessions waiting off screen is the
+   list's, narrowed to two digits' width so it fits within the strip. */
+.panel-strip.rail-strip {
+  margin-top: var(--row-height);
+}
+
+.rail-strip .rail-count {
+  padding: 0 3px;
 }
 
 .panel-strip:hover {

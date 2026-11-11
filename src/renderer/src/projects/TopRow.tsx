@@ -24,9 +24,10 @@ export default function TopRow(props: { onStartWidth(px: number): void }) {
   const on = () => railState() !== 'off';
   // Off, it still shows what the list would: the sessions waiting in the projects off screen.
   const count = () => (on() ? 0 : offScreenNeedsYou());
-  // Turned off with the focus in it, the list hands the focus to the button, so the keyboard never ends up nowhere.
+  // Turned off with the focus in it or on its strip, the list hands the focus to the button, so the keyboard never ends
+  // up nowhere.
   const toggle = () => {
-    const handBack = on() && document.querySelector('.rail')?.contains(document.activeElement) === true;
+    const handBack = document.activeElement?.closest('.rail, .rail-strip') != null;
     toggleRail();
     if (handBack) button.focus();
   };

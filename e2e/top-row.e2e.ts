@@ -35,7 +35,7 @@ test("the row holds Projects, then the project's Todo, Manager, name and New tas
 });
 
 // Review Focus 3.
-test("the first project's part starts right after Projects with the list open or off, the next part lines up with its pane and follows the divider, and Cmd+W hands the first place on", async () => {
+test("the first project's part starts right after Projects with the list open, folded or off, the next part lines up with its pane and follows the divider, and Cmd+W hands the first place on", async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({}, [acme, globex]);
   await (await rowButton(page, globex, 'rail-beside')).click();
@@ -55,6 +55,11 @@ test("the first project's part starts right after Projects with the list open or
   await expect(rail).toBeHidden();
   await expectOneGroup(acme);
   await projects.click();
+  await expect(rail).toBeVisible();
+  await page.getByTestId('rail-fold').click();
+  await expect(page.getByTestId('rail-strip')).toBeVisible();
+  await expectOneGroup(acme);
+  await page.getByTestId('rail-strip').click();
   await expect(rail).toBeVisible();
 
   // The next part starts at its own pane's left edge, and moves with the divider.
@@ -198,5 +203,61 @@ test('Projects turns the list off and on; off, it counts the sessions waiting in
   await projects.click();
   await expect(rail).toBeVisible();
   await expect(projects).toHaveText('Projects');
+  await app.close();
+});
+
+test("the projects list folds into a strip at the window's left that counts the sessions waiting off screen, and opens again from it; Projects stays lit, and the focus goes from one to the other", async () => {
+  const [acme, globex] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [acme, globex]);
+  const id = await startIn(page, globex, 'Question');
+  await sendLine(page, id, report('blocked:kind=question'));
+  await expect(row(page, globex).getByTestId('rail-count')).toHaveText('1');
+  const projects = page.getByTestId('projects-toggle');
+  const rail = page.getByTestId('project-rail');
+  const fold = page.getByTestId('rail-fold');
+  const strip = page.getByTestId('rail-strip');
+
+  await fold.click();
+  await expect(rail).toBeHidden();
+  await expect(strip).toBeFocused();
+  const s = await box(page, 'rail-strip');
+  expect(s.width).toBe(24);
+  expect(Math.abs(s.x - 8)).toBeLessThanOrEqual(1);
+  expect(s.y).toBe(ROW_HEIGHT);
+  await expect(strip).toHaveAccessibleName('Show projects, 1 need you');
+  await expect(strip).toContainText('1');
+  await expect(projects).toHaveAttribute('aria-pressed', 'true');
+
+  // With globex on screen, no session waits off screen, and the strip has no count.
+  await page.keyboard.press('Control+Tab');
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+  await expect(strip).toHaveAccessibleName('Show projects');
+  await expect(strip).not.toContainText('1');
+
+  // Opened from the strip, the focus goes to the fold button: right of the arrange buttons, on their centre line, in a
+  // header that still holds its whole title (spec §7).
+  await strip.click();
+  await expect(rail).toBeVisible();
+  await expect(fold).toBeFocused();
+  const [grid, folder] = [await boxOf(page.getByTestId('arrange-grid')), await boxOf(fold)];
+  expect(folder.x).toBeGreaterThanOrEqual(grid.x + grid.width);
+  expect(Math.abs(middle(folder) - middle(grid))).toBeLessThanOrEqual(1);
+  const title = rail.locator('.rail-header h2');
+  expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const t = await boxOf(title);
+  expect(t.x + t.width).toBeLessThan((await boxOf(page.getByTestId('arrange-columns'))).x);
+
+  // Folded, Projects turns it off: no strip and no list, and the strip's focus goes to the button.
+  await fold.click();
+  await expect(strip).toBeFocused();
+  await projects.click();
+  await expect(strip).toHaveCount(0);
+  await expect(rail).toHaveCount(0);
+  await expect(projects).toBeFocused();
+
+  // On again, it opens fully, not as its strip.
+  await projects.click();
+  await expect(rail).toBeVisible();
+  await expect(strip).toHaveCount(0);
   await app.close();
 });
