@@ -2,7 +2,7 @@ import { batch } from 'solid-js';
 import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import type { MainframeApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
-import { glyphOf, laneOrder, nextNeedsYou, stateLabel } from './board/lanes';
+import { laneOrder, nextNeedsYou } from './board/lanes';
 import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
 import { getTerminal } from './terminal/registry';
 import { todoOf } from './todo/todoStore';
@@ -128,12 +128,6 @@ export function setPanelOpen(dir: string, open: boolean): void {
 /** What the task's running session, or the manager's, has reported; nothing while it is closed. */
 export function sessionOf(task: Pick<TaskView, 'session'>): SessionState | undefined {
   return task.session ? store.sessions[task.session.id] : undefined;
-}
-
-/** The task's state, or the manager's, as a glyph and in words. */
-export function stateOf(task: Pick<TaskView, 'session'>) {
-  const s = sessionOf(task);
-  return { glyph: glyphOf(task, s), ...stateLabel(task, s) };
 }
 
 /** Whether a running session shows a suggestion. The store ignores a write of the same value. */

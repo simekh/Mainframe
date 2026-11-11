@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test, expect, type Locator } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
 import {
-  card, cardIn, fitSize, git, launches, middle, repo, run, screen, sendAfterResize, sendLine, settled, startTask, termSize,
+  card, cardIn, fitSize, git, launches, repo, run, screen, sendAfterResize, sendLine, settled, startTask, termSize,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -252,7 +252,7 @@ test('the title bar is no drag region, and its title, actions, fold button and p
   const p = await box(page.getByTestId('panel-pin'));
   expect(Math.round(f.x - (r.x + r.width))).toBe(6);
   expect(Math.round(p.x - (f.x + f.width))).toBe(6);
-  expect(Math.round(middle(r))).toBe(Math.round(middle(f)));
-  expect(Math.round(middle(f))).toBe(Math.round(middle(p)));
+  expect(Math.round(r.y + r.height / 2)).toBe(Math.round(f.y + f.height / 2));
+  expect(Math.round(f.y + f.height / 2)).toBe(Math.round(p.y + p.height / 2));
   await app.close();
 });

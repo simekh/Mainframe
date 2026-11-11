@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { STRIP_WIDTH } from '../panel/panelPrefs';
 import {
   clampManagerWidth, loadManagerPinned, loadManagerWidth, MANAGER_WIDTH, saveManagerPinned, saveManagerWidth,
 } from './managerPrefs';
@@ -28,15 +27,7 @@ describe('managerPrefs', () => {
     // A wide window leaves the column its own maximum.
     [2400, 2000, 640],
   ])('in a %i px window, %d px gives %i px', (windowWidth, width, want) => {
-    expect(clampManagerWidth(width, windowWidth, true)).toBe(want);
-  });
-
-  it("floating, the column's own strip beside it counts too; pinned, it doesn't, so a fold keeps its width", () => {
-    // 620 px are left at 1400 pinned, and 596 floating.
-    expect(clampManagerWidth(2000, 1400, true)).toBe(620);
-    expect(clampManagerWidth(2000, 1400, false)).toBe(620 - STRIP_WIDTH);
-    // A wide window leaves it its own maximum either way.
-    expect(clampManagerWidth(2000, 2400, false)).toBe(MANAGER_WIDTH.max);
+    expect(clampManagerWidth(width, windowWidth)).toBe(want);
   });
 
   it('the width round-trips, and a bad stored value gives 400', () => {

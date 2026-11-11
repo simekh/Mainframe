@@ -142,12 +142,20 @@ html[data-platform='darwin'] .top-row {
 
 /* --- The project list, at the window's left -------------------------------------------------- */
 
-/* An island under the top row, as the panels are, whose rule it shares; --rail-w is its width with its margin. Its
-   header is laid out as theirs: the title 16 px in, its buttons on the pins' line. */
+/* An island under the top row, as the panels are; --rail-w is its width with its margin. Its header is laid out as
+   theirs: the title 16 px in, its buttons on the pins' line. */
 .rail {
+  position: relative;
+  flex: none;
   width: calc(var(--rail-w) - 8px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   margin: var(--row-height) 0 8px 8px;
   padding: 0 6px 6px;
+  background: var(--task-container-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius-lg);
 }
 
 /* Its right padding is the fold button's room: 8 px in, 28 px wide and 4 px apart, less the island's 6 px. With the
@@ -510,9 +518,9 @@ html[data-platform='darwin'] .setup-titlebar {
   min-height: 0;
 }
 
-/* The project's islands and board, under its part of the row; its unpinned panels float over its own board. Clipped,
-   so a panel slid out past its edge, or a floating panel's shadow, shows nothing over its neighbour's islands or the
-   bar below it, as far out as the focus frame's top edge, which sits 5 px up in its part of the row. */
+/* The project's islands and board, under its part of the row; its unpinned panels float over its own board. Clipped
+   across, so a panel slid out past its edge shows nothing over its neighbour, and up and down left visible for the
+   focus frame's top edge, which sits in its part of the row. */
 .pane-body {
   position: relative;
   isolation: isolate;
@@ -520,8 +528,7 @@ html[data-platform='darwin'] .setup-titlebar {
   display: flex;
   min-width: 0;
   min-height: 0;
-  overflow: clip;
-  overflow-clip-margin: 5px;
+  overflow-x: clip;
 }
 
 /* Off screen: laid out over the panes on screen at the size they share, so its terminals keep a
@@ -627,6 +634,19 @@ html[data-platform='darwin'] .setup-titlebar {
 /* Raised while it holds a ticket, even when pinned: the ticket is over the floating session panel (5). */
 .todo-panel:has(> .ticket-panel) {
   z-index: 6;
+}
+
+/* The tab strip is the island's title bar, laid out as the manager's: its one tab sits on the manager's
+   title line, and Quick Add and Sync just left of the fold button. */
+.todo-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  min-width: 0;
+  margin-right: var(--panel-pin-room);
+  padding: 6px 0 4px 16px;
 }
 
 /* The tab on show, marked under its name without moving it off that line. */
@@ -979,15 +999,14 @@ html[data-platform='darwin'] .setup-titlebar {
 
 /* Over the board and the manager, never pushing them aside, at the Todo panel's full height: the panel's right
    border is the seam between them. Under that panel's resize edge, which straddles the seam. A step
-   lighter than the island, so the card reads as lifted out of the list. Floating, that panel sits beside its strip,
-   which the ticket's room leaves out. */
+   lighter than the island, so the card reads as lifted out of the list. */
 .ticket-panel {
   position: absolute;
   top: -1px;
   bottom: -1px;
   left: calc(100% + 1px);
   z-index: 3;
-  width: min(360px, calc(var(--ticket-room) - var(--beside-strip)));
+  width: min(360px, var(--ticket-room));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--island-border);
@@ -1995,18 +2014,13 @@ kbd {
 
 /* --- The side panel: the selected session, the full height under the top row ---------------- */
 
-/* An island: the side panel, and the manager's column and the Todo panel on the board's other side; the projects list
-   and the strips the panels fold into look alike. Each starts directly under the top row. */
+/* An island: the side panel, and the manager's column and the Todo panel on the board's other side. Each starts
+   directly under the top row. */
 .side-panel,
 .manager-column,
-.todo-panel,
-.rail,
-.panel-strip {
+.todo-panel {
   /* What a row along the island's top leaves its fold button and pin: 8 px in, 28 px wide each, 6 px apart. */
   --panel-pin-room: 76px;
-  /* What a panel taken out of the layout keeps from its pane's edge, past its margin: its strip and that strip's
-     margin while it floats beside it, and nothing pinned, so a pinned panel folds from where it stands. */
-  --beside-strip: 0px;
   position: relative;
   flex: none;
   min-height: 0;
@@ -2036,38 +2050,45 @@ kbd {
   margin: 0;
 }
 
-/* Floating, each sits beside its strip, which keeps the pane's edge, and casts its shadow over the board. */
-.side-panel[data-pinned='false'],
-.manager-column[data-pinned='false'],
-.todo-panel[data-pinned='false'] {
-  --beside-strip: calc(var(--strip-w) + 8px);
-}
-
-.side-panel[data-pinned='false'] {
-  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
-}
-
-.manager-column[data-pinned='false'],
-.todo-panel[data-pinned='false'] {
-  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
-}
-
+/* Each island's place out of the layout is set once for each pin: floating, beside its strip, which keeps the pane's
+   edge, with its shadow over the board; folded or off while pinned, where it stood, so it slides away from there. */
 .side-panel:is([data-pinned='false'], [data-open='false']) {
-  right: calc(8px + var(--beside-strip));
   z-index: 5;
 }
 
-/* Right of the Todo panel's place while that is on (the pinned panel, or its strip), a layer under it, so it slides
-   away and back under that panel: on one layer, the Todo panel, first in the page, would paint under the manager. Off
-   while pinned, it is laid out where it stood too. */
+.side-panel[data-pinned='false'] {
+  right: calc(16px + var(--strip-w));
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+.side-panel[data-pinned='true'][data-open='false'] {
+  right: 8px;
+}
+
+/* A layer under the Todo panel, so it slides away and back under that panel: on one layer, the Todo panel, first in
+   the page, would paint under the manager. Its place is right of the Todo panel's while that is on (the pinned panel,
+   or its strip). */
 .manager-column:is([data-pinned='false'], [data-open='false']) {
-  left: calc(8px + var(--beside-strip) + var(--left-room, 0px));
   z-index: 4;
 }
 
+.manager-column[data-pinned='false'] {
+  left: calc(16px + var(--strip-w) + var(--left-room, 0px));
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+.manager-column[data-pinned='true'][data-open='false'] {
+  left: calc(8px + var(--left-room, 0px));
+}
+
 /* Over the floating manager (a layer above it). */
-.todo-panel:is([data-pinned='false'], [data-open='false']) {
-  left: calc(8px + var(--beside-strip));
+.todo-panel[data-pinned='false'] {
+  left: calc(16px + var(--strip-w));
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+.todo-panel[data-pinned='true'][data-open='false'] {
+  left: 8px;
 }
 
 /* Past the pane's edge, over its strip. */
@@ -2082,10 +2103,14 @@ kbd {
   visibility: hidden;
 }
 
+/* On the Mac the top row is a window drag region, and macOS hit-tests it natively whatever lies above it: the pane
+   divider crosses the row, so it is carved out, and the drag region doesn't swallow its drags. */
+.resize-edge {
+  -webkit-app-region: no-drag;
+}
+
 /* A column's edge facing the board, the panel's or the manager's: a drag or the arrow keys set the
-   width. It straddles the column's border. On the Mac the top row is a window drag region, and macOS hit-tests it
-   natively whatever lies above it: the pane divider's edge crosses the row, so it is carved out, and the drag region
-   doesn't swallow its drags. */
+   width. It straddles the column's border. */
 .resize-edge {
   position: absolute;
   top: 0;
@@ -2094,7 +2119,6 @@ kbd {
   width: 8px;
   cursor: col-resize;
   touch-action: none;
-  -webkit-app-region: no-drag;
 }
 
 .resize-edge[data-grows='left'] {
@@ -2158,6 +2182,11 @@ kbd {
   color: var(--fg);
 }
 
+/* The strip's chevron keeps its size however short the strip. */
+.panel-strip > svg {
+  flex: none;
+}
+
 .panel-pin[aria-pressed='true'] {
   color: var(--accent);
 }
@@ -2176,15 +2205,18 @@ kbd {
    panel. Its chevron sits level with the fold button that folded it (the pin's 10 px, half its 28, less half its own
    14); under it the panel's state, then its name in the panel title's face, turned on its side. */
 .panel-strip {
+  flex: none;
   width: var(--strip-w);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
   padding: 17px 0 12px;
+  background: var(--task-container-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius-lg);
   color: var(--fg-muted);
-}
-
-.panel-strip > svg {
-  flex: none;
 }
 
 .panel-strip[data-side='left'] {
@@ -2270,12 +2302,10 @@ kbd {
   visibility: hidden;
 }
 
-/* The panel's title bar, and the manager's and the Todo panel's tab strip laid out alike: the title 16px in, and the
-   row ending where the fold button's room begins, so the panel's buttons sit just left of it, in one row with it and
-   the pin. The Todo panel's one tab sits on the manager's title line, and its Quick Add and Sync just left of it. */
+/* The panel's title bar, and the manager's laid out alike: the title 16px in, and the row ending where the fold
+   button's room begins, so the panel's buttons sit just left of it, in one row with it and the pin. */
 .p-title-bar,
-.manager-title-bar,
-.todo-tabs {
+.manager-title-bar {
   flex: none;
   display: flex;
   align-items: center;

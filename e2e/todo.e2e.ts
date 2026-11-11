@@ -6,7 +6,7 @@ import { BOARD_ROOM, STRIP_WIDTH } from '../src/renderer/src/panel/panelPrefs';
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, edgesWhile, expectInOneRow, expectSlide, expectStripAt, heldSyncs, holdSyncs, ids, isOnTop, launches,
+  box, card, cardIn, closeTask, edgesWhile, expectSlide, expectStripAt, heldSyncs, holdSyncs, ids, isOnTop, launches, middle,
   openedLinks, projectPane as pane, railRow, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus,
   todoDir,
 } from './tasks';
@@ -799,7 +799,11 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   const sync = await box(first.page, 'todo-sync');
   const fold = await box(first.page, 'todo-fold');
   const pin = await box(first.page, 'todo-pin');
-  expectInOneRow([name, add, sync, fold, pin], { apart: true });
+  expect(name.x + name.width).toBeLessThan(add.x);
+  expect(add.x + add.width).toBeLessThan(sync.x);
+  expect(sync.x + sync.width).toBeLessThan(fold.x);
+  expect(fold.x + fold.width).toBeLessThan(pin.x);
+  for (const b of [add, sync, fold, pin]) expect(Math.abs(middle(b) - middle(name))).toBeLessThanOrEqual(1);
   await expect(first.page.getByTestId('todo-sync')).toHaveAccessibleName('Sync');
 
   await first.page.getByTestId('todo-add-note').click();

@@ -15,12 +15,9 @@ export const MIN_WIDTH = 420;
 /** What the pane keeps beside the panel: room for the board when pinned, a strip of it when not. */
 export const BOARD_ROOM = { pinned: 360, unpinned: 80 };
 
-/**
- * The width the panel can take in its project pane. Floating, its own strip beside it counts too; pinned, it doesn't,
- * so a fold keeps the panel's width. The minimum wins when the pane is too narrow.
- */
+/** The width the panel can take in its project pane. The minimum wins when the pane is too narrow. */
 export function clampWidth(width: number, paneWidth: number, pinned: boolean): number {
-  const max = paneWidth - (pinned ? BOARD_ROOM.pinned : BOARD_ROOM.unpinned + STRIP_WIDTH);
+  const max = paneWidth - (pinned ? BOARD_ROOM.pinned : BOARD_ROOM.unpinned);
   return Math.round(Math.max(MIN_WIDTH, Math.min(width, max)));
 }
 

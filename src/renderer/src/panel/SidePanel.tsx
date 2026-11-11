@@ -1,6 +1,6 @@
 import { createSignal, Show, type JSX } from 'solid-js';
 import { useProject } from '../projects/projectContext';
-import { clampWidth, stripShows, type PanelPrefs, type PanelState } from './panelPrefs';
+import { clampWidth, stripShows, type PanelPrefs } from './panelPrefs';
 import PanelStrip, { createFoldHandOff, FoldButton } from './PanelStrip';
 import PinIcon from './PinIcon';
 import ResizeEdge from './ResizeEdge';
@@ -22,10 +22,10 @@ export default function SidePanel(props: {
   onPrefsChange: (prefs: PanelPrefs) => void;
   /** Whether the pane has room to pin it beside the board; without, the pin is off and can't be set. */
   canPin: boolean;
-  /** What the pane's other islands take beside the board. */
+  /** What the pane's other islands, and the panel's own strip while it floats, take beside the board. */
   besideWidth: number;
-  /** Open or folded, pinned or not; folded, its strip is all that shows. */
-  state: PanelState;
+  /** Whether the panel is open, pinned or not; folded, its strip is all that shows. */
+  open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The strip's name: what the panel shows. */
   stripName: string;
@@ -62,7 +62,7 @@ export default function SidePanel(props: {
         class="side-panel"
         data-testid="side-panel"
         data-pinned={String(props.prefs.pinned)}
-        data-open={String(props.state === 'open')}
+        data-open={String(props.open)}
         aria-label={props.label}
         // Not laid out until its pane is measured: before, the pin as shown, and so whether it is open, isn't known,
         // and a style computed then would slide it in or out as the pane mounts.
@@ -102,7 +102,7 @@ export default function SidePanel(props: {
       </aside>
 
       {/* After the panel: laid out at the pane's right edge. */}
-      <Show when={stripShows(props.state, props.prefs.pinned)}>
+      <Show when={stripShows(props.open ? 'open' : 'folded', props.prefs.pinned)}>
         <PanelStrip
           name={props.stripName}
           label={`Show ${props.stripName}`}

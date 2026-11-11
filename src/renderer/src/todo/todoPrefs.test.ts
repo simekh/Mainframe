@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { BOARD_ROOM, MIN_WIDTH, STRIP_WIDTH } from '../panel/panelPrefs';
 import { clampTodoWidth, loadHideMine, loadTodoPrefs, saveHideMine, saveTodoPrefs, TODO_WIDTH } from './todoPrefs';
 
 /** A Storage stand-in over a plain map. */
@@ -68,20 +67,15 @@ describe('todoPrefs', () => {
   });
 
   it.each([
-    // Floating, it takes no room: the pane keeps only a strip of board and the panel's own strip beside it, so it grows
-    // to its maximum in a 1400 px pane, whatever the manager takes there.
+    // Floating, it takes no room: the pane keeps only a strip of board beside it, so it grows to its maximum in a
+    // 1400 px pane, whatever the manager takes there.
     [1400, 2000, 480],
     [1400, 400, 400],
     [1400, 100, 280],
-    // 296 px are left at 400, and 196 at 300: the minimum wins.
-    [400, 2000, 296],
+    // 320 px are left at 400, and 220 at 300: the minimum wins.
+    [400, 2000, 320],
     [300, 400, 280],
   ])('floating, in a %i px pane, %d px gives %i px', (paneWidth, width, want) => {
     expect(clampTodoWidth(width, paneWidth, false)).toBe(want);
-  });
-
-  it("floating, its own strip counts too; pinned, it doesn't, so a fold keeps its width", () => {
-    expect(clampTodoWidth(2000, 500, false)).toBe(500 - BOARD_ROOM.unpinned - STRIP_WIDTH);
-    expect(clampTodoWidth(2000, 1100, true)).toBe(1100 - MIN_WIDTH - BOARD_ROOM.pinned);
   });
 });
