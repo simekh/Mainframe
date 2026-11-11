@@ -579,28 +579,29 @@ html[data-platform='darwin'] .setup-titlebar {
 /* --- The Todo panel: the project's to-do list, at its pane's far left ------------------------ */
 
 /* An island like the manager's column, at the owner's width; after the manager in the page, it is
-   laid out first. Pinned, it is on the session panel's floating layer, above the floating manager's:
-   the manager slides away under it, and the session panel's float, after it, still covers it, unless
-   it floats itself or holds a ticket (the raised rule below). */
+   laid out first. Pinned or floating, it is on the session panel's floating layer, above the floating
+   manager's: the manager slides away under it, and the session panel's float, after it, still covers
+   it, unless it holds a ticket (the raised rule below). Its header is measured against its own width. */
 .todo-panel {
+  container-type: inline-size;
   order: -2;
   margin: 8px 0 8px 8px;
   z-index: 5;
 }
 
-/* Raised: floating, or holding a ticket even when pinned, it is over the session panel's float. */
-.todo-panel[data-pinned='false'],
-.todo-panel:has(> .ticket-panel) {
-  z-index: 7;
+/* Its strip, before it in the page, is laid out in its place. */
+.todo-strip {
+  order: -2;
 }
 
-/* Put away while pinned, it gives its room back. */
-.todo-panel[data-pinned='true'][data-open='false'] {
-  display: none;
+/* Raised while it holds a ticket, even when pinned: the ticket is over the floating session panel (5). */
+.todo-panel:has(> .ticket-panel) {
+  z-index: 6;
 }
 
 /* The tab strip is the island's title bar, laid out as the manager's, and on the Mac a drag region up
-   to the pin: its one tab sits on the manager's title line, and Quick Add and Sync just left of the pin. */
+   to the fold button: its one tab sits on the manager's title line, and Quick Add and Sync just left of
+   the fold button. */
 .todo-tabs {
   flex: none;
   display: flex;
@@ -643,6 +644,21 @@ html[data-platform='darwin'] .setup-titlebar {
   margin-left: auto;
   border-style: dashed;
   border-color: var(--border);
+}
+
+/* The header's room toward the panel's narrowest (spec §7): with its word, Sync needs a panel of about 312 px, so
+   below about 315 it drops the word, its name stays, and it is a square as the fold button and the pin beside it are.
+   Written over .btn, which comes later. */
+@container (max-width: 312px) {
+  .btn.todo-sync {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .todo-sync span {
+    display: none;
+  }
 }
 
 /* Where the list comes from, in the row under the title; a long name gives way first, and when it
@@ -952,7 +968,7 @@ html[data-platform='darwin'] .setup-titlebar {
 }
 
 /* Over the board and the manager, never pushing them aside, at the Todo panel's full height: the panel's right
-   border is the seam between them. Under that panel's resize edge and hide pill, which straddle the seam. A step
+   border is the seam between them. Under that panel's resize edge, which straddles the seam. A step
    lighter than the island, so the card reads as lifted out of the list. */
 .ticket-panel {
   position: absolute;
@@ -1957,8 +1973,8 @@ kbd {
 .side-panel,
 .manager-column,
 .todo-panel {
-  /* What a row along the island's top leaves its pin: 8 px in, 28 px wide, 6 px apart. */
-  --panel-pin-room: 42px;
+  /* What a row along the island's top leaves its fold button and pin: 8 px in, 28 px wide each, 6 px apart. */
+  --panel-pin-room: 76px;
   position: relative;
   flex: none;
   min-height: 0;
@@ -1969,12 +1985,6 @@ kbd {
   border-radius: var(--radius-lg);
 }
 
-/* Their headers leave room for the fold button and the pin. */
-.side-panel,
-.manager-column {
-  --panel-pin-room: 76px;
-}
-
 /* Pinned, the board's flex sibling at the owner's width. */
 .side-panel {
   width: var(--panel-w);
@@ -1983,11 +1993,11 @@ kbd {
 
 /* Unpinned, each floats over its own edge of the board and slides away while it isn't open. It
    hides by moving and then turning invisible, never by changing size, so the terminals keep theirs.
-   The session panel and the manager folded, pinned or not, are taken out of the layout too, so their strips and the
-   board take their room; the manager off as well. */
+   Folded, pinned or not, each is taken out of the layout too, so its strip and the board take its room; the manager
+   and the Todo panel off as well. */
 .side-panel:is([data-pinned='false'], [data-open='false']),
 .manager-column:is([data-pinned='false'], [data-open='false']),
-.todo-panel[data-pinned='false'] {
+.todo-panel:is([data-pinned='false'], [data-open='false']) {
   position: absolute;
   top: 8px;
   bottom: 8px;
@@ -2021,8 +2031,9 @@ kbd {
   box-shadow: none;
 }
 
-/* Beside its strip, and right of the pinned Todo panel when it is out, a layer under it, so it slides away and back
-   under that panel: on one layer, the Todo panel's flex order would paint it first, under the manager. */
+/* Beside its strip, and right of the Todo panel's place while that is on (the pinned panel, or its strip), a layer
+   under it, so it slides away and back under that panel: on one layer, the Todo panel's flex order would paint it
+   first, under the manager. */
 .manager-column:is([data-pinned='false'], [data-open='false']) {
   left: calc(16px + var(--strip-w) + var(--left-room, 0px));
   z-index: 4;
@@ -2036,10 +2047,17 @@ kbd {
   box-shadow: none;
 }
 
-/* Over the floating manager (raised above). */
-.todo-panel[data-pinned='false'] {
-  left: 8px;
+/* Beside its strip, which keeps the pane's left edge, over the floating manager (a layer above it). */
+.todo-panel:is([data-pinned='false'], [data-open='false']) {
+  left: calc(16px + var(--strip-w));
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Folded while pinned, it slides away from where it stood, over its strip: not from where it floats, and without the
+   floating panel's shadow. Off while pinned, it is laid out there too. */
+.todo-panel[data-pinned='true'][data-open='false'] {
+  left: 8px;
+  box-shadow: none;
 }
 
 /* Past the pane's edge, over its strip. */
@@ -2048,13 +2066,9 @@ kbd {
   visibility: hidden;
 }
 
-.manager-column[data-open='false'] {
+.manager-column[data-open='false'],
+.todo-panel[data-open='false'] {
   transform: translateX(calc(-100% - 16px - var(--strip-w)));
-  visibility: hidden;
-}
-
-.todo-panel[data-pinned='false'][data-open='false'] {
-  transform: translateX(calc(-100% - 24px));
   visibility: hidden;
 }
 
@@ -2111,38 +2125,6 @@ kbd {
 /* The line is its focus ring. */
 .resize-edge:focus-visible {
   outline: none;
-}
-
-/* A pill straddling the Todo panel's right edge, centred on it: puts the panel away, pinned or not.
-   Adapted from Parallel Code (MIT): .board-side-panel-close in src/components/task-board.css at
-   97c3558. See THIRD_PARTY_NOTICES.md. */
-.panel-hide {
-  position: absolute;
-  top: 50%;
-  right: -8px;
-  z-index: 6;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 44px;
-  translate: 0 -50%;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
-  color: var(--fg-muted);
-}
-
-.panel-hide:hover {
-  border-color: var(--fg-muted);
-  background: var(--hover);
-  color: var(--fg);
-}
-
-.panel-hide svg {
-  width: 10px;
-  height: 10px;
 }
 
 /* At the panel's top right, whatever it holds: a title bar lays out its row beside it. The fold button sits just left
@@ -2796,11 +2778,10 @@ kbd {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  /* Out at once; hidden only once it has slid away. The session panel and the manager slide pinned too, as they fold
-     and open. */
+  /* Out at once; hidden only once it has slid away. Each slides pinned too, as it folds and opens. */
   .side-panel,
   .manager-column,
-  .todo-panel[data-pinned='false'] {
+  .todo-panel {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 0s;
@@ -2808,15 +2789,15 @@ kbd {
 
   .side-panel[data-open='false'],
   .manager-column[data-open='false'],
-  .todo-panel[data-pinned='false'][data-open='false'] {
+  .todo-panel[data-open='false'] {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 220ms;
   }
 
-  /* Off, the manager goes at once: off is nothing at all, and the room it frees moves it before it could slide. Turned
-     on, it slides in from where it went. */
-  .manager-column[data-state='off'] {
+  /* Off, the manager and the Todo panel go at once: off is nothing at all, and the room the manager frees would move
+     it before it could slide. Turned on, each slides in from where it went. */
+  :is(.manager-column, .todo-panel)[data-state='off'] {
     transition: none;
   }
 

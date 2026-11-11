@@ -5,7 +5,8 @@ import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
 import { openLinkLogged } from '../openLink';
-import Chevron from '../panel/Chevron';
+import { stripShows, STRIP_WIDTH, type PanelState } from '../panel/panelPrefs';
+import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
@@ -40,9 +41,9 @@ function StopIcon() {
 
 /**
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
- * asks of the owner, and the ticket of the item open. Pinned and out, it takes the pane's left edge and the manager
- * sits right of it; unpinned, it floats over the manager as that floats over the board. Its hide arrow calls
- * `onHide`, and the pane hands the focus to its Todo button.
+ * asks of the owner, and the ticket of the item open. Pinned and open, it takes the pane's left edge and the manager
+ * sits right of it; unpinned, it floats over the manager beside its strip, as that floats over the board. Folded,
+ * pinned or not, it slides away and leaves its strip at the pane's edge.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
@@ -53,8 +54,9 @@ export default function TodoPanel(props: {
   onDone(w: number): void;
   pinned: boolean;
   onPinnedChange(pinned: boolean): void;
-  open: boolean;
-  onHide(): void;
+  /** Folded, its strip is all that shows; off, nothing does. */
+  state: PanelState;
+  onOpenChange(open: boolean): void;
   /** The open ticket: an item's key, or `'new-note'`. The pane closes it too. */
   ticket: string | null;
   onTicketChange(ticket: string | null): void;
@@ -200,312 +202,326 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'lists' ? ask : undefined;
   };
+  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
 
   return (
-    <aside
-      ref={aside}
-      class="todo-panel"
-      data-testid="todo-panel"
-      aria-label="Todo"
-      data-pinned={String(props.pinned)}
-      data-open={String(props.open)}
-      // What the pane leaves right of the panel, its margin kept: the ticket is no wider.
-      style={{ width: `${props.width}px`, '--ticket-room': `${project.width() - props.width - 16}px` }}
-    >
-      <button
-        class="panel-pin"
-        data-testid="todo-pin"
-        aria-pressed={props.pinned ? 'true' : 'false'}
-        aria-label="Pin Todo panel"
-        title={props.pinned ? 'Unpin Todo panel' : 'Pin Todo panel'}
-        onMouseDown={keepFocus}
-        onClick={() => props.onPinnedChange(!props.pinned)}
+    <>
+      {/* Before the panel: laid out at the pane's left edge. */}
+      <Show when={stripShows(props.state, props.pinned)}>
+        <PanelStrip
+          class="todo-strip"
+          name="Todo"
+          label="Show Todo"
+          side="left"
+          testId="todo-strip"
+          ref={handOff.stripRef}
+          onOpen={handOff.open}
+        />
+      </Show>
+
+      <aside
+        ref={aside}
+        class="todo-panel"
+        data-testid="todo-panel"
+        aria-label="Todo"
+        data-pinned={String(props.pinned)}
+        data-open={String(props.state === 'open')}
+        data-state={props.state}
+        // What the pane leaves right of the panel, its margin kept: the ticket is no wider. Floating, the panel sits
+        // beside its strip.
+        style={{
+          width: `${props.width}px`,
+          '--ticket-room': `${project.width() - props.width - 16 - (props.pinned ? 0 : STRIP_WIDTH + 8)}px`,
+        }}
       >
-        <PinIcon />
-      </button>
-      {/* One tab for now, and Quick Add and Sync beside the pin, as the session panel's title bar holds its buttons:
-          the row under it keeps its width for the source's name. While a sync runs, the same button, kept so that it
-          keeps the focus, is its Stop, and the row under it says Syncing…. */}
-      <div class="todo-tabs">
-        <h2 class="todo-tab">Todo</h2>
+        <FoldButton label="Fold the Todo panel" points="left" testId="todo-fold" ref={handOff.foldRef} onFold={handOff.fold} />
+        <button
+          class="panel-pin"
+          data-testid="todo-pin"
+          aria-pressed={props.pinned ? 'true' : 'false'}
+          aria-label="Pin Todo panel"
+          title={props.pinned ? 'Unpin Todo panel' : 'Pin Todo panel'}
+          onMouseDown={keepFocus}
+          onClick={() => props.onPinnedChange(!props.pinned)}
+        >
+          <PinIcon />
+        </button>
+        {/* One tab for now, and Quick Add and Sync beside the fold button, as the session panel's title bar holds its
+            buttons: the row under it keeps its width for the source's name. While a sync runs, the same button, kept so
+            that it keeps the focus, is its Stop, and the row under it says Syncing…. */}
+        <div class="todo-tabs">
+          <h2 class="todo-tab">Todo</h2>
+          <Show when={view()}>
+            {(v) => (
+              <>
+                <button
+                  class="btn todo-add"
+                  data-testid="todo-add-note"
+                  title="Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it."
+                  ref={addNote}
+                  onMouseDown={keepFocus}
+                  onClick={() => openTicket('new-note')}
+                >
+                  Quick Add
+                </button>
+                {/* Its word goes where the header is narrow; its name stays. */}
+                <button
+                  class="btn todo-sync"
+                  data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
+                  aria-label={v().syncing ? 'Stop the sync' : 'Sync'}
+                  onMouseDown={keepFocus}
+                  onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
+                >
+                  {v().syncing ? <StopIcon /> : <SyncIcon />}
+                  <span>{v().syncing ? 'Stop' : 'Sync'}</span>
+                </button>
+              </>
+            )}
+          </Show>
+        </div>
+
         <Show when={view()}>
           {(v) => (
             <>
-              <button
-                class="btn todo-add"
-                data-testid="todo-add-note"
-                title="Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it."
-                ref={addNote}
-                onMouseDown={keepFocus}
-                onClick={() => openTicket('new-note')}
-              >
-                Quick Add
-              </button>
-              <button
-                class="btn todo-sync"
-                data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
-                aria-label={v().syncing ? 'Stop the sync' : undefined}
-                onMouseDown={keepFocus}
-                onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
-              >
-                {v().syncing ? <StopIcon /> : <SyncIcon />}
-                {v().syncing ? 'Stop' : 'Sync'}
-              </button>
+              {/* Laid out as the manager's row under its title, so the two headers' dividers line up. */}
+              <div class="p-branch-bar">
+                {/* The service's name opens the list where it lives, as the ticket's Open in does for a card. */}
+                <Show when={v().source}>
+                  {(source) => (
+                    <span class="todo-source-name" data-testid="todo-source" title={`${source().kind} · ${sourcePlace(source())}`}>
+                      <Show when={httpUrl(source().url)} fallback={source().kind}>
+                        {(url) => (
+                          <button
+                            class="todo-source-link"
+                            data-testid="todo-source-link"
+                            title={`Open in ${source().kind}`}
+                            onMouseDown={keepFocus}
+                            onClick={() => openLinkLogged(url(), 'todo')}
+                          >
+                            {source().kind} ↗
+                          </button>
+                        )}
+                      </Show>
+                      {` · ${sourcePlace(source())}`}
+                    </span>
+                  )}
+                </Show>
+                <span class="todo-synced">
+                  <Show when={v().syncing} fallback={syncedLine(v(), now())}>
+                    <SyncIcon />
+                    Syncing…
+                  </Show>
+                </span>
+              </div>
+
+              <Switch>
+                <Match when={toolsAsk()}>
+                  {(ask) => (
+                    <div class="todo-ask">
+                      <p>
+                        Sync wants to read your to-do list in <strong>{ask().connector}</strong> with these tools. Allow them only if none of
+                        them can change it:
+                      </p>
+                      <ul class="todo-tools">
+                        <For each={ask().tools}>
+                          {(tool) => (
+                            <li>
+                              <code>{tool}</code>
+                            </li>
+                          )}
+                        </For>
+                      </ul>
+                      <button
+                        class="btn primary"
+                        data-testid="todo-confirm-tools"
+                        onMouseDown={keepFocus}
+                        onClick={() => confirmTodoTools(project.dir)}
+                      >
+                        Allow and sync
+                      </button>
+                    </div>
+                  )}
+                </Match>
+                <Match when={listsAsk()}>
+                  {(ask) => (
+                    <div class="todo-ask">
+                      <p>Which list is your to-do list?</p>
+                      <For each={ask().lists}>
+                        {(list, i) => (
+                          <button
+                            class="todo-pick"
+                            data-testid="todo-pick-list"
+                            onMouseDown={keepFocus}
+                            onClick={() => pickTodoList(project.dir, i())}
+                          >
+                            <span>{list.name}</span>
+                            <Show when={list.board}>{(board) => <span class="todo-pick-board">{board()}</span>}</Show>
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </Match>
+              </Switch>
+
+              <Show when={v().error}>
+                {(message) => (
+                  <p class="todo-error" data-testid="todo-error" role="alert">
+                    {message()}
+                  </p>
+                )}
+              </Show>
+
+              {/* Until there is a list or a note; an ask says the same more precisely. */}
+              <Show when={!v().source && v().notes.length === 0 && !v().ask}>
+                <p class="todo-empty">
+                  Sync reads your to-do list through the connector you use for it. Todos you add stay in Mainframe.
+                </p>
+              </Show>
+              <div class="todo-scroll">
+                {/* While the list has a card for the owner, and while it is pressed, so it can always be turned off. */}
+                <Show when={hideMine() || v().cards.some((card) => card.forOwner)}>
+                  <button
+                    class="todo-hide-mine"
+                    data-testid="todo-hide-mine"
+                    aria-pressed={hideMine() ? 'true' : 'false'}
+                    onMouseDown={keepFocus}
+                    onClick={toggleHideMine}
+                  >
+                    Hide my tasks
+                    <Show when={hiddenCount() > 0}>
+                      <span class="todo-hide-count">{hiddenCount()} hidden</span>
+                    </Show>
+                  </button>
+                </Show>
+                <ul class="todo-list" aria-label="To do">
+                  <For each={[...itemByKey().keys()]}>
+                    {(key) => {
+                      // A row whose key leaves the list goes before this reads it again.
+                      const item = () => itemByKey().get(key)!;
+                      const reopenId = () => reopenTaskId(item().action);
+                      // What the row shows of its text: a card's as a reader sees it, a note's as typed. Memos by value, so a
+                      // sync that leaves the text as it was doesn't read it again.
+                      const body = createMemo(() => item().body);
+                      const isCard = createMemo(() => item().kind === 'card');
+                      const preview = createMemo(() => (isCard() ? plainText(body()) : body()));
+                      return (
+                        <li
+                          class="todo-item"
+                          data-testid="todo-item"
+                          data-key={key}
+                          data-for-owner={String(item().forOwner)}
+                          data-open={String(props.ticket === key)}
+                        >
+                          {/* Stretched over the row, so a click anywhere opens its ticket, and a second one closes it. */}
+                          <button
+                            class="todo-open"
+                            aria-expanded={props.ticket === key}
+                            onMouseDown={keepFocus}
+                            onClick={() => (props.ticket === key ? props.onTicketChange(null) : openTicket(key))}
+                          >
+                            <Show when={item().number}>{(number) => <span class="card-number">{number()} </span>}</Show>
+                            {item().title}
+                          </button>
+                          <Show when={preview()}>
+                            <p class="todo-body">{preview()}</p>
+                          </Show>
+                          {/* A note always has its Start. */}
+                          <Show when={item().action || item().labels.length > 0}>
+                            <div class="todo-row">
+                              <Show when={item().kind === 'note'}>
+                                <span class="todo-label note">Todo</span>
+                              </Show>
+                              <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
+                              <Switch>
+                                <Match when={reopenId()}>
+                                  {(taskId) => (
+                                    <button
+                                      class="card-act"
+                                      data-testid="todo-reopen"
+                                      aria-label={`Reopen ${item().title}`}
+                                      onMouseDown={keepFocus}
+                                      onClick={() => reopen(taskId())}
+                                    >
+                                      Reopen
+                                    </button>
+                                  )}
+                                </Match>
+                                <Match when={item().action?.kind === 'start'}>
+                                  <button
+                                    class="card-act"
+                                    data-testid="todo-start"
+                                    aria-label={`Start ${item().title}`}
+                                    onMouseDown={keepFocus}
+                                    onClick={() => void start(item(), { noQuestions: false }, true)}
+                                  >
+                                    Start
+                                  </button>
+                                </Match>
+                              </Switch>
+                            </div>
+                          </Show>
+                        </li>
+                      );
+                    }}
+                  </For>
+                </ul>
+                {/* Hiding left no row, not even a note. */}
+                <Show when={shownItems().length === 0 && allItems().length > 0}>
+                  <p class="todo-all-mine">Every card on the list is one of yours.</p>
+                </Show>
+              </div>
+
+              <Show when={v().setUp}>
+                <div class="todo-foot">
+                  <button
+                    class="todo-reset"
+                    data-testid="todo-reset"
+                    onMouseDown={keepFocus}
+                    onClick={() => resetTodoSource(project.dir)}
+                  >
+                    Set up again
+                  </button>
+                </div>
+              </Show>
             </>
           )}
         </Show>
-      </div>
 
-      <Show when={view()}>
-        {(v) => (
-          <>
-            {/* Laid out as the manager's row under its title, so the two headers' dividers line up. */}
-            <div class="p-branch-bar">
-              {/* The service's name opens the list where it lives, as the ticket's Open in does for a card. */}
-              <Show when={v().source}>
-                {(source) => (
-                  <span class="todo-source-name" data-testid="todo-source" title={`${source().kind} · ${sourcePlace(source())}`}>
-                    <Show when={httpUrl(source().url)} fallback={source().kind}>
-                      {(url) => (
-                        <button
-                          class="todo-source-link"
-                          data-testid="todo-source-link"
-                          title={`Open in ${source().kind}`}
-                          onMouseDown={keepFocus}
-                          onClick={() => openLinkLogged(url(), 'todo')}
-                        >
-                          {source().kind} ↗
-                        </button>
-                      )}
-                    </Show>
-                    {` · ${sourcePlace(source())}`}
-                  </span>
-                )}
-              </Show>
-              <span class="todo-synced">
-                <Show when={v().syncing} fallback={syncedLine(v(), now())}>
-                  <SyncIcon />
-                  Syncing…
-                </Show>
-              </span>
-            </div>
-
-            <Switch>
-              <Match when={toolsAsk()}>
-                {(ask) => (
-                  <div class="todo-ask">
-                    <p>
-                      Sync wants to read your to-do list in <strong>{ask().connector}</strong> with these tools. Allow them only if none of
-                      them can change it:
-                    </p>
-                    <ul class="todo-tools">
-                      <For each={ask().tools}>
-                        {(tool) => (
-                          <li>
-                            <code>{tool}</code>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                    <button
-                      class="btn primary"
-                      data-testid="todo-confirm-tools"
-                      onMouseDown={keepFocus}
-                      onClick={() => confirmTodoTools(project.dir)}
-                    >
-                      Allow and sync
-                    </button>
-                  </div>
-                )}
-              </Match>
-              <Match when={listsAsk()}>
-                {(ask) => (
-                  <div class="todo-ask">
-                    <p>Which list is your to-do list?</p>
-                    <For each={ask().lists}>
-                      {(list, i) => (
-                        <button
-                          class="todo-pick"
-                          data-testid="todo-pick-list"
-                          onMouseDown={keepFocus}
-                          onClick={() => pickTodoList(project.dir, i())}
-                        >
-                          <span>{list.name}</span>
-                          <Show when={list.board}>{(board) => <span class="todo-pick-board">{board()}</span>}</Show>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                )}
-              </Match>
-            </Switch>
-
-            <Show when={v().error}>
-              {(message) => (
-                <p class="todo-error" data-testid="todo-error" role="alert">
-                  {message()}
-                </p>
-              )}
+        {/* Keyed, so another item mounts a ticket of its own. */}
+        <Show when={props.ticket} keyed>
+          {(key) => (
+            <Show when={ticketItem()}>
+              {(item) => {
+                onCleanup(() => handBackFocus(key));
+                return (
+                  <TicketPanel
+                    item={item()}
+                    warning={warning()}
+                    error={startError()}
+                    starting={starting() || checking()}
+                    onClose={() => props.onTicketChange(null)}
+                    onStart={(o) => void start(item(), o)}
+                    onReopen={reopen}
+                  />
+                );
+              }}
             </Show>
+          )}
+        </Show>
 
-            {/* Until there is a list or a note; an ask says the same more precisely. */}
-            <Show when={!v().source && v().notes.length === 0 && !v().ask}>
-              <p class="todo-empty">
-                Sync reads your to-do list through the connector you use for it. Todos you add stay in Mainframe.
-              </p>
-            </Show>
-            <div class="todo-scroll">
-              {/* While the list has a card for the owner, and while it is pressed, so it can always be turned off. */}
-              <Show when={hideMine() || v().cards.some((card) => card.forOwner)}>
-                <button
-                  class="todo-hide-mine"
-                  data-testid="todo-hide-mine"
-                  aria-pressed={hideMine() ? 'true' : 'false'}
-                  onMouseDown={keepFocus}
-                  onClick={toggleHideMine}
-                >
-                  Hide my tasks
-                  <Show when={hiddenCount() > 0}>
-                    <span class="todo-hide-count">{hiddenCount()} hidden</span>
-                  </Show>
-                </button>
-              </Show>
-              <ul class="todo-list" aria-label="To do">
-                <For each={[...itemByKey().keys()]}>
-                  {(key) => {
-                    // A row whose key leaves the list goes before this reads it again.
-                    const item = () => itemByKey().get(key)!;
-                    const reopenId = () => reopenTaskId(item().action);
-                    // What the row shows of its text: a card's as a reader sees it, a note's as typed. Memos by value, so a
-                    // sync that leaves the text as it was doesn't read it again.
-                    const body = createMemo(() => item().body);
-                    const isCard = createMemo(() => item().kind === 'card');
-                    const preview = createMemo(() => (isCard() ? plainText(body()) : body()));
-                    return (
-                      <li
-                        class="todo-item"
-                        data-testid="todo-item"
-                        data-key={key}
-                        data-for-owner={String(item().forOwner)}
-                        data-open={String(props.ticket === key)}
-                      >
-                        {/* Stretched over the row, so a click anywhere opens its ticket, and a second one closes it. */}
-                        <button
-                          class="todo-open"
-                          aria-expanded={props.ticket === key}
-                          onMouseDown={keepFocus}
-                          onClick={() => (props.ticket === key ? props.onTicketChange(null) : openTicket(key))}
-                        >
-                          <Show when={item().number}>{(number) => <span class="card-number">{number()} </span>}</Show>
-                          {item().title}
-                        </button>
-                        <Show when={preview()}>
-                          <p class="todo-body">{preview()}</p>
-                        </Show>
-                        {/* A note always has its Start. */}
-                        <Show when={item().action || item().labels.length > 0}>
-                          <div class="todo-row">
-                            <Show when={item().kind === 'note'}>
-                              <span class="todo-label note">Todo</span>
-                            </Show>
-                            <For each={item().labels}>{(label) => <span class="todo-label">{label}</span>}</For>
-                            <Switch>
-                              <Match when={reopenId()}>
-                                {(taskId) => (
-                                  <button
-                                    class="card-act"
-                                    data-testid="todo-reopen"
-                                    aria-label={`Reopen ${item().title}`}
-                                    onMouseDown={keepFocus}
-                                    onClick={() => reopen(taskId())}
-                                  >
-                                    Reopen
-                                  </button>
-                                )}
-                              </Match>
-                              <Match when={item().action?.kind === 'start'}>
-                                <button
-                                  class="card-act"
-                                  data-testid="todo-start"
-                                  aria-label={`Start ${item().title}`}
-                                  onMouseDown={keepFocus}
-                                  onClick={() => void start(item(), { noQuestions: false }, true)}
-                                >
-                                  Start
-                                </button>
-                              </Match>
-                            </Switch>
-                          </div>
-                        </Show>
-                      </li>
-                    );
-                  }}
-                </For>
-              </ul>
-              {/* Hiding left no row, not even a note. */}
-              <Show when={shownItems().length === 0 && allItems().length > 0}>
-                <p class="todo-all-mine">Every card on the list is one of yours.</p>
-              </Show>
-            </div>
-
-            <Show when={v().setUp}>
-              <div class="todo-foot">
-                <button
-                  class="todo-reset"
-                  data-testid="todo-reset"
-                  onMouseDown={keepFocus}
-                  onClick={() => resetTodoSource(project.dir)}
-                >
-                  Set up again
-                </button>
-              </div>
-            </Show>
-          </>
-        )}
-      </Show>
-
-      {/* Keyed, so another item mounts a ticket of its own. */}
-      <Show when={props.ticket} keyed>
-        {(key) => (
-          <Show when={ticketItem()}>
-            {(item) => {
-              onCleanup(() => handBackFocus(key));
-              return (
-                <TicketPanel
-                  item={item()}
-                  warning={warning()}
-                  error={startError()}
-                  starting={starting() || checking()}
-                  onClose={() => props.onTicketChange(null)}
-                  onStart={(o) => void start(item(), o)}
-                  onReopen={reopen}
-                />
-              );
-            }}
-          </Show>
-        )}
-      </Show>
-
-      <button
-        class="panel-hide"
-        data-testid="todo-hide"
-        title="Hide Todo panel"
-        aria-label="Hide Todo panel"
-        onClick={() => props.onHide()}
-      >
-        <Chevron points="left" />
-      </button>
-      {/* Last in the panel, so macOS carves it out of the title bar's drag region. */}
-      <ResizeEdge
-        width={props.width}
-        onDrag={props.onDrag}
-        onDone={props.onDone}
-        grows="right"
-        label="Todo width"
-        testId="todo-resize"
-        min={TODO_WIDTH.min}
-        max={props.maxWidth}
-      />
-    </aside>
+        {/* Last in the panel, so macOS carves it out of the title bar's drag region. */}
+        <ResizeEdge
+          width={props.width}
+          onDrag={props.onDrag}
+          onDone={props.onDone}
+          grows="right"
+          label="Todo width"
+          testId="todo-resize"
+          min={TODO_WIDTH.min}
+          max={props.maxWidth}
+        />
+      </aside>
+    </>
   );
 }

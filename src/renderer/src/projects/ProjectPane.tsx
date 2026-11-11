@@ -80,20 +80,22 @@ export default function ProjectPane(props: {
     if (handBack) managerToggle.focus();
   };
 
-  // The Todo panel's own width and pin; pinned, it is out from the start, and unpinned it waits for the Todo button.
+  // The Todo panel's own width and pin; pinned, it opens at the start, and unpinned it is off until the Todo button.
   const [todoPrefs, setTodoPrefs] = createSignal(loadTodoPrefs(localStorage, dir));
-  const [todoOpen, setTodoOpen] = createSignal(todoPrefs().pinned);
+  const [todo, setTodo] = createSignal<PanelState>(todoPrefs().pinned ? 'open' : 'off');
   const [dragTodoWidth, setDragTodoWidth] = createSignal<number | null>(null);
   const keepTodoPrefs = (prefs: PanelPrefs) => {
     setTodoPrefs(prefs);
     saveTodoPrefs(localStorage, dir, prefs);
   };
-  // Floating, the Todo panel takes no room and the pane is all it measures against. Pinned, it leaves room for the
-  // floating manager's strip, or for the pinned manager as wide as that would be alone, and the manager takes what is
-  // left: where both can't have their width, the Todo panel gives way first. Folded, the pinned manager keeps that
-  // room, which the board takes meanwhile, so it folds and opens where it stands, at its width; off, it frees it.
+  // Floating, the Todo panel takes no room but its strip's, and the pane less that strip is all it measures against.
+  // Pinned, it leaves room for the floating manager's strip, or for the pinned manager as wide as that would be alone,
+  // and the manager takes what is left: where both can't have their width, the Todo panel gives way first. Folded, the
+  // pinned manager keeps that room, which the board takes meanwhile, so it folds and opens where it stands, at its
+  // width; off, it frees it.
   const todoRoom = () => {
-    if (!todoPrefs().pinned || !showManager()) return width();
+    if (!todoPrefs().pinned) return width() - STRIP_WIDTH;
+    if (!showManager()) return width();
     return width() - (managerPinned() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : STRIP_WIDTH);
   };
   const todoWidthIn = (w: number) => clampTodoWidth(w, todoRoom(), todoPrefs().pinned);
@@ -102,22 +104,25 @@ export default function ProjectPane(props: {
     setDragTodoWidth(null);
     keepTodoPrefs({ ...todoPrefs(), width: todoWidthIn(w) });
   };
-  const todoBeside = () => (todoOpen() && todoPrefs().pinned ? shownTodoWidth() : 0);
-  // The ticket open beside the Todo panel: an item's key, or 'new-note'. It goes with the panel.
+  const todoBeside = () => roomTaken(todo(), todoPrefs().pinned, shownTodoWidth());
+  // The ticket open beside the Todo panel: an item's key, or 'new-note'. It goes as the panel folds or turns off.
   const [ticket, setTicket] = createSignal<string | null>(null);
-  const showTodo = (open: boolean) => {
-    setTodoOpen(open);
-    if (!open) setTicket(null);
+  const showTodo = (state: PanelState) => {
+    setTodo(state);
+    if (state !== 'open') setTicket(null);
   };
   let todoToggle!: HTMLButtonElement;
-  // Its hide arrow hands the focus to the Todo button, so the keyboard never ends up in a hidden panel.
-  const hideTodo = () => {
-    showTodo(false);
-    todoToggle.focus();
+  // Turned on, the Todo panel opens fully. Turned off with the focus in it or on its strip, it hands the focus to its
+  // button, so the keyboard never ends up in it, or nowhere.
+  const toggleTodo = () => {
+    if (todo() === 'off') return showTodo('open');
+    const handBack = [...root.querySelectorAll('.todo-panel, .todo-strip')].some((el) => el.contains(document.activeElement));
+    showTodo('off');
+    if (handBack) todoToggle.focus();
   };
 
-  // What the pinned Todo panel leaves of the pane is all the manager measures against, less its own strip while it
-  // floats: pinned, a fold keeps its width.
+  // What the Todo panel leaves of the pane, pinned and open or as its strip, is all the manager measures against, less
+  // its own strip while it floats: pinned, a fold keeps its width.
   const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside() - (managerPinned() ? 0 : STRIP_WIDTH));
   const shownManagerWidth = () => managerWidthIn(dragManagerWidth() ?? managerWidth());
   const keepManagerWidth = (w: number) => {
@@ -140,13 +145,13 @@ export default function ProjectPane(props: {
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // A press on the board outside any card puts away the panel and the manager (into their strips) and the Todo panel
-  // that float over it, and the ticket, pinned panel or not. A manager that is off stays off.
+  // A press on the board outside any card folds the panel, the manager and the Todo panel that float over it into
+  // their strips, and closes the ticket, pinned panel or not. A manager or Todo panel that is off stays off.
   const hideUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
     if (!managerPinned()) setManagerOpen(dir, false);
-    if (!todoPrefs().pinned) setTodoOpen(false);
+    if (!todoPrefs().pinned && todo() === 'open') showTodo('folded');
     setTicket(null);
   };
   const closeDialog = () => {
@@ -167,7 +172,8 @@ export default function ProjectPane(props: {
         data-focused={String(framed())}
         aria-hidden={shown() ? undefined : 'true'}
         inert={!shown()}
-        // What the pinned Todo panel takes at the pane's left, its margin with it: the manager, floating or folded, sits right of it.
+        // What the Todo panel takes at the pane's left, pinned and open or as its strip, its margin with it: the manager,
+        // floating or folded, sits right of it.
         style={{ ...props.style, '--left-room': `${todoBeside() ? todoBeside() + 8 : 0}px` }}
         onPointerDown={() => revealProject(dir)}
         onFocusIn={() => revealProject(dir)}
@@ -188,10 +194,10 @@ export default function ProjectPane(props: {
               class="tb-toggle"
               data-testid="todo-toggle"
               ref={todoToggle}
-              aria-pressed={todoOpen() ? 'true' : 'false'}
-              title={todoOpen() ? 'Hide the Todo panel' : 'Show the Todo panel'}
+              aria-pressed={todo() !== 'off' ? 'true' : 'false'}
+              title={todo() !== 'off' ? 'Hide the Todo panel' : 'Show the Todo panel'}
               onMouseDown={keepFocus}
-              onClick={() => showTodo(!todoOpen())}
+              onClick={toggleTodo}
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
                 <path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" />
@@ -252,8 +258,8 @@ export default function ProjectPane(props: {
           onDone={keepTodoWidth}
           pinned={todoPrefs().pinned}
           onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
-          open={todoOpen()}
-          onHide={hideTodo}
+          state={todo()}
+          onOpenChange={(open) => showTodo(open ? 'open' : 'folded')}
           ticket={ticket()}
           onTicketChange={setTicket}
         />

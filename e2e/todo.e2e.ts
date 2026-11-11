@@ -5,8 +5,8 @@ import { test, expect, type ElectronApplication, type Locator, type Page } from 
 import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, closeTask, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, projectPane as pane, railRow, releaseSyncs,
-  repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus, todoDir,
+  box, card, cardIn, closeTask, edgesWhile, heldSyncs, holdSyncs, ids, isOnTop, launches, openedLinks, projectPane as pane, railRow,
+  releaseSyncs, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus, todoDir,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -289,13 +289,15 @@ test('two projects side by side keep their own lists', async () => {
   await app.close();
 });
 
-test("pinned, the Todo panel takes the pane's left edge and the manager sits right of it; unpinned, it floats over the manager, and a press on the board puts it away", async () => {
+test("pinned, the Todo panel takes the pane's left edge and the manager sits right of it, and folds into a strip in its place; unpinned, it floats over the manager beside its strip, and a press on the board folds it", async () => {
   const project = folder();
   const first = await launchApp({}, project);
   const { page, dataDir } = first;
   const panel = page.getByTestId('todo-panel');
   const toggle = page.getByTestId('todo-toggle');
   const pin = page.getByTestId('todo-pin');
+  const fold = page.getByTestId('todo-fold');
+  const strip = page.getByTestId('todo-strip');
   await expect(panel).toHaveAttribute('data-pinned', 'false');
   await expect(panel).toBeHidden();
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -334,6 +336,23 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   // It slides back in: measured below once it is in.
   await slidIn(page.getByTestId('manager-column'));
 
+  // Folded, it slides away from where it stands, never stepping right first to where a floating one sits, and ends past
+  // the pane's edge; its strip takes its place and the focus, and Todo stays lit.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const folding = await edgesWhile(page, 'todo-panel', 'left', () => fold.click());
+  expect(folding.filter((left, i) => left > (i ? folding[i - 1] : pinned.x) + 0.5)).toEqual([]);
+  expect(folding.at(-1)! + pinned.width).toBeLessThanOrEqual(paneBox.x);
+  await expect(panel).toBeHidden();
+  await expect(strip).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  expect(Math.abs((await box(page, 'todo-strip')).x - (paneBox.x + 8))).toBeLessThanOrEqual(1);
+  // From the strip it slides back in and lands where it stood, without a step at either end.
+  const opening = await edgesWhile(page, 'todo-panel', 'left', () => strip.click());
+  expect(opening.filter((left, i) => i > 0 && left < opening[i - 1] - 0.5)).toEqual([]);
+  expect(opening.at(-1)!).toBeCloseTo(pinned.x, 0);
+  await expect(fold).toBeFocused();
+  await expect(strip).toHaveCount(0);
+
   // The arrow keys move its edge: left narrows.
   const edge = page.getByTestId('todo-resize');
   await edge.focus();
@@ -352,28 +371,33 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   expect(Math.abs(floating.y - under.y)).toBeLessThanOrEqual(1);
   expect(await isOnTop(panel)).toBe(true);
 
-  // Its arrow puts it away and hands the focus to the Todo button, which brings it back.
-  await page.getByTestId('todo-hide').click();
+  // Its fold button folds it into its strip, which takes the focus, and Todo stays lit; the strip opens it again.
+  await fold.click();
   await expect(panel).toBeHidden();
-  await expect(toggle).toBeFocused();
-  await toggle.click();
+  await expect(strip).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await strip.click();
   await expect(panel).toBeVisible();
+  await expect(fold).toBeFocused();
 
-  // A press on the board right of the islands puts it away; the pinned manager stays.
+  // A press on the board right of the islands folds it into its strip, and it stays on; the pinned manager stays.
   const board = await box(page, 'board');
   await page.getByTestId('board').click({ position: { x: under.x + under.width - board.x + 40, y: board.height - 40 } });
   await expect(panel).toHaveAttribute('data-open', 'false');
   await expect(panel).toBeHidden();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(strip).toBeVisible();
   await expect(page.getByTestId('manager-column')).toBeVisible();
   await first.app.close();
 
-  // The pin and the width are the project's, kept for the next start.
+  // The pin and the width are the project's, kept for the next start. Unpinned, it starts off, with no strip.
   const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, project);
   await setWindowWidth(again.app, again.page, 1700);
   const panelAgain = again.page.getByTestId('todo-panel');
   await expect(panelAgain).toHaveAttribute('data-pinned', 'false');
   await expect(panelAgain).toBeHidden();
+  await expect(again.page.getByTestId('todo-strip')).toHaveCount(0);
+  await expect(again.page.getByTestId('todo-toggle')).toHaveAttribute('aria-pressed', 'false');
   await again.page.getByTestId('todo-toggle').click();
   await expect(panelAgain).toBeVisible();
   await slidIn(panelAgain);
@@ -390,6 +414,78 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panelThird).toHaveAttribute('data-open', 'true');
   await expect(third.page.getByTestId('todo-toggle')).toHaveAttribute('aria-pressed', 'true');
   await third.app.close();
+});
+
+test('the Todo button turns the panel off, from open or folded, leaving no strip, and on again opens it fully; the focus in it goes to the button, and its ticket closes', async () => {
+  const { app, page } = await launchApp({}, folder());
+  // Off goes at once, without the slide that folding has.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const panel = page.getByTestId('todo-panel');
+  const toggle = page.getByTestId('todo-toggle');
+  const strip = page.getByTestId('todo-strip');
+  const ticket = page.getByTestId('ticket-panel');
+  // With the manager folded, the floating panel and its ticket sit under the board's top bar, whose Todo button stays
+  // in reach: beside the open pinned manager they start at the island's top, and the ticket covers the button.
+  await page.getByTestId('manager-fold').click();
+
+  // On, it opens floating, so its strip shows beside it.
+  await toggle.click();
+  await expect(panel).toHaveAttribute('data-pinned', 'false');
+  await expect(panel).toHaveAttribute('data-open', 'true');
+  await expect(strip).toBeVisible();
+
+  // Off from folded leaves no strip, and the focus on the strip goes to the button, not nowhere.
+  await page.getByTestId('todo-fold').click();
+  await expect(strip).toBeFocused();
+  await toggle.click();
+  await expect(panel).toBeHidden();
+  await expect(strip).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).toBeFocused();
+
+  // On, it opens fully, though it was folded when it went off.
+  await toggle.click();
+  await expect(panel).toHaveAttribute('data-open', 'true');
+  await expect(panel).toBeVisible();
+
+  // Off with the cursor in its ticket: the focus goes to the button, and the ticket goes with the panel, at once.
+  await page.getByTestId('todo-add-note').click();
+  await expect(ticket.getByLabel('Title')).toBeFocused();
+  await toggle.click();
+  expect(await panel.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await expect(panel).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(ticket).toHaveCount(0);
+
+  // On again, it holds no ticket.
+  await toggle.click();
+  await expect(panel).toBeVisible();
+  await expect(ticket).toHaveCount(0);
+  await app.close();
+});
+
+test("a strip whose panel is off leaves no gap, and the pinned session panel's widest counts the strips", async () => {
+  const { app, page } = await launchApp({}, folder());
+  await setWindowWidth(app, page, 1600);
+  const edge = page.getByTestId('panel-resize');
+  await page.getByTestId('manager-fold').click();
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-panel')).toHaveAttribute('data-pinned', 'false');
+  await expect(page.getByTestId('side-panel')).toHaveAttribute('data-pinned', 'true');
+
+  // The floating Todo panel's strip at the pane's edge, then the folded manager's: both take room from the board.
+  const pane = await box(page, 'project-pane');
+  const todoStrip = await box(page, 'todo-strip');
+  expect(Math.abs(todoStrip.x - (pane.x + 8))).toBeLessThanOrEqual(1);
+  expect((await box(page, 'manager-strip')).x).toBeGreaterThanOrEqual(todoStrip.x + todoStrip.width);
+  await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - 48 - 360));
+
+  // Off, the Todo panel's strip goes, and the manager's moves into its place.
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-strip')).toHaveCount(0);
+  expect(Math.abs((await box(page, 'manager-strip')).x - (pane.x + 8))).toBeLessThanOrEqual(1);
+  await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - 24 - 360));
+  await app.close();
 });
 
 test('Start on a card starts its task at once: under Working, selected; its prompt names the card and asks the session to read it first; the card leaves the list, and comes back with Reopen once the task closes', async () => {
@@ -621,10 +717,10 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await expect(search).toHaveCount(1);
   await expect(ticket).toHaveCount(0);
 
-  // The Todo panel going away takes it along; back, the panel shows no ticket.
+  // The Todo panel going away, folded or off, takes it along; back, the panel shows no ticket.
   await search.click();
-  await page.getByTestId('todo-hide').click();
-  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-fold').click();
+  await page.getByTestId('todo-strip').click();
   await expect(page.getByTestId('todo-panel')).toBeVisible();
   await expect(ticket).toHaveCount(0);
 
@@ -636,6 +732,14 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await page.getByTestId('board').click({ position: { x: board.width - 40, y: board.height - 40 } });
   await expect(ticket).toHaveCount(0);
   await expect(page.getByTestId('todo-panel')).toBeVisible();
+  // Turned off and on again with the ticket open, it shows none. Pinned, its ticket covers the manager, not the top bar's
+  // Todo button.
+  await search.click();
+  await expect(ticket).toBeVisible();
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-panel')).toBeVisible();
+  await expect(ticket).toHaveCount(0);
   expect(launches(dataDir)).toEqual([]);
   await app.close();
 });
@@ -675,8 +779,9 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   const ticket = first.page.getByTestId('ticket-panel');
   await first.page.getByTestId('todo-toggle').click();
 
-  // Quick Add sits in the panel's top bar, between its name and Sync, with room to spare left of the pin even at the
-  // panel's narrowest. Its hover says that what it adds stays in Mainframe.
+  // Quick Add sits in the panel's top bar, between its name and Sync, and the fold button and the pin after them, apart
+  // and on one line even at the panel's narrowest, where Sync drops its word (spec §7). Its hover says that what it
+  // adds stays in Mainframe.
   await expect(first.page.getByTestId('todo-add-note')).toHaveText('Quick Add');
   await expect(first.page.getByTestId('todo-add-note')).toHaveAttribute(
     'title',
@@ -684,16 +789,25 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   );
   const edge = first.page.getByTestId('todo-resize');
   await edge.focus();
-  for (let i = 0; i < 3; i++) await first.page.keyboard.press('ArrowLeft');
+  // One step narrower than its 320 px, Sync's word doesn't run into the fold button.
+  await first.page.keyboard.press('ArrowLeft');
+  await expect(edge).toHaveAttribute('aria-valuenow', '304');
+  const worded = await box(first.page, 'todo-sync');
+  expect(worded.x + worded.width).toBeLessThan((await box(first.page, 'todo-fold')).x);
+  for (let i = 0; i < 2; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
   const name = (await first.page.getByRole('heading', { name: 'Todo', level: 2 }).boundingBox())!;
   const add = await box(first.page, 'todo-add-note');
   const sync = await box(first.page, 'todo-sync');
+  const fold = await box(first.page, 'todo-fold');
   const pin = await box(first.page, 'todo-pin');
-  expect(Math.abs(add.y + add.height / 2 - (sync.y + sync.height / 2))).toBeLessThan(1);
   expect(name.x + name.width).toBeLessThan(add.x);
   expect(add.x + add.width).toBeLessThan(sync.x);
-  expect(sync.x + sync.width).toBeLessThan(pin.x);
+  expect(sync.x + sync.width).toBeLessThan(fold.x);
+  expect(fold.x + fold.width).toBeLessThan(pin.x);
+  const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+  for (const b of [add, sync, fold, pin]) expect(Math.abs(middle(b) - middle(name))).toBeLessThanOrEqual(1);
+  await expect(first.page.getByTestId('todo-sync')).toHaveAccessibleName('Sync');
 
   await first.page.getByTestId('todo-add-note').click();
   await expect(ticket.getByLabel('Title')).toBeFocused();
