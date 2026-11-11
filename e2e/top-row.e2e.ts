@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
 import {
   appRegion, box, boxOf, closePaneKey, dragBy, expectInOneRow, expectStripAt, isOnTop, projectPane as pane, railRow as row, report,
@@ -78,6 +78,43 @@ test("the first project's part starts right after Projects with the list open, f
   await expectOneGroup(globex);
   await expect(page.getByTestId('jump-next')).toHaveCount(1);
   await expect(pane(page, globex).getByTestId('jump-next')).toHaveCount(1);
+  await app.close();
+});
+
+/**
+ * Where `locator` ends along its centre line as it shows: its box's right edge, or short of it where something it is in
+ * clips it. Hit testing honours clipping, and finds it under whatever is laid over it.
+ */
+const shownRight = (locator: Locator) =>
+  locator.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const y = r.top + r.height / 2;
+    let x = Math.ceil(r.right) - 1;
+    while (x > r.left && !document.elementsFromPoint(x, y).some((hit) => el.contains(hit))) x -= 1;
+    return x + 1;
+  });
+
+test("a part too narrow for its buttons keeps them in its own pane: none shows past its right edge, and the next pane's buttons are on top", async () => {
+  const [acme, globex] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [acme, globex]);
+  await (await rowButton(page, globex, 'rail-beside')).click();
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+  // With the list off, the first part starts furthest into its pane; dragged to its narrowest, the pane has least room.
+  await page.getByTestId('projects-toggle').click();
+  await expect(page.getByTestId('project-rail')).toBeHidden();
+  await dragBy(page, 'pane-divider', 300 - (await boxOf(pane(page, acme))).width);
+  await expect.poll(async () => Math.round((await boxOf(pane(page, acme))).width)).toBe(360);
+
+  // On the Mac, after the window buttons, its part has less room than its buttons need, even with their words dropped
+  // and its name cut to its square.
+  const first = await boxOf(pane(page, acme));
+  const inFirst = ['todo-toggle', 'manager-toggle', 'new-task'].map((testId) => pane(page, acme).getByTestId(testId));
+  for (const el of [...inFirst, pane(page, acme).locator('.tb-project')]) {
+    expect(await shownRight(el)).toBeLessThanOrEqual(first.x + first.width + 1);
+  }
+  for (const testId of ['todo-toggle', 'manager-toggle']) {
+    expect(await isOnTop(pane(page, globex).getByTestId(testId))).toBe(true);
+  }
   await app.close();
 });
 

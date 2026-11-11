@@ -1361,7 +1361,9 @@ html[data-platform='darwin'] .setup-titlebar {
 /* The pane's first row, its full width: its panel buttons, its name and New task, and in the bar that ends the
    window's top row, Next that needs you at its right end. The top row's geometry, as .top-row has it, so the whole
    row shares one centre line. Its left padding is its gap, so the first pane's Todo is a gap after Projects, as it is
-   before Manager: the three read as one group. It drops the words of its hints where the pane is narrow. */
+   before Manager: the three read as one group. Where the pane is narrow it drops the words of its hints, and the
+   project's name gives way to an ellipsis; narrower still, it is cut off at the pane's edge, so its buttons never lie
+   over the next pane's. The focus rings sit inside the buttons, so the cut takes none from a button it leaves whole. */
 .project-bar {
   flex: none;
   container-type: inline-size;
@@ -1371,6 +1373,7 @@ html[data-platform='darwin'] .setup-titlebar {
   gap: 8px;
   min-width: 0;
   padding: 6px 12px 4px 8px;
+  overflow-x: clip;
 }
 
 /* The first pane's starts right after the window's part of the row, the projects list on or off. */
