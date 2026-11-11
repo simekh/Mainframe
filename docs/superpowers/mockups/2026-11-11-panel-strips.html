@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mainframe: a top row, and panels that fold into strips</title>
+<style>
+  :root {
+    --bg: #080c10; --bg-elevated: #161e26; --island: #10161c; --island-border: #29343d; --container: #0e141a; --terminal: #13191f;
+    --border: #394752; --hover: #1b252f;
+    --fg: #f0f4f7; --fg-muted: #c5ced7; --fg-subtle: #a0afbd;
+    --accent: #67d9ed; --warning: #dfba83; --success: #98c9ae; --project: #8fbddd;
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Sora', var(--font-ui);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px 60px; background: #05080b; color: var(--fg); font: 13px/1.4 var(--font-ui); -webkit-font-smoothing: antialiased; }
+  h1 { font: 600 20px/1.3 var(--font-display); margin: 0 0 6px; }
+  .lede { color: var(--fg-muted); margin: 0 0 22px; max-width: 1100px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 28px; max-width: 1500px; }
+  .step { font: 600 13px var(--font-display); color: var(--fg-muted); margin: 0 0 8px; }
+  .step span { color: var(--accent); }
+  .cap { font-size: 12px; color: var(--fg-subtle); margin: 8px 0 0; }
+  .cap b { color: var(--fg-muted); font-weight: 500; }
+
+  .win { position: relative; display: flex; flex-direction: column; height: 290px; border-radius: 12px; overflow: hidden; border: 1px solid var(--island-border);
+    background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 40%), var(--bg); font-size: 10px; color: var(--fg-muted); }
+
+  /* The top row: the window's end (window buttons, Projects), then each project's buttons above its pane. */
+  .top { flex: none; height: 36px; display: flex; align-items: center; padding: 0 8px; }
+  .lights { flex: none; display: flex; gap: 6px; margin-right: 12px; }
+  .lights i { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .seg { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; }
+  .seg + .seg { padding-left: 10px; }
+  .tg { position: relative; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; font-size: 9px; line-height: 11px; color: var(--fg-subtle); }
+  .tg svg { width: 11px; height: 11px; }
+  .tg.on { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .tg .n { font-size: 7.5px; color: var(--bg); background: var(--warning); border-radius: 6px; padding: 0 3px; line-height: 10px; }
+  .tg .glyph { width: 6px; height: 6px; }
+  .sep { width: 1px; height: 16px; background: var(--border); margin: 0 5px; flex: none; }
+  .proj { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--fg); }
+  .proj i { width: 2px; height: 11px; background: var(--project); border-radius: 1px; }
+  .chip { border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-size: 9px; line-height: 11px; color: var(--fg-subtle); }
+  .kbd { margin-left: auto; font-size: 9px; color: var(--fg-subtle); }
+  .kbd span { border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; margin-right: 2px; font-size: 8px; }
+
+  .body { flex: 1; min-height: 0; display: flex; gap: 7px; padding: 0 7px 7px; }
+  .pane { position: relative; flex: 1; min-width: 0; display: flex; gap: 7px; }
+  .isl { position: relative; flex: none; display: flex; flex-direction: column; background: var(--container); border: 1px solid var(--island-border); border-radius: 10px; padding: 7px 8px; min-width: 0; }
+  .rail { width: 128px; } .todo { width: 116px; } .mgr { width: 136px; } .sess { width: 170px; }
+  .hd { display: flex; align-items: center; gap: 4px; height: 18px; margin-bottom: 6px; font: 600 11px var(--font-display); color: var(--fg); white-space: nowrap; }
+  .hd .t { overflow: hidden; text-overflow: ellipsis; }
+  .hd .sp { flex: 1; }
+  .ib { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; color: var(--fg-subtle); font: 400 10px var(--font-ui); flex: none; }
+  .ib svg { width: 10px; height: 10px; }
+  .ib.pin { color: var(--accent); }
+  .hl { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 80%, transparent); border-radius: 6px; }
+  .it { display: flex; align-items: center; gap: 5px; padding: 4px 5px; border-radius: 5px; font-size: 9.5px; }
+  .it.on { background: var(--hover); color: var(--fg); }
+  .it i { width: 2px; height: 10px; background: var(--project); border-radius: 1px; }
+  .it .n { margin-left: auto; font-size: 8px; color: var(--bg); background: var(--warning); border-radius: 6px; padding: 0 4px; }
+  .open { margin-top: auto; font-size: 9px; color: var(--fg-subtle); padding: 4px 5px; }
+  .tcard { height: 24px; background: #131b22; border-radius: 5px; margin-bottom: 5px; }
+  .well { flex: 1; background: var(--terminal); border-radius: 6px; padding: 6px; }
+  .line { height: 4px; background: var(--hover); border-radius: 2px; margin: 5px 0; } .line.s { width: 55%; } .line.m { width: 80%; }
+  .board { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 3px; }
+  .lanes { flex: 1; display: flex; gap: 9px; padding-top: 6px; min-width: 0; }
+  .lane { flex: 1 1 0; min-width: 0; max-width: 140px; display: flex; flex-direction: column; gap: 5px; }
+  .lane b { font-weight: 500; font-size: 9px; color: var(--fg-muted); margin-bottom: 2px; }
+  .card { height: 30px; background: var(--island); border: 1px solid #1f2930; border-radius: 6px; }
+  .card.sel { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .strip { position: relative; flex: none; width: 22px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
+    background: var(--container); border: 1px solid var(--island-border); border-radius: 9px; color: var(--fg-muted); }
+  .strip .ch { font-size: 11px; line-height: 1; color: var(--fg-subtle); }
+  .strip .v { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 180px; }
+  .strip.r .v { transform: none; }
+  .strip .n { font-size: 7.5px; color: var(--bg); background: var(--warning); border-radius: 6px; padding: 1px 3px; line-height: 1; }
+  .glyph { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--warning); flex: none; }
+  .glyph.fill { background: var(--warning); }
+  .glyph.ok { border-color: var(--success); }
+  .float { position: absolute; top: 0; bottom: 0; z-index: 4; box-shadow: 24px 0 60px rgba(0,0,0,.6); }
+  .gridbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 22px 1fr 1fr; grid-template-rows: 1fr auto 1fr; gap: 7px; padding: 0 7px 7px; }
+  .prow { display: flex; align-items: center; gap: 5px; height: 26px; white-space: nowrap; overflow: hidden; }
+</style>
+</head>
+<body>
+<h1>A top row, and panels that fold into strips</h1>
+<p class="lede">Approved design, 2026-11-11. One row along the window's top holds the window buttons, then Projects, Todo and Manager in the panels' order, then the project's name and actions. Every panel and strip starts below it. A row button turns its panel on or off; the « or » in a panel's header folds it into a labelled strip in its own place, and the strip opens it again. Cards and terminals are made up; cyan rings mark what each step is about.</p>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-proj" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 2.75v10.5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-todo" viewBox="0 0 16 16"><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.75 4.5h.01M2.75 8h.01M2.75 11.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-mgr" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 3v10" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-cols" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.75v10.5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.75v10.5M1.75 8h12.5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M10.5 1.5 14.5 5.5 11.8 6.6 9.2 9.2 9.6 12.4 8.5 13.5 2.5 7.5 3.6 6.4 6.8 6.8 9.4 4.2Z M5.5 10.5 1.8 14.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+</defs></svg>
+
+<div class="grid">
+
+  <section>
+    <p class="step"><span>1</span> Everything out</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on hl"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg on hl"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg on hl"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span><span class="kbd"><span>Ctrl</span><span>Tab</span> Next that needs you</span></div>
+      </div>
+      <div class="body">
+        <div class="isl rail"><div class="hd"><span class="t">Projects</span><span class="sp"></span><span class="ib"><svg><use href="#i-cols"/></svg></span><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="ib hl">«</span></div><div class="it on"><i></i>Word2</div><div class="it"><i></i>Damela<span class="n">2</span></div><div class="open">+ Open project</div></div>
+        <div class="pane">
+          <div class="isl todo"><div class="hd"><span class="t">Todo</span><span class="sp"></span><span class="ib hl">«</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="tcard"></div><div class="tcard"></div><div class="tcard"></div><div class="tcard"></div></div>
+          <div class="isl mgr"><div class="hd"><span class="glyph"></span><span class="t">Manager</span><span class="sp"></span><span class="ib hl">«</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line s"></div><div class="line m"></div></div></div>
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div><div class="card"></div></div></div></div>
+          <div class="isl sess"><div class="hd"><span class="glyph ok"></span><span class="t">Fix login bug</span><span class="sp"></span><span class="ib hl">»</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line m"></div><div class="line s"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>The row buttons sit together in the panels' order.</b> Each panel has a fold button in its header; the projects list's header also holds the two layout buttons.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>2</span> Todo folded</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg on hl"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg on"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span><span class="kbd"><span>Ctrl</span><span>Tab</span> Next that needs you</span></div>
+      </div>
+      <div class="body">
+        <div class="isl rail"><div class="hd"><span class="t">Projects</span><span class="sp"></span><span class="ib"><svg><use href="#i-cols"/></svg></span><span class="ib"><svg><use href="#i-grid"/></svg></span><span class="ib">«</span></div><div class="it on"><i></i>Word2</div><div class="it"><i></i>Damela<span class="n">2</span></div><div class="open">+ Open project</div></div>
+        <div class="pane">
+          <div class="strip hl"><span class="ch">›</span><span class="v">Todo</span></div>
+          <div class="isl mgr"><div class="hd"><span class="glyph"></span><span class="t">Manager</span><span class="sp"></span><span class="ib">«</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line s"></div><div class="line m"></div></div></div>
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div><div class="card"></div></div></div></div>
+          <div class="isl sess"><div class="hd"><span class="glyph ok"></span><span class="t">Fix login bug</span><span class="sp"></span><span class="ib">»</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line m"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Folded is still on:</b> Todo's button stays lit, and its strip stays where the panel was. Click anywhere on the strip to open it.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>3</span> Projects folded, Todo off, Manager folded</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg hl"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg on"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span><span class="kbd"><span>Ctrl</span><span>Tab</span> Next that needs you</span></div>
+      </div>
+      <div class="body">
+        <div class="strip hl"><span class="ch">›</span><span class="n">2</span><span class="v">Projects</span></div>
+        <div class="pane">
+          <div class="strip hl"><span class="ch">›</span><span class="glyph fill"></span><span class="v">Manager</span></div>
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div><div class="card"></div></div><div class="lane"><b>Done</b><div class="card"></div></div></div></div>
+          <div class="isl sess"><div class="hd"><span class="glyph ok"></span><span class="t">Fix login bug</span><span class="sp"></span><span class="ib">»</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line m"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Off leaves nothing behind:</b> Todo's button is unlit and it has no strip. The Projects strip counts the sessions that need you in projects off screen; the manager's strip shows it waits for you.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>4</span> A floating panel comes out of its strip</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg on"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span><span class="kbd"><span>Ctrl</span><span>Tab</span> Next that needs you</span></div>
+      </div>
+      <div class="body">
+        <div class="strip"><span class="ch">›</span><span class="n">2</span><span class="v">Projects</span></div>
+        <div class="pane">
+          <div class="strip"><span class="ch">›</span><span class="glyph"></span><span class="v">Manager</span></div>
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div><div class="card"></div></div><div class="lane"><b>Done</b><div class="card"></div></div></div></div>
+          <div class="isl mgr float hl" style="left:29px"><div class="hd"><span class="glyph"></span><span class="t">Manager</span><span class="sp"></span><span class="ib">«</span><span class="ib"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line s"></div><div class="line m"></div></div></div>
+          <div class="isl sess"><div class="hd"><span class="glyph ok"></span><span class="t">Fix login bug</span><span class="sp"></span><span class="ib">»</span><span class="ib pin"><svg><use href="#i-pin"/></svg></span></div><div class="well"><div class="line"></div><div class="line m"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Unpinned, the panel slides out over the board beside its strip.</b> A click on the board, or its fold button, puts it back into the strip. It doesn't turn off.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>5</span> Most room</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg hl"><svg><use href="#i-proj"/></svg>Projects<span class="n">2</span></span><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg hl"><svg><use href="#i-mgr"/></svg>Manager<span class="glyph fill"></span></span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span><span class="kbd"><span>Ctrl</span><span>Tab</span> Next that needs you</span></div>
+      </div>
+      <div class="body">
+        <div class="pane">
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div><div class="card"></div></div><div class="lane"><b>Done</b><div class="card"></div></div><div class="lane"><b>Closed</b><div class="card"></div></div></div></div>
+          <div class="strip r hl"><span class="ch">‹</span><span class="glyph ok"></span><span class="v">Fix login bug</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Projects, Todo and Manager off, the session panel folded.</b> An off button still shows what matters: Projects its count, Manager its state. The session panel has no row button: it folds, pinned or not, and its strip names the selected session.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>6</span> Two projects side by side</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg on"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span></div>
+        <div class="seg hl"><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Damela</span><span class="chip">+ New task</span></div>
+      </div>
+      <div class="body">
+        <div class="strip"><span class="ch">›</span><span class="v">Projects</span></div>
+        <div class="pane">
+          <div class="strip"><span class="ch">›</span><span class="glyph fill"></span><span class="v">Manager</span></div>
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card sel"></div></div><div class="lane"><b>Working</b><div class="card"></div></div></div></div>
+          <div class="strip r"><span class="ch">‹</span><span class="glyph ok"></span><span class="v">Fix login bug</span></div>
+        </div>
+        <div class="pane">
+          <div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card"></div><div class="card"></div></div><div class="lane"><b>Working</b><div class="card"></div></div></div></div>
+          <div class="strip r"><span class="ch">‹</span><span class="glyph"></span><span class="v">Session</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>Each project's buttons sit above its own pane,</b> so its Todo and Manager act on the project beneath them. Projects appears once. Both projects are on screen, so its strip has no count.</p>
+  </section>
+
+  <section>
+    <p class="step"><span>7</span> Three projects in a grid</p>
+    <div class="win">
+      <div class="top"><span class="lights"><i></i><i></i><i></i></span>
+        <div class="seg"><span class="tg on"><svg><use href="#i-proj"/></svg>Projects</span><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Word2</span><span class="chip">+ New task</span></div>
+        <div class="seg"><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>Damela</span><span class="chip">+ New task</span></div>
+      </div>
+      <div class="gridbody">
+        <div class="strip" style="grid-row:1 / 4"><span class="ch">›</span><span class="v">Projects</span></div>
+        <div class="pane"><div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card"></div></div><div class="lane"><b>Working</b><div class="card"></div></div></div></div><div class="strip r"><span class="ch">‹</span><span class="glyph ok"></span><span class="v">Session</span></div></div>
+        <div class="pane"><div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card"></div></div><div class="lane"><b>Working</b><div class="card"></div></div></div></div><div class="strip r"><span class="ch">‹</span><span class="glyph"></span><span class="v">Session</span></div></div>
+        <div class="prow hl" style="grid-column:2"><span class="tg"><svg><use href="#i-todo"/></svg>Todo</span><span class="tg"><svg><use href="#i-mgr"/></svg>Manager</span><span class="sep"></span><span class="proj"><i></i>SmasHit</span><span class="chip">+ New task</span></div>
+        <div style="grid-column:3"></div>
+        <div class="pane" style="grid-column:2"><div class="board"><div class="lanes"><div class="lane"><b>Needs you</b><div class="card"></div></div><div class="lane"><b>Working</b><div class="card"></div></div></div></div><div class="strip r"><span class="ch">‹</span><span class="glyph"></span><span class="v">Session</span></div></div>
+      </div>
+    </div>
+    <p class="cap"><b>A project in the grid's lower row has its buttons in a row of its own at its top,</b> the same height, so every project's buttons are above its own panels.</p>
+  </section>
+
+</div>
+</body>
+</html>
