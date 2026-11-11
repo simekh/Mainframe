@@ -87,7 +87,11 @@ export async function loadProjects(): Promise<void> {
 }
 
 export const toggleBesideProject = (dir: string) => setLayout(toggleBeside(store.layout, dir));
-/** Turns the project's manager off, or on: then open, never as a strip, whether or not it was folded when it went off. */
+/**
+ * The Manager button's rule: turns the project's manager off, or on, and then open, never as a strip, whether or not it
+ * was folded when it went off. When the layout turns it off and on, as the project goes beside others and back, it
+ * comes back as it was left, open or folded.
+ */
 export function toggleManagerOf(dir: string): void {
   batch(() => {
     if (!isManagerShown(dir)) setManagerOpen(dir, true);
