@@ -1,6 +1,6 @@
 import { createSignal, Show, type JSX } from 'solid-js';
 import { useProject } from '../projects/projectContext';
-import { clampWidth, stripShows, type PanelPrefs } from './panelPrefs';
+import { clampWidth, type PanelPrefs } from './panelPrefs';
 import PanelStrip, { createFoldHandOff, FoldButton } from './PanelStrip';
 import PinIcon from './PinIcon';
 import ResizeEdge from './ResizeEdge';
@@ -101,8 +101,8 @@ export default function SidePanel(props: {
         </Show>
       </aside>
 
-      {/* After the panel: laid out at the pane's right edge. */}
-      <Show when={stripShows(props.open ? 'open' : 'folded', props.prefs.pinned)}>
+      {/* After the panel: laid out at the pane's right edge, while it is folded or floats. */}
+      <Show when={!props.open || !props.prefs.pinned}>
         <PanelStrip
           name={props.stripName}
           label={`Show ${props.stripName}`}

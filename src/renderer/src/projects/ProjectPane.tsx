@@ -272,7 +272,7 @@ export default function ProjectPane(props: {
             canPin={canPinPanel()}
             // Its own strip counts only while it floats: pinned, a fold keeps its width.
             besideWidth={besideWidth() + (panelPrefs().pinned ? 0 : STRIP_WIDTH)}
-            open={panelState(true, tasks().panelOpen, panelPrefs().pinned) === 'open'}
+            open={tasks().panelOpen ?? panelPrefs().pinned}
             onOpenChange={(open) => setPanelOpen(dir, open)}
             stripName={selected()?.title ?? 'Session'}
             badge={
