@@ -510,7 +510,6 @@ export default function TodoPanel(props: {
           )}
         </Show>
 
-        {/* Last in the panel, so macOS carves it out of the title bar's drag region. */}
         <ResizeEdge
           width={props.width}
           onDrag={props.onDrag}

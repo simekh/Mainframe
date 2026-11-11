@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  columnsOf,
   DEFAULT_LAYOUT,
   dragDivider,
   fitLayout,
   focusOn,
   growOf,
   loadLayout,
+  panePlace,
   saveLayout,
   toggleBeside,
   toggleManager,
@@ -106,6 +108,43 @@ describe('dragDivider', () => {
 
   it('changes only the two panes beside the divider', () => {
     expect(dragDivider([1, 1, 1], 1, -50, 900, 100)).toEqual([1, 0.8333, 1.1667]);
+  });
+});
+
+describe('columnsOf', () => {
+  const grid = (n: number) => layout({ shown: ['/a', '/b', '/c', '/d', '/e'].slice(0, n), arrangement: 'grid' });
+
+  it('counts each project on screen as a column side by side', () => {
+    expect(columnsOf(layout({ shown: ['/a', '/b', '/c'] }))).toBe(3);
+  });
+
+  it("gives the grid the square root's columns, rounded up", () => {
+    expect([1, 3, 4, 5].map((n) => columnsOf(grid(n)))).toEqual([1, 2, 2, 3]);
+  });
+});
+
+describe('panePlace', () => {
+  const none = { first: false, top: false, last: false };
+
+  it('puts every project side by side in the top row, the first at its start and the last at its end', () => {
+    const three = layout({ shown: ['/a', '/b', '/c'] });
+    expect(panePlace(three, '/a')).toEqual({ first: true, top: true, last: false });
+    expect(panePlace(three, '/b')).toEqual({ first: false, top: true, last: false });
+    expect(panePlace(three, '/c')).toEqual({ first: false, top: true, last: true });
+  });
+
+  it("ends the window's top row with the grid's top row, whose last is not the last on screen", () => {
+    const three = layout({ shown: ['/a', '/b', '/c'], arrangement: 'grid' });
+    expect(panePlace(three, '/b')).toEqual({ first: false, top: true, last: true });
+    expect(panePlace(three, '/c')).toEqual(none);
+    const five = layout({ shown: ['/a', '/b', '/c', '/d', '/e'], arrangement: 'grid' });
+    expect(panePlace(five, '/c').last).toBe(true);
+    expect(panePlace(five, '/d')).toEqual(none);
+  });
+
+  it('is first, top and last alone on screen, and none of them off screen', () => {
+    expect(panePlace(layout({ shown: ['/a'] }), '/a')).toEqual({ first: true, top: true, last: true });
+    expect(panePlace(layout({ shown: ['/a'] }), '/b')).toEqual(none);
   });
 });
 

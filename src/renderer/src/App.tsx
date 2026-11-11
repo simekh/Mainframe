@@ -1,10 +1,11 @@
 import type { Terminal } from '@xterm/xterm';
-import { createResource, Match, onCleanup, Switch } from 'solid-js';
+import { createResource, createSignal, Match, onCleanup, Switch } from 'solid-js';
 import { installBoardShortcuts } from './board/shortcuts';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
-import { closeFocusedPane, focusProject, jump, openProject, projectsStore } from './projects/projectsStore';
+import { closeFocusedPane, focusProject, jump, openProject, projectsStore, railState } from './projects/projectsStore';
+import TopRow from './projects/TopRow';
 import SetupScreen from './setup/SetupScreen';
 import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
@@ -107,10 +108,14 @@ export default function App() {
     ),
   );
 
+  // Where the window's part of the top row ends: the first pane's bar starts there.
+  const [rowStart, setRowStart] = createSignal(0);
+
   return (
-    <div class="app">
+    <div class="app" data-rail={railState()} style={{ '--row-start': `${rowStart()}px` }}>
       <Switch>
         <Match when={setupView() === null}>
+          <TopRow onStartWidth={setRowStart} />
           <ProjectRail />
           <Panes config={config()} />
         </Match>

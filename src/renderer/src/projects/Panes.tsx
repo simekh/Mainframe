@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
 import ResizeEdge from '../panel/ResizeEdge';
-import { dragDivider, growOf, paneWeight } from './layout';
+import { columnsOf, dragDivider, growOf, panePlace, paneWeight } from './layout';
 import ProjectPane from './ProjectPane';
 import { openProject, projectsStore, setLayout } from './projectsStore';
 
@@ -23,7 +23,6 @@ export default function Panes(props: { config: RendererConfig | undefined }) {
   });
   const layout = () => projectsStore.layout;
   const grid = () => layout().arrangement === 'grid' && layout().shown.length > 1;
-  const gridColumns = () => Math.ceil(Math.sqrt(layout().shown.length));
 
   const paneStyle = (dir: string): JSX.CSSProperties => {
     const at = layout().shown.indexOf(dir);
@@ -66,13 +65,14 @@ export default function Panes(props: { config: RendererConfig | undefined }) {
       data-testid="panes"
       ref={root}
       data-arrangement={grid() ? 'grid' : 'columns'}
-      style={grid() ? { 'grid-template-columns': `repeat(${gridColumns()}, minmax(0, 1fr))` } : undefined}
+      style={grid() ? { 'grid-template-columns': `repeat(${columnsOf(layout())}, minmax(0, 1fr))` } : undefined}
     >
       <For each={projectsStore.projects}>
         {(project) => (
           <ProjectPane
             project={project}
             config={props.config}
+            place={panePlace(layout(), project.dir)}
             style={paneStyle(project.dir)}
           />
         )}

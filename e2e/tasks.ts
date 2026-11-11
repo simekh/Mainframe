@@ -78,11 +78,33 @@ export const projectPane = (page: Page, dir: string) =>
 export const railRow = (page: Page, dir: string) =>
   page.locator(`[data-testid=rail-project][data-project=${JSON.stringify(dir)}]`);
 
+/** A row's own button in the list of open projects: the row's buttons show while the pointer is on it. */
+export async function rowButton(page: Page, dir: string, testId: string): Promise<Locator> {
+  await railRow(page, dir).hover();
+  return railRow(page, dir).getByTestId(testId);
+}
+
+/** Takes the focused project's pane off screen: Cmd+W on the Mac, Ctrl+Shift+W on Windows and Linux. */
+export const closePaneKey = process.platform === 'darwin' ? 'Meta+w' : 'Control+Shift+W';
+
+/** Starts a task in the project through the bridge, on screen or not; resolves with its id once its prompt shows. */
+export async function startIn(page: Page, dir: string, title: string): Promise<string> {
+  const task = await page.evaluate(
+    ([d, t]) => window.mainframe.startTask(d, { title: t, description: '', noQuestions: false }),
+    [dir, title] as const,
+  );
+  await expect.poll(() => screen(page, task.id)).toContain('$');
+  return task.id;
+}
+
 /** Two frames: a layout change has been measured and any fit it caused has run. */
 export const settled = (page: Page) =>
   page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
 
 export const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
+
+/** The row along the window's top: every panel and strip starts under it. */
+export const ROW_HEIGHT = 46;
 
 /** Whether `locator` is what shows at its own centre, not something laid over it. */
 export const isOnTop = (locator: Locator) =>

@@ -56,8 +56,8 @@ function createWindow(e2e: boolean): BrowserWindow {
     // macOS only: in an e2e run the window may be larger than the runner's screen (MAINFRAME_E2E=1).
     enableLargerThanScreen: e2e,
     backgroundColor: APP_BACKGROUND,
-    // On the Mac the window buttons sit in the manager's column, which runs to the top edge as the panel
-    // does. Windows and Linux keep the system's own title bar, with its buttons.
+    // On the Mac the window buttons sit at the left of the page's top row, which is the window's title bar.
+    // Windows and Linux keep the system's own title bar, with its buttons.
     titleBarStyle: onMac ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

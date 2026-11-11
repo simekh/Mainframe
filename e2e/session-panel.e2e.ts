@@ -236,48 +236,23 @@ async function box(locator: Locator) {
   return b!;
 }
 
-// CDP clicks skip native drag regions, so this pins the styles; Task 10 checks them with a real mouse.
-test('the title bar drags the window on the Mac and not elsewhere, and its title, buttons and the pin take clicks', async () => {
+test('the title bar is no drag region, and its title, actions, fold button and pin sit in one row', async () => {
   const { app, page } = await launchApp();
   await startTask(page, 'Fix login');
-  const bar = page.locator('.p-title-bar');
-  const pin = page.getByTestId('panel-pin');
-  const title = page.getByTestId('panel-title');
-  const close = page.getByTestId('close-session');
+  // The top row is the window's title bar now, on the Mac too.
+  expect(await appRegion(page.locator('.p-title-bar'))).not.toBe('drag');
+  await page.getByTestId('close-session').click();
 
-  // The empty space between the title and Close session is the bar itself.
-  const t = await box(title);
-  const c = await box(close);
-  const empty = { x: (t.x + t.width + c.x) / 2, y: c.y + c.height / 2 };
-  expect(c.x - (t.x + t.width)).toBeGreaterThan(20);
-  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.classList.contains('p-title-bar'), empty)).toBe(
-    true,
-  );
-  // A drag region on the Mac only; elsewhere it inherits the panel's no-drag.
-  expect(await appRegion(bar)).toBe(process.platform === 'darwin' ? 'drag' : 'no-drag');
-  for (const el of [title, page.getByTestId('side-panel').getByTestId('task-glyph'), close, pin]) {
-    expect(await appRegion(el)).toBe('no-drag');
-  }
-  await close.click();
-  expect(await appRegion(page.getByTestId('panel-reopen'))).toBe('no-drag');
-
-  // The pin and the resize handle come first in the panel, so a drag box over them would take their clicks.
-  const b = await box(bar);
-  const p = await box(pin);
-  const overlaps = (o: { x: number; y: number; width: number; height: number }) =>
-    b.x < o.x + o.width && o.x < b.x + b.width && b.y < o.y + o.height && o.y < b.y + b.height;
-  expect(overlaps(p)).toBe(false);
-  expect(overlaps(await box(page.getByTestId('panel-resize')))).toBe(false);
-  // The title row still lines up with the project and branch row under it, 16px in.
+  // The title row lines up with the project and branch row under it, 16px in.
   const glyph = await box(page.getByTestId('side-panel').getByTestId('task-glyph'));
   expect(Math.round(glyph.x)).toBe(Math.round((await box(page.getByTestId('panel-project'))).x));
   // The actions sit just left of the fold button, and it just left of the pin, in one row with it.
   const r = await box(page.getByTestId('panel-reopen'));
   const f = await box(page.getByTestId('panel-fold'));
-  expect(overlaps(f)).toBe(false);
+  const p = await box(page.getByTestId('panel-pin'));
   expect(Math.round(f.x - (r.x + r.width))).toBe(6);
   expect(Math.round(p.x - (f.x + f.width))).toBe(6);
-  expect(Math.round(r.y + r.height / 2)).toBe(Math.round(p.y + p.height / 2));
+  expect(Math.round(r.y + r.height / 2)).toBe(Math.round(f.y + f.height / 2));
   expect(Math.round(f.y + f.height / 2)).toBe(Math.round(p.y + p.height / 2));
   await app.close();
 });

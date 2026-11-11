@@ -35,9 +35,10 @@ test('the window follows its system: the Mac keeps its menu and the room for its
     expect(bar).toEqual({ appMenu: false, menuBarVisible: false });
   }
   await expect(page.locator('html')).toHaveAttribute('data-platform', process.platform);
-  await expect(page.locator('.rail-titlebar')).toHaveCSS('padding-left', onMac ? '80px' : '0px');
+  // The top row's start leaves the window buttons their room on the Mac, and the frame's 8 px elsewhere.
+  await expect(page.locator('.top-start')).toHaveCSS('padding-left', onMac ? '80px' : '8px');
   // Windows still drags a framed window by a page's drag region, so the page has them on the Mac only.
-  await expect(page.locator('.topbar')).toHaveCSS('-webkit-app-region', onMac ? 'drag' : 'none');
+  await expect(page.locator('.top-row')).toHaveCSS('-webkit-app-region', onMac ? 'drag' : 'none');
   await app.close();
 });
 

@@ -367,7 +367,7 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   const under = await box(page, 'manager-column');
   expect(floating.x).toBeLessThan(under.x + under.width);
   expect(under.x).toBeLessThan(floating.x + floating.width);
-  // From that column's top, which the board's top bar doesn't reach, its tab on the manager's title line.
+  // From that column's top, under the top row, its tab on the manager's title line.
   expect(Math.abs(floating.y - under.y)).toBeLessThanOrEqual(1);
   expect(await isOnTop(panel)).toBe(true);
 
@@ -424,11 +424,8 @@ test('the Todo button turns the panel off, from open or folded, leaving no strip
   const toggle = page.getByTestId('todo-toggle');
   const strip = page.getByTestId('todo-strip');
   const ticket = page.getByTestId('ticket-panel');
-  // With the manager folded, the floating panel and its ticket sit under the board's top bar, whose Todo button stays
-  // in reach: beside the open pinned manager they start at the island's top, and the ticket covers the button.
-  await page.getByTestId('manager-fold').click();
 
-  // On, it opens floating, so its strip shows beside it.
+  // On, it opens floating over the pinned manager, so its strip shows beside it.
   await toggle.click();
   await expect(panel).toHaveAttribute('data-pinned', 'false');
   await expect(panel).toHaveAttribute('data-open', 'true');
@@ -479,6 +476,8 @@ test("a strip whose panel is off leaves no gap, and the pinned session panel's w
   expect(Math.abs(todoStrip.x - (pane.x + 8))).toBeLessThanOrEqual(1);
   expect((await box(page, 'manager-strip')).x).toBeGreaterThanOrEqual(todoStrip.x + todoStrip.width);
   await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - 48 - 360));
+  // Out over the manager's strip, the floating panel starts under the top row as the strip does: none of it shows above.
+  expect((await box(page, 'todo-panel')).y).toBe((await box(page, 'manager-strip')).y);
 
   // Off, the Todo panel's strip goes, and the manager's moves into its place.
   await page.getByTestId('todo-toggle').click();
@@ -723,6 +722,12 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await page.getByTestId('todo-strip').click();
   await expect(page.getByTestId('todo-panel')).toBeVisible();
   await expect(ticket).toHaveCount(0);
+  await search.click();
+  await expect(ticket).toBeVisible();
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-panel')).toBeVisible();
+  await expect(ticket).toHaveCount(0);
 
   // Pinned, the Todo panel stays put when the board is pressed; the ticket goes.
   await page.getByTestId('todo-pin').click();
@@ -732,14 +737,6 @@ test('the ticket shows the whole card; Open in Tracker opens its link; Esc, ✕,
   await page.getByTestId('board').click({ position: { x: board.width - 40, y: board.height - 40 } });
   await expect(ticket).toHaveCount(0);
   await expect(page.getByTestId('todo-panel')).toBeVisible();
-  // Turned off and on again with the ticket open, it shows none. Pinned, its ticket covers the manager, not the top bar's
-  // Todo button.
-  await search.click();
-  await expect(ticket).toBeVisible();
-  await page.getByTestId('todo-toggle').click();
-  await page.getByTestId('todo-toggle').click();
-  await expect(page.getByTestId('todo-panel')).toBeVisible();
-  await expect(ticket).toHaveCount(0);
   expect(launches(dataDir)).toEqual([]);
   await app.close();
 });

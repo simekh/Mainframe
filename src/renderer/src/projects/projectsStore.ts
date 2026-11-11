@@ -1,9 +1,12 @@
-import { batch } from 'solid-js';
+import { batch, createSignal } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import type { ProjectView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { forgetManager, loadManager, managerOf } from '../manager/managerStore';
-import { focusTerminalOf, forgetTasks, jumpToNeedsYou, loadTasks, select, tasksOf, terminalOf } from '../tasksStore';
+import type { PanelState } from '../panel/panelPrefs';
+import {
+  focusTerminalOf, forgetTasks, jumpToNeedsYou, loadTasks, needsYouCount, select, tasksOf, terminalOf,
+} from '../tasksStore';
 import { getTerminal } from '../terminal/registry';
 import { forgetTodo, loadTodo } from '../todo/todoStore';
 import { fitLayout, focusOn, loadLayout, managerShown, saveLayout, toggleBeside, toggleManager, type Layout } from './layout';
@@ -28,6 +31,14 @@ export const isFocused = (dir: string) => store.layout.focused === dir;
 export const isManagerShown = (dir: string) => managerShown(store.layout, dir);
 export const managerOpenOf = (dir: string): boolean | undefined => store.managerOpen[dir];
 export const setManagerOpen = (dir: string, open: boolean) => setStore('managerOpen', dir, open);
+
+/** The projects list, the window's own: open at launch, and never saved. */
+export const [railState, setRailState] = createSignal<PanelState>('open');
+/** Projects in the top row: off, it turns the list on and open; open or folded, it turns it off. */
+export const toggleRail = () => setRailState(railState() === 'off' ? 'open' : 'off');
+/** The sessions that need the owner in the open projects off screen: what the list shows of them while it is off. */
+export const offScreenNeedsYou = () =>
+  store.projects.reduce((sum, { dir }) => sum + (isShown(dir) ? 0 : needsYouCount(dir)), 0);
 
 let changed = false;
 

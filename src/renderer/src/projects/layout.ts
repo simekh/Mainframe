@@ -76,6 +76,31 @@ export function toggleManager(layout: Layout, dir: string): Layout {
     : { ...layout, managerHidden: toggled(layout.managerHidden, dir) };
 }
 
+/** Where a pane sits on screen: first of all, in the window's top row, and last in that row. */
+export interface PanePlace {
+  first: boolean;
+  top: boolean;
+  last: boolean;
+}
+
+/** The columns the panes on screen take: in the grid, as many as its rows or one more; side by side, one each. */
+export function columnsOf(layout: Layout): number {
+  const { shown } = layout;
+  return layout.arrangement === 'grid' && shown.length > 1 ? Math.ceil(Math.sqrt(shown.length)) : shown.length;
+}
+
+/**
+ * Where the project's pane sits. The first one's bar starts right after the window's part of the top row; the bars of
+ * the panes in the window's top row are its title bar, and the last of them ends with Next that needs you. Off screen,
+ * none of them.
+ */
+export function panePlace(layout: Layout, dir: string): PanePlace {
+  const at = layout.shown.indexOf(dir);
+  if (at < 0) return { first: false, top: false, last: false };
+  const cols = columnsOf(layout);
+  return { first: at === 0, top: at < cols, last: at === Math.min(cols, layout.shown.length) - 1 };
+}
+
 /**
  * The project's flex grow among the columns on screen: its share of their weights, so the shares add up to 1. Raw
  * weights can't be the grow: a drag keeps only the sum of the two columns beside the divider, so the columns on screen

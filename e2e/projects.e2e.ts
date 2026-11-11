@@ -2,28 +2,15 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
-import { box, launches, managerLaunches, projectPane as pane, railRow as row, report, repo, screen, sendLine } from './tasks';
+import {
+  box, closePaneKey, launches, managerLaunches, projectPane as pane, railRow as row, report, repo, rowButton, screen, sendLine,
+  startIn,
+} from './tasks';
 
 test.afterEach(cleanUp);
 
 const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
 const openProjects = (dataDir: string) => JSON.parse(readFileSync(join(dataDir, 'projects.json'), 'utf8')).open;
-
-/** Starts a task in the project through the bridge, on screen or not; resolves with its id once its prompt shows. */
-async function startIn(page: Page, dir: string, title: string): Promise<string> {
-  const task = await page.evaluate(
-    ([d, t]) => window.mainframe.startTask(d, { title: t, description: '', noQuestions: false }),
-    [dir, title] as const,
-  );
-  await expect.poll(() => screen(page, task.id)).toContain('$');
-  return task.id;
-}
-
-/** A row's own buttons show while the pointer is on it. */
-async function rowButton(page: Page, dir: string, testId: string): Promise<Locator> {
-  await row(page, dir).hover();
-  return row(page, dir).getByTestId(testId);
-}
 
 test('each open project has its own board and manager; the list shows one in place of another or puts one beside it', async () => {
   const [acme, globex] = [repo(), repo()];
@@ -197,9 +184,6 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await expect(row(page, c)).toHaveAttribute('data-focused', 'true');
   await app.close();
 });
-
-/** Takes the focused project's pane off screen: Cmd+W on the Mac, Ctrl+Shift+W on Windows and Linux. */
-const closePaneKey = process.platform === 'darwin' ? 'Meta+w' : 'Control+Shift+W';
 
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];

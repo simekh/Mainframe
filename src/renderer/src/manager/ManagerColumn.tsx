@@ -139,7 +139,6 @@ export default function ManagerColumn(props: {
           </div>
         </Show>
 
-        {/* Last in the column, so macOS carves it out of the title bar's drag region. */}
         <ResizeEdge
           width={props.width}
           onDrag={props.onDrag}

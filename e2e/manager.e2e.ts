@@ -5,8 +5,8 @@ import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
   box, card, cardIn, edgesWhile, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall,
-  report, repo, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus,
-  termSize, UUID,
+  report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask,
+  terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -193,10 +193,15 @@ test('the manager never takes the focus by itself', async () => {
 
 test("the manager's terminal fits its column", async () => {
   const { app, page } = await launchApp();
-  // Right of the project list, its full height 8 px in, and 400 px wide.
+  // Right of the project list, from under the top row to 8 px above the window's bottom, and 400 px wide.
   const height = await page.evaluate(() => window.innerHeight);
   const rail = await box(page, 'project-rail');
-  expect(await box(page, 'manager-column')).toEqual({ x: rail.x + rail.width + 8, y: 8, width: 400, height: height - 16 });
+  expect(await box(page, 'manager-column')).toEqual({
+    x: rail.x + rail.width + 8,
+    y: ROW_HEIGHT,
+    width: 400,
+    height: height - ROW_HEIGHT - 8,
+  });
 
   await expect.poll(() => managerScreen(page)).toContain('$');
   await page.getByTestId('manager-column').click();
@@ -206,41 +211,16 @@ test("the manager's terminal fits its column", async () => {
   await app.close();
 });
 
-// CDP clicks skip native drag regions, so this pins the styles; the owner checks the window buttons' padding.
-test('the manager column sits left of the board, and on the Mac its top strip holds the window buttons', async () => {
+test("the manager's column sits left of the board under the top row, and its title bar is no drag region", async () => {
   const { app, page } = await launchApp();
   const column = await box(page, 'manager-column');
   expect(column.x + column.width).toBeLessThanOrEqual((await box(page, 'board')).x);
+  expect(column.y).toBe(ROW_HEIGHT);
 
-  const strip = page.getByTestId('manager-title-bar');
-  const onMac = process.platform === 'darwin';
-  // On Windows and Linux the system's title bar holds the window buttons, and the strip is no drag
-  // region: it inherits its column's no-drag, as everything in it does.
-  expect(await strip.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe(
-    onMac ? 'drag' : 'no-drag',
-  );
-  expect((await strip.boundingBox())!.height).toBe(46);
-  if (onMac) {
-    // What takes clicks over the strip: a no-drag element after it in the page, as macOS carves them
-    // out of it in that order. None starts within its first 90 px, where the window buttons are. Over
-    // it by a pixel or more: the text in the row under it reaches a tenth of one up into it.
-    const starts = await strip.evaluate((bar) => {
-      const s = bar.getBoundingClientRect();
-      return [...document.querySelectorAll('*')]
-        .filter((el) => bar.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
-        .filter((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') === 'no-drag')
-        .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.left < s.right && s.left < r.right && r.top <= s.bottom - 1 && s.top <= r.bottom - 1)
-        .map((r) => r.left - s.left);
-    });
-    expect(Math.min(...starts)).toBeGreaterThanOrEqual(90);
-  }
-
-  // The board's top bar no longer makes room for them.
-  expect(await page.locator('.topbar').evaluate((el) => getComputedStyle(el).paddingLeft)).not.toBe('90px');
-  // A drag region takes no pointer events, so the project chip is carved out of the top bar's, for its folder to show
-  // on hover.
-  expect(await page.locator('.tb-project').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
+  // The top row is the window's title bar now, on the Mac too.
+  const bar = page.getByTestId('manager-title-bar');
+  expect((await bar.boundingBox())!.height).toBe(46);
+  expect(await bar.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).not.toBe('drag');
   await app.close();
 });
 
@@ -358,14 +338,14 @@ test('unpinned, the manager floats over the board beside its strip, a press on t
   const floating = await box(page, 'manager-column');
   const s = await box(page, 'manager-strip');
   expect(floating.x).toBeGreaterThanOrEqual(s.x + s.width);
-  // Over the board, which starts under it, and under the board's top bar, whose Manager button stays in reach.
+  // Over the board, which starts under it, and under the top row, whose Manager button stays in reach.
   const board = await box(page, 'board');
   expect(board.x).toBeLessThan(floating.x + floating.width);
   expect(await isOnTop(toggle)).toBe(true);
-  // Shorter than pinned by the top bar, its terminal loses rows, never columns.
-  await expect.poll(async () => (await managerTermSize(page))!.rows).toBeLessThan(size.rows);
-  const floatingSize = (await managerTermSize(page))!;
-  expect(floatingSize.cols).toBe(size.cols);
+  // As tall as pinned, under the row as the pinned column is: its terminal keeps its size.
+  expect(floating.y).toBe(ROW_HEIGHT);
+  await settled(page);
+  expect(await managerTermSize(page)).toEqual(size);
 
   // The bottom of the board, right of the column: the manager folds into its strip and stays on.
   await page.getByTestId('board').click({ position: { x: floating.x + floating.width - board.x + 40, y: board.height - 40 } });
@@ -384,8 +364,8 @@ test('unpinned, the manager floats over the board beside its strip, a press on t
   await page.getByTestId('manager-fold').click();
   await expect(column).toBeHidden();
   await expect(strip).toBeFocused();
-  expect(await managerTermSize(page)).toEqual(floatingSize);
-  await expectSessionSize(floatingSize, (line) => sendManagerLine(page, line), () => managerScreen(page));
+  expect(await managerTermSize(page)).toEqual(size);
+  await expectSessionSize(size, (line) => sendManagerLine(page, line), () => managerScreen(page));
   await first.app.close();
 
   // The pin is the project's, kept for the next start; floating, the manager starts folded.

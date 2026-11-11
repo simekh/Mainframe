@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
-import { box, card, edgesWhile, firstSpawn, fitSize, screen, sendLine, settled, startTask, termSize } from './tasks';
+import { box, card, edgesWhile, firstSpawn, fitSize, ROW_HEIGHT, screen, sendLine, settled, startTask, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -42,9 +42,9 @@ test('the pinned panel sits beside the board', async () => {
   const board = await box(page, 'board');
   const panel = await box(page, 'side-panel');
   expect(board.x + board.width).toBeLessThanOrEqual(panel.x);
-  // The full height of the window, 8 px in: the top bar doesn't cross it.
+  // From under the top row to 8 px above the window's bottom.
   const height = await page.evaluate(() => window.innerHeight);
-  expect([panel.y, panel.y + panel.height]).toEqual([8, height - 8]);
+  expect([panel.y, panel.y + panel.height]).toEqual([ROW_HEIGHT, height - 8]);
   await app.close();
 });
 
