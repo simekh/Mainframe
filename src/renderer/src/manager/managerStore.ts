@@ -1,5 +1,7 @@
 import { createStore, produce } from 'solid-js/store';
 import type { ManagerView } from '../../../shared/types';
+import { glyphOf, stateLabel } from '../board/lanes';
+import { sessionOf } from '../tasksStore';
 import { getTerminal } from '../terminal/registry';
 
 /** One open project's manager, as its column shows it. */
@@ -13,6 +15,12 @@ export interface ProjectManager {
 const [store, setStore] = createStore<Record<string, ProjectManager>>({});
 
 export const managerOf = (dir: string): ProjectManager | undefined => store[dir];
+
+/** The manager's state, as its column, its strip and its row button show it; nothing until its first view is in. */
+export function managerStateOf(dir: string) {
+  const manager = store[dir]?.manager;
+  return manager && { glyph: glyphOf(manager, sessionOf(manager)), ...stateLabel(manager, sessionOf(manager)) };
+}
 
 /** The projects whose manager changed since its view was asked for. */
 const changed = new Set<string>();

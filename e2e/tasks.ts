@@ -91,6 +91,28 @@ export const isOnTop = (locator: Locator) =>
     return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
   });
 
+/**
+ * The island's left or right edge on every frame from now, while `act` folds or opens it, until it has stopped moving.
+ * Each is read inside the page, so no frame is missed.
+ */
+export async function edgesWhile(page: Page, testId: string, edge: 'left' | 'right', act: () => Promise<void>): Promise<number[]> {
+  type Probe = { slide: { edges: number[]; done: boolean } };
+  await page.getByTestId(testId).evaluate((el, side) => {
+    const slide: Probe['slide'] = { edges: [], done: false };
+    (window as unknown as Probe).slide = slide;
+    const from = el.getAttribute('data-open');
+    const sample = () => {
+      slide.edges.push(el.getBoundingClientRect()[side]);
+      if (el.getAttribute('data-open') === from || el.getAnimations().length > 0) requestAnimationFrame(sample);
+      else slide.done = true;
+    };
+    requestAnimationFrame(sample);
+  }, edge);
+  await act();
+  await page.waitForFunction(() => (window as unknown as Probe).slide.done);
+  return page.evaluate(() => (window as unknown as Probe).slide.edges);
+}
+
 /** Whether the focus is in the task's terminal on show, where typing goes. */
 export const terminalHasFocus = (page: Page) =>
   page.evaluate(() => document.activeElement?.closest('.well > .terminal:not(.terminal--hidden)') != null);

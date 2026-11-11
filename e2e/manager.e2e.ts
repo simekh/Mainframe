@@ -4,9 +4,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, report,
-  repo, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize,
-  UUID,
+  box, card, cardIn, edgesWhile, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall,
+  report, repo, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus,
+  termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -244,33 +244,58 @@ test('the manager column sits left of the board, and on the Mac its top strip ho
   await app.close();
 });
 
-test("the manager's arrow puts it away, and the pill at the pane's left edge brings it back", async () => {
+test("the manager's fold button folds it into a strip at its pane's left edge, the board takes its room, and the strip opens it again; the focus goes from one to the other, and Manager stays lit", async () => {
   const { app, page } = await launchApp();
+  // The slide is what the frames below follow.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect.poll(() => managerScreen(page)).toContain('$');
   const column = page.getByTestId('manager-column');
   const toggle = page.getByTestId('manager-toggle');
-  const show = page.getByTestId('manager-show');
+  const fold = page.getByTestId('manager-fold');
+  const strip = page.getByTestId('manager-strip');
   await expect(column).toHaveAttribute('data-pinned', 'true');
-  await expect(show).toBeHidden();
+  // Pinned and open, it has no strip.
+  await expect(strip).toHaveCount(0);
   const pinned = await box(page, 'manager-column');
+  const pane = await box(page, 'project-pane');
 
-  await page.getByTestId('manager-hide').click();
+  // It slides away from where it stood, never stepping right first to where a floating manager sits, and ends past
+  // the pane's edge.
+  const folding = await edgesWhile(page, 'manager-column', 'left', () => fold.click());
+  expect(folding.filter((left, i) => left > (i ? folding[i - 1] : pinned.x) + 0.5)).toEqual([]);
+  expect(folding.at(-1)! + pinned.width).toBeLessThanOrEqual(pane.x);
   await expect(column).toBeHidden();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  // Pinned, it gives its room back to the board.
-  expect((await box(page, 'board')).x).toBeLessThan(pinned.x + 100);
-  await expect(show).toBeFocused();
-  expect(Math.abs((await box(page, 'manager-show')).x - (await box(page, 'project-pane')).x)).toBeLessThanOrEqual(1);
-
-  await show.click();
-  await expect(column).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('manager-hide')).toBeFocused();
-  await expect(show).toBeHidden();
+  // Pinned, it gives its room to the board.
+  expect((await box(page, 'board')).x).toBeLessThan(pinned.x + 100);
+  await expect(strip).toBeFocused();
+  const s = await box(page, 'manager-strip');
+  expect(s.width).toBe(24);
+  expect(Math.abs(s.x - (pane.x + 8))).toBeLessThanOrEqual(1);
+
+  // From the strip it slides back in and lands where it stood, without a step at either end.
+  const opening = await edgesWhile(page, 'manager-column', 'left', () => strip.click());
+  expect(opening.filter((left, i) => i > 0 && left < opening[i - 1] - 0.5)).toEqual([]);
+  expect(opening.at(-1)!).toBeCloseTo(pinned.x, 0);
+  await expect(column).toBeVisible();
+  await expect(fold).toBeFocused();
+  await expect(strip).toHaveCount(0);
+
+  // At its narrowest the header still holds the title, the fold button and the pin, apart and on one line (spec §7).
+  const handle = page.getByTestId('manager-resize');
+  await handle.focus();
+  for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowLeft');
+  await expect(handle).toHaveAttribute('aria-valuenow', '320');
+  const [title, folder, pin] = [await box(page, 'manager-title'), await box(page, 'manager-fold'), await box(page, 'manager-pin')];
+  expect(title.x + title.width).toBeLessThan(folder.x);
+  expect(folder.x + folder.width).toBeLessThan(pin.x);
+  const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+  expect(Math.abs(middle(folder) - middle(title))).toBeLessThanOrEqual(1);
+  expect(Math.abs(middle(pin) - middle(title))).toBeLessThanOrEqual(1);
   await app.close();
 });
 
-test('unpinned, the manager floats over the board under its top bar, a press on the board puts it away, and hidden and shown, its terminal keeps its size', async () => {
+test('unpinned, the manager floats over the board beside its strip, a press on the board folds it, and its terminal keeps its size; unpinned at a restart, it starts folded', async () => {
   const first = await launchApp();
   const { page, dataDir } = first;
   // Room on the board right of the floating column.
@@ -279,48 +304,105 @@ test('unpinned, the manager floats over the board under its top bar, a press on 
   const size = (await managerTermSize(page))!;
   const column = page.getByTestId('manager-column');
   const pin = page.getByTestId('manager-pin');
+  const strip = page.getByTestId('manager-strip');
+  const toggle = page.getByTestId('manager-toggle');
 
   await pin.click();
   await expect(column).toHaveAttribute('data-pinned', 'false');
   await expect(pin).toHaveAttribute('aria-pressed', 'false');
   await expect(column).toHaveAttribute('data-open', 'true');
-  // Over the board, which starts under it, and under the board's top bar, whose Manager button stays in reach.
+  // Out beside its strip, not over it.
+  await expect(strip).toBeVisible();
   const floating = await box(page, 'manager-column');
+  const s = await box(page, 'manager-strip');
+  expect(floating.x).toBeGreaterThanOrEqual(s.x + s.width);
+  // Over the board, which starts under it, and under the board's top bar, whose Manager button stays in reach.
   const board = await box(page, 'board');
   expect(board.x).toBeLessThan(floating.x + floating.width);
-  expect(await isOnTop(page.getByTestId('manager-toggle'))).toBe(true);
+  expect(await isOnTop(toggle)).toBe(true);
   // Shorter than pinned by the top bar, its terminal loses rows, never columns.
   await expect.poll(async () => (await managerTermSize(page))!.rows).toBeLessThan(size.rows);
   const floatingSize = (await managerTermSize(page))!;
   expect(floatingSize.cols).toBe(size.cols);
 
-  // The bottom of the board, right of the column.
+  // The bottom of the board, right of the column: the manager folds into its strip and stays on.
   await page.getByTestId('board').click({ position: { x: floating.x + floating.width - board.x + 40, y: board.height - 40 } });
   await expect(column).toHaveAttribute('data-open', 'false');
   await expect(column).toBeHidden();
-  // A hidden manager that comes to need the owner shows from its way back.
-  const show = page.getByTestId('manager-show');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(strip).toBeVisible();
+  // A folded manager that comes to need the owner shows from its strip.
   await sendAfterResize((line) => sendManagerLine(page, line), report('blocked:kind=question'));
-  await expect(show.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
-  await expect(show).toHaveAccessibleName('Show manager, Needs input');
+  await expect(strip.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
+  await expect(strip).toHaveAccessibleName('Show manager, Needs input');
 
-  await show.click();
+  await strip.click();
   await expect(column).toBeVisible();
-  await expect(page.getByTestId('manager-hide')).toBeFocused();
-  const arrow = await box(page, 'manager-hide');
-  await page.getByTestId('manager-hide').click();
+  await expect(page.getByTestId('manager-fold')).toBeFocused();
+  await page.getByTestId('manager-fold').click();
   await expect(column).toBeHidden();
-  await expect(show).toBeFocused();
-  // The way back is level with the arrow that put the manager away.
-  const way = await box(page, 'manager-show');
-  expect(Math.abs(way.y + way.height / 2 - (arrow.y + arrow.height / 2))).toBeLessThanOrEqual(1);
+  await expect(strip).toBeFocused();
   expect(await managerTermSize(page)).toEqual(floatingSize);
   await expectSessionSize(floatingSize, (line) => sendManagerLine(page, line), () => managerScreen(page));
   await first.app.close();
 
-  // The pin is the project's, kept for the next start.
+  // The pin is the project's, kept for the next start; floating, the manager starts folded.
   const { app, page: again } = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
-  await expect(again.getByTestId('manager-column')).toHaveAttribute('data-pinned', 'false');
+  const columnAgain = again.getByTestId('manager-column');
+  await expect(columnAgain).toHaveAttribute('data-pinned', 'false');
+  await expect(columnAgain).toHaveAttribute('data-open', 'false');
+  await expect(again.getByTestId('manager-strip')).toBeVisible();
+  await app.close();
+});
+
+test('the Manager button turns the manager off and on: off leaves no strip and the button shows its state; on opens it fully, even from folded; the focus in it goes to the button', async () => {
+  const { app, page } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const column = page.getByTestId('manager-column');
+  const strip = page.getByTestId('manager-strip');
+  const toggle = page.getByTestId('manager-toggle');
+
+  await page.getByTestId('manager-fold').click();
+  await expect(strip).toBeFocused();
+  await toggle.click();
+  await expect(column).toBeHidden();
+  await expect(strip).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  // The strip had the focus: it goes to the button, not nowhere.
+  await expect(toggle).toBeFocused();
+  // An off manager that comes to need the owner shows from its button.
+  await sendManagerLine(page, report('blocked:kind=question'));
+  await expect(toggle.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'ask');
+
+  // On, it opens fully, though it was folded when it went off.
+  await toggle.click();
+  await expect(column).toHaveAttribute('data-open', 'true');
+  await expect(column).toBeVisible();
+  await expect(strip).toHaveCount(0);
+  await expect(toggle.getByTestId('task-glyph')).toHaveCount(0);
+
+  // Off with the cursor in its terminal, the manager hands the focus to its button.
+  await column.click();
+  expect(await focusInManager(page)).toBe(true);
+  await toggle.click();
+  await expect(column).toBeHidden();
+  await expect(toggle).toBeFocused();
+  expect(await focusInManager(page)).toBe(false);
+  await app.close();
+});
+
+// Review Focus 5.
+test('Cmd+1 (Ctrl+1 on Windows and Linux) opens a folded manager and puts the cursor in its terminal', async () => {
+  const { app, page } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const column = page.getByTestId('manager-column');
+
+  // No task: the cursor goes to the manager.
+  await page.getByTestId('manager-fold').click();
+  await expect(column).toBeHidden();
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(column).toHaveAttribute('data-open', 'true');
+  await expect.poll(() => focusInManagerTerminal(page)).toBe(true);
   await app.close();
 });
 
@@ -404,8 +486,7 @@ test("dragging the manager's edge resizes it, keeps the width, and its terminal 
   const handle = page.getByTestId('manager-resize');
   const edge = await box(page, 'manager-resize');
   const x = edge.x + edge.width / 2;
-  // Above the hide pill, which sits on the edge's middle.
-  const y = edge.y + edge.height / 4;
+  const y = edge.y + edge.height / 2;
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + 80, y, { steps: 8 });

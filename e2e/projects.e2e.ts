@@ -133,15 +133,18 @@ test('a project off screen shows how many of its sessions need you, and Ctrl+Tab
   await app.close();
 });
 
-test('the way back to a manager put away shows on screen only', async () => {
+test('beside others, each manager starts off and leaves no strip', async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page } = await launchApp({}, [a, b, c]);
   await (await rowButton(page, b, 'rail-beside')).click();
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
   await expect(pane(page, c)).toHaveAttribute('data-shown', 'false');
-  // Beside others, every manager starts put away, the one off screen too.
-  await expect(pane(page, a).getByTestId('manager-show')).toBeVisible();
-  await expect(pane(page, b).getByTestId('manager-show')).toBeVisible();
-  await expect(pane(page, c).getByTestId('manager-show')).toBeHidden();
+  // The one off screen too.
+  for (const dir of [a, b, c]) {
+    await expect(pane(page, dir).getByTestId('manager-strip')).toHaveCount(0);
+    await expect(pane(page, dir).getByTestId('manager-column')).toBeHidden();
+  }
+  await expect(pane(page, a).getByTestId('manager-toggle')).toHaveAttribute('aria-pressed', 'false');
   await app.close();
 });
 

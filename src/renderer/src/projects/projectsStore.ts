@@ -1,5 +1,5 @@
 import { batch } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
+import { createStore, produce, reconcile } from 'solid-js/store';
 import type { ProjectView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { forgetManager, loadManager, managerOf } from '../manager/managerStore';
@@ -14,13 +14,20 @@ const [store, setStore] = createStore<{
   /** Whether the first list has come in, so the window never shows "no project" before it has asked. */
   loaded: boolean;
   layout: Layout;
-}>({ projects: [], loaded: false, layout: loadLayout(localStorage) });
+  /**
+   * Whether each project's manager, while on, is open or folded into its strip; never saved. A project is missing
+   * until the owner first folds or opens it, and its manager is then as its pin shows it.
+   */
+  managerOpen: Record<string, boolean>;
+}>({ projects: [], loaded: false, layout: loadLayout(localStorage), managerOpen: {} });
 
 export const projectsStore = store;
 
 export const isShown = (dir: string) => store.layout.shown.includes(dir);
 export const isFocused = (dir: string) => store.layout.focused === dir;
 export const isManagerShown = (dir: string) => managerShown(store.layout, dir);
+export const managerOpenOf = (dir: string): boolean | undefined => store.managerOpen[dir];
+export const setManagerOpen = (dir: string, open: boolean) => setStore('managerOpen', dir, open);
 
 let changed = false;
 
@@ -43,6 +50,7 @@ function setProjects(projects: ProjectView[]): void {
     for (const dir of before.filter((d) => !dirs.includes(d))) {
       forgetTasks(dir);
       forgetManager(dir);
+      setStore('managerOpen', produce((open) => void delete open[dir]));
       forgetTodo(dir);
     }
   });
@@ -68,7 +76,13 @@ export async function loadProjects(): Promise<void> {
 }
 
 export const toggleBesideProject = (dir: string) => setLayout(toggleBeside(store.layout, dir));
-export const toggleManagerOf = (dir: string) => setLayout(toggleManager(store.layout, dir));
+/** Turns the project's manager off, or on: then open, never as a strip, whether or not it was folded when it went off. */
+export function toggleManagerOf(dir: string): void {
+  batch(() => {
+    if (!isManagerShown(dir)) setManagerOpen(dir, true);
+    setLayout(toggleManager(store.layout, dir));
+  });
+}
 export const setArrangement = (arrangement: Layout['arrangement']) => setLayout({ ...store.layout, arrangement });
 
 /**
@@ -82,8 +96,8 @@ export function revealProject(dir: string): void {
 /**
  * Focuses the project from the list or Cmd+1 to Cmd+9 (Ctrl+1 to Ctrl+9 on Windows and Linux), and
  * puts the cursor where its typing goes: the selected task's terminal, brought out as Ctrl+Tab brings
- * it, or else its manager's. With neither, the cursor leaves the project it was in, so no typing lands
- * there unseen.
+ * it, or else its manager's, opened if it is folded. With neither, the cursor leaves the project it was
+ * in, so no typing lands there unseen.
  */
 export function focusProject(dir: string): void {
   revealProject(dir);
@@ -91,6 +105,7 @@ export function focusProject(dir: string): void {
   const toTask = taskId !== null && terminalOf(dir, taskId) !== null;
   if (toTask) select(dir, taskId);
   const managerTerminal = isManagerShown(dir) ? managerOf(dir)?.managerTerminal : null;
+  if (!toTask && managerTerminal) setManagerOpen(dir, true);
   // Once Solid has put the pane and the panel on show: a hidden element can't take the focus.
   queueMicrotask(() => {
     if (toTask) focusTerminalOf(dir, taskId);

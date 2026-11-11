@@ -540,16 +540,15 @@ html[data-platform='darwin'] .setup-titlebar {
   margin: 8px 0 8px 8px;
 }
 
-/* The window's title bar, laid out as the panel's is, and on the Mac a drag region up to the pin. */
+/* Its strip, before it in the page, is laid out in its place. */
+.manager-strip {
+  order: -1;
+}
+
+/* The window's title bar, laid out as the panel's is, and on the Mac a drag region up to the fold button. */
 .manager-title-bar {
   margin-right: var(--panel-pin-room);
   padding: 6px 0 4px 16px;
-}
-
-/* Put away while pinned, it gives the board its room. It stays mounted, so its terminal keeps its
-   output. */
-.manager-column[data-pinned='true'][data-open='false'] {
-  display: none;
 }
 
 /* While the manager is stopped, under its last output: the note, Restart, and why a Restart failed. */
@@ -589,8 +588,7 @@ html[data-platform='darwin'] .setup-titlebar {
   z-index: 5;
 }
 
-/* Raised: floating, it is over the floating manager and the manager's way back. Holding a ticket, it is raised even
-   when pinned, above the pinned manager's hide pill and way back, which would poke through the ticket. */
+/* Raised: floating, or holding a ticket even when pinned, it is over the session panel's float. */
 .todo-panel[data-pinned='false'],
 .todo-panel:has(> .ticket-panel) {
   z-index: 7;
@@ -1435,7 +1433,8 @@ kbd {
   gap: 6px;
 }
 
-.tb-toggle svg {
+/* Its own icon, not one in the state glyph an off Manager button shows. */
+.tb-toggle > svg {
   width: 14px;
   height: 14px;
 }
@@ -1451,13 +1450,14 @@ kbd {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.tb-toggle[aria-pressed='true'] svg {
+.tb-toggle[aria-pressed='true'] > svg {
   color: var(--accent);
 }
 
+/* The words go; the state glyph stays. */
 @container (max-width: 560px) {
   .tb-jump span,
-  .tb-toggle span {
+  .tb-toggle > span:not(.glyph) {
     display: none;
   }
 }
@@ -1969,18 +1969,24 @@ kbd {
   border-radius: var(--radius-lg);
 }
 
-/* Pinned, the board's flex sibling at the owner's width. Its header leaves room for the fold button and the pin. */
-.side-panel {
+/* Their headers leave room for the fold button and the pin. */
+.side-panel,
+.manager-column {
   --panel-pin-room: 76px;
+}
+
+/* Pinned, the board's flex sibling at the owner's width. */
+.side-panel {
   width: var(--panel-w);
   margin: 8px 8px 8px 0;
 }
 
 /* Unpinned, each floats over its own edge of the board and slides away while it isn't open. It
    hides by moving and then turning invisible, never by changing size, so the terminals keep theirs.
-   The session panel folded, pinned or not, is taken out of the layout too, so its strip and the board take its room. */
+   The session panel and the manager folded, pinned or not, are taken out of the layout too, so their strips and the
+   board take their room; the manager off as well. */
 .side-panel:is([data-pinned='false'], [data-open='false']),
-.manager-column[data-pinned='false'],
+.manager-column:is([data-pinned='false'], [data-open='false']),
 .todo-panel[data-pinned='false'] {
   position: absolute;
   top: 8px;
@@ -2015,15 +2021,22 @@ kbd {
   box-shadow: none;
 }
 
-/* Right of the pinned Todo panel, when it is out, and a layer under it, so it slides away and back
+/* Beside its strip, and right of the pinned Todo panel when it is out, a layer under it, so it slides away and back
    under that panel: on one layer, the Todo panel's flex order would paint it first, under the manager. */
-.manager-column[data-pinned='false'] {
-  left: calc(8px + var(--left-room, 0px));
+.manager-column:is([data-pinned='false'], [data-open='false']) {
+  left: calc(16px + var(--strip-w) + var(--left-room, 0px));
   z-index: 4;
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* Over the floating manager, and over the manager's way back (raised above). */
+/* Folded or off while pinned, it slides away from where it stood, over its strip: not from where it floats, and
+   without the floating manager's shadow. */
+.manager-column[data-pinned='true'][data-open='false'] {
+  left: calc(8px + var(--left-room, 0px));
+  box-shadow: none;
+}
+
+/* Over the floating manager (raised above). */
 .todo-panel[data-pinned='false'] {
   left: 8px;
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
@@ -2035,7 +2048,11 @@ kbd {
   visibility: hidden;
 }
 
-.manager-column[data-pinned='false'][data-open='false'],
+.manager-column[data-open='false'] {
+  transform: translateX(calc(-100% - 16px - var(--strip-w)));
+  visibility: hidden;
+}
+
 .todo-panel[data-pinned='false'][data-open='false'] {
   transform: translateX(calc(-100% - 24px));
   visibility: hidden;
@@ -2096,7 +2113,7 @@ kbd {
   outline: none;
 }
 
-/* A pill straddling the manager's or the Todo panel's right edge, centred on it: puts the panel away, pinned or not.
+/* A pill straddling the Todo panel's right edge, centred on it: puts the panel away, pinned or not.
    Adapted from Parallel Code (MIT): .board-side-panel-close in src/components/task-board.css at
    97c3558. See THIRD_PARTY_NOTICES.md. */
 .panel-hide {
@@ -2117,66 +2134,13 @@ kbd {
   color: var(--fg-muted);
 }
 
-/* The hidden manager's way back: a half pill on the pane's left edge, or right of the pinned Todo panel when it is
-   out. It carries the manager's state, so a manager that needs the owner shows from there. */
-.panel-show {
-  position: absolute;
-  top: 50%;
-  left: var(--left-room, 0px);
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 22px;
-  padding: 10px 2px 10px 0;
-  translate: 0 -50%;
-  border: 1px solid var(--border);
-  border-left: 0;
-  border-radius: 0 999px 999px 0;
-  background: var(--bg-elevated);
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
-  color: var(--fg-muted);
-  visibility: hidden;
-  opacity: 0;
-}
-
-/* Level with the floating manager's arrow: that island starts under the top bar, so its middle is 19 px below the
-   pane's. */
-.manager-column[data-pinned='false'] + .panel-show {
-  top: calc(50% + 19px);
-}
-
-/* Beside the pinned Todo panel, below the hide pill that overhangs that panel's edge. */
-.project-pane:has(> .todo-panel[data-pinned='true'][data-open='true']) .manager-column + .panel-show {
-  top: calc(50% + 56px);
-}
-
-/* Out of sight under the floating Todo panel, which sits 8 px in from the pane's edge: it would cover 14 px of this
-   22 px pill and leave a sliver beside it. It comes back as that panel slides away. The Todo panel's state counts
-   in the selector, so it is more specific than the hidden manager's rule below, which shows the way back. */
-.project-pane:has(> .todo-panel[data-pinned='false'][data-open='true']) .manager-column + .panel-show {
-  visibility: hidden;
-  opacity: 0;
-}
-
-/* Visible at once, so it can take the focus; it fades in once the island has slid out. As visible
-   as its pane: one off screen keeps it hidden. */
-.manager-column[data-open='false'] + .panel-show {
-  visibility: inherit;
-  opacity: 1;
-}
-
-.panel-hide:hover,
-.panel-show:hover {
+.panel-hide:hover {
   border-color: var(--fg-muted);
   background: var(--hover);
   color: var(--fg);
 }
 
-.panel-hide svg,
-.panel-show svg {
+.panel-hide svg {
   width: 10px;
   height: 10px;
 }
@@ -2832,9 +2796,10 @@ kbd {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  /* Out at once; hidden only once it has slid away. The session panel slides pinned too, as it folds and opens. */
+  /* Out at once; hidden only once it has slid away. The session panel and the manager slide pinned too, as they fold
+     and open. */
   .side-panel,
-  .manager-column[data-pinned='false'],
+  .manager-column,
   .todo-panel[data-pinned='false'] {
     transition:
       transform 220ms var(--ease-out),
@@ -2842,15 +2807,11 @@ kbd {
   }
 
   .side-panel[data-open='false'],
-  .manager-column[data-pinned='false'][data-open='false'],
+  .manager-column[data-open='false'],
   .todo-panel[data-pinned='false'][data-open='false'] {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 220ms;
-  }
-
-  .manager-column[data-pinned='false'][data-open='false'] + .panel-show {
-    transition: opacity 120ms var(--ease-out) 160ms;
   }
 
   .card,

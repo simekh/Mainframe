@@ -1,6 +1,6 @@
 /**
  * The arrow of a panel's fold button, pointing the way the panel folds, and of its strip, pointing toward the board,
- * the way it opens. The manager's and the Todo panel's hide pills and way back use it too.
+ * the way it opens. The Todo panel's hide pill uses it too.
  */
 export default function Chevron(props: { points: 'left' | 'right' }) {
   return (

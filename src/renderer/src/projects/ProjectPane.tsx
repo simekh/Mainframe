@@ -8,14 +8,17 @@ import ManagerColumn from '../manager/ManagerColumn';
 import {
   clampManagerWidth, loadManagerPinned, loadManagerWidth, saveManagerPinned, saveManagerWidth,
 } from '../manager/managerPrefs';
-import { loadPanelPrefs, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs } from '../panel/panelPrefs';
+import { managerStateOf } from '../manager/managerStore';
+import { loadPanelPrefs, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs, type PanelState } from '../panel/panelPrefs';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
 import { ProjectContext } from './projectContext';
-import { isFocused, isManagerShown, isShown, jump, projectsStore, revealProject, toggleManagerOf } from './projectsStore';
+import {
+  isFocused, isManagerShown, isShown, jump, managerOpenOf, projectsStore, revealProject, setManagerOpen, toggleManagerOf,
+} from './projectsStore';
 
 // Buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -62,10 +65,20 @@ export default function ProjectPane(props: {
     setManagerPinned(pinned);
     saveManagerPinned(localStorage, dir, pinned);
   };
-  const setManagerOpen = (open: boolean) => {
-    if (open !== showManager()) toggleManagerOf(dir);
+  // Until the owner first folds or opens it, the manager that is on is as its pin shows it: open pinned, folded floating.
+  const managerState = (): PanelState => {
+    if (!showManager()) return 'off';
+    return (managerOpenOf(dir) ?? managerPinned()) ? 'open' : 'folded';
   };
-  const managerTakesRoom = () => showManager() && managerPinned();
+  let managerToggle!: HTMLButtonElement;
+  // Turned off with the focus in it or on its strip, the manager hands the focus to its button, so the keyboard never
+  // ends up in it, or nowhere.
+  const toggleManager = () => {
+    const handBack =
+      showManager() && [...root.querySelectorAll('.manager-column, .manager-strip')].some((el) => el.contains(document.activeElement));
+    toggleManagerOf(dir);
+    if (handBack) managerToggle.focus();
+  };
 
   // The Todo panel's own width and pin; pinned, it is out from the start, and unpinned it waits for the Todo button.
   const [todoPrefs, setTodoPrefs] = createSignal(loadTodoPrefs(localStorage, dir));
@@ -76,10 +89,12 @@ export default function ProjectPane(props: {
     saveTodoPrefs(localStorage, dir, prefs);
   };
   // Floating, the Todo panel takes no room and the pane is all it measures against. Pinned, it leaves room for the
-  // pinned manager as wide as that would be alone, and the manager takes what is left: where both can't have their
-  // width, the Todo panel gives way first.
+  // manager's strip, or for the pinned, open manager as wide as that would be alone, and the manager takes what is
+  // left: where both can't have their width, the Todo panel gives way first.
   const todoRoom = () =>
-    todoPrefs().pinned && managerTakesRoom() ? width() - clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : width();
+    todoPrefs().pinned
+      ? width() - roomTaken(managerState(), managerPinned(), clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()))
+      : width();
   const todoWidthIn = (w: number) => clampTodoWidth(w, todoRoom(), todoPrefs().pinned);
   const shownTodoWidth = () => todoWidthIn(dragTodoWidth() ?? todoPrefs().width);
   const keepTodoWidth = (w: number) => {
@@ -100,8 +115,9 @@ export default function ProjectPane(props: {
     todoToggle.focus();
   };
 
-  // What the pinned Todo panel leaves of the pane is all the manager measures against.
-  const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside());
+  // What the pinned Todo panel leaves of the pane is all the manager measures against, less its own strip while it
+  // floats: pinned, a fold keeps its width.
+  const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside() - (managerPinned() ? 0 : STRIP_WIDTH));
   const shownManagerWidth = () => managerWidthIn(dragManagerWidth() ?? managerWidth());
   const keepManagerWidth = (w: number) => {
     setDragManagerWidth(null);
@@ -109,7 +125,7 @@ export default function ProjectPane(props: {
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
   };
-  const besideWidth = () => (managerTakesRoom() ? shownManagerWidth() : 0) + todoBeside();
+  const besideWidth = () => roomTaken(managerState(), managerPinned(), shownManagerWidth()) + todoBeside();
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
   const canPinPanel = () => roomToPin(width(), besideWidth());
@@ -123,12 +139,12 @@ export default function ProjectPane(props: {
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // A press on the board outside any card puts away the panel (into its strip), the manager and the Todo panel that
-  // float over it, and the ticket, pinned panel or not.
+  // A press on the board outside any card puts away the panel and the manager (into their strips) and the Todo panel
+  // that float over it, and the ticket, pinned panel or not. A manager that is off stays off.
   const hideUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
-    if (!managerPinned()) setManagerOpen(false);
+    if (!managerPinned()) setManagerOpen(dir, false);
     if (!todoPrefs().pinned) setTodoOpen(false);
     setTicket(null);
   };
@@ -150,7 +166,7 @@ export default function ProjectPane(props: {
         data-focused={String(framed())}
         aria-hidden={shown() ? undefined : 'true'}
         inert={!shown()}
-        // What the pinned Todo panel takes at the pane's left, its margin with it: the floating manager and its way back sit right of it.
+        // What the pinned Todo panel takes at the pane's left, its margin with it: the manager, floating or folded, sits right of it.
         style={{ ...props.style, '--left-room': `${todoBeside() ? todoBeside() + 8 : 0}px` }}
         onPointerDown={() => revealProject(dir)}
         onFocusIn={() => revealProject(dir)}
@@ -185,16 +201,21 @@ export default function ProjectPane(props: {
             <button
               class="tb-toggle"
               data-testid="manager-toggle"
+              ref={managerToggle}
               aria-pressed={showManager() ? 'true' : 'false'}
               title={showManager() ? 'Hide the manager' : 'Show the manager'}
               onMouseDown={keepFocus}
-              onClick={() => toggleManagerOf(dir)}
+              onClick={toggleManager}
             >
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                 <rect x="2" y="3" width="12" height="10" rx="2" />
                 <path d="M6.5 3v10" />
               </svg>
               <span>Manager</span>
+              {/* Off, it still shows the manager's state, so a manager waiting for the owner shows from here. */}
+              <Show when={showManager() ? undefined : managerStateOf(dir)}>
+                {(s) => <StatusGlyph glyph={s().glyph} label={s().text} />}
+              </Show>
             </button>
             <button class="tb-jump" data-testid="jump-next" title="Next session that needs you" onMouseDown={keepFocus} onClick={() => jump(1)}>
               <kbd>Ctrl</kbd>
@@ -217,8 +238,8 @@ export default function ProjectPane(props: {
           onDone={keepManagerWidth}
           pinned={managerPinned()}
           onPinnedChange={keepManagerPinned}
-          open={showManager()}
-          onOpenChange={setManagerOpen}
+          state={managerState()}
+          onOpenChange={(open) => setManagerOpen(dir, open)}
         />
 
         {/* After the manager and the board, for that reason: it floats over the manager's title bar, and its

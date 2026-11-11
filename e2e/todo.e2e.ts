@@ -325,12 +325,14 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   expect((await box(page, 'board')).x).toBeGreaterThanOrEqual(manager.x + manager.width);
   await expect(page.getByTestId('side-panel')).toHaveAttribute('data-pinned', 'true');
 
-  // Put away, the manager's way back sits right of the Todo panel, not under it.
-  await page.getByTestId('manager-hide').click();
+  // Folded, the manager's strip sits right of the Todo panel.
+  await page.getByTestId('manager-fold').click();
   await expect(page.getByTestId('manager-column')).toBeHidden();
-  expect((await box(page, 'manager-show')).x).toBeGreaterThanOrEqual(pinned.x + pinned.width);
-  await page.getByTestId('manager-show').click();
+  expect((await box(page, 'manager-strip')).x).toBeGreaterThanOrEqual(pinned.x + pinned.width);
+  await page.getByTestId('manager-strip').click();
   await expect(page.getByTestId('manager-column')).toBeVisible();
+  // It slides back in: measured below once it is in.
+  await slidIn(page.getByTestId('manager-column'));
 
   // The arrow keys move its edge: left narrows.
   const edge = page.getByTestId('todo-resize');
@@ -388,36 +390,6 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panelThird).toHaveAttribute('data-open', 'true');
   await expect(third.page.getByTestId('todo-toggle')).toHaveAttribute('aria-pressed', 'true');
   await third.app.close();
-});
-
-test("floating over the board, the Todo panel hides the manager's way back and starts under the top bar, whose Todo button puts it away again", async () => {
-  const { app, page } = await launchApp({}, folder());
-  // It moves at once, so what it covers is what it covers once out.
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  const manager = page.getByTestId('manager-column');
-  const way = page.getByTestId('manager-show');
-  // With the manager put away, the board starts at the pane's left edge, where the panel floats.
-  await page.getByTestId('manager-hide').click();
-  await expect(manager).toBeHidden();
-  await expect(way).toBeVisible();
-
-  // Floating and out, the Todo panel covers the way back's 14 px but not the 8 px margin beside them: no sliver of it shows.
-  const toggle = page.getByTestId('todo-toggle');
-  await toggle.click();
-  const panel = page.getByTestId('todo-panel');
-  await expect(panel).toHaveAttribute('data-pinned', 'false');
-  await expect(panel).toBeVisible();
-  await expect(way).toBeHidden();
-  for (const el of [page.locator('.tb-project'), page.getByTestId('new-task'), toggle, page.getByTestId('manager-toggle')]) {
-    expect(await isOnTop(el)).toBe(true);
-  }
-
-  // Put away, the panel is gone and the way back is there again.
-  await toggle.click();
-  await expect(panel).toBeHidden();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await expect(way).toBeVisible();
-  await app.close();
 });
 
 test('Start on a card starts its task at once: under Working, selected; its prompt names the card and asks the session to read it first; the card leaves the list, and comes back with Reopen once the task closes', async () => {

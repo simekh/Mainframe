@@ -1,17 +1,16 @@
 import { createMemo, createSignal, Show } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
-import { glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
 import { errorMessage } from '../bridgeError';
-import Chevron from '../panel/Chevron';
+import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
+import { stripShows, type PanelState } from '../panel/panelPrefs';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import ResumeIcon from '../panel/ResumeIcon';
 import { useProject } from '../projects/projectContext';
-import { sessionOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
 import { MANAGER_WIDTH } from './managerPrefs';
-import { managerOf, restartManager } from './managerStore';
+import { managerOf, managerStateOf, restartManager } from './managerStore';
 
 // Restart and the pin don't take the focus on click: Restart puts the cursor in the new terminal
 // itself, and typing stays where it was after a pin.
@@ -19,9 +18,10 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /**
  * The manager's column, at its project pane's left: its header over its terminal, which is on screen
- * while the pane is and the column is out. Pinned, it sits beside the board; unpinned, it floats over
- * the board's left edge, as the session panel does on the right. The terminal never takes the focus by
- * itself; a click puts the cursor there.
+ * while the pane is and the column is open. Pinned, it sits beside the board; unpinned, it floats over
+ * the board's left edge beside its strip, as the session panel does on the right. Folded, pinned or not,
+ * it slides away and leaves its strip at the pane's edge. The terminal never takes the focus by itself;
+ * a click puts the cursor there.
  */
 export default function ManagerColumn(props: {
   config: RendererConfig | undefined;
@@ -33,43 +33,48 @@ export default function ManagerColumn(props: {
   onDone(w: number): void;
   pinned: boolean;
   onPinnedChange(pinned: boolean): void;
-  /** Put away, it stays mounted, so its terminal keeps its output and its size. */
-  open: boolean;
+  /** Folded or off, it stays mounted, so its terminal keeps its output and its size. */
+  state: PanelState;
   onOpenChange(open: boolean): void;
 }) {
-  let hideButton!: HTMLButtonElement;
-  let showButton!: HTMLButtonElement;
   const project = useProject();
-  // Nothing until the manager's first view is in.
-  const state = createMemo(() => {
-    const manager = managerOf(project.dir)?.manager;
-    return manager && { glyph: glyphOf(manager, sessionOf(manager)), ...stateLabel(manager, sessionOf(manager)) };
-  });
+  const status = createMemo(() => managerStateOf(project.dir));
   const [restartError, setRestartError] = createSignal<string | null>(null);
   const restart = () => {
     setRestartError(null);
     restartManager(project.dir).catch((err: unknown) => setRestartError(errorMessage(err)));
   };
-  // Each hands the focus to the other, so the keyboard never ends up in a hidden column.
-  const hide = () => {
-    props.onOpenChange(false);
-    showButton.focus();
-  };
-  const show = () => {
+  const togglePin = () => {
+    props.onPinnedChange(!props.pinned);
     props.onOpenChange(true);
-    hideButton.focus();
   };
+  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
 
   return (
     <>
+      {/* Before the column: laid out at the pane's left edge, or right of the pinned Todo panel. */}
+      <Show when={stripShows(props.state, props.pinned)}>
+        <PanelStrip
+          class="manager-strip"
+          name="Manager"
+          label={status() ? `Show manager, ${status()!.text}` : 'Show manager'}
+          side="left"
+          mark={<Show when={status()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} />}</Show>}
+          testId="manager-strip"
+          ref={handOff.stripRef}
+          onOpen={handOff.open}
+        />
+      </Show>
+
       <aside
         class="manager-column"
         data-testid="manager-column"
         aria-label="Manager"
         data-pinned={String(props.pinned)}
-        data-open={String(props.open)}
+        data-open={String(props.state === 'open')}
         style={{ width: `${props.width}px` }}
       >
+        <FoldButton label="Fold the manager" points="left" testId="manager-fold" ref={handOff.foldRef} onFold={handOff.fold} />
         <button
           class="panel-pin"
           data-testid="manager-pin"
@@ -77,13 +82,13 @@ export default function ManagerColumn(props: {
           aria-label="Pin manager"
           title={props.pinned ? 'Unpin manager' : 'Pin manager'}
           onMouseDown={keepFocus}
-          onClick={() => props.onPinnedChange(!props.pinned)}
+          onClick={togglePin}
         >
           <PinIcon />
         </button>
         <header>
           <div class="manager-title-bar" data-testid="manager-title-bar">
-            <Show when={state()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} size="md" />}</Show>
+            <Show when={status()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} size="md" />}</Show>
             <h2 class="p-title" data-testid="manager-title">
               Manager
             </h2>
@@ -93,7 +98,7 @@ export default function ManagerColumn(props: {
               <i aria-hidden="true" />
               <span>{project.name}</span>
             </span>
-            <Show when={state()}>
+            <Show when={status()}>
               {(s) => (
                 <span class="p-state" data-testid="manager-state">
                   <span class={`label tone-${s().tone}`}>{s().text}</span>
@@ -109,7 +114,7 @@ export default function ManagerColumn(props: {
               // Keyed: a new session gets a new terminal, as a task's does.
               <Show when={managerOf(project.dir)?.managerTerminal} keyed>
                 {(sessionId) => (
-                  <TerminalView sessionId={sessionId} selected={project.shown() && props.open} takeFocus={false} config={c()} />
+                  <TerminalView sessionId={sessionId} selected={project.shown() && props.state === 'open'} takeFocus={false} config={c()} />
                 )}
               </Show>
             )}
@@ -133,16 +138,6 @@ export default function ManagerColumn(props: {
           </div>
         </Show>
 
-        <button
-          class="panel-hide"
-          data-testid="manager-hide"
-          ref={hideButton}
-          title="Hide manager"
-          aria-label="Hide manager"
-          onClick={hide}
-        >
-          <Chevron points="left" />
-        </button>
         {/* Last in the column, so macOS carves it out of the title bar's drag region. */}
         <ResizeEdge
           width={props.width}
@@ -155,20 +150,6 @@ export default function ManagerColumn(props: {
           max={props.maxWidth}
         />
       </aside>
-
-      {/* After the column, which its styles follow. It carries the manager's state, so a manager put
-          away that needs the owner shows from there. */}
-      <button
-        class="panel-show"
-        data-testid="manager-show"
-        ref={showButton}
-        title="Show manager"
-        aria-label={state() ? `Show manager, ${state()!.text}` : 'Show manager'}
-        onClick={show}
-      >
-        <Show when={state()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} />}</Show>
-        <Chevron points="right" />
-      </button>
     </>
   );
 }
