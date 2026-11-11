@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SessionHost, type LaunchFiles, type PtyLike, type SpawnPty } from './sessionHost';
 import { OSC7501_SUPPORT_REPLY } from '../status/osc7501';
 
@@ -174,6 +174,45 @@ it('killAll kills every running session', () => {
   host.spawn('b', spec, listener);
   host.killAll();
   expect(ptys.map((p) => p.killed)).toEqual([true, true]);
+});
+
+describe('whenAllEnded', () => {
+  /** Lets the callbacks already due run. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('resolves once the last running session has exited', async () => {
+    const { host, ptys, listener } = setup();
+    host.spawn('a', spec, listener);
+    host.spawn('b', spec, listener);
+    let ended = false;
+    const waited = host.whenAllEnded(60_000).then(() => (ended = true));
+    ptys[0].exit(0);
+    await settle();
+    expect(ended).toBe(false);
+    ptys[1].exit(0);
+    await waited;
+  });
+
+  it('resolves at once when no session is running', async () => {
+    const { host } = setup();
+    await host.whenAllEnded(60_000);
+  });
+
+  it('resolves when the wait is over, though a session is still running', async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, listener } = setup();
+      host.spawn('a', spec, listener);
+      let ended = false;
+      void host.whenAllEnded(2000).then(() => (ended = true));
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(ended).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ended).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // Windows has no signals: node-pty's kill throws when given one, and a second kill can crash the

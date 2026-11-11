@@ -109,6 +109,18 @@ function session() {
   // On Windows, Git Bash by its full path (e2e/globalSetup.ts finds it and names it here): a `bash` on the PATH there can be WSL's.
   const shell = process.env.FAKE_CLAUDE_SHELL || '/bin/bash';
   const child = spawn(shell, ['--noprofile', '--norc'], { stdio: 'inherit' });
+  // With FAKE_CLAUDE_HANGUP_DELAY_MS, a hang-up ends this process only that long after, as a real claude may
+  // take to save its chat, and it records its end in <pid>.ended. A second hang-up, which the system sends once
+  // Mainframe has gone, ends it at once, with no record.
+  const hangupDelay = process.env.FAKE_CLAUDE_HANGUP_DELAY_MS;
+  if (hangupDelay) {
+    process.once('SIGHUP', () =>
+      setTimeout(() => {
+        writeFileSync(own('ended'), '');
+        process.kill(process.pid, 'SIGHUP');
+      }, Number(hangupDelay)),
+    );
+  }
   // Ends as the shell did. A hang-up from Mainframe ends this process, and the system then hangs up the
   // shell, which holds the terminal's foreground; on Windows node-pty's kill ends every process on the console.
   child.on('exit', (code, signal) => {

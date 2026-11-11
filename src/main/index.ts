@@ -28,6 +28,8 @@ import { isDevToolsKey } from './windowKeys';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 const onMac = process.platform === 'darwin';
+/** How long a quit waits for the sessions it has hung up on to end. */
+const QUIT_WAIT_MS = 2000;
 
 // Every on-screen terminal holds a WebGL context; Chromium's default limit (16) is too low.
 app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
@@ -213,6 +215,17 @@ async function start(
     host.killAll();
   };
   onQuitBegins(win, beginQuit);
+  // Then the quit waits a moment for the sessions beginQuit hung up on: node-pty aborts the app when a
+  // session's exit comes in as the app goes (node-pty issue 904). A Windows shutdown can't be held up.
+  let sessionsEnded = false;
+  app.on('before-quit', (event) => {
+    if (sessionsEnded) return;
+    event.preventDefault();
+    void host.whenAllEnded(QUIT_WAIT_MS).then(() => {
+      sessionsEnded = true;
+      app.quit();
+    });
+  });
 
   async function makeProject(dir: string): Promise<Project> {
     // Only while it is the project open on its folder: a closed one's last exits change nothing on screen.

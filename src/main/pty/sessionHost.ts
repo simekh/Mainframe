@@ -61,6 +61,8 @@ interface Session {
 /** Owns the PTYs of running sessions: output batching, OSC 7501 answering and status. */
 export class SessionHost {
   private readonly sessions = new Map<string, Session>();
+  /** The waits of `whenAllEnded`, ended when the last running session exits. */
+  private readonly endWaits: Array<() => void> = [];
 
   constructor(
     private readonly opts: {
@@ -123,6 +125,7 @@ export class SessionHost {
       listener.onExit({ exitCode, signal: signal ?? null });
       listener.onStatus(records.current());
       this.sessions.delete(id);
+      if (this.sessions.size === 0) for (const end of this.endWaits.splice(0)) end();
     });
   }
 
@@ -163,6 +166,18 @@ export class SessionHost {
 
   killAll(): void {
     for (const session of this.sessions.values()) this.killSession(session);
+  }
+
+  /** Resolves once no session is running, or once `timeoutMs` has gone by with some still running. */
+  whenAllEnded(timeoutMs: number): Promise<void> {
+    if (this.sessions.size === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      this.endWaits.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 
   /**

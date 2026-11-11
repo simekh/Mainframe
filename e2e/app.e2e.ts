@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { cleanUp, launchAgain, launchApp, removeAfterTest } from './launch';
-import { answerDialogs, launches, projectPane, screen, sendLine, startTask } from './tasks';
+import { answerDialogs, launches, managerLaunches, projectPane, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -60,6 +60,18 @@ test('opened again on the same data folder, Mainframe quits and its tasks keep r
   await sendLine(page, id, 'echo first-$((1+1))');
   await expect.poll(() => screen(page, id)).toContain('first-2');
   await app.close();
+});
+
+test('Quit waits for the sessions it hangs up on to end', async () => {
+  test.skip(process.platform === 'win32', 'Windows has no hang-up: its kill ends a session outright');
+  // Each session ends a second after its hang-up, as a real claude saving its chat may.
+  const { app, page, dataDir } = await launchApp({ FAKE_CLAUDE_HANGUP_DELAY_MS: '1000' });
+  await startTask(page);
+  const sessions = [...launches(dataDir), ...managerLaunches(dataDir)];
+  expect(sessions).toHaveLength(2);
+  await app.close();
+  // One still running when the app goes is hung up on again, and ends with no record.
+  expect(sessions.filter((s) => !existsSync(s.file.replace(/\.argv$/, '.ended')))).toEqual([]);
 });
 
 test('Open Project… opens the picked folder beside the open one and shows it, without a restart', async () => {
