@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
 import { makeRepo } from '../src/main/testing/makeRepo';
+import { STRIP_WIDTH } from '../src/renderer/src/panel/panelPrefs';
 import { removeAfterTest } from './launch';
 
 /** A repo from `makeRepo()` that is removed after the test; returns its main checkout. */
@@ -103,6 +104,45 @@ export const settled = (page: Page) =>
 
 export const box = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!;
 
+export const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/** A box's centre line. */
+export const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+
+/**
+ * Expects the boxes left to right, each starting where the one before ends or after it (with `apart`, after it), and
+ * on one centre line, within a pixel of the first's.
+ */
+export function expectInOneRow(boxes: Box[], { apart = false } = {}): void {
+  for (let i = 1; i < boxes.length; i++) {
+    const end = boxes[i - 1].x + boxes[i - 1].width;
+    if (apart) expect(boxes[i].x).toBeGreaterThan(end);
+    else expect(boxes[i].x).toBeGreaterThanOrEqual(end);
+    expect(Math.abs(middle(boxes[i]) - middle(boxes[0]))).toBeLessThanOrEqual(1);
+  }
+}
+
+/** Expects a folded panel's strip as wide as a strip is, its outer edge, on its `side`, within a pixel of `edge`. */
+export function expectStripAt(strip: Box, side: 'left' | 'right', edge: number): void {
+  expect(strip.width).toBe(STRIP_WIDTH);
+  expect(Math.abs((side === 'left' ? strip.x : strip.x + strip.width) - edge)).toBeLessThanOrEqual(1);
+}
+
+export const appRegion = (locator: Locator) =>
+  locator.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'));
+
+/** Drags the element's centre `dx` px sideways, in 8 steps. */
+export async function dragBy(page: Page, testId: string, dx: number): Promise<void> {
+  const b = await box(page, testId);
+  const [x, y] = [b.x + b.width / 2, b.y + b.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y, { steps: 8 });
+  await page.mouse.up();
+}
+
 /** The row along the window's top: every panel and strip starts under it. */
 export const ROW_HEIGHT = 46;
 
@@ -133,6 +173,19 @@ export async function edgesWhile(page: Page, testId: string, edge: 'left' | 'rig
   await act();
   await page.waitForFunction(() => (window as unknown as Probe).slide.done);
   return page.evaluate(() => (window as unknown as Probe).slide.edges);
+}
+
+/**
+ * Expects the edges from `edgesWhile` to slide only `way`: on no frame does the edge step back by over half a pixel
+ * from the frame before, or the first one from `from`. With `to`, it lands there, to the pixel.
+ */
+export function expectSlide(edges: number[], way: 'left' | 'right', { from = edges[0], to }: { from?: number; to?: number } = {}) {
+  const backSteps = edges.filter((edge, i) => {
+    const before = i ? edges[i - 1] : from;
+    return way === 'left' ? edge > before + 0.5 : edge < before - 0.5;
+  });
+  expect(backSteps).toEqual([]);
+  if (to !== undefined) expect(edges.at(-1)!).toBeCloseTo(to, 0);
 }
 
 /** Whether the focus is in the task's terminal on show, where typing goes. */

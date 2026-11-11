@@ -4,9 +4,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  box, card, cardIn, edgesWhile, ids, isOnTop, launches, managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall,
-  report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask,
-  terminalHasFocus, termSize, UUID,
+  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, ids, isOnTop, launches, managerDir,
+  managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine,
+  sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -220,7 +220,7 @@ test("the manager's column sits left of the board under the top row, and its tit
   // The top row is the window's title bar now, on the Mac too.
   const bar = page.getByTestId('manager-title-bar');
   expect((await bar.boundingBox())!.height).toBe(46);
-  expect(await bar.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).not.toBe('drag');
+  expect(await appRegion(bar)).not.toBe('drag');
   await app.close();
 });
 
@@ -242,21 +242,18 @@ test("the manager's fold button folds it into a strip at its pane's left edge, t
   // It slides away from where it stood, never stepping right first to where a floating manager sits, and ends past
   // the pane's edge.
   const folding = await edgesWhile(page, 'manager-column', 'left', () => fold.click());
-  expect(folding.filter((left, i) => left > (i ? folding[i - 1] : pinned.x) + 0.5)).toEqual([]);
+  expectSlide(folding, 'left', { from: pinned.x });
   expect(folding.at(-1)! + pinned.width).toBeLessThanOrEqual(pane.x);
   await expect(column).toBeHidden();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   // Pinned, it gives its room to the board.
   expect((await box(page, 'board')).x).toBeLessThan(pinned.x + 100);
   await expect(strip).toBeFocused();
-  const s = await box(page, 'manager-strip');
-  expect(s.width).toBe(24);
-  expect(Math.abs(s.x - (pane.x + 8))).toBeLessThanOrEqual(1);
+  expectStripAt(await box(page, 'manager-strip'), 'left', pane.x + 8);
 
   // From the strip it slides back in and lands where it stood, without a step at either end.
   const opening = await edgesWhile(page, 'manager-column', 'left', () => strip.click());
-  expect(opening.filter((left, i) => i > 0 && left < opening[i - 1] - 0.5)).toEqual([]);
-  expect(opening.at(-1)!).toBeCloseTo(pinned.x, 0);
+  expectSlide(opening, 'right', { to: pinned.x });
   await expect(column).toBeVisible();
   await expect(fold).toBeFocused();
   await expect(strip).toHaveCount(0);
@@ -267,11 +264,7 @@ test("the manager's fold button folds it into a strip at its pane's left edge, t
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowLeft');
   await expect(handle).toHaveAttribute('aria-valuenow', '320');
   const [title, folder, pin] = [await box(page, 'manager-title'), await box(page, 'manager-fold'), await box(page, 'manager-pin')];
-  expect(title.x + title.width).toBeLessThan(folder.x);
-  expect(folder.x + folder.width).toBeLessThan(pin.x);
-  const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
-  expect(Math.abs(middle(folder) - middle(title))).toBeLessThanOrEqual(1);
-  expect(Math.abs(middle(pin) - middle(title))).toBeLessThanOrEqual(1);
+  expectInOneRow([title, folder, pin], { apart: true });
   await app.close();
 });
 
@@ -296,7 +289,7 @@ test('beside a pinned Todo panel that gives way to it, the pinned manager folds 
   const widthNow = () => column.evaluate((el) => el.getBoundingClientRect().width);
 
   const folding = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-fold').click());
-  expect(folding.filter((left, i) => left > (i ? folding[i - 1] : open.x) + 0.5)).toEqual([]);
+  expectSlide(folding, 'left', { from: open.x });
   await expect(column).toBeHidden();
   // The board takes its room, not the Todo panel.
   expect((await box(page, 'todo-panel')).width).toBe(todoWidth);
@@ -304,8 +297,7 @@ test('beside a pinned Todo panel that gives way to it, the pinned manager folds 
   expect(await managerTermSize(page)).toEqual(size);
 
   const opening = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-strip').click());
-  expect(opening.filter((left, i) => i > 0 && left < opening[i - 1] - 0.5)).toEqual([]);
-  expect(opening.at(-1)!).toBeCloseTo(open.x, 0);
+  expectSlide(opening, 'right', { to: open.x });
   expect(await widthNow()).toBe(open.width);
   await settled(page);
   expect(await managerTermSize(page)).toEqual(size);

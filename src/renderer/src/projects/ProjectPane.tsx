@@ -1,7 +1,6 @@
 import { createMemo, createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import type { ProjectView, RendererConfig } from '../../../shared/types';
 import Board from '../board/Board';
-import { glyphOf, stateLabel } from '../board/lanes';
 import NewTaskDialog from '../board/NewTaskDialog';
 import StatusGlyph from '../board/StatusGlyph';
 import ManagerColumn from '../manager/ManagerColumn';
@@ -9,10 +8,13 @@ import {
   clampManagerWidth, loadManagerPinned, loadManagerWidth, saveManagerPinned, saveManagerWidth,
 } from '../manager/managerPrefs';
 import { managerStateOf } from '../manager/managerStore';
-import { loadPanelPrefs, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs, type PanelState } from '../panel/panelPrefs';
+import {
+  loadPanelPrefs, panelState, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs, type PanelState,
+} from '../panel/panelPrefs';
+import { turnOffHandingFocus } from '../panel/PanelStrip';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
-import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
+import { focusTerminalOf, setPanelOpen, stateOf, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
 import type { PanePlace } from './layout';
@@ -55,6 +57,10 @@ export default function ProjectPane(props: {
 
   const tasks = () => tasksOf(dir);
   const selected = createMemo(() => tasks().tasks.find((t) => t.id === tasks().selectedId));
+  const selectedState = createMemo(() => {
+    const task = selected();
+    return task && stateOf(task);
+  });
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const showManager = () => isManagerShown(dir);
   // Framed while the owner works in it beside other projects; alone on screen, it needs no frame.
@@ -68,20 +74,12 @@ export default function ProjectPane(props: {
     setManagerPinned(pinned);
     saveManagerPinned(localStorage, dir, pinned);
   };
-  // Until the owner first folds or opens it, the manager that is on is as its pin shows it: open pinned, folded floating.
-  const managerState = (): PanelState => {
-    if (!showManager()) return 'off';
-    return (managerOpenOf(dir) ?? managerPinned()) ? 'open' : 'folded';
-  };
+  const managerState = () => panelState(showManager(), managerOpenOf(dir), managerPinned());
   let managerToggle!: HTMLButtonElement;
-  // Turned off with the focus in it or on its strip, the manager hands the focus to its button, so the keyboard never
-  // ends up in it, or nowhere.
-  const toggleManager = () => {
-    const handBack =
-      showManager() && [...root.querySelectorAll('.manager-column, .manager-strip')].some((el) => el.contains(document.activeElement));
-    toggleManagerOf(dir);
-    if (handBack) managerToggle.focus();
-  };
+  const toggleManager = () =>
+    showManager()
+      ? turnOffHandingFocus(root, '.manager-column, .manager-strip', managerToggle, () => toggleManagerOf(dir))
+      : toggleManagerOf(dir);
 
   // The Todo panel's own width and pin; pinned, it opens at the start, and unpinned it is off until the Todo button.
   const [todoPrefs, setTodoPrefs] = createSignal(loadTodoPrefs(localStorage, dir));
@@ -91,15 +89,14 @@ export default function ProjectPane(props: {
     setTodoPrefs(prefs);
     saveTodoPrefs(localStorage, dir, prefs);
   };
-  // Floating, the Todo panel takes no room but its strip's, and the pane less that strip is all it measures against.
-  // Pinned, it leaves room for the floating manager's strip, or for the pinned manager as wide as that would be alone,
-  // and the manager takes what is left: where both can't have their width, the Todo panel gives way first. Folded, the
-  // pinned manager keeps that room, which the board takes meanwhile, so it folds and opens where it stands, at its
-  // width; off, it frees it.
+  // Floating, the Todo panel takes no room but its strip's, which its clamp counts, and the pane is all it measures
+  // against. Pinned, it leaves room for the floating manager's strip, or for the pinned manager as wide as that would be
+  // alone, and the manager takes what is left: where both can't have their width, the Todo panel gives way first.
+  // Folded, the pinned manager keeps that room, which the board takes meanwhile, so it folds and opens where it stands,
+  // at its width; off, it frees it.
   const todoRoom = () => {
-    if (!todoPrefs().pinned) return width() - STRIP_WIDTH;
-    if (!showManager()) return width();
-    return width() - (managerPinned() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : STRIP_WIDTH);
+    if (!todoPrefs().pinned || !showManager()) return width();
+    return width() - (managerPinned() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width(), true) : STRIP_WIDTH);
   };
   const todoWidthIn = (w: number) => clampTodoWidth(w, todoRoom(), todoPrefs().pinned);
   const shownTodoWidth = () => todoWidthIn(dragTodoWidth() ?? todoPrefs().width);
@@ -115,18 +112,12 @@ export default function ProjectPane(props: {
     if (state !== 'open') setTicket(null);
   };
   let todoToggle!: HTMLButtonElement;
-  // Turned on, the Todo panel opens fully. Turned off with the focus in it or on its strip, it hands the focus to its
-  // button, so the keyboard never ends up in it, or nowhere.
-  const toggleTodo = () => {
-    if (todo() === 'off') return showTodo('open');
-    const handBack = [...root.querySelectorAll('.todo-panel, .todo-strip')].some((el) => el.contains(document.activeElement));
-    showTodo('off');
-    if (handBack) todoToggle.focus();
-  };
+  // Turned on, the Todo panel opens fully.
+  const toggleTodo = () =>
+    todo() === 'off' ? showTodo('open') : turnOffHandingFocus(root, '.todo-panel, .todo-strip', todoToggle, () => showTodo('off'));
 
-  // What the Todo panel leaves of the pane, pinned and open or as its strip, is all the manager measures against, less
-  // its own strip while it floats: pinned, a fold keeps its width.
-  const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside() - (managerPinned() ? 0 : STRIP_WIDTH));
+  // What the Todo panel leaves of the pane, pinned and open or as its strip, is all the manager measures against.
+  const managerWidthIn = (w: number) => clampManagerWidth(w, width() - todoBeside(), managerPinned());
   const shownManagerWidth = () => managerWidthIn(dragManagerWidth() ?? managerWidth());
   const keepManagerWidth = (w: number) => {
     setDragManagerWidth(null);
@@ -134,15 +125,13 @@ export default function ProjectPane(props: {
     setManagerWidth(kept);
     saveManagerWidth(localStorage, kept);
   };
-  const besideWidth = () => roomTaken(managerState(), managerPinned(), shownManagerWidth()) + todoBeside();
+  const besideWidth = createMemo(() => roomTaken(managerState(), managerPinned(), shownManagerWidth()) + todoBeside());
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
-  const canPinPanel = () => roomToPin(width(), besideWidth());
+  const canPinPanel = createMemo(() => roomToPin(width(), besideWidth()));
   // The project's own width and pin, so pinning one project's panel leaves the others' as they are.
   const [ownPanelPrefs, setOwnPanelPrefs] = createSignal(loadPanelPrefs(localStorage, dir));
-  const panelPrefs = (): PanelPrefs => ({ ...ownPanelPrefs(), pinned: ownPanelPrefs().pinned && canPinPanel() });
-  // Until the owner first folds or opens it, the panel is as its pin shows it: open pinned, folded floating.
-  const panelOpen = () => tasks().panelOpen ?? panelPrefs().pinned;
+  const panelPrefs = createMemo((): PanelPrefs => ({ ...ownPanelPrefs(), pinned: ownPanelPrefs().pinned && canPinPanel() }));
   const keepPanelPrefs = (prefs: PanelPrefs) => {
     const kept = canPinPanel() ? prefs : { ...prefs, pinned: ownPanelPrefs().pinned };
     setOwnPanelPrefs(kept);
@@ -150,7 +139,7 @@ export default function ProjectPane(props: {
   };
   // A press on the board outside any card folds the panel, the manager and the Todo panel that float over it into
   // their strips, and closes the ticket, pinned panel or not. A manager or Todo panel that is off stays off.
-  const hideUnpinned = (e: MouseEvent) => {
+  const foldUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
     if (!managerPinned()) setManagerOpen(dir, false);
@@ -270,7 +259,7 @@ export default function ProjectPane(props: {
           />
 
           <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>
-            <div class="board" data-testid="board" onMouseDown={hideUnpinned}>
+            <div class="board" data-testid="board" onMouseDown={foldUnpinned}>
               <Board />
             </div>
           </section>
@@ -280,17 +269,12 @@ export default function ProjectPane(props: {
             prefs={panelPrefs()}
             onPrefsChange={keepPanelPrefs}
             canPin={canPinPanel()}
-            // Its own strip counts only while it floats: pinned, a fold keeps its width.
-            besideWidth={besideWidth() + (panelPrefs().pinned ? 0 : STRIP_WIDTH)}
-            open={panelOpen()}
+            besideWidth={besideWidth()}
+            state={panelState(true, tasks().panelOpen, panelPrefs().pinned)}
             onOpenChange={(open) => setPanelOpen(dir, open)}
             stripName={selected()?.title ?? 'Session'}
-            badge={
-              <Show when={selected()}>
-                {(task) => <StatusGlyph glyph={glyphOf(task(), sessionOf(task()))} label={stateLabel(task(), sessionOf(task())).text} />}
-              </Show>
-            }
-            badgeLabel={selected() ? stateLabel(selected()!, sessionOf(selected()!)).text : undefined}
+            badge={<Show when={selectedState()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} />}</Show>}
+            badgeLabel={selectedState()?.text}
             empty={
               selected() ? undefined : (
                 <>

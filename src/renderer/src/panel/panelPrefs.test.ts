@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampWidth, DEFAULT_PANEL_PREFS, loadPanelPrefs, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, stripShows,
+  BOARD_ROOM, clampWidth, DEFAULT_PANEL_PREFS, loadPanelPrefs, panelState, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH,
+  stripShows,
 } from './panelPrefs';
 
 /** A Storage stand-in over a plain map. */
@@ -17,8 +18,22 @@ describe('panelPrefs', () => {
   it('clampWidth keeps room for the board when pinned', () => {
     expect(clampWidth(2000, 1400, true)).toBe(1040);
     expect(clampWidth(100, 1400, true)).toBe(420);
-    expect(clampWidth(1350, 1400, false)).toBe(1320);
+    // Floating, a strip of board and its own strip beside it.
+    expect(clampWidth(1350, 1400, false)).toBe(1296);
     expect(clampWidth(700, 600, true)).toBe(420);
+  });
+
+  it("a floating panel's clamp counts its own strip, and a pinned one's doesn't, so a fold keeps its width", () => {
+    expect(clampWidth(2000, 1400, false)).toBe(1400 - BOARD_ROOM.unpinned - STRIP_WIDTH);
+    expect(clampWidth(2000, 1400, true)).toBe(1400 - BOARD_ROOM.pinned);
+  });
+
+  it('a panel that is on is as its pin shows it until the owner first folds or opens it: open pinned, folded floating', () => {
+    expect(panelState(false, true, true)).toBe('off');
+    expect(panelState(true, null, true)).toBe('open');
+    expect(panelState(true, undefined, false)).toBe('folded');
+    expect(panelState(true, false, true)).toBe('folded');
+    expect(panelState(true, true, false)).toBe('open');
   });
 
   it('a strip shows while its panel is on and either folded or floating', () => {

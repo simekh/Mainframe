@@ -5,7 +5,7 @@ import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
 import { openLinkLogged } from '../openLink';
-import { stripShows, STRIP_WIDTH, type PanelState } from '../panel/panelPrefs';
+import { stripShows, type PanelState } from '../panel/panelPrefs';
 import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
@@ -214,8 +214,7 @@ export default function TodoPanel(props: {
           label="Show Todo"
           side="left"
           testId="todo-strip"
-          ref={handOff.stripRef}
-          onOpen={handOff.open}
+          handOff={handOff}
         />
       </Show>
 
@@ -227,14 +226,10 @@ export default function TodoPanel(props: {
         data-pinned={String(props.pinned)}
         data-open={String(props.state === 'open')}
         data-state={props.state}
-        // What the pane leaves right of the panel, its margin kept: the ticket is no wider. Floating, the panel sits
-        // beside its strip.
-        style={{
-          width: `${props.width}px`,
-          '--ticket-room': `${project.width() - props.width - 16 - (props.pinned ? 0 : STRIP_WIDTH + 8)}px`,
-        }}
+        // What the pane leaves right of the panel, its margin kept: the ticket is no wider.
+        style={{ width: `${props.width}px`, '--ticket-room': `${project.width() - props.width - 16}px` }}
       >
-        <FoldButton label="Fold the Todo panel" points="left" testId="todo-fold" ref={handOff.foldRef} onFold={handOff.fold} />
+        <FoldButton label="Fold the Todo panel" points="left" testId="todo-fold" handOff={handOff} />
         <button
           class="panel-pin"
           data-testid="todo-pin"

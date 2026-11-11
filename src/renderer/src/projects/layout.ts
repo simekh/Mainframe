@@ -98,7 +98,7 @@ export function panePlace(layout: Layout, dir: string): PanePlace {
   const at = layout.shown.indexOf(dir);
   if (at < 0) return { first: false, top: false, last: false };
   const cols = columnsOf(layout);
-  return { first: at === 0, top: at < cols, last: at === Math.min(cols, layout.shown.length) - 1 };
+  return { first: at === 0, top: at < cols, last: at === cols - 1 };
 }
 
 /**

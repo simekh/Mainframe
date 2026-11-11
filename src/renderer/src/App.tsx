@@ -115,7 +115,7 @@ export default function App() {
     <div class="app" data-rail={railState()} style={{ '--row-start': `${rowStart()}px` }}>
       <Switch>
         <Match when={setupView() === null}>
-          <TopRow onStartWidth={setRowStart} />
+          <TopRow onRightEdge={setRowStart} />
           <ProjectRail />
           <Panes config={config()} />
         </Match>

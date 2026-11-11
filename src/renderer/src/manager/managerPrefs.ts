@@ -1,4 +1,4 @@
-import { BOARD_ROOM, MIN_WIDTH } from '../panel/panelPrefs';
+import { BOARD_ROOM, MIN_WIDTH, STRIP_WIDTH } from '../panel/panelPrefs';
 
 /** The manager column's width: what it starts at, and the range the owner can drag it through. */
 export const MANAGER_WIDTH = { default: 400, min: 320, max: 640 };
@@ -7,9 +7,12 @@ const KEY = 'mainframe.manager';
 /** What the pane keeps beside the column: the session panel's minimum and the board's room when pinned. */
 const BESIDE = MIN_WIDTH + BOARD_ROOM.pinned;
 
-/** The width the column can take in its project pane. The minimum wins when the pane is too narrow. */
-export function clampManagerWidth(width: number, paneWidth: number): number {
-  const max = Math.min(MANAGER_WIDTH.max, paneWidth - BESIDE);
+/**
+ * The width the column can take in its project pane. Floating, its own strip beside it counts too; pinned, it doesn't,
+ * so a fold keeps the column's width. The minimum wins when the pane is too narrow.
+ */
+export function clampManagerWidth(width: number, paneWidth: number, pinned: boolean): number {
+  const max = Math.min(MANAGER_WIDTH.max, paneWidth - BESIDE - (pinned ? 0 : STRIP_WIDTH));
   return Math.round(Math.max(MANAGER_WIDTH.min, Math.min(width, max)));
 }
 

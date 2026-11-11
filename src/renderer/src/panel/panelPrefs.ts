@@ -15,9 +15,12 @@ export const MIN_WIDTH = 420;
 /** What the pane keeps beside the panel: room for the board when pinned, a strip of it when not. */
 export const BOARD_ROOM = { pinned: 360, unpinned: 80 };
 
-/** The width the panel can take in its project pane. The minimum wins when the pane is too narrow. */
+/**
+ * The width the panel can take in its project pane. Floating, its own strip beside it counts too; pinned, it doesn't,
+ * so a fold keeps the panel's width. The minimum wins when the pane is too narrow.
+ */
 export function clampWidth(width: number, paneWidth: number, pinned: boolean): number {
-  const max = paneWidth - (pinned ? BOARD_ROOM.pinned : BOARD_ROOM.unpinned);
+  const max = paneWidth - (pinned ? BOARD_ROOM.pinned : BOARD_ROOM.unpinned + STRIP_WIDTH);
   return Math.round(Math.max(MIN_WIDTH, Math.min(width, max)));
 }
 
@@ -26,6 +29,12 @@ export type PanelState = 'open' | 'folded' | 'off';
 
 /** A folded panel's strip: app.css's `--strip-w`, without its margin, as the islands' widths are counted. */
 export const STRIP_WIDTH = 24;
+
+/** Until the owner first folds or opens it, a panel that is on is as its pin shows it: open pinned, folded floating. */
+export function panelState(on: boolean, open: boolean | null | undefined, pinned: boolean): PanelState {
+  if (!on) return 'off';
+  return (open ?? pinned) ? 'open' : 'folded';
+}
 
 /** A panel that is on shows its strip while folded, and while it floats: the strip stays beside it while it is out. */
 export function stripShows(state: PanelState, pinned: boolean): boolean {

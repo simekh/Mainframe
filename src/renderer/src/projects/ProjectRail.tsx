@@ -28,7 +28,8 @@ export default function ProjectRail() {
   /** The project whose close waits for the owner to confirm it. */
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const several = () => projectsStore.layout.shown.length > 1;
-  const waiting = createMemo(offScreenNeedsYou);
+  // Only the strip shows it.
+  const waiting = createMemo(() => (railState() === 'folded' ? offScreenNeedsYou() : 0));
   const handOff = createFoldHandOff((open) => setRailState(open ? 'open' : 'folded'));
 
   return (
@@ -37,7 +38,8 @@ export default function ProjectRail() {
         <PanelStrip
           class="rail-strip"
           name="Projects"
-          label={waiting() > 0 ? `Show projects, ${waiting()} need you` : 'Show projects'}
+          label="Show projects"
+          status={waiting() > 0 ? `${waiting()} need you` : undefined}
           side="left"
           mark={
             <Show when={waiting() > 0}>
@@ -45,8 +47,7 @@ export default function ProjectRail() {
             </Show>
           }
           testId="rail-strip"
-          ref={handOff.stripRef}
-          onOpen={handOff.open}
+          handOff={handOff}
         />
       </Match>
       <Match when={railState() === 'open'}>
@@ -79,7 +80,7 @@ export default function ProjectRail() {
                 </svg>
               </button>
             </div>
-            <FoldButton label="Fold the projects list" points="left" testId="rail-fold" ref={handOff.foldRef} onFold={handOff.fold} />
+            <FoldButton label="Fold the projects list" points="left" testId="rail-fold" handOff={handOff} />
           </header>
 
           <ul class="rail-list">

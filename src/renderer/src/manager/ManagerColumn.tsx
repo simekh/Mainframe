@@ -57,12 +57,12 @@ export default function ManagerColumn(props: {
         <PanelStrip
           class="manager-strip"
           name="Manager"
-          label={status() ? `Show manager, ${status()!.text}` : 'Show manager'}
+          label="Show manager"
+          status={status()?.text}
           side="left"
           mark={<Show when={status()}>{(s) => <StatusGlyph glyph={s().glyph} label={s().text} />}</Show>}
           testId="manager-strip"
-          ref={handOff.stripRef}
-          onOpen={handOff.open}
+          handOff={handOff}
         />
       </Show>
 
@@ -75,7 +75,7 @@ export default function ManagerColumn(props: {
         data-state={props.state}
         style={{ width: `${props.width}px` }}
       >
-        <FoldButton label="Fold the manager" points="left" testId="manager-fold" ref={handOff.foldRef} onFold={handOff.fold} />
+        <FoldButton label="Fold the manager" points="left" testId="manager-fold" handOff={handOff} />
         <button
           class="panel-pin"
           data-testid="manager-pin"

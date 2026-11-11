@@ -1,14 +1,11 @@
-import { test, expect, type Locator } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
 import {
-  box, closePaneKey, isOnTop, projectPane as pane, railRow as row, report, repo, ROW_HEIGHT, rowButton, sendLine, startIn,
+  appRegion, box, boxOf, closePaneKey, dragBy, expectInOneRow, expectStripAt, isOnTop, projectPane as pane, railRow as row, report,
+  repo, ROW_HEIGHT, rowButton, sendLine, startIn,
 } from './tasks';
 
 test.afterEach(cleanUp);
-
-const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
-const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
-const appRegion = (locator: Locator) => locator.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'));
 
 test("the row holds Projects, then the project's Todo, Manager, name and New task, and Next that needs you at its right end; every panel starts under it", async () => {
   const { app, page } = await launchApp();
@@ -22,10 +19,7 @@ test("the row holds Projects, then the project's Todo, Manager, name and New tas
   ];
   const boxes = await Promise.all(inRow.map(boxOf));
   // Left to right, apart, on one centre line, and nothing over any of them.
-  for (let i = 1; i < boxes.length; i++) {
-    expect(boxes[i].x).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
-    expect(Math.abs(middle(boxes[i]) - middle(boxes[0]))).toBeLessThanOrEqual(1);
-  }
+  expectInOneRow(boxes);
   for (const el of inRow) expect(await isOnTop(el)).toBe(true);
   const next = boxes.at(-1)!;
   expect(next.x + next.width).toBeGreaterThanOrEqual((await page.evaluate(() => window.innerWidth)) - 20);
@@ -67,12 +61,7 @@ test("the first project's part starts right after Projects with the list open, f
     expect(Math.abs((await boxOf(pane(page, dir).getByTestId('project-bar'))).x - (await boxOf(pane(page, dir))).x)).toBeLessThanOrEqual(1);
   await expectOverItsPane(globex);
   const before = await boxOf(pane(page, globex));
-  const divider = await box(page, 'pane-divider');
-  const [x, y] = [divider.x + divider.width / 2, divider.y + divider.height / 2];
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 100, y, { steps: 8 });
-  await page.mouse.up();
+  await dragBy(page, 'pane-divider', 100);
   expect(Math.abs((await boxOf(pane(page, globex))).x - (before.x + 100))).toBeLessThanOrEqual(2);
   await expectOverItsPane(globex);
 
@@ -176,7 +165,7 @@ test("on the Mac the row is the window's title bar: nothing that takes clicks st
   await app.close();
 });
 
-test('Projects turns the list off and on; off, it counts the sessions waiting in projects off screen, and focus in the list goes to it', async () => {
+test("Projects turns the list off and on; off, it counts the sessions waiting in projects off screen, and focus in the list goes to it. The list folds into a strip at the window's left that counts them too, and opens again from it; Projects stays lit, and the focus goes from one to the other", async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({}, [acme, globex]);
   const id = await startIn(page, globex, 'Question');
@@ -184,6 +173,8 @@ test('Projects turns the list off and on; off, it counts the sessions waiting in
   await expect(row(page, globex).getByTestId('rail-count')).toHaveText('1');
   const projects = page.getByTestId('projects-toggle');
   const rail = page.getByTestId('project-rail');
+  const fold = page.getByTestId('rail-fold');
+  const strip = page.getByTestId('rail-strip');
   // On, the list shows the count itself.
   await expect(projects).toHaveAttribute('aria-pressed', 'true');
   await expect(projects).toHaveAttribute('title', 'Hide the projects list');
@@ -203,26 +194,13 @@ test('Projects turns the list off and on; off, it counts the sessions waiting in
   await projects.click();
   await expect(rail).toBeVisible();
   await expect(projects).toHaveText('Projects');
-  await app.close();
-});
 
-test("the projects list folds into a strip at the window's left that counts the sessions waiting off screen, and opens again from it; Projects stays lit, and the focus goes from one to the other", async () => {
-  const [acme, globex] = [repo(), repo()];
-  const { app, page } = await launchApp({}, [acme, globex]);
-  const id = await startIn(page, globex, 'Question');
-  await sendLine(page, id, report('blocked:kind=question'));
-  await expect(row(page, globex).getByTestId('rail-count')).toHaveText('1');
-  const projects = page.getByTestId('projects-toggle');
-  const rail = page.getByTestId('project-rail');
-  const fold = page.getByTestId('rail-fold');
-  const strip = page.getByTestId('rail-strip');
-
+  // Folded, while globex is still off screen.
   await fold.click();
   await expect(rail).toBeHidden();
   await expect(strip).toBeFocused();
   const s = await box(page, 'rail-strip');
-  expect(s.width).toBe(24);
-  expect(Math.abs(s.x - 8)).toBeLessThanOrEqual(1);
+  expectStripAt(s, 'left', 8);
   expect(s.y).toBe(ROW_HEIGHT);
   await expect(strip).toHaveAccessibleName('Show projects, 1 need you');
   await expect(strip).toContainText('1');
@@ -239,9 +217,7 @@ test("the projects list folds into a strip at the window's left that counts the 
   await strip.click();
   await expect(rail).toBeVisible();
   await expect(fold).toBeFocused();
-  const [grid, folder] = [await boxOf(page.getByTestId('arrange-grid')), await boxOf(fold)];
-  expect(folder.x).toBeGreaterThanOrEqual(grid.x + grid.width);
-  expect(Math.abs(middle(folder) - middle(grid))).toBeLessThanOrEqual(1);
+  expectInOneRow([await boxOf(page.getByTestId('arrange-grid')), await boxOf(fold)]);
   const title = rail.locator('.rail-header h2');
   expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   const t = await boxOf(title);

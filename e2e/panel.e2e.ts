@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
-import { box, card, edgesWhile, firstSpawn, fitSize, ROW_HEIGHT, screen, sendLine, settled, startTask, termSize } from './tasks';
+import {
+  box, card, edgesWhile, expectSlide, expectStripAt, firstSpawn, fitSize, ROW_HEIGHT, screen, sendLine, settled, startTask, termSize,
+} from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -127,13 +129,11 @@ test("pinned, the panel folds into a strip at its pane's right edge and gives th
   // It slides away from where it stood, never stepping left first to where a floating panel sits, and ends past the
   // pane's edge.
   const folding = await edgesWhile(page, 'side-panel', 'right', () => fold.click());
-  expect(folding.filter((right, i) => right < (i ? folding[i - 1] : open.x + open.width) - 0.5)).toEqual([]);
+  expectSlide(folding, 'right', { from: open.x + open.width });
   expect(folding.at(-1)! - open.width).toBeGreaterThanOrEqual(pane.x + pane.width);
   await expect(panel).toBeHidden();
   await expect(strip).toBeFocused();
-  const s = await box(page, 'panel-strip');
-  expect(s.width).toBe(24);
-  expect(Math.abs(s.x + s.width - (pane.x + pane.width - 8))).toBeLessThanOrEqual(1);
+  expectStripAt(await box(page, 'panel-strip'), 'right', pane.x + pane.width - 8);
   const board = await box(page, 'board');
   expect(board.x + board.width).toBeGreaterThan(open.x);
   expect(await termSize(page, id)).toEqual(size);
@@ -149,8 +149,7 @@ test("pinned, the panel folds into a strip at its pane's right edge and gives th
   await expect(panel).toBeHidden();
   // From the strip it slides back in and lands where it stood, without a step at either end.
   const opening = await edgesWhile(page, 'side-panel', 'right', () => strip.click());
-  expect(opening.filter((right, i) => i > 0 && right > opening[i - 1] + 0.5)).toEqual([]);
-  expect(opening.at(-1)!).toBeCloseTo(open.x + open.width, 0);
+  expectSlide(opening, 'left', { to: open.x + open.width });
   await expect(panel).toBeVisible();
   await expect(fold).toBeFocused();
   expect((await box(page, 'side-panel')).width).toBeCloseTo(open.width, 0);
