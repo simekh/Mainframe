@@ -76,6 +76,27 @@ test('each open project has its own board and manager; the list shows one in pla
   await again.app.close();
 });
 
+test('a project a divider drag made narrower still fills the window once it is alone on screen', async () => {
+  const [acme, globex] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [acme, globex]);
+  await (await rowButton(page, globex, 'rail-beside')).click();
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
+
+  // Acme, on the left, gives up 100 px: its weight drops under 1.
+  const divider = await boxOf(page.getByTestId('pane-divider'));
+  const [x, y] = [divider.x + divider.width / 2, divider.y + divider.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 100, y, { steps: 8 });
+  await page.mouse.up();
+
+  await (await rowButton(page, globex, 'rail-beside')).click();
+  await expect(pane(page, globex)).toHaveAttribute('data-shown', 'false');
+  const panes = await boxOf(page.getByTestId('panes'));
+  await expect.poll(async () => Math.abs((await boxOf(pane(page, acme))).width - panes.width)).toBeLessThanOrEqual(2);
+  await app.close();
+});
+
 test('a restart whose start-up check is slow still opens the projects on screen as they were left', async () => {
   const [acme, globex] = [repo(), repo()];
   const first = await launchApp({}, [acme, globex]);

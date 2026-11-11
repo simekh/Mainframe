@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
 import ResizeEdge from '../panel/ResizeEdge';
-import { dragDivider } from './layout';
+import { dragDivider, growOf } from './layout';
 import ProjectPane from './ProjectPane';
 import { openProject, projectsStore, setLayout, weightOf } from './projectsStore';
 
@@ -29,7 +29,7 @@ export default function Panes(props: { config: RendererConfig | undefined }) {
     const at = layout().shown.indexOf(dir);
     if (at < 0) return {};
     // Dividers sit at the odd places between them.
-    return grid() ? { order: at * 2 } : { order: at * 2, flex: `${weightOf(dir)} 1 0` };
+    return grid() ? { order: at * 2 } : { order: at * 2, flex: `${growOf(layout(), dir)} 1 0` };
   };
 
   /** The divider after the shown pane at `index`: that pane's edge, which a drag or the arrow keys move. */

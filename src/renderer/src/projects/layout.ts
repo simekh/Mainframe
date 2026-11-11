@@ -77,6 +77,16 @@ export function toggleManager(layout: Layout, dir: string): Layout {
 }
 
 /**
+ * The project's flex grow among the columns on screen: its share of their weights, so the shares add up to 1. Raw
+ * weights can't be the grow: a drag keeps only the sum of the two columns beside the divider, so the columns on screen
+ * later can add up to less than 1, and flex then hands out only that fraction of the row, leaving a gap at its end.
+ */
+export function growOf(layout: Layout, dir: string): number {
+  const weight = (d: string) => layout.weights[d] ?? 1;
+  return weight(dir) / layout.shown.reduce((sum, d) => sum + weight(d), 0);
+}
+
+/**
  * The columns' weights once the divider after column `index` moves `dx` pixels, over `total` pixels
  * in all. Only the two columns beside it change, and neither goes under `min` pixels.
  */

@@ -4,6 +4,7 @@ import {
   dragDivider,
   fitLayout,
   focusOn,
+  growOf,
   loadLayout,
   saveLayout,
   toggleBeside,
@@ -105,6 +106,25 @@ describe('dragDivider', () => {
 
   it('changes only the two panes beside the divider', () => {
     expect(dragDivider([1, 1, 1], 1, -50, 900, 100)).toEqual([1, 0.8333, 1.1667]);
+  });
+});
+
+describe('growOf', () => {
+  it('fills the row with a pane shown alone whose dragged weight fell below 1', () => {
+    // Its weight from a drag beside /b, which has gone off screen.
+    expect(growOf(layout({ shown: ['/a'], weights: { '/a': 0.6, '/b': 1.4 } }), '/a')).toBe(1);
+  });
+
+  it('shares the row by weight, all of it, when the weights on screen add up to less than 1', () => {
+    const l = layout({ shown: ['/a', '/c'], weights: { '/a': 0.6, '/c': 0.2 } });
+    expect(growOf(l, '/a')).toBeCloseTo(0.75);
+    expect(growOf(l, '/c')).toBeCloseTo(0.25);
+  });
+
+  it('counts a project with no weight of its own as 1', () => {
+    const l = layout({ shown: ['/a', '/b'], weights: { '/a': 3 } });
+    expect(growOf(l, '/a')).toBeCloseTo(0.75);
+    expect(growOf(l, '/b')).toBeCloseTo(0.25);
   });
 });
 
