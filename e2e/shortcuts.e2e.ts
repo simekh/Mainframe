@@ -74,21 +74,26 @@ test('with nothing waiting, Ctrl+Tab changes nothing and still stays out of the 
   await app.close();
 });
 
-test('from an unpinned panel that is put away, Ctrl+Tab brings it out with the terminal focused', async () => {
+// Review Focus 5.
+test('from the panel folded, pinned or not, Ctrl+Tab brings it out with the terminal focused', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Alpha');
   await blocked(page);
   await expect(cardIn(page, 'needs-you', a)).toHaveCount(1);
-  await page.getByTestId('panel-pin').click();
-  await page.getByTestId('panel-hide').click();
   const panel = page.getByTestId('side-panel');
-  await expect(panel).toBeHidden();
+  await expect(panel).toHaveAttribute('data-pinned', 'true');
 
   // Alpha is selected already, so no terminal changes hands: only the jump can put the cursor in
   // it, and only once the panel is out.
-  await page.keyboard.press('Control+Tab');
-  await expect(panel).toBeVisible();
-  await expectJumpedTo(page, a);
+  for (const pinned of [true, false]) {
+    if (!pinned) await page.getByTestId('panel-pin').click();
+    await expect(panel).toHaveAttribute('data-pinned', String(pinned));
+    await page.getByTestId('panel-fold').click();
+    await expect(panel).toBeHidden();
+    await page.keyboard.press('Control+Tab');
+    await expect(panel).toBeVisible();
+    await expectJumpedTo(page, a);
+  }
   await app.close();
 });
 

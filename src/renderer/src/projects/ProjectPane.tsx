@@ -8,7 +8,7 @@ import ManagerColumn from '../manager/ManagerColumn';
 import {
   clampManagerWidth, loadManagerPinned, loadManagerWidth, saveManagerPinned, saveManagerWidth,
 } from '../manager/managerPrefs';
-import { BOARD_ROOM, loadPanelPrefs, MIN_WIDTH, savePanelPrefs, type PanelPrefs } from '../panel/panelPrefs';
+import { loadPanelPrefs, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs } from '../panel/panelPrefs';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
@@ -112,17 +112,19 @@ export default function ProjectPane(props: {
   const besideWidth = () => (managerTakesRoom() ? shownManagerWidth() : 0) + todoBeside();
   // Too narrow for the board beside the pinned panel at its narrowest, the panel floats over the board
   // as an unpinned one does. The owner's pin is kept for a pane with room.
-  const roomToPin = () => width() - besideWidth() - MIN_WIDTH >= BOARD_ROOM.pinned;
+  const canPinPanel = () => roomToPin(width(), besideWidth());
   // The project's own width and pin, so pinning one project's panel leaves the others' as they are.
   const [ownPanelPrefs, setOwnPanelPrefs] = createSignal(loadPanelPrefs(localStorage, dir));
-  const panelPrefs = (): PanelPrefs => ({ ...ownPanelPrefs(), pinned: ownPanelPrefs().pinned && roomToPin() });
+  const panelPrefs = (): PanelPrefs => ({ ...ownPanelPrefs(), pinned: ownPanelPrefs().pinned && canPinPanel() });
+  // Until the owner first folds or opens it, the panel is as its pin shows it: open pinned, folded floating.
+  const panelOpen = () => tasks().panelOpen ?? panelPrefs().pinned;
   const keepPanelPrefs = (prefs: PanelPrefs) => {
-    const kept = roomToPin() ? prefs : { ...prefs, pinned: ownPanelPrefs().pinned };
+    const kept = canPinPanel() ? prefs : { ...prefs, pinned: ownPanelPrefs().pinned };
     setOwnPanelPrefs(kept);
     savePanelPrefs(localStorage, dir, kept);
   };
-  // A press on the board outside any card puts away the panel, the manager and the Todo panel that float over it,
-  // and the ticket, pinned panel or not.
+  // A press on the board outside any card puts away the panel (into its strip), the manager and the Todo panel that
+  // float over it, and the ticket, pinned panel or not.
   const hideUnpinned = (e: MouseEvent) => {
     if ((e.target as Element).closest('[data-testid=task-card]')) return;
     if (!panelPrefs().pinned) setPanelOpen(dir, false);
@@ -238,10 +240,12 @@ export default function ProjectPane(props: {
           label="Selected session"
           prefs={panelPrefs()}
           onPrefsChange={keepPanelPrefs}
-          canPin={roomToPin()}
-          besideWidth={besideWidth()}
-          open={tasks().panelOpen}
+          canPin={canPinPanel()}
+          // Its own strip counts only while it floats: pinned, a fold keeps its width.
+          besideWidth={besideWidth() + (panelPrefs().pinned ? 0 : STRIP_WIDTH)}
+          open={panelOpen()}
           onOpenChange={(open) => setPanelOpen(dir, open)}
+          stripName={selected()?.title ?? 'Session'}
           badge={
             <Show when={selected()}>
               {(task) => <StatusGlyph glyph={glyphOf(task(), sessionOf(task()))} label={stateLabel(task(), sessionOf(task())).text} />}

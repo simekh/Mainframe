@@ -21,6 +21,28 @@ export function clampWidth(width: number, paneWidth: number, pinned: boolean): n
   return Math.round(Math.max(MIN_WIDTH, Math.min(width, max)));
 }
 
+/** A panel that is on is open or folded into its strip; one that is off leaves nothing. */
+export type PanelState = 'open' | 'folded' | 'off';
+
+/** A folded panel's strip: app.css's `--strip-w`, without its margin, as the islands' widths are counted. */
+export const STRIP_WIDTH = 24;
+
+/** A panel that is on shows its strip while folded, and while it floats: the strip stays beside it while it is out. */
+export function stripShows(state: PanelState, pinned: boolean): boolean {
+  return state === 'folded' || (state === 'open' && !pinned);
+}
+
+/** What the panel takes beside the board: its strip while that shows, its width when open and pinned, nothing when off. */
+export function roomTaken(state: PanelState, pinned: boolean, width: number): number {
+  if (stripShows(state, pinned)) return STRIP_WIDTH;
+  return state === 'open' ? width : 0;
+}
+
+/** Whether the pane, less what `beside` takes, has room for the board beside the pinned session panel at its narrowest. */
+export function roomToPin(paneWidth: number, beside: number): boolean {
+  return paneWidth - beside - MIN_WIDTH >= BOARD_ROOM.pinned;
+}
+
 export function loadPanelPrefs(
   storage: Pick<Storage, 'getItem'>,
   dir: string,

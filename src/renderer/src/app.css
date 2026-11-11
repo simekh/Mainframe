@@ -31,6 +31,8 @@
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --motion-fast: 120ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* A folded panel's strip, without its margin: STRIP_WIDTH in panelPrefs.ts. */
+  --strip-w: 24px;
   color-scheme: dark;
 }
 
@@ -1543,8 +1545,8 @@ kbd {
   overflow-y: auto;
 }
 
-/* Beside the pinned panel, lanes it cuts off fade out rather than end at a hard edge. */
-.project-pane:has(> .side-panel[data-pinned='true']) .lanes {
+/* Beside the pinned, open panel, lanes it cuts off fade out rather than end at a hard edge. */
+.project-pane:has(> .side-panel[data-pinned='true'][data-open='true']) .lanes {
   mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
@@ -1967,15 +1969,17 @@ kbd {
   border-radius: var(--radius-lg);
 }
 
-/* Pinned, the board's flex sibling at the owner's width. */
+/* Pinned, the board's flex sibling at the owner's width. Its header leaves room for the fold button and the pin. */
 .side-panel {
+  --panel-pin-room: 76px;
   width: var(--panel-w);
   margin: 8px 8px 8px 0;
 }
 
 /* Unpinned, each floats over its own edge of the board and slides away while it isn't open. It
-   hides by moving and then turning invisible, never by changing size, so the terminals keep theirs. */
-.side-panel[data-pinned='false'],
+   hides by moving and then turning invisible, never by changing size, so the terminals keep theirs.
+   The session panel folded, pinned or not, is laid out where it floats, and slides away from there. */
+.side-panel:is([data-pinned='false'], [data-open='false']),
 .manager-column[data-pinned='false'],
 .todo-panel[data-pinned='false'] {
   position: absolute;
@@ -1997,8 +2001,9 @@ kbd {
   top: 8px;
 }
 
-.side-panel[data-pinned='false'] {
-  right: 8px;
+/* Beside its strip, which keeps the pane's right edge. */
+.side-panel:is([data-pinned='false'], [data-open='false']) {
+  right: calc(16px + var(--strip-w));
   z-index: 5;
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
 }
@@ -2017,9 +2022,9 @@ kbd {
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* Past the pane's edge, with the hide pill that overhangs the island. */
-.side-panel[data-pinned='false'][data-open='false'] {
-  transform: translateX(calc(100% + 24px));
+/* Past the pane's edge, over its strip. */
+.side-panel[data-open='false'] {
+  transform: translateX(calc(100% + 16px + var(--strip-w)));
   visibility: hidden;
 }
 
@@ -2084,15 +2089,15 @@ kbd {
   outline: none;
 }
 
-/* A pill straddling the left edge, centred on it: puts the unpinned panel away.
+/* A pill straddling the manager's or the Todo panel's right edge, centred on it: puts the panel away, pinned or not.
    Adapted from Parallel Code (MIT): .board-side-panel-close in src/components/task-board.css at
    97c3558. See THIRD_PARTY_NOTICES.md. */
 .panel-hide {
   position: absolute;
   top: 50%;
-  left: -8px;
+  right: -8px;
   z-index: 6;
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
@@ -2105,24 +2110,12 @@ kbd {
   color: var(--fg-muted);
 }
 
-.side-panel[data-pinned='false'] .panel-hide {
-  display: inline-flex;
-}
-
-/* The manager's and the Todo panel's, pinned or not, on their right edge: they can be put away either way. */
-.manager-column .panel-hide,
-.todo-panel .panel-hide {
-  display: inline-flex;
-  left: auto;
-  right: -8px;
-}
-
-/* The hidden panel's way back: a half pill on the window's right edge, where the panel went. It
-   carries the shown session's state, so one that needs the owner shows from there. */
+/* The hidden manager's way back: a half pill on the pane's left edge, or right of the pinned Todo panel when it is
+   out. It carries the manager's state, so a manager that needs the owner shows from there. */
 .panel-show {
   position: absolute;
   top: 50%;
-  right: 0;
+  left: var(--left-room, 0px);
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -2130,26 +2123,16 @@ kbd {
   justify-content: center;
   gap: 8px;
   width: 22px;
-  padding: 10px 0 10px 2px;
+  padding: 10px 2px 10px 0;
   translate: 0 -50%;
   border: 1px solid var(--border);
-  border-right: 0;
-  border-radius: 999px 0 0 999px;
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
   background: var(--bg-elevated);
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
   color: var(--fg-muted);
   visibility: hidden;
   opacity: 0;
-}
-
-/* The manager's, on the pane's left edge, or right of the pinned Todo panel when it is out. */
-.manager-column + .panel-show {
-  right: auto;
-  left: var(--left-room, 0px);
-  padding: 10px 2px 10px 0;
-  border: 1px solid var(--border);
-  border-left: 0;
-  border-radius: 0 999px 999px 0;
 }
 
 /* Level with the floating manager's arrow: that island starts under the top bar, so its middle is 19 px below the
@@ -2173,7 +2156,6 @@ kbd {
 
 /* Visible at once, so it can take the focus; it fades in once the island has slid out. As visible
    as its pane: one off screen keeps it hidden. */
-.side-panel[data-pinned='false'][data-open='false'] + .panel-show,
 .manager-column[data-open='false'] + .panel-show {
   visibility: inherit;
   opacity: 1;
@@ -2192,9 +2174,10 @@ kbd {
   height: 10px;
 }
 
-/* At the panel's top right, whatever it holds: a title bar lays out its row beside it. The ticket's ✕ sits as the
-   islands' pins do. */
+/* At the panel's top right, whatever it holds: a title bar lays out its row beside it. The fold button sits just left
+   of the pin, and the ticket's ✕ as the islands' pins do. */
 .panel-pin,
+.panel-fold,
 .ticket-close {
   position: absolute;
   top: 10px;
@@ -2209,11 +2192,25 @@ kbd {
   color: var(--fg-subtle);
 }
 
+.panel-fold {
+  right: 42px;
+}
+
 .panel-pin:hover:not(:disabled),
+.panel-fold:hover,
 .ticket-close:hover {
   background: var(--hover);
   border-color: var(--border-subtle);
   color: var(--fg);
+}
+
+/* The fold button's chevron and its strip's, as big as the pin's icon and drawn with its weight of line. */
+.panel-fold svg,
+.panel-strip > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.1;
 }
 
 .panel-pin[aria-pressed='true'] {
@@ -2228,6 +2225,57 @@ kbd {
 .panel-pin svg {
   width: 15px;
   height: 15px;
+}
+
+/* A folded panel: an island like the panels, in its place at its pane's edge, the full height. All of it opens the
+   panel. Its chevron sits level with the fold button that folded it (the pin's 10 px, half its 28, less half its own
+   14); under it the panel's state, then its name in the panel title's face, turned on its side. */
+.panel-strip {
+  flex: none;
+  width: var(--strip-w);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 17px 0 12px;
+  background: var(--task-container-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--radius-lg);
+  color: var(--fg-muted);
+}
+
+.panel-strip[data-side='left'] {
+  margin: 8px 0 8px 8px;
+}
+
+.panel-strip[data-side='right'] {
+  margin: 8px 8px 8px 0;
+}
+
+.panel-strip:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+/* Cut short where the strip ends. Bottom to top on the left, top to bottom on the right: on both, the tops of the
+   letters face the pane's edge. */
+.panel-strip-name {
+  min-height: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+.panel-strip[data-side='left'] .panel-strip-name {
+  writing-mode: sideways-lr;
+}
+
+.panel-strip[data-side='right'] .panel-strip-name {
+  writing-mode: sideways-rl;
 }
 
 /* Over the content, which stays laid out for the terminals in it. */
@@ -2777,8 +2825,8 @@ kbd {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  /* Out at once; hidden only once it has slid away. */
-  .side-panel[data-pinned='false'],
+  /* Out at once; hidden only once it has slid away. The session panel slides pinned too, as it folds and opens. */
+  .side-panel,
   .manager-column[data-pinned='false'],
   .todo-panel[data-pinned='false'] {
     transition:
@@ -2786,7 +2834,7 @@ kbd {
       visibility 0s linear 0s;
   }
 
-  .side-panel[data-pinned='false'][data-open='false'],
+  .side-panel[data-open='false'],
   .manager-column[data-pinned='false'][data-open='false'],
   .todo-panel[data-pinned='false'][data-open='false'] {
     transition:
@@ -2794,7 +2842,6 @@ kbd {
       visibility 0s linear 220ms;
   }
 
-  .side-panel[data-pinned='false'][data-open='false'] + .panel-show,
   .manager-column[data-pinned='false'][data-open='false'] + .panel-show {
     transition: opacity 120ms var(--ease-out) 160ms;
   }
@@ -2806,6 +2853,8 @@ kbd {
   .tb-jump,
   .tb-toggle,
   .panel-pin,
+  .panel-fold,
+  .panel-strip,
   .pane-heading,
   .todo-pick,
   .todo-item,

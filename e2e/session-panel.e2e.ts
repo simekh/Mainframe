@@ -271,9 +271,13 @@ test('the title bar drags the window on the Mac and not elsewhere, and its title
   // The title row still lines up with the project and branch row under it, 16px in.
   const glyph = await box(page.getByTestId('side-panel').getByTestId('task-glyph'));
   expect(Math.round(glyph.x)).toBe(Math.round((await box(page.getByTestId('panel-project'))).x));
-  // The actions sit just left of the pin, in one row with it.
+  // The actions sit just left of the fold button, and it just left of the pin, in one row with it.
   const r = await box(page.getByTestId('panel-reopen'));
-  expect(Math.round(p.x - (r.x + r.width))).toBe(6);
+  const f = await box(page.getByTestId('panel-fold'));
+  expect(overlaps(f)).toBe(false);
+  expect(Math.round(f.x - (r.x + r.width))).toBe(6);
+  expect(Math.round(p.x - (f.x + f.width))).toBe(6);
   expect(Math.round(r.y + r.height / 2)).toBe(Math.round(p.y + p.height / 2));
+  expect(Math.round(f.y + f.height / 2)).toBe(Math.round(p.y + p.height / 2));
   await app.close();
 });

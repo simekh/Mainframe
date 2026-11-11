@@ -12,12 +12,15 @@ export interface ProjectTasks {
   tasks: TaskView[];
   terminals: TerminalEntry[];
   selectedId: string | null;
-  /** Whether the unpinned panel is out; the pinned one always is. It comes out once a task is selected. */
-  panelOpen: boolean;
+  /**
+   * Whether the session panel is open rather than folded, pinned or not; it opens once a task is selected. Null until
+   * the owner first folds or opens it: the pane then reads the panel's pin as shown.
+   */
+  panelOpen: boolean | null;
 }
 
 /** Each project's own, so no two share an array the store would change in place. */
-const noTasks = (): ProjectTasks => ({ tasks: [], terminals: [], selectedId: null, panelOpen: false });
+const noTasks = (): ProjectTasks => ({ tasks: [], terminals: [], selectedId: null, panelOpen: null });
 /** What `tasksOf` reads for a project whose list hasn't come in; never stored. */
 const NO_TASKS: ProjectTasks = Object.freeze(noTasks());
 

@@ -1,7 +1,7 @@
 import { createSignal, Show, type JSX } from 'solid-js';
 import { useProject } from '../projects/projectContext';
-import Chevron from './Chevron';
-import { clampWidth, type PanelPrefs } from './panelPrefs';
+import { clampWidth, stripShows, type PanelPrefs } from './panelPrefs';
+import PanelStrip, { createFoldHandOff, FoldButton } from './PanelStrip';
 import PinIcon from './PinIcon';
 import ResizeEdge from './ResizeEdge';
 
@@ -10,8 +10,9 @@ const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /**
  * The panel on its project pane's right, its full height. Pinned, it sits beside the board; unpinned, it
- * floats over the board's right edge and slides away while it isn't open. It hides by moving and
- * then turning invisible, never by changing size, so the terminals in it keep their size.
+ * floats over the board's right edge beside its strip. Folded, pinned or not, it slides away and leaves its
+ * strip at the pane's edge. It folds by moving and then turning invisible, never by changing size, so the
+ * terminals in it keep their size.
  */
 export default function SidePanel(props: {
   /** What the panel holds, for screen readers. */
@@ -21,29 +22,27 @@ export default function SidePanel(props: {
   onPrefsChange: (prefs: PanelPrefs) => void;
   /** Whether the pane has room to pin it beside the board; without, the pin is off and can't be set. */
   canPin: boolean;
-  /** The width of the column on the board's other side, which the panel leaves the pane to. */
+  /** What the pane's other islands, and the panel's own strip while it floats, take beside the board. */
   besideWidth: number;
-  /** Whether the unpinned panel is out. The pinned one always is. */
+  /** Whether the panel is open, pinned or not; folded, its strip is all that shows. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Above the chevron of the way back while the unpinned panel is hidden: the shown item's state. */
+  /** The strip's name: what the panel shows. */
+  stripName: string;
+  /** The strip's mark: the shown item's state. */
   badge?: JSX.Element;
-  /** The badge in words, for the way back's name. */
+  /** The badge in words, for the strip's name. */
   badgeLabel?: string;
   /** Shown in place of the content while there is nothing to show. */
   empty?: JSX.Element;
   children: JSX.Element;
 }) {
-  let hideButton!: HTMLButtonElement;
-  let showButton!: HTMLButtonElement;
-
   const project = useProject();
   /** The width while the edge is dragged; kept once the pointer lets go. */
   const [dragWidth, setDragWidth] = createSignal<number | null>(null);
   // A pane resize, or the column beside it, re-clamps the width shown, and keeps the one the owner set.
   const clamp = (w: number) => clampWidth(w, project.width() - props.besideWidth, props.prefs.pinned);
   const width = () => clamp(dragWidth() ?? props.prefs.width);
-  const shown = () => props.prefs.pinned || props.open;
   const keepWidth = (w: number) => props.onPrefsChange({ ...props.prefs, width: clamp(w) });
   // The drag is over before the width is kept, so a save that fails can't leave it running.
   const dragDone = (w: number) => {
@@ -55,17 +54,7 @@ export default function SidePanel(props: {
     props.onPrefsChange({ ...props.prefs, pinned: !props.prefs.pinned });
     props.onOpenChange(true);
   };
-
-  // Each hands the focus to the other, so the keyboard never ends up in a hidden panel. The way
-  // back turns visible at once and only fades in, so it can take the focus straight away.
-  const hide = () => {
-    props.onOpenChange(false);
-    showButton.focus();
-  };
-  const show = () => {
-    props.onOpenChange(true);
-    hideButton.focus();
-  };
+  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
 
   return (
     <>
@@ -73,9 +62,11 @@ export default function SidePanel(props: {
         class="side-panel"
         data-testid="side-panel"
         data-pinned={String(props.prefs.pinned)}
-        data-open={String(shown())}
+        data-open={String(props.open)}
         aria-label={props.label}
-        style={{ '--panel-w': `${width()}px` }}
+        // Not laid out until its pane is measured: before, the pin as shown, and so whether it is open, isn't known,
+        // and a style computed then would slide it in or out as the pane mounts.
+        style={{ '--panel-w': `${width()}px`, display: project.width() ? undefined : 'none' }}
       >
         <ResizeEdge
           width={width()}
@@ -87,16 +78,7 @@ export default function SidePanel(props: {
           min={clamp(0)}
           max={clamp(Infinity)}
         />
-        <button
-          class="panel-hide"
-          data-testid="panel-hide"
-          ref={hideButton}
-          title="Hide panel"
-          aria-label="Hide panel"
-          onClick={hide}
-        >
-          <Chevron points="right" />
-        </button>
+        <FoldButton label="Fold the session panel" points="right" testId="panel-fold" ref={handOff.foldRef} onFold={handOff.fold} />
         <button
           class="panel-pin"
           data-testid="panel-pin"
@@ -119,18 +101,18 @@ export default function SidePanel(props: {
         </Show>
       </aside>
 
-      {/* After the panel, which its styles follow. */}
-      <button
-        class="panel-show"
-        data-testid="panel-show"
-        ref={showButton}
-        title="Show panel"
-        aria-label={props.badgeLabel ? `Show panel, ${props.badgeLabel}` : 'Show panel'}
-        onClick={show}
-      >
-        {props.badge}
-        <Chevron points="left" />
-      </button>
+      {/* After the panel: laid out at the pane's right edge. */}
+      <Show when={stripShows(props.open ? 'open' : 'folded', props.prefs.pinned)}>
+        <PanelStrip
+          name={props.stripName}
+          label={props.badgeLabel ? `Show ${props.stripName}, ${props.badgeLabel}` : `Show ${props.stripName}`}
+          side="right"
+          mark={props.badge}
+          testId="panel-strip"
+          ref={handOff.stripRef}
+          onOpen={handOff.open}
+        />
+      </Show>
     </>
   );
 }
