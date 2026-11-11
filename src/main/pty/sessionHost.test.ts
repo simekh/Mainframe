@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { SessionHost, type LaunchFiles, type PtyLike, type SpawnPty } from './sessionHost';
 import { OSC7501_SUPPORT_REPLY } from '../status/osc7501';
 
@@ -177,8 +177,8 @@ it('killAll kills every running session', () => {
 });
 
 describe('whenAllEnded', () => {
-  /** Lets the callbacks already due run. */
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
 
   it('resolves once the last running session has exited', async () => {
     const { host, ptys, listener } = setup();
@@ -187,7 +187,7 @@ describe('whenAllEnded', () => {
     let ended = false;
     const waited = host.whenAllEnded(60_000).then(() => (ended = true));
     ptys[0].exit(0);
-    await settle();
+    await vi.advanceTimersByTimeAsync(0);
     expect(ended).toBe(false);
     ptys[1].exit(0);
     await waited;
@@ -199,19 +199,14 @@ describe('whenAllEnded', () => {
   });
 
   it('resolves when the wait is over, though a session is still running', async () => {
-    vi.useFakeTimers();
-    try {
-      const { host, listener } = setup();
-      host.spawn('a', spec, listener);
-      let ended = false;
-      void host.whenAllEnded(2000).then(() => (ended = true));
-      await vi.advanceTimersByTimeAsync(1999);
-      expect(ended).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(ended).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+    const { host, listener } = setup();
+    host.spawn('a', spec, listener);
+    let ended = false;
+    void host.whenAllEnded(2000).then(() => (ended = true));
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(ended).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ended).toBe(true);
   });
 });
 

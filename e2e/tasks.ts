@@ -291,7 +291,8 @@ const isSync = (launch: { args: string[] }) => launch.args[0] === '-p';
 /** Only the manager's launches carry a role prompt. */
 const isManager = (launch: { args: string[] }) => launch.args.includes('--append-system-prompt');
 
-const sessionLaunches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isSync(launch));
+/** The sessions' launches in this data folder, the manager's and the tasks', oldest first. */
+export const sessionLaunches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isSync(launch));
 
 /** The tasks' launches in this data folder, oldest first: the manager, which starts with the app, and the syncs are left out. */
 export const launches = (dataDir: string) => sessionLaunches(dataDir).filter((launch) => !isManager(launch));

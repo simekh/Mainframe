@@ -218,16 +218,21 @@ async function start(
     host.killAll();
   };
   onQuitBegins(win, beginQuit);
-  // Then the quit waits a moment for the sessions beginQuit hung up on: node-pty aborts the app when a
-  // session's exit comes in as the app goes (node-pty issue 904). A Windows shutdown can't be held up.
-  let sessionsEnded = false;
-  app.on('before-quit', (event) => {
-    if (sessionsEnded) return;
+  // Once the window has closed, the quit waits a moment for the sessions beginQuit hung up on: node-pty
+  // aborts the app when a session's exit comes in as the app goes (node-pty issue 904). Held after the
+  // window has gone, so it can't start a session meanwhile. A Windows shutdown can't be held up.
+  let waited = false;
+  app.on('will-quit', (event) => {
+    if (waited) return;
     event.preventDefault();
-    void host.whenAllEnded(QUIT_WAIT_MS).then(() => {
-      sessionsEnded = true;
-      app.quit();
-    });
+    // Quit again once Electron is done with this will-quit: an app.quit() made while it runs does nothing,
+    // and with no session running the wait is over at once.
+    void host.whenAllEnded(QUIT_WAIT_MS).then(() =>
+      setImmediate(() => {
+        waited = true;
+        app.quit();
+      }),
+    );
   });
 
   async function makeProject(dir: string): Promise<Project> {

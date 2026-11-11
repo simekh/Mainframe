@@ -3,7 +3,7 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { cleanUp, launchAgain, launchApp, removeAfterTest } from './launch';
-import { answerDialogs, launches, managerLaunches, projectPane, screen, sendLine, startTask } from './tasks';
+import { answerDialogs, launches, projectPane, screen, sendLine, sessionLaunches, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -67,7 +67,7 @@ test('Quit waits for the sessions it hangs up on to end', async () => {
   // Each session ends a second after its hang-up, as a real claude saving its chat may.
   const { app, page, dataDir } = await launchApp({ FAKE_CLAUDE_HANGUP_DELAY_MS: '1000' });
   await startTask(page);
-  const sessions = [...launches(dataDir), ...managerLaunches(dataDir)];
+  const sessions = sessionLaunches(dataDir);
   expect(sessions).toHaveLength(2);
   await app.close();
   // One still running when the app goes is hung up on again, and ends with no record.
