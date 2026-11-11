@@ -82,9 +82,11 @@ export function toggleManager(layout: Layout, dir: string): Layout {
  * later can add up to less than 1, and flex then hands out only that fraction of the row, leaving a gap at its end.
  */
 export function growOf(layout: Layout, dir: string): number {
-  const weight = (d: string) => layout.weights[d] ?? 1;
-  return weight(dir) / layout.shown.reduce((sum, d) => sum + weight(d), 0);
+  return paneWeight(layout, dir) / layout.shown.reduce((sum, d) => sum + paneWeight(layout, d), 0);
 }
+
+/** The project's weight among the columns; 1 until the owner drags a divider beside it. */
+export const paneWeight = (layout: Layout, dir: string): number => layout.weights[dir] ?? 1;
 
 /**
  * The columns' weights once the divider after column `index` moves `dx` pixels, over `total` pixels

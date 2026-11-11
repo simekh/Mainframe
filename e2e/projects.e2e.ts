@@ -83,12 +83,14 @@ test('a project a divider drag made narrower still fills the window once it is a
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
 
   // Acme, on the left, gives up 100 px: its weight drops under 1.
+  const before = (await boxOf(pane(page, acme))).width;
   const divider = await box(page, 'pane-divider');
   const [x, y] = [divider.x + divider.width / 2, divider.y + divider.height / 2];
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x - 100, y, { steps: 8 });
   await page.mouse.up();
+  expect(Math.abs((await boxOf(pane(page, acme))).width - (before - 100))).toBeLessThanOrEqual(2);
 
   await (await rowButton(page, globex, 'rail-beside')).click();
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'false');

@@ -21,7 +21,6 @@ export const projectsStore = store;
 export const isShown = (dir: string) => store.layout.shown.includes(dir);
 export const isFocused = (dir: string) => store.layout.focused === dir;
 export const isManagerShown = (dir: string) => managerShown(store.layout, dir);
-export const weightOf = (dir: string) => store.layout.weights[dir] ?? 1;
 
 let changed = false;
 

@@ -1,9 +1,9 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import type { RendererConfig } from '../../../shared/types';
 import ResizeEdge from '../panel/ResizeEdge';
-import { dragDivider, growOf } from './layout';
+import { dragDivider, growOf, paneWeight } from './layout';
 import ProjectPane from './ProjectPane';
-import { openProject, projectsStore, setLayout, weightOf } from './projectsStore';
+import { openProject, projectsStore, setLayout } from './projectsStore';
 
 /** The narrowest a column of the side-by-side panes is dragged to. */
 const MIN_PANE = 360;
@@ -34,8 +34,8 @@ export default function Panes(props: { config: RendererConfig | undefined }) {
 
   /** The divider after the shown pane at `index`: that pane's edge, which a drag or the arrow keys move. */
   function Divider(dividerProps: { index: number }) {
-    const weights = () => layout().shown.map(weightOf);
-    const widthOf = (i: number) => (weights()[i] / weights().reduce((a, b) => a + b, 0)) * width();
+    const weights = () => layout().shown.map((dir) => paneWeight(layout(), dir));
+    const widthOf = (i: number) => growOf(layout(), layout().shown[i]) * width();
     const left = () => widthOf(dividerProps.index);
     const moveTo = (w: number, keep: boolean) => {
       const next = dragDivider(weights(), dividerProps.index, w - left(), width(), MIN_PANE);
