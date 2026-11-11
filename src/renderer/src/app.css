@@ -1978,7 +1978,7 @@ kbd {
 
 /* Unpinned, each floats over its own edge of the board and slides away while it isn't open. It
    hides by moving and then turning invisible, never by changing size, so the terminals keep theirs.
-   The session panel folded, pinned or not, is laid out where it floats, and slides away from there. */
+   The session panel folded, pinned or not, is taken out of the layout too, so its strip and the board take its room. */
 .side-panel:is([data-pinned='false'], [data-open='false']),
 .manager-column[data-pinned='false'],
 .todo-panel[data-pinned='false'] {
@@ -2006,6 +2006,13 @@ kbd {
   right: calc(16px + var(--strip-w));
   z-index: 5;
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Folded while pinned, it slides away from where it stood, over its strip: not from where it floats, and without the
+   floating panel's shadow. */
+.side-panel[data-pinned='true'][data-open='false'] {
+  right: 8px;
+  box-shadow: none;
 }
 
 /* Right of the pinned Todo panel, when it is out, and a layer under it, so it slides away and back

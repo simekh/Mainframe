@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import { box, card, firstSpawn, fitSize, screen, sendLine, settled, startTask, termSize } from './tasks';
 
@@ -99,10 +99,34 @@ test('unpinned, a press on the board folds the panel into its strip, which stays
   await app.close();
 });
 
+/**
+ * The side panel's right edge on every frame from now, while `act` folds or opens it, until it has stopped moving.
+ * Each is read inside the page, so no frame is missed.
+ */
+async function rightEdgesWhile(page: Page, act: () => Promise<void>): Promise<number[]> {
+  type Probe = { slide: { rights: number[]; done: boolean } };
+  await page.getByTestId('side-panel').evaluate((el) => {
+    const slide: Probe['slide'] = { rights: [], done: false };
+    (window as unknown as Probe).slide = slide;
+    const from = el.getAttribute('data-open');
+    const sample = () => {
+      slide.rights.push(el.getBoundingClientRect().right);
+      if (el.getAttribute('data-open') === from || el.getAnimations().length > 0) requestAnimationFrame(sample);
+      else slide.done = true;
+    };
+    requestAnimationFrame(sample);
+  });
+  await act();
+  await page.waitForFunction(() => (window as unknown as Probe).slide.done);
+  return page.evaluate(() => (window as unknown as Probe).slide.rights);
+}
+
 // Review Focus 1. A clamp that counted the panel's own strip would narrow it as it folds, and its terminal with it.
 test("pinned, the panel folds into a strip at its pane's right edge and gives the board its room; a card or the strip opens it, and a panel at its widest keeps its width and its terminal's size", async () => {
   const { app, page } = await launchApp();
   await setWindowWidth(app, page, 1600);
+  // The slide is what the frames below follow.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const id = await startTask(page);
   const panel = page.getByTestId('side-panel');
   const strip = page.getByTestId('panel-strip');
@@ -118,14 +142,18 @@ test("pinned, the panel folds into a strip at its pane's right edge and gives th
   await settled(page);
   const open = await box(page, 'side-panel');
   const size = (await termSize(page, id))!;
+  const pane = await box(page, 'project-pane');
   // Pinned and open, it has no strip.
   await expect(strip).toHaveCount(0);
 
-  await fold.click();
+  // It slides away from where it stood, never stepping left first to where a floating panel sits, and ends past the
+  // pane's edge.
+  const folding = await rightEdgesWhile(page, () => fold.click());
+  expect(folding.filter((right, i) => right < (i ? folding[i - 1] : open.x + open.width) - 0.5)).toEqual([]);
+  expect(folding.at(-1)! - open.width).toBeGreaterThanOrEqual(pane.x + pane.width);
   await expect(panel).toBeHidden();
   await expect(strip).toBeFocused();
   const s = await box(page, 'panel-strip');
-  const pane = await box(page, 'project-pane');
   expect(s.width).toBe(24);
   expect(Math.abs(s.x + s.width - (pane.x + pane.width - 8))).toBeLessThanOrEqual(1);
   const board = await box(page, 'board');
@@ -141,7 +169,10 @@ test("pinned, the panel folds into a strip at its pane's right edge and gives th
 
   await fold.click();
   await expect(panel).toBeHidden();
-  await strip.click();
+  // From the strip it slides back in and lands where it stood, without a step at either end.
+  const opening = await rightEdgesWhile(page, () => strip.click());
+  expect(opening.filter((right, i) => i > 0 && right > opening[i - 1] + 0.5)).toEqual([]);
+  expect(opening.at(-1)!).toBeCloseTo(open.x + open.width, 0);
   await expect(panel).toBeVisible();
   await expect(fold).toBeFocused();
   expect((await box(page, 'side-panel')).width).toBeCloseTo(open.width, 0);
