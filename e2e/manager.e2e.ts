@@ -339,6 +339,17 @@ test('unpinned, the manager floats over the board beside its strip, a press on t
   await settled(page);
   expect(await managerTermSize(page)).toEqual(size);
 
+  // Out, the strip folds it as the fold button does, and keeps the focus; folded, it opens it, with the focus on the
+  // fold button. Its name says which it does.
+  await strip.click();
+  await expect(column).toHaveAttribute('data-open', 'false');
+  await expect(strip).toBeFocused();
+  await expect(strip).toHaveAccessibleName(/^Show manager/);
+  await strip.click();
+  await expect(column).toHaveAttribute('data-open', 'true');
+  await expect(page.getByTestId('manager-fold')).toBeFocused();
+  await expect(strip).toHaveAccessibleName('Fold the manager');
+
   // The bottom of the board, right of the column: the manager folds into its strip and stays on.
   await page.getByTestId('board').click({ position: { x: floating.x + floating.width - board.x + 40, y: board.height - 40 } });
   await expect(column).toHaveAttribute('data-open', 'false');

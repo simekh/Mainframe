@@ -54,7 +54,7 @@ export default function SidePanel(props: {
     props.onPrefsChange({ ...props.prefs, pinned: !props.prefs.pinned });
     props.onOpenChange(true);
   };
-  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
+  const handOff = createFoldHandOff('Fold the session panel', () => props.open, (open) => props.onOpenChange(open));
 
   return (
     <>
@@ -78,7 +78,7 @@ export default function SidePanel(props: {
           min={clamp(0)}
           max={clamp(Infinity)}
         />
-        <FoldButton label="Fold the session panel" points="right" testId="panel-fold" handOff={handOff} />
+        <FoldButton points="right" testId="panel-fold" handOff={handOff} />
         <button
           class="panel-pin"
           data-testid="panel-pin"

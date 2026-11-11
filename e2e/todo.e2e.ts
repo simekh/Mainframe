@@ -381,6 +381,17 @@ test("pinned, the Todo panel takes the pane's left edge and the manager sits rig
   await expect(panel).toBeVisible();
   await expect(fold).toBeFocused();
 
+  // Out, the strip folds it as the fold button does, and keeps the focus; folded, it opens it, with the focus on the
+  // fold button. Its name says which it does.
+  await strip.click();
+  await expect(panel).toHaveAttribute('data-open', 'false');
+  await expect(strip).toBeFocused();
+  await expect(strip).toHaveAccessibleName('Show Todo');
+  await strip.click();
+  await expect(panel).toHaveAttribute('data-open', 'true');
+  await expect(fold).toBeFocused();
+  await expect(strip).toHaveAccessibleName('Fold the Todo panel');
+
   // A press on the board right of the islands folds it into its strip, and it stays on; the pinned manager stays.
   const board = await box(page, 'board');
   await page.getByTestId('board').click({ position: { x: under.x + under.width - board.x + 40, y: board.height - 40 } });

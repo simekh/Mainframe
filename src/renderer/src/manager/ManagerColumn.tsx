@@ -48,7 +48,9 @@ export default function ManagerColumn(props: {
     props.onPinnedChange(!props.pinned);
     props.onOpenChange(true);
   };
-  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
+  const handOff = createFoldHandOff('Fold the manager', () => props.state === 'open', (open) =>
+    props.onOpenChange(open),
+  );
 
   return (
     <>
@@ -75,7 +77,7 @@ export default function ManagerColumn(props: {
         data-state={props.state}
         style={{ width: `${props.width}px` }}
       >
-        <FoldButton label="Fold the manager" points="left" testId="manager-fold" handOff={handOff} />
+        <FoldButton points="left" testId="manager-fold" handOff={handOff} />
         <button
           class="panel-pin"
           data-testid="manager-pin"

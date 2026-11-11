@@ -82,6 +82,17 @@ test('unpinned, a press on the board folds the panel into its strip, which stays
   await expect(panel).toBeVisible();
   expect(await termSize(page, id)).toEqual(size);
 
+  // Out, the strip folds it as the fold button does, and keeps the focus; folded, it opens it, with the focus on the
+  // fold button. Its name says which it does.
+  await strip.click();
+  await expect(panel).toHaveAttribute('data-open', 'false');
+  await expect(strip).toBeFocused();
+  await expect(strip).toHaveAccessibleName(/^Show Task/);
+  await strip.click();
+  await expect(panel).toHaveAttribute('data-open', 'true');
+  await expect(page.getByTestId('panel-fold')).toBeFocused();
+  await expect(strip).toHaveAccessibleName('Fold the session panel');
+
   await page.getByTestId('panel-fold').click();
   await expect(panel).toHaveAttribute('data-open', 'false');
   await expect(strip).toBeFocused();

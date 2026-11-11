@@ -202,7 +202,9 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'lists' ? ask : undefined;
   };
-  const handOff = createFoldHandOff((open) => props.onOpenChange(open));
+  const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open', (open) =>
+    props.onOpenChange(open),
+  );
 
   return (
     <>
@@ -233,7 +235,7 @@ export default function TodoPanel(props: {
           '--ticket-room': `${project.width() - props.width - 16 - (props.pinned ? 0 : STRIP_WIDTH + 8)}px`,
         }}
       >
-        <FoldButton label="Fold the Todo panel" points="left" testId="todo-fold" handOff={handOff} />
+        <FoldButton points="left" testId="todo-fold" handOff={handOff} />
         <button
           class="panel-pin"
           data-testid="todo-pin"

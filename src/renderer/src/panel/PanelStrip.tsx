@@ -21,7 +21,8 @@ function Chevron(props: { points: 'left' | 'right' }) {
 
 /**
  * A folded panel, in its place at its pane's edge: an island the full height, all of it one button that opens the
- * panel. Top to bottom, a chevron toward the board, the mark (the panel's state) and its name, written along it.
+ * panel, or folds it while it floats out beside it, as the fold button does. Top to bottom, a chevron toward the board,
+ * the mark (the panel's state) and its name, written along it.
  */
 export default function PanelStrip(props: {
   name: string;
@@ -36,7 +37,9 @@ export default function PanelStrip(props: {
   class?: string;
   handOff: FoldHandOff;
 }) {
-  const label = () => (props.status ? `${props.label}, ${props.status}` : props.label);
+  // Out, it says what the fold button says.
+  const label = () =>
+    props.handOff.isOpen() ? props.handOff.foldLabel : props.status ? `${props.label}, ${props.status}` : props.label;
   return (
     <button
       class={`panel-strip ${props.class ?? ''}`}
@@ -45,7 +48,7 @@ export default function PanelStrip(props: {
       ref={props.handOff.stripRef}
       aria-label={label()}
       title={label()}
-      onClick={props.handOff.open}
+      onClick={props.handOff.toggle}
     >
       <Chevron points={props.side === 'left' ? 'right' : 'left'} />
       {props.mark}
@@ -55,14 +58,14 @@ export default function PanelStrip(props: {
 }
 
 /** In a panel's header, left of its pin: folds the panel into its strip. Its chevron points the way the panel goes. */
-export function FoldButton(props: { label: string; points: 'left' | 'right'; testId: string; handOff: FoldHandOff }) {
+export function FoldButton(props: { points: 'left' | 'right'; testId: string; handOff: FoldHandOff }) {
   return (
     <button
       class="panel-fold"
       data-testid={props.testId}
       ref={props.handOff.foldRef}
-      aria-label={props.label}
-      title={props.label}
+      aria-label={props.handOff.foldLabel}
+      title={props.handOff.foldLabel}
       onClick={props.handOff.fold}
     >
       <Chevron points={props.points} />
@@ -74,20 +77,25 @@ type FoldHandOff = ReturnType<typeof createFoldHandOff>;
 
 /**
  * Hands the focus between a panel's fold button and its strip, so the keyboard never ends up in a folded panel:
- * folding focuses the strip, and opening from the strip focuses the fold button. Each turns visible as the panel's
- * state changes, so it can take the focus straight away.
+ * folding, from either, focuses the strip, and opening from the strip focuses the fold button. Each turns visible as
+ * the panel's state changes, so it can take the focus straight away. `foldLabel` names the fold button, and the strip
+ * while the panel is out beside it.
  */
-export function createFoldHandOff(setOpen: (open: boolean) => void) {
+export function createFoldHandOff(foldLabel: string, isOpen: () => boolean, setOpen: (open: boolean) => void) {
   let foldButton: HTMLButtonElement | undefined;
   let strip: HTMLButtonElement | undefined;
+  const fold = () => {
+    setOpen(false);
+    strip?.focus();
+  };
   return {
+    foldLabel,
+    isOpen,
     foldRef: (el: HTMLButtonElement) => void (foldButton = el),
     stripRef: (el: HTMLButtonElement) => void (strip = el),
-    fold: () => {
-      setOpen(false);
-      strip?.focus();
-    },
-    open: () => {
+    fold,
+    toggle: () => {
+      if (isOpen()) return fold();
       setOpen(true);
       foldButton?.focus();
     },

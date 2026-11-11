@@ -30,7 +30,9 @@ export default function ProjectRail() {
   const several = () => projectsStore.layout.shown.length > 1;
   // Only the strip shows it.
   const waiting = createMemo(() => (railState() === 'folded' ? offScreenNeedsYou() : 0));
-  const handOff = createFoldHandOff((open) => setRailState(open ? 'open' : 'folded'));
+  const handOff = createFoldHandOff('Fold the projects list', () => railState() === 'open', (open) =>
+    setRailState(open ? 'open' : 'folded'),
+  );
 
   return (
     <Switch>
@@ -80,7 +82,7 @@ export default function ProjectRail() {
                 </svg>
               </button>
             </div>
-            <FoldButton label="Fold the projects list" points="left" testId="rail-fold" handOff={handOff} />
+            <FoldButton points="left" testId="rail-fold" handOff={handOff} />
           </header>
 
           <ul class="rail-list">
