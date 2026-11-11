@@ -2029,8 +2029,8 @@ kbd {
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* Folded or off while pinned, it slides away from where it stood, over its strip: not from where it floats, and
-   without the floating manager's shadow. */
+/* Folded while pinned, it slides away from where it stood, over its strip: not from where it floats, and without the
+   floating manager's shadow. Off while pinned, it is laid out there too. */
 .manager-column[data-pinned='true'][data-open='false'] {
   left: calc(8px + var(--left-room, 0px));
   box-shadow: none;
@@ -2812,6 +2812,12 @@ kbd {
     transition:
       transform 220ms var(--ease-out),
       visibility 0s linear 220ms;
+  }
+
+  /* Off, the manager goes at once: off is nothing at all, and the room it frees moves it before it could slide. Turned
+     on, it slides in from where it went. */
+  .manager-column[data-state='off'] {
+    transition: none;
   }
 
   .card,

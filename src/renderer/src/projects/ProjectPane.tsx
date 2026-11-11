@@ -89,12 +89,13 @@ export default function ProjectPane(props: {
     saveTodoPrefs(localStorage, dir, prefs);
   };
   // Floating, the Todo panel takes no room and the pane is all it measures against. Pinned, it leaves room for the
-  // manager's strip, or for the pinned, open manager as wide as that would be alone, and the manager takes what is
-  // left: where both can't have their width, the Todo panel gives way first.
-  const todoRoom = () =>
-    todoPrefs().pinned
-      ? width() - roomTaken(managerState(), managerPinned(), clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()))
-      : width();
+  // floating manager's strip, or for the pinned manager as wide as that would be alone, and the manager takes what is
+  // left: where both can't have their width, the Todo panel gives way first. Folded, the pinned manager keeps that
+  // room, which the board takes meanwhile, so it folds and opens where it stands, at its width; off, it frees it.
+  const todoRoom = () => {
+    if (!todoPrefs().pinned || !showManager()) return width();
+    return width() - (managerPinned() ? clampManagerWidth(dragManagerWidth() ?? managerWidth(), width()) : STRIP_WIDTH);
+  };
   const todoWidthIn = (w: number) => clampTodoWidth(w, todoRoom(), todoPrefs().pinned);
   const shownTodoWidth = () => todoWidthIn(dragTodoWidth() ?? todoPrefs().width);
   const keepTodoWidth = (w: number) => {

@@ -72,6 +72,7 @@ export default function ManagerColumn(props: {
         aria-label="Manager"
         data-pinned={String(props.pinned)}
         data-open={String(props.state === 'open')}
+        data-state={props.state}
         style={{ width: `${props.width}px` }}
       >
         <FoldButton label="Fold the manager" points="left" testId="manager-fold" ref={handOff.foldRef} onFold={handOff.fold} />

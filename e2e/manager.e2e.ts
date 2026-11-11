@@ -295,6 +295,48 @@ test("the manager's fold button folds it into a strip at its pane's left edge, t
   await app.close();
 });
 
+// Review Focus 1, beside a pinned Todo panel that gives way to the manager. A fold that handed the manager's room to
+// the Todo panel would widen it, and the manager would step right, and could narrow, before it slid away.
+test('beside a pinned Todo panel that gives way to it, the pinned manager folds from where it stands at its width, and turned off it goes at once', async () => {
+  const { app, page } = await launchApp();
+  // The slide is what the frames below follow.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const column = page.getByTestId('manager-column');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-pin').click();
+  await expect(page.getByTestId('todo-panel')).toHaveAttribute('data-pinned', 'true');
+  await settled(page);
+  // Narrower than its own 320 px: it gives way to the manager.
+  const todoWidth = (await box(page, 'todo-panel')).width;
+  expect(todoWidth).toBeLessThan(320);
+  const open = await box(page, 'manager-column');
+  const size = (await managerTermSize(page))!;
+  // Read inside the page: hidden, the column still has its box.
+  const widthNow = () => column.evaluate((el) => el.getBoundingClientRect().width);
+
+  const folding = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-fold').click());
+  expect(folding.filter((left, i) => left > (i ? folding[i - 1] : open.x) + 0.5)).toEqual([]);
+  await expect(column).toBeHidden();
+  // The board takes its room, not the Todo panel.
+  expect((await box(page, 'todo-panel')).width).toBe(todoWidth);
+  expect(await widthNow()).toBe(open.width);
+  expect(await managerTermSize(page)).toEqual(size);
+
+  const opening = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-strip').click());
+  expect(opening.filter((left, i) => i > 0 && left < opening[i - 1] - 0.5)).toEqual([]);
+  expect(opening.at(-1)!).toBeCloseTo(open.x, 0);
+  expect(await widthNow()).toBe(open.width);
+  await settled(page);
+  expect(await managerTermSize(page)).toEqual(size);
+
+  // Off is nothing at all: its room goes to the Todo panel, and it goes at once, on no frame right of where it stood.
+  const going = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-toggle').click());
+  expect(going.filter((left) => left > open.x + 0.5)).toEqual([]);
+  await expect(column).toBeHidden();
+  await app.close();
+});
+
 test('unpinned, the manager floats over the board beside its strip, a press on the board folds it, and its terminal keeps its size; unpinned at a restart, it starts folded', async () => {
   const first = await launchApp();
   const { page, dataDir } = first;
