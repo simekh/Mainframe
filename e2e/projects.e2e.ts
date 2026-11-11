@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
-import { launches, managerLaunches, projectPane as pane, railRow as row, report, repo, screen, sendLine } from './tasks';
+import { box, launches, managerLaunches, projectPane as pane, railRow as row, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -83,7 +83,7 @@ test('a project a divider drag made narrower still fills the window once it is a
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'true');
 
   // Acme, on the left, gives up 100 px: its weight drops under 1.
-  const divider = await boxOf(page.getByTestId('pane-divider'));
+  const divider = await box(page, 'pane-divider');
   const [x, y] = [divider.x + divider.width / 2, divider.y + divider.height / 2];
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -92,7 +92,7 @@ test('a project a divider drag made narrower still fills the window once it is a
 
   await (await rowButton(page, globex, 'rail-beside')).click();
   await expect(pane(page, globex)).toHaveAttribute('data-shown', 'false');
-  const panes = await boxOf(page.getByTestId('panes'));
+  const panes = await box(page, 'panes');
   await expect.poll(async () => Math.abs((await boxOf(pane(page, acme))).width - panes.width)).toBeLessThanOrEqual(2);
   await app.close();
 });
