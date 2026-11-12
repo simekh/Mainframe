@@ -147,13 +147,19 @@ async function readUntracked(
     if (info.isSymbolicLink()) return { kind: 'text', lines: [await readlink(file)] };
     // No more than the size the limits were checked against: the file may grow while it is read.
     const handle = await open(file, 'r');
-    let bytes: Buffer;
+    const buffer = Buffer.alloc(info.size);
+    let read = 0;
     try {
-      const { bytesRead, buffer } = await handle.read(Buffer.alloc(info.size), 0, info.size, 0);
-      bytes = buffer.subarray(0, bytesRead);
+      // A read may return less than asked (a network drive): go on to the size, or the end of the file.
+      while (read < info.size) {
+        const { bytesRead } = await handle.read(buffer, read, info.size - read, read);
+        if (bytesRead === 0) break;
+        read += bytesRead;
+      }
     } finally {
       await handle.close();
     }
+    const bytes = buffer.subarray(0, read);
     if (bytes.subarray(0, 8000).includes(0)) return { kind: 'binary' };
     const lines = bytes.toString('utf8').split('\n');
     if (lines[lines.length - 1] === '') lines.pop();
