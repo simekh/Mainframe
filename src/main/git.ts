@@ -118,7 +118,6 @@ export async function changedFiles(worktreePath: string): Promise<ChangedFile[] 
   }
 }
 
-const UNTRACKED_MAX_BYTES = 1024 * 1024;
 // Untracked files are read into memory before the diff's own limits apply: a stray build folder must not fill it.
 const UNTRACKED_BUDGET_BYTES = 16 * 1024 * 1024;
 const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
@@ -139,7 +138,7 @@ async function readUntracked(
     const info = await lstat(file);
     if (!info.isFile() && !info.isSymbolicLink()) return undefined;
     if (budget.spent) return { kind: 'notRead' };
-    if (info.size > UNTRACKED_MAX_BYTES) return { kind: 'tooLarge' };
+    if (info.size > DIFF_LIMITS.fileChars) return { kind: 'tooLarge' };
     if (info.size > budget.left) {
       budget.spent = true;
       return { kind: 'notRead' };

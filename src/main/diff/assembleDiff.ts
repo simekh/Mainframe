@@ -19,7 +19,8 @@ interface DiffLimits {
 export const DIFF_LIMITS: DiffLimits = {
   fileLines: 3000,
   totalLines: 15000,
-  // The untracked read's cap, so a file is too large whether it is tracked or not.
+  // Also git.ts's cap on an untracked file's bytes, so a file is too large whether it is tracked or not:
+  // UTF-8 text is never longer than its bytes.
   fileChars: 1024 * 1024,
   totalChars: 4 * 1024 * 1024,
 };
@@ -76,24 +77,21 @@ export function assembleDiff(
     return { lines, chars };
   };
 
-  const sizes = new Map<string, { lines: number; chars: number }>();
   const limited = files.map((f) => {
     const size = sizeOf(f);
-    sizes.set(f.path, size);
-    return size.lines > limits.fileLines || size.chars > limits.fileChars ? noteOnly(f, 'tooLarge') : f;
+    return { f: size.lines > limits.fileLines || size.chars > limits.fileChars ? noteOnly(f, 'tooLarge') : f, size };
   });
 
   // Files that already carry a note cost nothing, and keep it.
-  const walk = focusFirst(limited, (f) => f.path === focus);
+  const walk = focusFirst(limited, ({ f }) => f.path === focus);
   const notShown = new Set<string>();
   const total = { lines: 0, chars: 0 };
-  for (const f of walk) {
+  for (const { f, size } of walk) {
     if (f.note !== null) continue;
-    const size = sizes.get(f.path)!;
     if (notShown.size === 0 && total.lines + size.lines <= limits.totalLines && total.chars + size.chars <= limits.totalChars) {
       total.lines += size.lines;
       total.chars += size.chars;
     } else notShown.add(f.path);
   }
-  return limited.map((f) => (notShown.has(f.path) ? noteOnly(f, 'notShown') : f));
+  return limited.map(({ f }) => (notShown.has(f.path) ? noteOnly(f, 'notShown') : f));
 }
