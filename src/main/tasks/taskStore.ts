@@ -1,6 +1,6 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { TaskCardRef } from '../../shared/types';
+import { AGENT_NAMES, type AgentName, type TaskCardRef } from '../../shared/types';
 import { TASK_CARD_REF } from '../todo/todoSchema';
 
 export interface TaskRecord {
@@ -33,6 +33,13 @@ export interface TaskRecord {
   askAgain?: boolean;
   /** The to-do card the task was started from. Tasks that weren't, and those kept before it was saved, lack it. */
   card?: TaskCardRef;
+  /** The agent CLI it runs on. Records kept before it was saved lack it: Claude Code. */
+  agent?: AgentName;
+  /**
+   * Set once an OpenCode task's session first works or blocks: its conversation has begun. Until then a
+   * reopen sends the opening prompt again, as nothing has. Claude tasks lack it, as do records kept before it.
+   */
+  began?: boolean;
 }
 
 /** The version of `state.json` this build writes and reads. */
@@ -65,7 +72,9 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (t.noQuestions === undefined || typeof t.noQuestions === 'boolean') &&
     (t.midTurn === undefined || typeof t.midTurn === 'boolean') &&
     (t.askAgain === undefined || typeof t.askAgain === 'boolean') &&
-    (t.card === undefined || TASK_CARD_REF.safeParse(t.card).success)
+    (t.card === undefined || TASK_CARD_REF.safeParse(t.card).success) &&
+    (t.agent === undefined || (typeof t.agent === 'string' && Object.hasOwn(AGENT_NAMES, t.agent))) &&
+    (t.began === undefined || typeof t.began === 'boolean')
   );
 }
 

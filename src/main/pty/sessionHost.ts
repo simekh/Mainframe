@@ -79,13 +79,15 @@ export class SessionHost {
 
   spawn(
     id: string,
-    spec: { argv: string[]; cwd: string; cols: number; rows: number },
+    /** `env` is the session's own, laid over the host's. */
+    spec: { argv: string[]; cwd: string; env?: Record<string, string>; cols: number; rows: number },
     listener: SessionListener,
   ): void {
     // Started after the hang-ups, it would still be running as the app goes.
     if (this.quitting) throw new Error('Mainframe is quitting');
     if (this.sessions.has(id)) throw new Error(`Session ${id} is already running`);
-    const { log, env, platform, files } = this.opts;
+    const { log, platform, files } = this.opts;
+    const env = { ...this.opts.env, ...spec.env };
     const [name, ...args] = spec.argv;
     // node-pty's helper ends without a word when it can't run the binary or enter the folder, so
     // check both first and say which one is wrong. The binary is looked up on the PTY's own PATH,

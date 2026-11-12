@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { DiffView, RendererConfig, TodoItemRef, TodoNoteDraft } from '../shared/types';
+import type { AgentName, DiffView, ProgramCheck, RendererConfig, TodoItemRef, TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -76,6 +76,8 @@ export function registerIpc(
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
   diff: DiffWindowControl,
+  /** What the start finds of the agents besides Claude Code. */
+  agentChecks: Promise<{ opencode: ProgramCheck }>,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
@@ -93,12 +95,13 @@ export function registerIpc(
   // Rejections reach the renderer's invoke, which shows them.
   ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
   ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
-  // Only these three: a card reaches `start` through the Todo service alone, which checks it against the synced list.
+  // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,
-    (_e, dir: string, { title, description, noQuestions }: { title: string; description: string; noQuestions: boolean }) =>
-      tasksOf(dir).start({ title, description, noQuestions }),
+    (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: AgentName }) =>
+      tasksOf(dir).start({ title, description, noQuestions, agent: agent === 'opencode' ? 'opencode' : 'claude' }),
   );
+  ipcMain.handle(IPC.agentChecks, () => agentChecks);
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
   ipcMain.handle(IPC.openDiff, async (_e, dir: string, taskId: string, path: string) => {

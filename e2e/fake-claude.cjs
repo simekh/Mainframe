@@ -1,24 +1,33 @@
 #!/usr/bin/env node
 // Stands in for `claude` in e2e tests: answers `--version`; otherwise records its working directory and
 // arguments, then runs a plain shell so the terminal tests can type into it. CommonJS with built-ins
-// only, so on Windows the same file builds into a real .exe (e2e/globalSetup.ts).
+// only, so on Windows the same file builds into a real .exe (e2e/globalSetup.ts). It stands in for
+// `opencode` too: run through e2e/fake-opencode.cjs, or on Windows as the copy named fake-opencode.exe.
 'use strict';
 const { spawn } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
-const { dirname, join } = require('node:path');
+const { basename, dirname, join } = require('node:path');
 
 const args = process.argv.slice(2);
 const logDir = process.env.FAKE_CLAUDE_LOG_DIR;
 /** This run's own file in the log folder, `<pid>.<ext>`. */
 const own = (ext) => join(logDir, `${process.pid}.${ext}`);
+const isOpencode = process.env.FAKE_AGENT === 'opencode' || basename(process.execPath).startsWith('fake-opencode');
 
 // Mainframe's start check, not a launch: nothing is recorded. FAKE_CLAUDE_VERSION sets the answer, and
 // FAKE_CLAUDE_VERSION_DELAY_MS holds it back, as a slow real claude does, so the window is up before the projects open.
 const versionCheck = args[0] === '--version';
 
+// As OpenCode, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
+// the tests wait on <pid>.argv.
+if (logDir && !versionCheck && isOpencode) {
+  writeFileSync(own('env'), JSON.stringify({ OPENCODE_CLI_CONFIG_CONTENT: process.env.OPENCODE_CLI_CONFIG_CONTENT }));
+}
 if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
 
-if (versionCheck) {
+if (versionCheck && isOpencode) {
+  process.stdout.write(`opencode v${process.env.FAKE_OPENCODE_VERSION ?? '2.2.7'}\n`);
+} else if (versionCheck) {
   const answer = () => process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
   setTimeout(answer, Number(process.env.FAKE_CLAUDE_VERSION_DELAY_MS ?? 0));
 } else if (process.env.FAKE_CLAUDE_BRIDGE === '1') {

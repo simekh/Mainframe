@@ -56,16 +56,23 @@ export interface StatusEvent {
 /** The oldest Claude Code Mainframe works with: it needs OSC 7501 status reports and hook `onFailure`. */
 export const MIN_CLAUDE_VERSION = '2.1.295';
 
+/** The oldest OpenCode Mainframe works with. */
+export const MIN_OPENCODE_VERSION = '2.1.0';
+
+/** The agent CLIs a task can run on. */
+export type AgentName = 'claude' | 'opencode';
+
+export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
+
 /** What looking for a program Mainframe needs (git, claude) found. */
 type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
 
-export interface ProgramCheck {
-  state: CheckState;
+export type ProgramCheck = {
   /** The file looked at; not set when nothing was found anywhere. */
   path?: string;
   /** What the program says it is, when it said so. */
   version?: string;
-}
+} & ({ state: 'found'; path: string } | { state: Exclude<CheckState, 'found'> });
 
 /** What the setup screen shows. The main process publishes a new one at every step, and `null` once the board can appear. */
 export interface SetupView {
@@ -104,7 +111,9 @@ export interface TaskView {
   closedAt: number | null;
   /** The to-do card the task was started from; null for a task that wasn't. */
   card: TaskCardRef | null;
-  /** The running `claude` process; null when the task is closed. */
+  /** The agent CLI its sessions run on. */
+  agent: AgentName;
+  /** The running agent process; null when the task is closed. */
   session: { id: string; startedWithPrompt: boolean } | null;
 }
 

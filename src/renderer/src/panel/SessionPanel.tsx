@@ -1,6 +1,6 @@
 import { For, Show } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
-import type { RendererConfig, TaskView } from '../../../shared/types';
+import { AGENT_NAMES, type RendererConfig, type TaskView } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { cardAge, glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
@@ -83,6 +83,11 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                   <i aria-hidden="true" />
                   <span>{project.name}</span>
                 </span>
+                <Show when={task().agent === 'opencode'}>
+                  <span class="agent-mark" data-testid="task-agent">
+                    {AGENT_NAMES.opencode}
+                  </span>
+                </Show>
                 <span class="p-branch">
                   <svg
                     viewBox="0 0 12 12"

@@ -30,6 +30,7 @@ const api: MainframeApi = {
   getDiff: () => ipcRenderer.invoke(IPC.getDiff),
   onDiff: (cb) => listen(IPC.diffChanged, cb),
   closeDiff: () => ipcRenderer.send(IPC.closeDiff),
+  agentChecks: () => ipcRenderer.invoke(IPC.agentChecks),
   onTasks: (cb) => listen(IPC.tasksChanged, cb),
   getManager: (dir) => ipcRenderer.invoke(IPC.getManager, dir),
   restartManager: (dir) => ipcRenderer.invoke(IPC.restartManager, dir),

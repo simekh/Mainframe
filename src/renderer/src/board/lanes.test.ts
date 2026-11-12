@@ -13,6 +13,7 @@ const task = (over: Partial<TaskView> = {}): TaskView => ({
   createdAt: 0,
   closedAt: null,
   card: null,
+  agent: 'claude',
   session: { id: 's1', startedWithPrompt: true },
   ...over,
 });

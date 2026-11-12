@@ -27,6 +27,7 @@ const REPORT: SessionReport = {
   state: 'working',
   msg: null,
   card: { number: '#128', url: 'https://tracker.example/c/128' },
+  agent: 'claude',
 };
 
 /** The tools, registered through a fake server that records `registerTool`, and what they were given. */

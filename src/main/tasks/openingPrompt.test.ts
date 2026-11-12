@@ -7,7 +7,12 @@ const tail =
   'checkout, for example to merge, call ExitWorktree with action "keep" first.';
 
 const brief = "This task is your brief: read it, plan, then start. Follow this repo's CLAUDE.md, and ask me when you need me.\n\n";
-const t = { title: 'Fix login', branch: 'worktree-fix-login', noQuestions: false };
+const t = {
+  title: 'Fix login',
+  branch: 'worktree-fix-login',
+  noQuestions: false,
+  agent: 'claude' as const,
+};
 
 it('gives the brief, the description and the worktree note', () => {
   expect(openingPrompt({ ...t, description: 'The button does nothing.\nOnly on iOS.' })).toBe(
@@ -76,4 +81,21 @@ it('passes on no-questions mode', () => {
       "When the work is done and reviewed as this repo's CLAUDE.md requires, finish the branch without asking me, even where your workflow would ask how: " +
       'merge it, unless this CLAUDE.md integrates work another way, such as a pull request.',
   );
+});
+
+it('an OpenCode prompt names AGENTS.md and the main checkout, and no Claude Code worktree tools', () => {
+  const card = { sourceKind: 'Tracker', number: '#1', url: null, labels: [] };
+  const prompt = openingPrompt({ ...t, agent: 'opencode', projectDir: '/p', worktreePath: '/p/.claude/worktrees/fix-login', description: 'x', card, noQuestions: true });
+  expect(prompt).toContain(
+    "Mainframe started you in this task's own worktree, /p/.claude/worktrees/fix-login, on branch worktree-fix-login. " +
+      'The main checkout is /p: when you need it, for example to merge, run git there with git -C /p.',
+  );
+  expect(prompt).toContain("Follow this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md), and ask me");
+  expect(prompt).toContain('as those instructions require');
+  expect(prompt).toContain('unless those instructions integrate work another way');
+  expect(prompt).toContain('the way those instructions say');
+  expect(prompt).not.toContain('CLAUDE.md,');
+  expect(prompt.match(/CLAUDE\.md/g)).toHaveLength(1);
+  expect(prompt).not.toContain('EnterWorktree');
+  expect(prompt).not.toContain('ExitWorktree');
 });

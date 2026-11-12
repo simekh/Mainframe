@@ -6,7 +6,7 @@ export const RESUME_PROMPT = 'Continue where you left off.';
 export const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
 /** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
-const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
+export const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
 
 /**
  * Where a session's turn was as it ended, from the state it last reported before the end was decided.

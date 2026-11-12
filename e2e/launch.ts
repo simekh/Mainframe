@@ -31,8 +31,12 @@ export async function cleanUp(): Promise<void> {
 /** The stand-in for `claude`: `e2e/fake-claude.cjs`, on Windows the .exe the global setup built from it. */
 export const fakeClaude = process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake-claude.cjs');
 
+/** The stand-in for `opencode`: `e2e/fake-opencode.cjs`, on Windows a copy of the .exe named `fake-opencode.exe`. */
+export const fakeOpencode = process.env.FAKE_OPENCODE_EXE ?? join(root, 'e2e', 'fake-opencode.cjs');
+
 /**
- * The app's environment in a test: the stand-in as `claude`, logging to the data folder. A variable
+ * The app's environment in a test: the stand-in as `claude`, logging to the data folder, and an `opencode`
+ * that isn't there, so no OpenCode on the machine shows in the New task box unless a test names one. A variable
  * `env` gives as `undefined` is left out, even one set here.
  */
 function appEnv(dataDir: string, env: Record<string, string | undefined>): Record<string, string> {
@@ -42,6 +46,7 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     ...process.env,
     MAINFRAME_E2E: '1',
     MAINFRAME_CLAUDE_BIN: fakeClaude,
+    MAINFRAME_OPENCODE_BIN: join(dataDir, 'no-opencode'),
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',

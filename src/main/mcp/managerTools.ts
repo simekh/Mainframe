@@ -31,7 +31,7 @@ export function registerManagerTools(
     'list_sessions',
     {
       description:
-        "Every task session Mainframe runs for this project, with its title, branch, worktree, Claude session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, and the card it was started from (number and URL; null for none). Read a task's worktree and its git history to say what it is doing.",
+        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude' or 'opencode') and that agent's session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, and the card it was started from (number and URL; null for none). Read a task's worktree and its git history to say what it is doing.",
     },
     async () => text({ sessions: tasks.reports() }),
   );

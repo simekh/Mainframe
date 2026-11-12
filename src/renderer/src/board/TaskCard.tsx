@@ -1,6 +1,6 @@
 // Adapted from Parallel Code (MIT): src/components/TaskBoardCard.tsx at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { onCleanup, Show } from 'solid-js';
-import type { TaskView } from '../../../shared/types';
+import { AGENT_NAMES, type TaskView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import type { SessionState } from '../taskModel';
 import { useProject } from '../projects/projectContext';
@@ -74,6 +74,11 @@ export default function TaskCard(props: {
           <i aria-hidden="true" />
           <span>{project.name}</span>
         </span>
+        <Show when={props.task.agent === 'opencode'}>
+          <span class="agent-mark" data-testid="task-agent">
+            {AGENT_NAMES.opencode}
+          </span>
+        </Show>
         <span class="card-age" data-testid="task-age">
           {cardAge(props.task, props.session, props.now)}
         </span>

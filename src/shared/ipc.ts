@@ -1,4 +1,5 @@
 import type {
+  AgentName,
   ChangedFile,
   ClipboardPaste,
   DiffView,
@@ -6,6 +7,7 @@ import type {
   PtyDataEvent,
   ProjectView,
   PtyExitEvent,
+  ProgramCheck,
   RendererConfig,
   SetupView,
   StartCheck,
@@ -39,6 +41,7 @@ export const IPC = {
   getDiff: 'diff:get',
   closeDiff: 'diff:close',
   diffChanged: 'diff:changed',
+  agentChecks: 'agents:checks',
   tasksChanged: 'tasks:changed',
   getManager: 'manager:get',
   restartManager: 'manager:restart',
@@ -100,7 +103,8 @@ export interface MainframeApi {
   onShowProject(cb: (dir: string) => void): () => void;
   listTasks(dir: string): Promise<TaskView[]>;
   startCheck(dir: string): Promise<StartCheck | null>;
-  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
+  /** Without `agent`, the task runs on Claude Code. */
+  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;
   closeTask(dir: string, taskId: string): void;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
@@ -111,6 +115,8 @@ export interface MainframeApi {
   getDiff(): Promise<DiffView | null>;
   onDiff(cb: (view: DiffView) => void): () => void;
   closeDiff(): void;
+  /** What Mainframe found at start of the agents a task may run on besides Claude Code. */
+  agentChecks(): Promise<{ opencode: ProgramCheck }>;
   /** Every change to a project's tasks, with its whole list. */
   onTasks(cb: (e: { dir: string; tasks: TaskView[] }) => void): () => void;
   getManager(dir: string): Promise<ManagerView>;

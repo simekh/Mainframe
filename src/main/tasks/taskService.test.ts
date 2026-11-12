@@ -6,6 +6,7 @@ import type { GitQueries } from '../git';
 import type { ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
+import { isOpencodeSessionId, OPENCODE_ENV } from './opencode';
 import { openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
@@ -16,7 +17,7 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform = 'darwin') {
+function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform = 'darwin', opencodeBin: string | null = '/bin/opencode') {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-service-'));
   cleanup.push(root);
   const projectDir = join(root, 'Acme');
@@ -30,6 +31,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     worktreeBranchNames: async () => [],
     changedFiles: async () => [],
     taskDiff: async () => [],
+    addWorktree: async () => {},
     ...gitOverrides,
   };
   const killed: string[] = [];
@@ -48,6 +50,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
       dataDir,
       records,
       claudeBin: 'claude',
+      opencodeBin,
       nodeBin: NODE,
       platform,
       git,
@@ -110,7 +113,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath,
-      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
+      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
     }),
   });
   expect(changes.at(-1)).toEqual([view]);
@@ -123,7 +126,7 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
   expect(view.title).toBe('Fix login');
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
-  expect(prompt).toBe(openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+  expect(prompt).toBe(openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
 });
 
 /** Over 32,000 characters once quoted, as typed: with leading spaces and a trailing newline. */
@@ -139,6 +142,7 @@ function expectedStart(claudeSessionId: string, taskDir: string, description: st
     settingsPath: join(taskDir, 'settings.json'),
     ...(brief && { addDir: brief.dir }),
     prompt: openingPrompt({
+      agent: 'claude',
       title: 'Fix login',
       description,
       branch: 'worktree-fix-login',
@@ -211,7 +215,7 @@ it("a task started from a card keeps it, shows it, and its launch carries the ca
   expect(service.list()[0].card).toEqual(CARD);
   expect(readState()[0].card).toEqual(CARD);
   expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -911,7 +915,7 @@ it('reopen of a task whose first launch never began a conversation starts one, w
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath: join(taskDir(view.id), 'settings.json'),
-      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
     }),
   );
 });
@@ -925,7 +929,7 @@ it('a reopen that must begin the conversation again keeps the card in its prompt
   const reopened = await service.reopen(view.id);
   expect(reopened.card).toEqual(CARD);
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -950,7 +954,7 @@ it('a task kept before its noQuestions was recorded reopens with the prompt that
   const service = make();
   const reopened = await service.reopen('old');
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
+    openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
   );
   expect(readState()[0]).not.toHaveProperty('noQuestions');
 });
@@ -1139,6 +1143,7 @@ it('reports lists every task oldest first: a running one with its last state and
       state: 'blocked',
       msg: 'Run rm -rf build?',
       card: null,
+      agent: 'claude',
     },
     {
       taskId: second.id,
@@ -1152,6 +1157,7 @@ it('reports lists every task oldest first: a running one with its last state and
       state: null,
       msg: null,
       card: { number: '#128', url: 'https://tracker.example/c/128' },
+      agent: 'claude',
     },
   ]);
 });
@@ -1163,4 +1169,279 @@ it('names the sessions it runs', async () => {
   service.onSessionExit(b.session!.id);
 
   expect(service.sessionIds()).toEqual([a.session!.id]);
+});
+
+const OPENCODE_TASK = { ...NEW_TASK, agent: 'opencode' as const };
+
+/** Records each call to `git worktree add` the service makes. */
+function recordingAdds(): { added: unknown[][]; addWorktree: GitQueries['addWorktree'] } {
+  const added: unknown[][] = [];
+  return { added, addWorktree: async (...args) => void added.push(args) };
+}
+
+it('an OpenCode task starts in its worktree', async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service, projectDir, readState, taskDir } = setup({ addWorktree });
+  const view = await service.start(OPENCODE_TASK);
+  const worktreePath = join(projectDir, '.claude', 'worktrees', 'fix-login');
+
+  expect(added).toEqual([[projectDir, worktreePath, 'worktree-fix-login', { create: true }]]);
+  const [record] = readState();
+  expect(isOpencodeSessionId(record.claudeSessionId)).toBe(true);
+  expect(record.agent).toBe('opencode');
+  expect(service.launchSpec(view.session!.id)).toEqual({
+    argv: [
+      '/bin/opencode', '--standalone', '-s', record.claudeSessionId, '--prompt',
+      openingPrompt({ agent: 'opencode', projectDir, worktreePath, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
+    ],
+    cwd: worktreePath,
+    env: OPENCODE_ENV,
+  });
+  expect(service.list()[0].agent).toBe('opencode');
+  expect(view.session).toMatchObject({ startedWithPrompt: true });
+  expect(existsSync(join(taskDir(view.id), 'settings.json'))).toBe(false);
+});
+
+it("a Claude task's launch is unchanged", async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service, projectDir, readState, taskDir } = setup({ addWorktree });
+  const view = await service.start(NEW_TASK);
+
+  const spec = service.launchSpec(view.session!.id);
+  expect(spec).not.toHaveProperty('env');
+  expect(spec).toEqual({ cwd: projectDir, argv: expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
+  expect(added).toEqual([]);
+  expect(view.agent).toBe('claude');
+  expect(readState()[0].agent).toBe('claude');
+});
+
+it('two OpenCode starts at once get two slugs', async () => {
+  const { service } = setup();
+  const [a, b] = await Promise.all([
+    service.start({ ...OPENCODE_TASK, title: 'Same' }),
+    service.start({ ...OPENCODE_TASK, title: 'Same' }),
+  ]);
+  expect([a.slug, b.slug].sort()).toEqual(['same', 'same-2']);
+});
+
+it('a failed worktree add leaves no task', async () => {
+  const { service, changes, stateFile } = setup({ addWorktree: async () => { throw new Error('fatal: x'); } });
+  await expect(service.start(OPENCODE_TASK)).rejects.toThrow('fatal: x');
+  expect(service.list()).toEqual([]);
+  expect(service.sessionIds()).toEqual([]);
+  // The window gets the list without the task, in case another change meanwhile showed it.
+  expect(changes).toEqual([[]]);
+  expect(JSON.parse(readFileSync(stateFile, 'utf8')).tasks).toEqual([]);
+});
+
+it("a failed worktree add takes the task out of state.json, though another project saved it meanwhile", async () => {
+  let fail!: (err: Error) => void;
+  const { root, stateFile, make, readState } = setup({ addWorktree: () => new Promise((_, reject) => (fail = reject)) });
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  const acme = make(records);
+  const globex = make(records, join(root, 'Globex'));
+
+  const starting = acme.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  const shipped = await globex.start({ ...NEW_TASK, title: 'Ship it' });
+  expect(readState().map((t) => t.title)).toEqual(['Fix login', 'Ship it']);
+
+  fail(new Error('fatal: x'));
+  await expect(starting).rejects.toThrow('fatal: x');
+  expect(readState().map((t) => t.id)).toEqual([shipped.id]);
+  expect(acme.list()).toEqual([]);
+});
+
+it('OpenCode not installed', async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service, stateFile } = setup({ addWorktree }, 'darwin', null);
+  await expect(service.start(OPENCODE_TASK)).rejects.toThrow('OpenCode 2.1 or later is not installed');
+  expect(added).toEqual([]);
+  expect(existsSync(stateFile)).toBe(false);
+});
+
+it('reopen resumes the same OpenCode session', async () => {
+  const { service, readState, taskDir } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  const { claudeSessionId } = readState()[0];
+  // A Claude SessionStart record is not an OpenCode task's to follow.
+  mkdirSync(taskDir(view.id), { recursive: true });
+  writeFileSync(join(taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: '11111111-1111-4111-8111-111111111111' }));
+  // Its conversation began, and its turn is over.
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus(view.session!.id, 'done');
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0].claudeSessionId).toBe(claudeSessionId);
+
+  const resumed = await service.reopen(view.id);
+  expect(service.launchSpec(resumed.session!.id).argv).toEqual(['/bin/opencode', '--standalone', '-s', claudeSessionId]);
+  expect(resumed.session).toMatchObject({ startedWithPrompt: false });
+
+  service.noteStatus(resumed.session!.id, 'working');
+  service.onSessionExit(resumed.session!.id);
+  const carriedOn = await service.reopen(view.id);
+  expect(service.launchSpec(carriedOn.session!.id).argv).toEqual(['/bin/opencode', '--standalone', '-s', claudeSessionId, '--prompt', RESUME_PROMPT]);
+  expect(carriedOn.session).toMatchObject({ startedWithPrompt: true });
+  expect(readState()[0]).toMatchObject({ claudeSessionId, midTurn: false, open: true });
+});
+
+/** The opening prompt of an OpenCode task started from OPENCODE_TASK in `projectDir`. */
+const opencodeOpening = (projectDir: string, title = 'Fix login', slug = 'fix-login') =>
+  openingPrompt({
+    agent: 'opencode',
+    projectDir,
+    worktreePath: join(projectDir, '.claude', 'worktrees', slug),
+    title,
+    description: 'Users get logged out',
+    branch: `worktree-${slug}`,
+    noQuestions: false,
+  });
+
+it('an OpenCode task whose conversation never began gets its brief on reopen', async () => {
+  const { service, projectDir, readState } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  const { claudeSessionId } = readState()[0];
+  // OpenCode was quit at its login screen: it never reported a turn.
+  service.noteStatus(view.session!.id, 'idle');
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual([
+    '/bin/opencode', '--standalone', '-s', claudeSessionId, '--prompt', opencodeOpening(projectDir),
+  ]);
+  expect(reopened.session).toMatchObject({ startedWithPrompt: true });
+});
+
+it('an OpenCode task remembers its conversation began across runs', async () => {
+  const { service, make, readState } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  service.noteStatus(view.session!.id, 'blocked');
+  expect(readState()[0].began).toBe(true);
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const next = make();
+  await next.restore();
+  const [reopened] = next.list();
+  // Blocked as it quit: the carry-on prompt, not the brief.
+  expect(next.launchSpec(reopened.session!.id).argv.slice(-2)).toEqual(['--prompt', ASK_AGAIN_PROMPT]);
+});
+
+it('a Claude task records no began', async () => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  service.noteStatus(view.session!.id, 'working');
+  expect(readState()[0]).not.toHaveProperty('began');
+});
+
+it('an OpenCode start that meets a quit records the task, which begins with its brief at the next start', async () => {
+  let added!: () => void;
+  const { service, make, projectDir, readState } = setup({ addWorktree: () => new Promise<void>((resolve) => (added = resolve)) });
+  const starting = service.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  service.beginQuit();
+  added();
+
+  const view = await starting;
+  expect(view.session).toBeNull();
+  expect(service.sessionIds()).toEqual([]);
+  expect(readState()[0]).toMatchObject({ id: view.id, open: true });
+
+  const next = make();
+  await next.restore();
+  const [restored] = next.list();
+  expect(next.launchSpec(restored.session!.id).argv).toEqual([
+    '/bin/opencode', '--standalone', '-s', readState()[0].claudeSessionId, '--prompt', opencodeOpening(projectDir),
+  ]);
+});
+
+it('an OpenCode task stays off the list and the reports until its worktree is there', async () => {
+  let added!: () => void;
+  const { service, changes } = setup({ addWorktree: () => new Promise<void>((resolve) => (added = resolve)) });
+  const starting = service.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  // Another task's change meanwhile shows the board without it.
+  await service.start({ ...NEW_TASK, title: 'Ship it' });
+  expect(service.list().map((t) => t.title)).toEqual(['Ship it']);
+  expect(service.reports().map((r) => r.title)).toEqual(['Ship it']);
+  expect(changes.at(-1)!.map((t) => t.title)).toEqual(['Ship it']);
+
+  added();
+  const view = await starting;
+  expect(service.list().map((t) => t.id)).toContain(view.id);
+  expect(service.reports().map((r) => r.taskId)).toContain(view.id);
+});
+
+it('reopen adds a deleted worktree back', async () => {
+  let branchExists = true;
+  const { added, addWorktree } = recordingAdds();
+  const { service, projectDir } = setup({ addWorktree, branchExists: async () => branchExists });
+  const view = await service.start(OPENCODE_TASK);
+  added.length = 0;
+  service.onSessionExit(view.session!.id);
+
+  // The worktree folder was deleted by hand; its branch is still there.
+  const readded = await service.reopen(view.id);
+  expect(added).toEqual([[projectDir, view.worktreePath, view.branch, { create: false }]]);
+  expect(service.launchSpec(readded.session!.id).cwd).toBe(view.worktreePath);
+
+  branchExists = false;
+  added.length = 0;
+  service.onSessionExit(readded.session!.id);
+  const inMain = await service.reopen(view.id);
+  expect(added).toEqual([]);
+  expect(service.launchSpec(inMain.session!.id).cwd).toBe(projectDir);
+});
+
+it('reopen runs in a worktree folder that is there, without adding it', async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service } = setup({ addWorktree, branchExists: async () => true });
+  const view = await service.start(OPENCODE_TASK);
+  mkdirSync(view.worktreePath, { recursive: true });
+  added.length = 0;
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(added).toEqual([]);
+  expect(service.launchSpec(reopened.session!.id).cwd).toBe(view.worktreePath);
+});
+
+it('two reopens at once while the worktree is added back start one session', async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service } = setup({ addWorktree, branchExists: async () => true });
+  const view = await service.start(OPENCODE_TASK);
+  added.length = 0;
+  service.onSessionExit(view.session!.id);
+
+  await Promise.all([service.reopen(view.id), service.reopen(view.id)]);
+  expect(added).toHaveLength(1);
+  expect(service.sessionIds()).toHaveLength(1);
+});
+
+it('reports name the agent', async () => {
+  const { service } = setup();
+  await service.start(OPENCODE_TASK);
+  expect(service.reports()[0].agent).toBe('opencode');
+});
+
+it('old records load as Claude tasks', async () => {
+  const { projectDir, stateFile, make } = setup();
+  const old: TaskRecord = {
+    id: 'old',
+    projectDir,
+    title: 'Fix login',
+    description: '',
+    slug: 'fix-login',
+    name: 'acme-fix-login',
+    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
+    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
+    branch: 'worktree-fix-login',
+    createdAt: 5,
+    closedAt: 6,
+    open: false,
+  };
+  writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
+  const service = make();
+  expect(service.list()[0].agent).toBe('claude');
+  expect(service.reports()[0].agent).toBe('claude');
 });

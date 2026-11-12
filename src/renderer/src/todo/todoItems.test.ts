@@ -40,6 +40,7 @@ const task = (id: string, cardId: string, o: { open: boolean; sourceKind?: strin
   createdAt: 0,
   closedAt: o.open ? null : 1,
   card: { sourceKind: o.sourceKind ?? 'Tracker', id: cardId, number: null, url: null, labels: [], position: 0, urgent: false },
+  agent: 'claude',
   session: o.open ? { id: `s-${id}`, startedWithPrompt: true } : null,
 });
 

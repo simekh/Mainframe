@@ -31,7 +31,7 @@ import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
-import { runVersion } from './setup/programChecks';
+import { findOpencode, runVersion } from './setup/programChecks';
 import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
@@ -193,6 +193,10 @@ async function start(
   projectDirs: string[],
   win: BrowserWindow,
 ): Promise<void> {
+  // Looked for once, while the rest of the start goes on: OpenCode is optional, and a task picks it only when it was found.
+  const agentChecks = findOpencode({ fromEnv: config.opencodeBin, lookup: lookupIn(programs.env), run: runVersion(programs.env) }).then(
+    (opencode) => ({ opencode }),
+  );
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
@@ -264,6 +268,7 @@ async function start(
       dataDir: config.dataDir,
       records,
       claudeBin: programs.claudeBin,
+      opencodeBin,
       nodeBin: programs.nodeBin,
       platform: process.platform,
       git: gitQueries,
@@ -349,7 +354,11 @@ async function start(
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
     diffWindow,
+    agentChecks,
   );
+  // The projects' task services are handed the opencode found.
+  const { opencode } = await agentChecks;
+  const opencodeBin = opencode.state === 'found' ? opencode.path : null;
 
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));

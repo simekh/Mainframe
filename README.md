@@ -1,13 +1,13 @@
 # Mainframe
 
-Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) sessions side by side, across your projects, in one window.
+Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) and [OpenCode](https://opencode.ai) sessions side by side, across your projects, in one window.
 
-- **A board of tasks.** Each task is a Claude Code session in its own git worktree (`.claude/worktrees/<name>` in your project). The board shows which sessions are working and which need you.
+- **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (`.claude/worktrees/<name>` in your project). The board shows which sessions are working and which need you.
 - **A manager.** Each project has one Claude session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
 - **A Todo panel.** It reads your to-do list from your task tracker through a Claude Code connector, so it works with any tracker you have one for: Trello, Linear, GitHub Issues and others. You start a task from a card.
 - **Several projects at once.** Show them one at a time, side by side, or in a grid. Quit ends every session, and the next start brings them back.
 
-Every session is a real `claude` process. It runs with your own Claude Code login, settings and permissions.
+Every session is a real `claude` or `opencode` process. It runs with your own login, settings and permissions.
 
 ## What you need
 
@@ -19,8 +19,11 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in | native installer, Homebrew or npm | native installer or WinGet; npm, see below | native installer or npm |
 | A compiler for `npm install` | no | no | yes, see below |
+| Optional: [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH | `opencode` | `opencode.exe` | `opencode` |
 
 Each project you open must be a git repository.
+
+The New task box offers OpenCode as a task's agent when Mainframe finds it. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). The manager, the Todo sync and tasks started from cards still use Claude Code. To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
 
 On macOS and Linux, any Claude Code whose `claude` runs in your terminal works, and so does the native installer's `~/.local/bin/claude` when that folder isn't on your PATH.
 
@@ -98,6 +101,7 @@ Set these as environment variables before `npm start`. In bash and zsh, put them
 |---|---|
 | `MAINFRAME_DATA_DIR` | Where Mainframe keeps its state. By default `~/Library/Application Support/mainframe` on a Mac, `%APPDATA%\mainframe` on Windows, and `~/.config/mainframe` on Linux (`$XDG_CONFIG_HOME/mainframe` when that is set) |
 | `MAINFRAME_CLAUDE_BIN` | The `claude` file to run. Checked at every start, wins over the saved path, and is never saved. When it can't run, the setup screen says so and looks nowhere else |
+| `MAINFRAME_OPENCODE_BIN` | The `opencode` file to run. Checked at every start, and when it is set Mainframe looks nowhere else for OpenCode |
 | `MAINFRAME_LOG_OSC=1` | Prints the sessions' status reports to the terminal |
 
 ## Develop

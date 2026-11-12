@@ -61,3 +61,9 @@ it("drops the Windows Terminal session markers, which name the terminal the app 
     expect(buildSpawnEnv({ WT_SESSION: 'a-b', WT_PROFILE_ID: '{c}' }, platform)).toEqual(TERMINAL_KEYS);
   }
 });
+
+it("drops the markers OpenCode sets in its shells, and keeps its other settings", () => {
+  expect(buildSpawnEnv({ OPENCODE_TERMINAL: '1', OPENCODE_PTY_HANDOFF: '{}', OPENCODE_CONFIG_DIR: '/x' }, 'darwin')).toEqual({
+    OPENCODE_CONFIG_DIR: '/x', ...TERMINAL_KEYS,
+  });
+});
