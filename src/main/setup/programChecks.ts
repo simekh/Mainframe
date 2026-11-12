@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { posix, win32 } from 'node:path';
 import { promisify } from 'node:util';
-import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
+import { MIN_CLAUDE_VERSION, MIN_OPENCODE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 
 const execFileAsync = promisify(execFile);
@@ -24,6 +24,11 @@ export function runVersion(env: Record<string, string>): VersionRunner {
 // Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
 export function parseClaudeVersion(stdout: string): string | null {
   return /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(stdout.trim())?.[1] ?? null;
+}
+
+// Only opencode's own line counts, for the same reason as claude's.
+export function parseOpencodeVersion(stdout: string): string | null {
+  return /^opencode v(\d+\.\d+\.\d+)$/.exec(stdout.trim())?.[1] ?? null;
 }
 
 export function isAtLeast(version: string, min: string): boolean {
@@ -58,12 +63,36 @@ export function claudePlaces(lookup: ExecutableLookup): string[] {
   return [...new Set(places.filter((place) => place !== null))];
 }
 
-export async function checkClaude(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck> {
+async function checkProgram(
+  path: string,
+  parse: (stdout: string) => string | null,
+  min: string,
+  run: VersionRunner,
+  files: ExecutableFiles,
+): Promise<ProgramCheck> {
   if (!files.isExecutableFile(path)) return { state: 'missing', path };
   const stdout = await run(path, ['--version']);
-  const version = stdout === null ? null : parseClaudeVersion(stdout);
+  const version = stdout === null ? null : parse(stdout);
   if (version === null) return { state: 'broken', path };
-  return { state: isAtLeast(version, MIN_CLAUDE_VERSION) ? 'found' : 'too-old', path, version };
+  return { state: isAtLeast(version, min) ? 'found' : 'too-old', path, version };
+}
+
+export const checkClaude = (path: string, run: VersionRunner, files: ExecutableFiles) =>
+  checkProgram(path, parseClaudeVersion, MIN_CLAUDE_VERSION, run, files);
+
+const checkOpencode = (path: string, run: VersionRunner, files: ExecutableFiles) =>
+  checkProgram(path, parseOpencodeVersion, MIN_OPENCODE_VERSION, run, files);
+
+/** Where opencode may be: PATH, then its installer's folder (`~/.opencode/bin`, which the installer may not have put on PATH). */
+export function opencodePlaces(lookup: ExecutableLookup): string[] {
+  const { env } = lookup;
+  const places = [findExecutable('opencode', lookup)];
+  if (lookup.platform === 'win32') {
+    if (env.USERPROFILE) places.push(win32.join(env.USERPROFILE, '.opencode', 'bin', 'opencode.exe'));
+  } else if (env.HOME) {
+    places.push(posix.join(env.HOME, '.opencode', 'bin', 'opencode'));
+  }
+  return [...new Set(places.filter((place) => place !== null))];
 }
 
 /**
@@ -78,6 +107,18 @@ export async function findClaude(o: { fromEnv?: string; saved?: string[]; lookup
   const failures: ProgramCheck[] = [];
   for (const path of new Set([...(o.saved ?? []), ...claudePlaces(o.lookup)])) {
     const check = await checkClaude(path, o.run, o.lookup.files);
+    if (check.state === 'found') return check;
+    failures.push(check);
+  }
+  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
+}
+
+/** Like `findClaude`, with no saved paths: `fromEnv` (MAINFRAME_OPENCODE_BIN) alone when set, else `opencodePlaces`. */
+export async function findOpencode(o: { fromEnv?: string; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
+  if (o.fromEnv) return checkOpencode(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
+  const failures: ProgramCheck[] = [];
+  for (const path of opencodePlaces(o.lookup)) {
+    const check = await checkOpencode(path, o.run, o.lookup.files);
     if (check.state === 'found') return check;
     failures.push(check);
   }

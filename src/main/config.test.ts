@@ -19,6 +19,13 @@ describe('loadConfig', () => {
     });
   });
 
+  it('reads MAINFRAME_OPENCODE_BIN, and rejects an empty one with its own message', () => {
+    expect(loadConfig({ MAINFRAME_OPENCODE_BIN: '/x/opencode' }, '/data').opencodeBin).toBe('/x/opencode');
+    expect(() => loadConfig({ MAINFRAME_OPENCODE_BIN: '' }, '/d')).toThrow(
+      'MAINFRAME_OPENCODE_BIN must name the opencode binary, got an empty value',
+    );
+  });
+
   it('makes a relative data dir absolute', () => {
     expect(loadConfig({ MAINFRAME_DATA_DIR: 'd' }, '/data').dataDir).toBe(resolve('d'));
   });

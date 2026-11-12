@@ -10,6 +10,8 @@ const DROPPED_KEYS = new Set([
   'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT',
   'CLAUDE_CODE_EXECPATH', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
   'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_SESSION_ID',
+  // OpenCode sets these in the shells it runs.
+  'OPENCODE_TERMINAL', 'OPENCODE_PTY_HANDOFF',
   // Added by launching through `npm start` (and NODE_ENV by Vite); the owner's shell never sets them.
   'INIT_CWD', 'NODE', 'COLOR', 'NODE_ENV',
 ]);

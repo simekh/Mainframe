@@ -56,6 +56,14 @@ export interface StatusEvent {
 /** The oldest Claude Code Mainframe works with: it needs OSC 7501 status reports and hook `onFailure`. */
 export const MIN_CLAUDE_VERSION = '2.1.295';
 
+/** The oldest OpenCode Mainframe works with. */
+export const MIN_OPENCODE_VERSION = '2.1.0';
+
+/** The agent CLIs a task can run on. */
+export type AgentName = 'claude' | 'opencode';
+
+export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
+
 /** What looking for a program Mainframe needs (git, claude) found. */
 type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
 
