@@ -34,14 +34,11 @@ A task can run on OpenCode instead of Claude Code. You pick the agent in the New
 - `claudeSessionId` keeps its name in `state.json` and holds the OpenCode session id for an OpenCode task. *(my call: renaming the field means a new `state.json` version for no change in behaviour.)*
 - The manager's `list_tasks` report adds `agent`, so the manager knows what kind of id it is reading.
 
-### One adapter per agent
+### OpenCode beside Claude, not behind an interface *(my call)*
 
-A small module per agent in `src/main/agents/`, behind one interface. Claude's adapter wraps what `launch.ts` does today, so a Claude task launches exactly as it does now. The interface covers:
-- `start(task, prompt)` and `reopen(task, prompt?)`, each returning `{ argv, cwd, env }`
-- `newSessionId()`
-- whether the agent makes its own worktree
+OpenCode's launch lives in `src/main/tasks/opencode.ts`, beside Claude's in `launch.ts`. `TaskService` picks one by the task's agent. With two agents an interface would add code and no safety. It becomes worth having with a third agent, or when the manager moves too. A Claude task launches exactly as it does now.
 
-`TaskService` asks the task's adapter instead of calling `startArgv` and `reopenArgv` directly. `launchSpec` returns the session's own `cwd` and extra `env`. Today every session runs in the project folder.
+`launchSpec` returns each session's own `cwd` and extra `env`. Today every session runs in the project folder. The session host lays a session's `env` over its shared one.
 
 ### OpenCode's launch
 
@@ -65,18 +62,19 @@ The opening prompt gets the agent:
 ### Finding OpenCode
 
 - At start, Mainframe looks for `opencode` on PATH and in `~/.opencode/bin` (`opencode.exe` on Windows), where OpenCode's installer puts it. It needs `--version` to print `opencode vX.Y.Z` with a version of at least 2.1.0. `MAINFRAME_OPENCODE_BIN` names it outright, like `MAINFRAME_CLAUDE_BIN`.
-- It is optional. When it isn't found, or is too old, nothing changes. The New task box says why OpenCode can't be picked, for example "OpenCode 2.1 or later isn't installed".
-- The found path is saved in `settings.json` as `opencodeBin`, as `claudeBin` is.
+- It is optional. When it is missing, nothing changes, so a Claude-only user sees nothing new. When it is there but too old or broken, the New task box says so, for example "OpenCode 1.18.35 is installed. Mainframe needs 2.1 or later."
+- Nothing is saved about it. The setup has no "Find opencode…" button, so a found path would be found again at the next start anyway. Looking takes one `--version` run at start.
 
 ### Environment
 
-`spawnEnv` also drops the variables that tie a process to a parent OpenCode session (the list comes from OpenCode's source in the plan), so a Mainframe started from inside OpenCode doesn't hand them on.
+`spawnEnv` also drops `OPENCODE_TERMINAL` and `OPENCODE_PTY_HANDOFF`, which OpenCode sets in the shells it runs. A Mainframe started from one of them doesn't hand them on.
 
 ### Renderer
 
-- **New task box:** an agent choice with Claude Code and OpenCode, shown only when OpenCode was found. It remembers the last pick per project.
+- **New task box:** an agent choice with Claude Code and OpenCode, shown only when OpenCode was found. It remembers the last pick per project. Its line "Starts Claude Code in a new worktree" names the agent picked.
 - **Card and pane header:** a small "OpenCode" mark on OpenCode tasks. Claude tasks show nothing new.
-- **Suggestion ring:** it reads Claude Code's own screen, so it is off for OpenCode tasks.
+- **Suggestion ring:** no change. It matches Claude Code's own suggestion line and its `0: Dismiss` row together, which OpenCode's screen never shows.
+- **Tasks started from a Todo card or by the manager** run on Claude Code in this version.
 
 ## Checks before acceptance
 
