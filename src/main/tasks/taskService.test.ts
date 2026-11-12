@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
-import type { ChangedFile, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
+import type { ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from './launch';
 import { openingPrompt } from './openingPrompt';
@@ -29,6 +29,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     branchExists: async () => false,
     worktreeBranchNames: async () => [],
     changedFiles: async () => [],
+    taskDiff: async () => [],
     ...gitOverrides,
   };
   const killed: string[] = [];
@@ -1086,6 +1087,33 @@ it("changedFiles asks git about the task's worktree", async () => {
 
   expect(await service.changedFiles(view.id)).toEqual(files);
   expect(asked).toEqual([view.worktreePath]);
+});
+
+it("diff asks git for the task's worktree and the clicked file", async () => {
+  const files: FileDiff[] = [{ path: 'src/a.ts', status: 'M', added: 1, removed: 1, hunks: [], note: 'binary' }];
+  const asked: [string, string][] = [];
+  const { service } = setup({ taskDiff: async (dir, focus) => (asked.push([dir, focus]), files) });
+  const view = await service.start(NEW_TASK);
+
+  expect(await service.diff(view.id, 'src/a.ts')).toEqual({ taskTitle: view.title, result: { kind: 'files', files } });
+  expect(asked).toEqual([[view.worktreePath, 'src/a.ts']]);
+});
+
+it('diff says the worktree is gone when git finds none', async () => {
+  const { service } = setup({ taskDiff: async () => null });
+  const view = await service.start(NEW_TASK);
+  expect((await service.diff(view.id, 'a')).result).toEqual({ kind: 'noWorktree' });
+});
+
+it("diff passes on git's failure as its message", async () => {
+  const { service } = setup({ taskDiff: async () => Promise.reject(new Error('boom')) });
+  const view = await service.start(NEW_TASK);
+  expect((await service.diff(view.id, 'a')).result).toEqual({ kind: 'failed', message: 'boom' });
+});
+
+it('diff rejects an unknown task', async () => {
+  const { service } = setup();
+  await expect(service.diff('nope', 'a')).rejects.toThrow(/Unknown task/);
 });
 
 it('reports lists every task oldest first: a running one with its last state and message, a closed one as not running', async () => {

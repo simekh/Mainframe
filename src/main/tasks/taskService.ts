@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
+import type { ChangedFile, DiffResult, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { resumePromptFor, TurnTracker } from './carryOn';
@@ -257,6 +257,16 @@ export class TaskService {
   async changedFiles(taskId: string): Promise<ChangedFile[] | null> {
     const task = this.mine().find((t) => t.id === taskId);
     return task ? this.deps.git.changedFiles(task.worktreePath) : null;
+  }
+
+  async diff(taskId: string, focus: string): Promise<{ taskTitle: string; result: DiffResult }> {
+    const task = this.find(taskId);
+    try {
+      const files = await this.deps.git.taskDiff(task.worktreePath, focus);
+      return { taskTitle: task.title, result: files ? { kind: 'files', files } : { kind: 'noWorktree' } };
+    } catch (err) {
+      return { taskTitle: task.title, result: { kind: 'failed', message: err instanceof Error ? err.message : String(err) } };
+    }
   }
 
   private mine(): TaskRecord[] {

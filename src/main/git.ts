@@ -1,16 +1,19 @@
 // Adapted from Parallel Code (MIT): electron/ipc/git.ts (getChangedFiles) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { execFile } from 'node:child_process';
-import { realpath } from 'node:fs/promises';
+import { lstat, readFile, realpath } from 'node:fs/promises';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangedFile, StartCheck } from '../shared/types';
+import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
+import { assembleDiff, type UntrackedContent } from './diff/assembleDiff';
+import { parsePatch } from './diff/parsePatch';
 
 const execFileAsync = promisify(execFile);
 
 // --no-optional-locks keeps the app from taking the index lock while a session runs git.
-async function git(dir: string, args: string[]): Promise<string> {
+async function git(dir: string, args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
   const { stdout } = await execFileAsync('git', ['--no-optional-locks', '-C', dir, ...args], {
     encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
+    maxBuffer: opts.maxBuffer ?? 16 * 1024 * 1024,
     // No console window flashes on Windows for each git call.
     windowsHide: true,
   });
@@ -64,44 +67,118 @@ export async function worktreeBranchNames(projectDir: string): Promise<string[]>
 // which takes index.lock; a session committing in the same worktree would then fail.
 const NO_INDEX_REFRESH = ['-c', 'diff.autoRefreshIndex=false'];
 
+/** Real paths on both sides: macOS's temp folders sit behind the /var → /private/var link. */
+async function isWorktreeTop(path: string): Promise<boolean> {
+  const top = (await git(path, ['rev-parse', '--show-toplevel'])).trim();
+  return (await realpath(top)) === (await realpath(path));
+}
+
+async function diffBase(path: string): Promise<string> {
+  return (await git(path, ['merge-base', 'HEAD', 'origin/HEAD']).catch(() => 'HEAD')).trim();
+}
+
+/** The panel's listing: the files changed since `base` with their counts, and the untracked ones. */
+async function listChanges(path: string, base: string): Promise<ChangedFile[]> {
+  const diff = ['diff', '--no-renames', '-z'];
+  const [nameStatus, numstat, untracked] = await Promise.all([
+    git(path, [...NO_INDEX_REFRESH, ...diff, '--name-status', base, '--']),
+    git(path, [...NO_INDEX_REFRESH, ...diff, '--numstat', base, '--']),
+    git(path, ['ls-files', '--others', '--exclude-standard', '-z']),
+  ]);
+
+  const counts = new Map<string, { added: number | null; removed: number | null }>();
+  for (const record of numstat.split('\0').filter(Boolean)) {
+    const [added, removed, ...rest] = record.split('\t');
+    counts.set(rest.join('\t'), {
+      added: added === '-' ? null : Number(added),
+      removed: removed === '-' ? null : Number(removed),
+    });
+  }
+
+  const files: ChangedFile[] = [];
+  const fields = nameStatus.split('\0').filter(Boolean);
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const file = fields[i + 1];
+    const { added, removed } = counts.get(file) ?? { added: null, removed: null };
+    files.push({ path: file, status: fields[i] as ChangedFile['status'], added, removed });
+  }
+  for (const file of untracked.split('\0').filter(Boolean)) {
+    files.push({ path: file, status: '?', added: null, removed: null });
+  }
+  return files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
 /** Null when the path is not a work tree's top: a missing folder, or a plain one inside the main checkout. */
 export async function changedFiles(worktreePath: string): Promise<ChangedFile[] | null> {
   try {
-    // Real paths on both sides: macOS's temp folders sit behind the /var → /private/var link.
-    const top = (await git(worktreePath, ['rev-parse', '--show-toplevel'])).trim();
-    if ((await realpath(top)) !== (await realpath(worktreePath))) return null;
-    const base = (await git(worktreePath, ['merge-base', 'HEAD', 'origin/HEAD']).catch(() => 'HEAD')).trim();
-    const diff = ['diff', '--no-renames', '-z'];
-    const [nameStatus, numstat, untracked] = await Promise.all([
-      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--name-status', base, '--']),
-      git(worktreePath, [...NO_INDEX_REFRESH, ...diff, '--numstat', base, '--']),
-      git(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z']),
-    ]);
-
-    const counts = new Map<string, { added: number | null; removed: number | null }>();
-    for (const record of numstat.split('\0').filter(Boolean)) {
-      const [added, removed, ...rest] = record.split('\t');
-      counts.set(rest.join('\t'), {
-        added: added === '-' ? null : Number(added),
-        removed: removed === '-' ? null : Number(removed),
-      });
-    }
-
-    const files: ChangedFile[] = [];
-    const fields = nameStatus.split('\0').filter(Boolean);
-    for (let i = 0; i + 1 < fields.length; i += 2) {
-      const path = fields[i + 1];
-      const { added, removed } = counts.get(path) ?? { added: null, removed: null };
-      files.push({ path, status: fields[i] as ChangedFile['status'], added, removed });
-    }
-    for (const path of untracked.split('\0').filter(Boolean)) {
-      files.push({ path, status: '?', added: null, removed: null });
-    }
-    return files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    if (!(await isWorktreeTop(worktreePath))) return null;
+    return await listChanges(worktreePath, await diffBase(worktreePath));
   } catch {
     return null;
   }
 }
 
-export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles };
+const UNTRACKED_MAX_BYTES = 1024 * 1024;
+const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
+
+/** Undefined for a file that is gone since the listing, or is not a regular file (a link, say). */
+async function readUntracked(worktreePath: string, path: string): Promise<UntrackedContent | undefined> {
+  const file = join(worktreePath, path);
+  try {
+    const stat = await lstat(file);
+    if (!stat.isFile()) return undefined;
+    if (stat.size > UNTRACKED_MAX_BYTES) return { kind: 'tooLarge' };
+    const bytes = await readFile(file);
+    if (bytes.subarray(0, 8000).includes(0)) return { kind: 'binary' };
+    const lines = bytes.toString('utf8').split('\n');
+    if (lines[lines.length - 1] === '') lines.pop();
+    return { kind: 'text', lines: lines.map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line)) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What the diff window shows: the changed-files listing joined with the patch and the untracked files' contents.
+ * Null when the path is not a work tree's top, as changedFiles is; throws when git fails after that.
+ * The flags make the patch the same under any user's diff settings, which parsePatch relies on.
+ */
+export async function taskDiff(worktreePath: string, focus: string): Promise<FileDiff[] | null> {
+  try {
+    if (!(await isWorktreeTop(worktreePath))) return null;
+  } catch {
+    return null;
+  }
+  const base = await diffBase(worktreePath);
+  const [listed, patch] = await Promise.all([
+    listChanges(worktreePath, base),
+    git(
+      worktreePath,
+      [
+        '-c', 'core.quotePath=false',
+        ...NO_INDEX_REFRESH,
+        'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-relative', '--no-renames',
+        '--src-prefix=a/', '--dst-prefix=b/', '-U3', base, '--',
+      ],
+      { maxBuffer: DIFF_MAX_BUFFER },
+    ).catch((err: unknown) => {
+      if ((err as { code?: unknown }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+        throw new Error('the changes are too large to read (over 64 MB)');
+      }
+      throw err;
+    }),
+  ]);
+  const untracked = new Map<string, UntrackedContent>();
+  await Promise.all(
+    listed
+      .filter((f) => f.status === '?')
+      .map(async (f) => {
+        const content = await readUntracked(worktreePath, f.path);
+        if (content) untracked.set(f.path, content);
+      }),
+  );
+  return assembleDiff(listed, parsePatch(patch), untracked, focus);
+}
+
+export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, taskDiff };
 export type GitQueries = typeof gitQueries;

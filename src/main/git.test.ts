@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { branchExists, changedFiles, startCheck, worktreeBranchNames } from './git';
+import type { DiffLine } from '../shared/types';
+import { branchExists, changedFiles, startCheck, taskDiff, worktreeBranchNames } from './git';
 import { makeRepo } from './testing/makeRepo';
 
 const cleanup: string[] = [];
@@ -22,6 +23,10 @@ function repo(): { origin: string; main: string } {
 function git(dir: string, ...args: string[]): void {
   execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
 }
+
+const ctx = (text: string, o: number, n: number): DiffLine => ({ kind: 'context', text, oldLine: o, newLine: n });
+const rem = (text: string, o: number): DiffLine => ({ kind: 'remove', text, oldLine: o, newLine: null });
+const add = (text: string, n: number): DiffLine => ({ kind: 'add', text, oldLine: null, newLine: n });
 
 function commitFile(dir: string, name: string, content: string | Buffer): void {
   writeFileSync(join(dir, name), content);
@@ -111,4 +116,98 @@ it('changedFiles is null for a folder that is not a work tree', async () => {
   const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
   expect(await changedFiles(bare)).toBeNull();
+});
+
+/** A worktree on origin/stage, as the task's own. */
+function worktreeOf(main: string): string {
+  const worktree = join(main, '.claude', 'worktrees', 'x');
+  git(main, 'worktree', 'add', '-b', 'worktree-x', worktree, 'origin/stage');
+  return worktree;
+}
+
+it('taskDiff shows committed, uncommitted and untracked changes, matching changedFiles', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  writeFileSync(join(wt, 'README.md'), 'bye\n');
+  writeFileSync(join(wt, 'u.txt'), 'u1\nu2\n');
+
+  const files = (await taskDiff(wt, 'a.txt'))!;
+  expect(files.map((f) => [f.path, f.hunks])).toEqual([
+    ['README.md', [[rem('hi', 1), add('bye', 1)]]],
+    ['a.txt', [[add('a', 1)]]],
+    ['u.txt', [[add('u1', 1), add('u2', 2)]]],
+  ]);
+  const listed = (await changedFiles(wt))!;
+  const summary = (f: { path: string; status: string; added: number | null; removed: number | null }) =>
+    f.status === '?' ? { path: f.path, status: f.status } : { path: f.path, status: f.status, added: f.added, removed: f.removed };
+  expect(files.map(summary)).toEqual(listed.map(summary));
+  expect(files.find((f) => f.path === 'u.txt')).toMatchObject({ status: '?', added: 2, removed: 0 });
+});
+
+it('taskDiff notes binary, empty and mode-only files', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  commitFile(wt, 'b.bin', Buffer.from([0x62, 0x00, 0x01, 0xff]));
+  commitFile(wt, 'e.txt', '');
+  writeFileSync(join(wt, 'ub.bin'), Buffer.from([0x62, 0x00, 0x01, 0xff]));
+  const notes = Object.fromEntries((await taskDiff(wt, ''))!.map((f) => [f.path, f.note]));
+  expect(notes).toEqual({ 'b.bin': 'binary', 'e.txt': 'empty', 'ub.bin': 'binary' });
+});
+
+it.skipIf(process.platform === 'win32')('taskDiff notes a mode-only change as having no lines', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  chmodSync(join(wt, 'README.md'), 0o755);
+  expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note])).toEqual([['README.md', 'noLines']]);
+});
+
+it('taskDiff keeps paths with spaces and non-ASCII letters', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  commitFile(wt, 'a b.txt', 'x\n');
+  commitFile(wt, 'ö.txt', 'y\n');
+  expect((await taskDiff(wt, ''))!.map((f) => f.path)).toEqual(['a b.txt', 'ö.txt']);
+});
+
+it("taskDiff ignores the user's diff settings", async () => {
+  const { main } = repo();
+  // ten.txt is on the base, so only the edit below is a change.
+  commitFile(main, 'ten.txt', Array.from({ length: 10 }, (_, i) => `${i + 1}\n`).join(''));
+  git(main, 'push', 'origin', 'stage');
+  const wt = worktreeOf(main);
+  commitFile(wt, 'ö.txt', 'y\n');
+  writeFileSync(join(wt, 'ten.txt'), Array.from({ length: 10 }, (_, i) => `${i === 4 ? 'five' : i + 1}\n`).join(''));
+  for (const [key, value] of [
+    ['diff.noprefix', 'true'],
+    ['diff.mnemonicPrefix', 'true'],
+    ['color.ui', 'always'],
+    ['diff.context', '10'],
+    ['core.quotePath', 'true'],
+  ]) {
+    git(wt, 'config', key, value);
+  }
+  const files = (await taskDiff(wt, ''))!;
+  const ten = files.find((f) => f.path === 'ten.txt')!;
+  expect(ten.hunks).toHaveLength(1);
+  expect(ten.hunks[0]).toHaveLength(8);
+  expect(ten.hunks[0][0]).toEqual(ctx('2', 2, 2));
+  expect(files.map((f) => f.path)).toContain('ö.txt');
+});
+
+it('taskDiff marks untracked files over the limits too large', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  writeFileSync(join(wt, 'lines.txt'), 'x\n'.repeat(3001));
+  writeFileSync(join(wt, 'wide.txt'), 'x'.repeat(1_100_000));
+  const files = (await taskDiff(wt, ''))!;
+  expect(files.find((f) => f.path === 'lines.txt')).toMatchObject({ note: 'tooLarge', added: 3001 });
+  expect(files.find((f) => f.path === 'wide.txt')).toMatchObject({ note: 'tooLarge', added: null });
+});
+
+it('taskDiff is null for a folder that is not a work tree', async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
+  cleanup.push(bare);
+  expect(await taskDiff(bare, '')).toBeNull();
+  expect(await taskDiff(join(bare, 'missing'), '')).toBeNull();
 });
