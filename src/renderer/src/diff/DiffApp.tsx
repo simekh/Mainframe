@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { DiffView } from '../../../shared/types';
+import { commandHeld, shortcutLetter } from '../keys';
 import { resultMessage } from './diffText';
 import DiffFile from './DiffFile';
 import FileRowContent from './FileRowContent';
@@ -49,8 +50,12 @@ export default function DiffApp() {
       .getDiff()
       .then((current) => current && apply(current))
       .catch((err: unknown) => console.warn('[diff] could not get the view', err));
+    const platform = window.mainframe.platform;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) window.mainframe.closeDiff();
+      const esc = e.key === 'Escape' && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+      // Cmd+W, or Ctrl+W off the Mac: no terminal here takes it, as one does in Mainframe's window.
+      const closeKey = commandHeld(e, platform) && !e.shiftKey && shortcutLetter(e) === 'w';
+      if (esc || closeKey) window.mainframe.closeDiff();
     };
     window.addEventListener('keydown', onKey);
     onCleanup(() => {

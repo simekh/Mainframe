@@ -119,7 +119,7 @@ test('two quick opens end on the later one', async () => {
   await app.close();
 });
 
-test('Esc closes the diff window, and a click opens it again', async () => {
+test('Esc and Cmd+W (Ctrl+W off the Mac) close the diff window, and a click opens it again', async () => {
   const { app, rows } = await withTask();
   const diff = await openFrom(app, rows.nth(1));
   await expect(diff.getByTestId('diff-file')).toHaveCount(2);
@@ -130,6 +130,13 @@ test('Esc closes the diff window, and a click opens it again', async () => {
   const again = await openFrom(app, rows.nth(0));
   await expect(again.getByTestId('diff-file')).toHaveCount(2);
   expect(app.windows()).toHaveLength(2);
+
+  // Only the keys' downs, as in pressEsc.
+  const closed = again.waitForEvent('close');
+  await again.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await again.keyboard.down('w');
+  await closed;
+  expect(app.windows()).toHaveLength(1);
   await app.close();
 });
 
