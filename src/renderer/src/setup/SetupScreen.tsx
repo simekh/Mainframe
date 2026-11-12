@@ -32,17 +32,18 @@ const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: r
 /** The agents step: the tick boxes, the default while two are ticked, and the line on what that means. */
 function agentUnits(view: SetupView, choice: AgentChoice): Unit[] {
   const step = agentStep(view, choice);
-  return [
+  const units: Unit[] = [
     { key: 'agents-question', kind: 'line', text: 'Which agents should I use?', tone: 'strong' },
     { key: 'agents', kind: 'agents', rows: step.rows },
-    ...(step.showDefault
-      ? [
-          { key: 'default-question', kind: 'line', text: 'Which one runs the manager, the Todo sync and new tasks?', tone: 'strong' } as const,
-          { key: 'default', kind: 'default', ticked: choice.ticked, defaultAgent: choice.defaultAgent } as const,
-        ]
-      : []),
-    { key: 'agents-hint', kind: 'line', text: step.hint, tone: 'hint' },
   ];
+  if (step.showDefault) {
+    units.push(
+      { key: 'default-question', kind: 'line', text: 'Which one runs the manager, the Todo sync and new tasks?', tone: 'strong' },
+      { key: 'default', kind: 'default', ticked: choice.ticked, defaultAgent: choice.defaultAgent },
+    );
+  }
+  units.push({ key: 'agents-hint', kind: 'line', text: step.hint, tone: 'hint' });
+  return units;
 }
 
 function unitsOf(view: SetupView, choice: AgentChoice | null, looking: boolean, platform: NodeJS.Platform): Unit[] {

@@ -35,6 +35,13 @@ export const fakeClaude = process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake
 export const fakeOpencode = process.env.FAKE_OPENCODE_EXE ?? join(root, 'e2e', 'fake-opencode.cjs');
 
 /**
+ * `launchApp` with the stand-in as `opencode` beside the one as `claude`. Found, and with no tick saved, it counts as
+ * ticked, so the New task box offers it.
+ */
+export const launchWithOpencode = (projects: string | string[], settings?: AppSettings, env: Record<string, string> = {}) =>
+  launchApp({ MAINFRAME_OPENCODE_BIN: fakeOpencode, ...env }, projects, { settings });
+
+/**
  * The app's environment in a test: the stand-in as `claude`, logging to the data folder, and an `opencode`
  * that isn't there, so no OpenCode on the machine shows in the New task box unless a test names one. A variable
  * `env` gives as `undefined` is left out, even one set here.

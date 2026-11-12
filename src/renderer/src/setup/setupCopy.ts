@@ -8,6 +8,7 @@ import {
   type ProgramCheck,
   type SetupView,
 } from '../../../shared/types';
+import { works } from '../settings/defaultChoice';
 
 /** What the setup screen's buttons do; main and the screen both decide nothing else about them. */
 export type SetupButton = `find-${AgentName}` | `install-${AgentName}` | 'install-git' | 'look-again' | 'choose-project';
@@ -143,7 +144,7 @@ const NO_AGENT = "I need a coding agent to run your tasks, Claude Code or OpenCo
 const POINT_ME = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
 
 /** Why the agent can't be used, in its own lines. */
-function agentReason(name: AgentName, { check, fromEnv }: SetupView['agents'][AgentName], platform: NodeJS.Platform): string[] {
+function agentReason(name: AgentName, check: Exclude<ProgramCheck, { state: 'found' }>, fromEnv: boolean, platform: NodeJS.Platform): string[] {
   const copy = AGENT_COPY[name];
   // What its env var names is the only place looked, so only a change there, or none, helps.
   if (fromEnv) {
@@ -156,9 +157,6 @@ function agentReason(name: AgentName, { check, fromEnv }: SetupView['agents'][Ag
     return [`${copy.envVar} is set to ${check.path}, so that's the only place I look.`, reason, 'Change it or unset it, then start Mainframe again.'];
   }
   switch (check.state) {
-    // The block lists only the agents that aren't found; this keeps the switch whole.
-    case 'found':
-      return [];
     case 'missing':
       return [check.path !== undefined ? `${check.path} isn't a program I can run.` : copy.nowhere(platform)];
     case 'too-old':
@@ -180,7 +178,7 @@ const findable = (view: SetupView, name: AgentName) => view.agents[name].check.s
 
 /** An agent Mainframe can run on: ticked and found. A found agent that is unticked doesn't count. */
 export const someAgentWorks = (view: SetupView) =>
-  AGENT_ORDER.some((name) => view.agents[name].ticked && view.agents[name].check.state === 'found');
+  AGENT_ORDER.some((name) => view.agents[name].ticked && works(view, name));
 
 /**
  * A failing agent is a problem only while no agent works: then one block says why for each that isn't found, with
@@ -189,7 +187,13 @@ export const someAgentWorks = (view: SetupView) =>
 function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | null {
   if (someAgentWorks(view)) return null;
   const failing = AGENT_ORDER.filter((name) => view.agents[name].check.state !== 'found');
-  const lines = [NO_AGENT, ...failing.flatMap((name) => agentReason(name, view.agents[name], platform))];
+  const lines = [
+    NO_AGENT,
+    ...AGENT_ORDER.flatMap((name) => {
+      const { check, fromEnv } = view.agents[name];
+      return check.state === 'found' ? [] : agentReason(name, check, fromEnv, platform);
+    }),
+  ];
   if (failing.some((name) => findable(view, name))) lines.push(POINT_ME);
   const buttons = failing.flatMap((name): SetupButton[] => [
     ...(view.agents[name].fromEnv ? [] : [`find-${name}` as const]),

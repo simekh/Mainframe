@@ -1,6 +1,7 @@
-import { AGENT_ORDER, type AgentName, type SettingsView } from '../../../shared/types';
+import { AGENT_ORDER, type AgentName, type AgentStatus, type SettingsView } from '../../../shared/types';
 
-export const works = (view: SettingsView, name: AgentName) => view.agents[name].check.state === 'found';
+/** The agent was found and can run; Settings and the setup screen both have this view of it. */
+export const works = (view: { agents: Record<AgentName, AgentStatus> }, name: AgentName) => view.agents[name].check.state === 'found';
 
 /**
  * The agents the Default agent choice offers, in AGENT_ORDER; none while there is nothing to choose. It shows while two

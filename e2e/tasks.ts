@@ -269,6 +269,9 @@ export const openedLinks = (app: ElectronApplication) =>
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** A session id as Mainframe makes one for OpenCode. */
+export const SESSION_ID = /^ses_[0-9a-f]{28}$/;
+
 /** The conversation a launch began. */
 export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 

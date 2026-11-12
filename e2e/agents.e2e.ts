@@ -4,22 +4,15 @@ import { test, expect, type Page } from '@playwright/test';
 import { ADAPTERS } from '../src/main/agents/adapters';
 import { rolePrompt } from '../src/main/manager/rolePrompt';
 import type { AppSettings } from '../src/main/setup/settings';
-import { cleanUp, fakeOpencode, launchApp } from './launch';
+import { cleanUp, fakeOpencode, launchApp, launchWithOpencode } from './launch';
 import {
   answerDialogs, card, computer, envOf, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
-  rowButton, savedSettings, screen, startTask, syncLaunches,
+  rowButton, savedSettings, screen, SESSION_ID, startTask, syncLaunches,
 } from './tasks';
 
 test.afterEach(cleanUp);
 
-/** A session id as Mainframe makes one for OpenCode. */
-const SESSION_ID = /^ses_[0-9a-f]{28}$/;
-
 const ON_OPENCODE: AppSettings = { welcomeSeen: true, defaultAgent: 'opencode' };
-
-/** Launches with the stand-in as `opencode` beside the one as `claude`. */
-const launchWithOpencode = (projects: string | string[], settings?: AppSettings, env: Record<string, string> = {}) =>
-  launchApp({ MAINFRAME_OPENCODE_BIN: fakeOpencode, ...env }, projects, { settings });
 
 /** The OPENCODE_CONFIG_CONTENT a launch was given, parsed. */
 const configOf = (launch: { file: string }) => JSON.parse(envOf(launch).OPENCODE_CONFIG_CONTENT);
