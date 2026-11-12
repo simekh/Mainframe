@@ -112,7 +112,9 @@ export interface TaskView {
   closedAt: number | null;
   /** The to-do card the task was started from; null for a task that wasn't. */
   card: TaskCardRef | null;
-  /** The running `claude` process; null when the task is closed. */
+  /** The agent CLI its sessions run on. */
+  agent: AgentName;
+  /** The running agent process; null when the task is closed. */
   session: { id: string; startedWithPrompt: boolean } | null;
 }
 

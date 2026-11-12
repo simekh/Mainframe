@@ -53,6 +53,18 @@ it('spawns the absolute path of argv[0] with the rest as args, in cwd, with size
   expect(calls[0]).toEqual(['/usr/bin/claude', ['--x'], { name: 'xterm-256color', cwd: '/repo', env: { PATH: '/usr/bin' }, cols: 100, rows: 30 }]);
 });
 
+it("a session's env is laid over the host's", () => {
+  const { host, calls, listener } = setup({ PATH: '/usr/bin', A: '1', B: '1' });
+  host.spawn('s1', { ...spec, env: { A: '2' } }, listener);
+  expect(calls[0][2].env).toEqual({ PATH: '/usr/bin', A: '2', B: '1' });
+});
+
+it("a session's env PATH is where its binary is looked up", () => {
+  const { host, calls, listener } = setup({ PATH: '/nowhere' }, { executables: ['/pty/bin/claude'], folders: ['/repo'] });
+  host.spawn('s1', { ...spec, env: { PATH: '/pty/bin' } }, listener);
+  expect(calls[0][0]).toBe('/pty/bin/claude');
+});
+
 it('on Windows it looks claude.exe up on Path and spawns its absolute path', () => {
   const { host, calls, listener } = setup({ Path: 'C:\\bin' }, { executables: ['C:\\bin\\claude.exe'], folders: ['C:\\repo'] }, 'win32');
   host.spawn('s1', { ...spec, cwd: 'C:\\repo' }, listener);

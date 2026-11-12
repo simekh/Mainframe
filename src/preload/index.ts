@@ -26,6 +26,7 @@ const api: MainframeApi = {
   reopenTask: (dir, taskId) => ipcRenderer.invoke(IPC.reopenTask, dir, taskId),
   closeTask: (dir, taskId) => ipcRenderer.send(IPC.closeTask, dir, taskId),
   changedFiles: (dir, taskId) => ipcRenderer.invoke(IPC.changedFiles, dir, taskId),
+  agentChecks: () => ipcRenderer.invoke(IPC.agentChecks),
   onTasks: (cb) => listen(IPC.tasksChanged, cb),
   getManager: (dir) => ipcRenderer.invoke(IPC.getManager, dir),
   restartManager: (dir) => ipcRenderer.invoke(IPC.restartManager, dir),

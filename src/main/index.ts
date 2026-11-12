@@ -19,7 +19,7 @@ import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
-import { runVersion } from './setup/programChecks';
+import { findOpencode, runVersion } from './setup/programChecks';
 import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
@@ -189,6 +189,9 @@ async function start(
   });
   // A state.json it can't use stops the start here, before any project call is registered.
   const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
+  // Looked for once: OpenCode is optional, and a task picks it only when it was found.
+  const opencode = await findOpencode({ fromEnv: config.opencodeBin, lookup: lookupIn(programs.env), run: runVersion(programs.env) });
+  const opencodeBin = opencode.state === 'found' && opencode.path !== undefined ? opencode.path : null;
   const toWindow = (channel: string, payload: unknown) => sendTo(win, channel, payload);
 
   // The page is not told of the projects while they open, one after another: it would take the list so
@@ -246,6 +249,7 @@ async function start(
       dataDir: config.dataDir,
       records,
       claudeBin: programs.claudeBin,
+      opencodeBin,
       nodeBin: programs.nodeBin,
       platform: process.platform,
       git: gitQueries,
@@ -318,6 +322,7 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
+    { opencode },
   );
 
   for (const dir of projectDirs) {

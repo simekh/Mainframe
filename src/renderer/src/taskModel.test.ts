@@ -14,6 +14,7 @@ const task = (id: string, sessionId: string | null): TaskView => ({
   createdAt: 0,
   closedAt: sessionId ? null : 5,
   card: null,
+  agent: 'claude',
   session: sessionId ? { id: sessionId, startedWithPrompt: true } : null,
 });
 
