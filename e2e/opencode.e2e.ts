@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, fakeOpencode, launchApp } from './launch';
-import { card, cardIn, git, ids, launches, report, repo, screen, sendLine } from './tasks';
+import { card, cardIn, closeTask, git, ids, launches, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -78,6 +78,23 @@ test('Quit mid-turn carries the OpenCode session on', async () => {
   expect(reopened.args).toEqual(['--standalone', '-s', start.args[2], '--prompt', 'Continue where you left off.']);
   expect(reopened.cwd).toBe(start.cwd);
   await second.app.close();
+});
+
+test('an OpenCode task closed and reopened from its card resumes the same session in its worktree', async () => {
+  const { app, page, dataDir } = await launchWithOpencode(repo());
+  const id = await startOpencodeTask(page, 'Fix login');
+  // Its turn is over, so the reopen owes it no prompt.
+  await sendLine(page, id, `${report('working')}; ${report('idle')}`);
+  await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
+
+  await closeTask(page, id);
+  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  // On the arguments: the stand-in creates its file before it writes them.
+  await expect.poll(() => launches(dataDir)[1]?.args.length).toBe(3);
+  const [start, reopened] = launches(dataDir);
+  expect(reopened.args).toEqual(['--standalone', '-s', start.args[2]]);
+  expect(reopened.cwd).toBe(start.cwd);
+  await app.close();
 });
 
 test('the dialog says when OpenCode is too old', async () => {
