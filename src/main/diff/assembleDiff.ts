@@ -33,6 +33,8 @@ export const focusFirst = <T>(items: T[], isFocus: (item: T) => boolean): T[] =>
 const noteOnly = (f: ChangedFile | FileDiff, note: DiffNote): FileDiff => ({ ...f, hunks: [], note });
 
 function untrackedFile(f: ChangedFile, content: UntrackedContent | undefined): FileDiff {
+  // git lists a nested repository as its folder, with a trailing slash.
+  if (f.path.endsWith('/')) return noteOnly(f, 'repository');
   if (content === undefined) return noteOnly(f, 'noLines'); // went away since the listing
   if (content.kind === 'binary') return noteOnly(f, 'binary');
   if (content.kind === 'tooLarge') return noteOnly(f, 'tooLarge');
@@ -74,8 +76,10 @@ export function assembleDiff(
     return { lines, chars };
   };
 
+  const sizes = new Map<string, { lines: number; chars: number }>();
   const limited = files.map((f) => {
     const size = sizeOf(f);
+    sizes.set(f.path, size);
     return size.lines > limits.fileLines || size.chars > limits.fileChars ? noteOnly(f, 'tooLarge') : f;
   });
 
@@ -85,7 +89,7 @@ export function assembleDiff(
   const total = { lines: 0, chars: 0 };
   for (const f of walk) {
     if (f.note !== null) continue;
-    const size = sizeOf(f);
+    const size = sizes.get(f.path)!;
     if (notShown.size === 0 && total.lines + size.lines <= limits.totalLines && total.chars + size.chars <= limits.totalChars) {
       total.lines += size.lines;
       total.chars += size.chars;

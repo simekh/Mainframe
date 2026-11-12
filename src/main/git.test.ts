@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -241,11 +241,34 @@ it("taskDiff marks tracked files over the limits too large, with the listing's c
   expect(files.find((f) => f.path === 'wide.txt')).toMatchObject({ note: 'tooLarge', hunks: [], added: 1, removed: 0 });
 });
 
-it('taskDiff is null for a folder that is not a work tree', async () => {
+it('taskDiff is null for a folder that is gone', async () => {
   const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
-  expect(await taskDiff(bare, '')).toBeNull();
   expect(await taskDiff(join(bare, 'missing'), '')).toBeNull();
+});
+
+it("taskDiff fails with git's message for a folder in no repository, where the worktree check fails", async () => {
+  const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
+  cleanup.push(bare);
+  // git looks no higher than the temp folder, whatever repository may hold it.
+  vi.stubEnv('GIT_CEILING_DIRECTORIES', dirname(bare));
+  const failure = taskDiff(bare, '');
+  await expect(failure).rejects.toThrow(/not a git repository/);
+  await expect(failure).rejects.not.toThrow(/Command failed/);
+});
+
+it.skipIf(process.platform === 'win32')('taskDiff shows an untracked link as one line, its target', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  symlinkSync('README.md', join(wt, 'link'));
+  expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note, f.hunks])).toEqual([['link', null, [[add('README.md', 1)]]]]);
+});
+
+it('taskDiff notes an untracked nested repository', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  git(wt, 'init', '--quiet', 'nested');
+  expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note])).toEqual([['nested/', 'repository']]);
 });
 
 it('taskDiff reads untracked files within a budget, the clicked file first', async () => {

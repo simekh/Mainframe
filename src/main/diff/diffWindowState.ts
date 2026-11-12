@@ -15,12 +15,13 @@ const DIFF_WINDOW_SIZE = { width: 1000, height: 720 };
 const FILE = 'diff-window.json';
 const VERSION = 1;
 
-/** The least of a window that must lie on a display for the user to find it and drag it back. */
+/** The least of the title bar, the window's top strip, that must lie on a display for the user to drag it back. */
 const MIN_VISIBLE = { width: 100, height: 40 };
 
-function overlaps(a: Rect, b: Rect): boolean {
-  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+function titleBarShows(window: Rect, area: Rect): boolean {
+  const bar = { ...window, height: MIN_VISIBLE.height };
+  const width = Math.min(bar.x + bar.width, area.x + area.width) - Math.max(bar.x, area.x);
+  const height = Math.min(bar.y + bar.height, area.y + area.height) - Math.max(bar.y, area.y);
   return width >= MIN_VISIBLE.width && height >= MIN_VISIBLE.height;
 }
 
@@ -28,12 +29,12 @@ function overlaps(a: Rect, b: Rect): boolean {
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
 /**
- * Where the window opens: where it was, if enough of it still shows on a display (one may have been
+ * Where the window opens: where it was, if enough of its title bar still shows on a display (one may have been
  * unplugged), else the default size centred over Mainframe's window, kept within the display that holds
  * that window's centre, so the title bar can't open off-screen.
  */
 export function restoreBounds(saved: Rect | null, workAreas: Rect[], parent: Rect): Rect {
-  if (saved && workAreas.some((area) => overlaps(saved, area))) return saved;
+  if (saved && workAreas.some((area) => titleBarShows(saved, area))) return saved;
   const centre = { x: parent.x + parent.width / 2, y: parent.y + parent.height / 2 };
   const area =
     workAreas.find((a) => centre.x >= a.x && centre.x < a.x + a.width && centre.y >= a.y && centre.y < a.y + a.height) ??

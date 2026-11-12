@@ -130,7 +130,7 @@ export interface DiffLine {
 }
 
 /** Why a file shows a note in place of its lines. */
-export type DiffNote = 'binary' | 'tooLarge' | 'notShown' | 'modeOnly' | 'noLines' | 'empty';
+export type DiffNote = 'binary' | 'tooLarge' | 'notShown' | 'modeOnly' | 'noLines' | 'empty' | 'repository';
 
 export interface FileDiff {
   path: string;

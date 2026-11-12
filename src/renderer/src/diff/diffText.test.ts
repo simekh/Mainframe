@@ -25,6 +25,7 @@ describe('noteText', () => {
     expect(noteText(file({ note: 'modeOnly' }))).toBe('No line changes (file mode changed).');
     expect(noteText(file({ note: 'noLines' }))).toBe('No line changes.');
     expect(noteText(file({ note: 'empty' }))).toBe('Empty file.');
+    expect(noteText(file({ note: 'repository' }))).toBe('A repository of its own: its changes are not shown here.');
   });
 
   it('gives null for a file with lines', () => {

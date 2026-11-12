@@ -26,7 +26,7 @@ describe('restoreBounds', () => {
     expect(restoreBounds(null, [area], short)).toEqual({ x: 300, y: 25, width: 1000, height: 720 });
   });
 
-  it('needs 100 by 40 px on a display', () => {
+  it('needs 100 by 40 px of the title bar on a display', () => {
     const size = { width: 500, height: 500 };
     const onScreen = (x: number, y: number) => restoreBounds({ x, y, ...size }, [screen], parent);
     const dropped = { x: 300, y: 140, width: 1000, height: 720 };
@@ -34,6 +34,13 @@ describe('restoreBounds', () => {
     expect(onScreen(1920 - 100, 0)).toEqual({ x: 1820, y: 0, ...size });
     expect(onScreen(0, 1080 - 39)).toEqual(dropped);
     expect(onScreen(0, 1080 - 40)).toEqual({ x: 0, y: 1040, ...size });
+    expect(onScreen(0, -1)).toEqual(dropped);
+    expect(onScreen(0, 0)).toEqual({ x: 0, y: 0, ...size });
+  });
+
+  it('drops saved bounds whose title bar is above every display, though the rest shows', () => {
+    const saved = { x: 0, y: -600, width: 1000, height: 720 };
+    expect(restoreBounds(saved, [screen], parent)).toEqual({ x: 300, y: 140, width: 1000, height: 720 });
   });
 });
 

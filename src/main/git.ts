@@ -1,6 +1,6 @@
 // Adapted from Parallel Code (MIT): electron/ipc/git.ts (getChangedFiles) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { execFile } from 'node:child_process';
-import { lstat, readFile, realpath } from 'node:fs/promises';
+import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
@@ -124,8 +124,9 @@ const UNTRACKED_BUDGET_BYTES = 16 * 1024 * 1024;
 const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
- * Undefined for a file that is gone since the listing, or is not a regular file (a link, say).
- * The first file that would take `budget` past its bytes, and every file after it, is left unread.
+ * Undefined for a file that is gone since the listing, or is neither a regular file nor a link.
+ * A link reads as git shows it: one line, its target. The first file that would take `budget` past
+ * its bytes, and every file after it, is left unread.
  */
 async function readUntracked(
   worktreePath: string,
@@ -134,16 +135,26 @@ async function readUntracked(
 ): Promise<UntrackedContent | undefined> {
   const file = join(worktreePath, path);
   try {
-    const stat = await lstat(file);
-    if (!stat.isFile()) return undefined;
+    // A link's size is its target's length.
+    const info = await lstat(file);
+    if (!info.isFile() && !info.isSymbolicLink()) return undefined;
     if (budget.spent) return { kind: 'notRead' };
-    if (stat.size > UNTRACKED_MAX_BYTES) return { kind: 'tooLarge' };
-    if (stat.size > budget.left) {
+    if (info.size > UNTRACKED_MAX_BYTES) return { kind: 'tooLarge' };
+    if (info.size > budget.left) {
       budget.spent = true;
       return { kind: 'notRead' };
     }
-    budget.left -= stat.size;
-    const bytes = await readFile(file);
+    budget.left -= info.size;
+    if (info.isSymbolicLink()) return { kind: 'text', lines: [await readlink(file)] };
+    // No more than the size the limits were checked against: the file may grow while it is read.
+    const handle = await open(file, 'r');
+    let bytes: Buffer;
+    try {
+      const { bytesRead, buffer } = await handle.read(Buffer.alloc(info.size), 0, info.size, 0);
+      bytes = buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
+    }
     if (bytes.subarray(0, 8000).includes(0)) return { kind: 'binary' };
     const lines = bytes.toString('utf8').split('\n');
     if (lines[lines.length - 1] === '') lines.pop();
@@ -153,17 +164,26 @@ async function readUntracked(
   }
 }
 
+/** git's own words: execFile's message leads with the whole command line. */
+function withGitMessage(err: unknown): never {
+  const stderr = String((err as { stderr?: unknown }).stderr ?? '').trim();
+  throw stderr ? new Error(stderr) : err;
+}
+
 /**
  * What the diff window shows: the changed-files listing joined with the patch and the untracked files' contents.
- * Null when the path is not a work tree's top, as changedFiles is; throws when git fails after that.
+ * Null when the folder is gone, or is a plain one inside another checkout; any other failure throws, so a
+ * broken git is not shown as a removed worktree.
  * The flags make the patch the same under any user's diff settings, which parsePatch relies on.
  */
 export async function taskDiff(worktreePath: string, focus: string): Promise<FileDiff[] | null> {
   try {
-    if (!(await isWorktreeTop(worktreePath))) return null;
-  } catch {
-    return null;
+    await stat(worktreePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
   }
+  if (!(await isWorktreeTop(worktreePath).catch(withGitMessage))) return null;
   const base = await diffBase(worktreePath);
   const [listed, patch] = await Promise.all([
     listChanges(worktreePath, base),
@@ -183,11 +203,7 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
       }
       throw err;
     }),
-  ]).catch((err: unknown) => {
-    // git's own words: execFile's message leads with the whole command line.
-    const stderr = String((err as { stderr?: unknown }).stderr ?? '').trim();
-    throw stderr ? new Error(stderr) : err;
-  });
+  ]).catch(withGitMessage);
   const untracked = new Map<string, UntrackedContent>();
   // One at a time, the clicked file first, so a burst of files can't exhaust memory or file handles.
   const budget = { left: UNTRACKED_BUDGET_BYTES, spent: false };

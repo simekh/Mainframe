@@ -22,6 +22,8 @@ export function noteText(file: FileDiff): string | null {
       return 'No line changes.';
     case 'empty':
       return 'Empty file.';
+    case 'repository':
+      return 'A repository of its own: its changes are not shown here.';
   }
 }
 

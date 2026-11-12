@@ -11,7 +11,9 @@ import { diffWindowTitle, readDiffWindowBounds, restoreBounds, writeDiffWindowBo
  */
 export class DiffWindow implements DiffWindowControl {
   private win: BrowserWindow | null = null;
-  private latest: DiffView | null = null;
+  /** Held only while the window exists: a view can be millions of characters. */
+  private view: DiffView | null = null;
+  private latestSeq = 0;
   private seq = 0;
 
   constructor(
@@ -34,8 +36,10 @@ export class DiffWindow implements DiffWindowControl {
     // A read can land after Mainframe's window closed, while the app waits to quit.
     if (this.o.parent.isDestroyed()) return;
     // A slow read for an earlier click must not replace a later one's.
-    if (this.latest && view.seq < this.latest.seq) return;
-    this.latest = view;
+    // It outlives the window, so a read from before a close can't reopen it with an older view.
+    if (view.seq < this.latestSeq) return;
+    this.latestSeq = view.seq;
+    this.view = view;
     if (this.win) {
       this.win.setTitle(diffWindowTitle(view));
       this.win.webContents.send(IPC.diffChanged, view);
@@ -74,7 +78,9 @@ export class DiffWindow implements DiffWindowControl {
       }
     });
     win.on('closed', () => {
-      if (this.win === win) this.win = null;
+      if (this.win !== win) return;
+      this.win = null;
+      this.view = null;
     });
     this.win = win;
     // The page asks for the latest view (`current`) once it has loaded.
@@ -82,7 +88,7 @@ export class DiffWindow implements DiffWindowControl {
   }
 
   current(): DiffView | null {
-    return this.latest;
+    return this.view;
   }
 
   close(): void {
