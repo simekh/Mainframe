@@ -75,7 +75,7 @@ test('a first start with only OpenCode chooses it and opens a project', async ()
 
 test("the manager starts on OpenCode with Mainframe's server, its rules and its role prompt", async () => {
   const main = repo();
-  const first = await launchWithOpencode(main, ON_OPENCODE);
+  const first = await launchWithOpencode(main, {}, ON_OPENCODE);
   const { dataDir } = first;
   // On the arguments: the stand-in creates its file before it writes them.
   await expect.poll(() => managerLaunches(dataDir)[0]?.args.length).toBe(3);
@@ -101,14 +101,14 @@ test("the manager starts on OpenCode with Mainframe's server, its rules and its 
   await first.app.close();
 
   // A new start carries the same chat on.
-  const second = await launchWithOpencode(main, ON_OPENCODE, { MAINFRAME_DATA_DIR: dataDir });
+  const second = await launchWithOpencode(main, { MAINFRAME_DATA_DIR: dataDir }, ON_OPENCODE);
   await expect.poll(() => managerLaunches(dataDir)[1]?.args[2]).toBe(launch.args[2]);
   expect(managerLaunches(dataDir)[1].args.slice(0, 2)).toEqual(['--standalone', '-s']);
   await second.app.close();
 });
 
 test('a sync on OpenCode asks for a model, finds the connector, and reads the list with only the confirmed tools', async () => {
-  const { app, page, dataDir } = await launchWithOpencode(repo(), ON_OPENCODE);
+  const { app, page, dataDir } = await launchWithOpencode(repo(), {}, ON_OPENCODE);
   const panel = page.getByTestId('todo-panel');
   await page.getByTestId('todo-toggle').click();
   await page.getByTestId('todo-sync').click();

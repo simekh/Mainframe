@@ -1,4 +1,4 @@
-import type { AgentName, TaskCardRef } from '../../shared/types';
+import type { TaskCardRef } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { Instructions } from '../agents/agent';
 
@@ -36,12 +36,13 @@ export function openingPrompt(t: {
   card?: PromptCard;
   /** Where the description is, instead of in this prompt. */
   descriptionFile?: string;
-  agent: AgentName;
-  /** The main checkout. */
-  projectDir: string;
-  worktreePath: string;
-}): string {
+} & (
+  | { agent: 'claude' }
+  /** `projectDir` is the main checkout. */
+  | { agent: 'opencode'; projectDir: string; worktreePath: string }
+)): string {
   const { instructions, worktreeNote } = ADAPTERS[t.agent];
+  const where = t.agent === 'opencode' ? t : { projectDir: '', worktreePath: '' };
   const description = t.description.trim();
   const parts = [brief(instructions), `Task: ${t.card?.number ? `${t.card.number} ` : ''}${t.title.trim()}`];
   if (t.card) parts.push(...cardParts(t.card, instructions));
@@ -49,7 +50,7 @@ export function openingPrompt(t: {
     if (t.descriptionFile) parts.push(descriptionInFile(t.descriptionFile, t.card !== undefined));
     else parts.push(t.card ? `From the owner: ${description}` : description);
   }
-  parts.push(worktreeNote(t));
+  parts.push(worktreeNote({ branch: t.branch, projectDir: where.projectDir, worktreePath: where.worktreePath }));
   if (t.noQuestions) parts.push(noQuestions(instructions));
   return parts.join('\n\n');
 }

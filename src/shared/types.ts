@@ -59,14 +59,15 @@ export const MIN_CLAUDE_VERSION = '2.1.295';
 /** The oldest OpenCode Mainframe works with. */
 export const MIN_OPENCODE_VERSION = '2.1.0';
 
-/** The agent CLIs a task can run on, in the order they are listed and tried in. */
-export const AGENT_ORDER = ['claude', 'opencode'] as const;
-
-export type AgentName = (typeof AGENT_ORDER)[number];
-
-export const isAgentName = (value: unknown): value is AgentName => AGENT_ORDER.includes(value as AgentName);
+/** The agent CLIs a task can run on. */
+export type AgentName = 'claude' | 'opencode';
 
 export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
+
+/** The order agents are listed and tried in. */
+export const AGENT_ORDER = ['claude', 'opencode'] as const satisfies readonly AgentName[];
+
+export const isAgentName = (value: unknown): value is AgentName => AGENT_ORDER.includes(value as AgentName);
 
 export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
 

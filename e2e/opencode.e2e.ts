@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchWithOpencode } from './launch';
-import { card, cardIn, closeTask, envOf, git, ids, launches, report, repo, screen, sendLine, SESSION_ID } from './tasks';
+import { card, cardIn, closeTask, envOf, git, ids, launches, report, repo, screen, sendLine } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -19,6 +19,8 @@ async function startOpencodeTask(page: Page, title: string): Promise<string> {
   await expect.poll(() => screen(page, id)).toContain('$');
   return id;
 }
+
+const SESSION_ID = /^ses_[0-9a-f]{28}$/;
 
 test('an OpenCode task starts in its own worktree', async () => {
   const main = repo();
@@ -63,7 +65,7 @@ test('Quit mid-turn carries the OpenCode session on', async () => {
   await first.app.close();
   const [start] = launches(first.dataDir);
 
-  const second = await launchWithOpencode(main, undefined, { MAINFRAME_DATA_DIR: first.dataDir });
+  const second = await launchWithOpencode(main, { MAINFRAME_DATA_DIR: first.dataDir });
   // On the content: the stand-in creates its file before it writes the arguments.
   await expect.poll(() => launches(first.dataDir)[1]?.args.at(-1)).toBe('Continue where you left off.');
   const reopened = launches(first.dataDir)[1];
@@ -92,7 +94,7 @@ test('an OpenCode task closed and reopened from its card resumes the same sessio
 test('the dialog says when a ticked OpenCode is too old', async () => {
   // Not found, an OpenCode with no tick saved counts as unticked, and the box would say nothing of it.
   const settings = { welcomeSeen: true, agents: { opencode: { enabled: true } } };
-  const { app, page } = await launchWithOpencode(repo(), settings, { FAKE_OPENCODE_VERSION: '1.18.35' });
+  const { app, page } = await launchWithOpencode(repo(), { FAKE_OPENCODE_VERSION: '1.18.35' }, settings);
   await page.getByTestId('new-task').click();
   await expect(page.getByTestId('new-task-agent-hint')).toHaveText('OpenCode 1.18.35 is installed. Mainframe needs 2.1.0 or later.');
   await expect(page.getByTestId('new-task-agent-opencode')).toHaveCount(0);

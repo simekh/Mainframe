@@ -38,7 +38,7 @@ export const fakeOpencode = process.env.FAKE_OPENCODE_EXE ?? join(root, 'e2e', '
  * `launchApp` with the stand-in as `opencode` beside the one as `claude`. Found, and with no tick saved, it counts as
  * ticked, so the New task box offers it.
  */
-export const launchWithOpencode = (projects: string | string[], settings?: AppSettings, env: Record<string, string> = {}) =>
+export const launchWithOpencode = (projects: string | string[], env: Record<string, string> = {}, settings?: AppSettings) =>
   launchApp({ MAINFRAME_OPENCODE_BIN: fakeOpencode, ...env }, projects, { settings });
 
 /**

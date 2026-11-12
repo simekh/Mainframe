@@ -431,9 +431,9 @@ export class TaskService {
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
-          agent,
-          projectDir: this.deps.projectDir,
-          worktreePath: task.worktreePath,
+          ...(agent === 'opencode'
+            ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
+            : { agent: 'claude' as const }),
         }),
         ...(brief && { addDir: brief.dir }),
       });

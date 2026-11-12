@@ -12,8 +12,6 @@ const t = {
   branch: 'worktree-fix-login',
   noQuestions: false,
   agent: 'claude' as const,
-  projectDir: '/p',
-  worktreePath: '/p/.claude/worktrees/fix-login',
 };
 
 it('gives the brief, the description and the worktree note', () => {
@@ -87,7 +85,7 @@ it('passes on no-questions mode', () => {
 
 it('an OpenCode prompt names AGENTS.md and the main checkout, and no Claude Code worktree tools', () => {
   const card = { sourceKind: 'Tracker', number: '#1', url: null, labels: [] };
-  const prompt = openingPrompt({ ...t, agent: 'opencode', description: 'x', card, noQuestions: true });
+  const prompt = openingPrompt({ ...t, agent: 'opencode', projectDir: '/p', worktreePath: '/p/.claude/worktrees/fix-login', description: 'x', card, noQuestions: true });
   expect(prompt).toContain(
     "Mainframe started you in this task's own worktree, /p/.claude/worktrees/fix-login, on branch worktree-fix-login. " +
       'The main checkout is /p: when you need it, for example to merge, run git there with git -C /p.',
