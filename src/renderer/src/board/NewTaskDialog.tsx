@@ -7,6 +7,13 @@ import { startTask } from '../tasksStore';
 import { loadAgent, saveAgent } from './agentPrefs';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
 
+/** Why OpenCode can't be offered, when it is installed but unusable. */
+function agentHint(check: ProgramCheck | null): string | undefined {
+  if (check?.state === 'too-old') return `OpenCode ${check.version} is installed. Mainframe needs ${MIN_OPENCODE_VERSION} or later.`;
+  if (check?.state === 'broken') return `The opencode at ${check.path} didn't say its version, so Mainframe can't use it.`;
+  return undefined;
+}
+
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
   const project = useProject();
@@ -121,7 +128,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
                     Agent
                   </span>
                   <div class="nt-agents" role="radiogroup" aria-labelledby="nt-agent">
-                    <For each={['claude', 'opencode'] as const}>
+                    <For each={Object.keys(AGENT_NAMES) as AgentName[]}>
                       {(name) => (
                         <label class="nt-agent">
                           <input
@@ -138,17 +145,14 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
                   </div>
                 </div>
               </Match>
-              <Match when={c().state === 'too-old'}>
-                <p class="nt-hint" data-testid="new-task-agent-hint">
-                  OpenCode {c().version} is installed. Mainframe needs {MIN_OPENCODE_VERSION} or later.
-                </p>
-              </Match>
-              <Match when={c().state === 'broken'}>
-                <p class="nt-hint" data-testid="new-task-agent-hint">
-                  The opencode at {c().path} didn't say its version, so Mainframe can't use it.
-                </p>
-              </Match>
             </Switch>
+          )}
+        </Show>
+        <Show when={agentHint(opencode())}>
+          {(hint) => (
+            <p class="nt-hint" data-testid="new-task-agent-hint">
+              {hint()}
+            </p>
           )}
         </Show>
         <div class="check">

@@ -1,4 +1,4 @@
-import type { AgentName, TaskCardRef } from '../../shared/types';
+import type { TaskCardRef } from '../../shared/types';
 
 /** How the prompt names the repo's instructions: the first mention in full, later ones short. */
 type Instructions = { first: string; again: string; requires: string; integrates: string };
@@ -51,11 +51,11 @@ export function openingPrompt(t: {
   card?: PromptCard;
   /** Where the description is, instead of in this prompt. */
   descriptionFile?: string;
-  agent: AgentName;
-  /** The main checkout. */
-  projectDir: string;
-  worktreePath: string;
-}): string {
+} & (
+  | { agent: 'claude' }
+  /** `projectDir` is the main checkout. */
+  | { agent: 'opencode'; projectDir: string; worktreePath: string }
+)): string {
   const instructions = t.agent === 'opencode' ? OPENCODE_INSTRUCTIONS : CLAUDE_INSTRUCTIONS;
   const worktreeNote = t.agent === 'opencode'
     ? `Mainframe started you in this task's own worktree, ${t.worktreePath}, on branch ${t.branch}. The main checkout is ${t.projectDir}: when you need it, for example to merge, run git there with git -C ${t.projectDir}.`

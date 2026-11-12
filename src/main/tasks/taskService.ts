@@ -167,16 +167,13 @@ export class TaskService {
     } else {
       // Listed before git runs, so a start meanwhile takes another slug; saved only once the worktree is there.
       this.deps.records.all.push(task);
-      this.launching.add(task.id);
       try {
-        await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create: true });
+        await this.addWorktree(task, true);
       } catch (err) {
         this.deps.records.all.splice(this.deps.records.all.indexOf(task), 1);
         // Another project may have saved it meanwhile. Nothing on screen showed it, so it is only saved.
         this.deps.records.save();
         throw err;
-      } finally {
-        this.launching.delete(task.id);
       }
       const argv = this.startArgvOf(task, (prompt) => opencodeStartArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt }));
       this.addSession({ taskId: task.id, launch: { argv, cwd: task.worktreePath, env: OPENCODE_ENV }, startedWithPrompt: true, resumePending: false });
@@ -218,6 +215,16 @@ export class TaskService {
     return this.relaunch(task, { argv, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
   }
 
+  /** Adds the task's worktree, marking the task as launching while git runs. */
+  private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
+    this.launching.add(task.id);
+    try {
+      await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
+    } finally {
+      this.launching.delete(task.id);
+    }
+  }
+
   /**
    * Resumes the session Mainframe started, in the task's worktree. A worktree folder deleted by hand is
    * added back from its branch; with the branch gone too, the session runs in the project folder.
@@ -228,12 +235,7 @@ export class TaskService {
     if (existsSync(task.worktreePath)) {
       cwd = task.worktreePath;
     } else if (branchExists) {
-      this.launching.add(task.id);
-      try {
-        await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create: false });
-      } finally {
-        this.launching.delete(task.id);
-      }
+      await this.addWorktree(task, false);
       // As in reopen: the project may have closed, or the app begun to quit, while git ran.
       if (this.quitting) return this.view(task);
       cwd = task.worktreePath;
@@ -398,9 +400,9 @@ export class TaskService {
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
-          agent: agentOf(task),
-          projectDir: this.deps.projectDir,
-          worktreePath: task.worktreePath,
+          ...(agentOf(task) === 'opencode'
+            ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
+            : { agent: 'claude' as const }),
         }),
         brief?.dir,
       );
