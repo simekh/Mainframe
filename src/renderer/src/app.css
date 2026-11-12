@@ -934,11 +934,22 @@ html[data-platform='darwin'] .setup-titlebar {
 }
 
 /* The models, cheapest first: a choice of one, so a row is picked rather than pressed, and only the button runs. */
+/* A user's OpenCode can list hundreds of models: the ask shrinks to the panel and its list scrolls, so the button under
+   it stays in view. */
+.todo-model-ask {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
 .todo-models {
   align-self: stretch;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
 }
 
 .todo-model {
@@ -3167,6 +3178,12 @@ kbd {
   text-align: left;
   color: var(--fg-subtle);
   font: 12px var(--font-mono);
+}
+
+/* As in .file-list .path: the text keeps its own direction, so a leading `/` stays at the start. */
+.settings-path > span {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .settings-find {

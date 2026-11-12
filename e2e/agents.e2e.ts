@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { ADAPTERS } from '../src/main/agents/adapters';
@@ -6,7 +6,7 @@ import { rolePrompt } from '../src/main/manager/rolePrompt';
 import type { AppSettings } from '../src/main/setup/settings';
 import { cleanUp, fakeOpencode, launchApp, launchWithOpencode } from './launch';
 import {
-  answerDialogs, card, computer, envOf, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
+  answerDialogs, card, computer, envOf, fakeLogDir, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
   rowButton, savedSettings, screen, SESSION_ID, startTask, syncLaunches,
 } from './tasks';
 
@@ -69,6 +69,33 @@ test('a first start with only OpenCode chooses it and opens a project', async ()
 
   await expect(projectPane(page, project)).toHaveAttribute('data-shown', 'true');
   expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'opencode', agents: { opencode: { enabled: true } } });
+  await expect.poll(() => managerLaunches(dataDir)[0]?.args.slice(0, 2)).toEqual(['--standalone', '-s']);
+  await app.close();
+});
+
+test('a first start with both agents asks which is the default, and runs everything on the one picked', async () => {
+  const pc = computer();
+  const claude = pc.installClaude();
+  const project = repo();
+  const { app, page, dataDir } = await launchApp({ ...pc.env, MAINFRAME_OPENCODE_BIN: fakeOpencode }, undefined, { firstStart: true });
+
+  await expect(page.getByTestId('setup-tick-claude')).toBeChecked();
+  await expect(page.getByTestId('setup-tick-opencode')).toBeChecked();
+  // Claude Code is first wherever a choice starts.
+  await expect(page.getByTestId('setup-default-claude')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('setup-default-opencode')).toHaveAttribute('aria-checked', 'false');
+  await page.getByTestId('setup-default-opencode').click();
+  await expect(page.getByTestId('setup-default-opencode')).toHaveAttribute('aria-checked', 'true');
+
+  await answerDialogs(app, project);
+  await page.getByTestId('setup-choose-project').click();
+
+  await expect(projectPane(page, project)).toHaveAttribute('data-shown', 'true');
+  expect(savedSettings(dataDir)).toEqual({
+    welcomeSeen: true,
+    defaultAgent: 'opencode',
+    agents: { claude: { enabled: true, bin: claude }, opencode: { enabled: true } },
+  });
   await expect.poll(() => managerLaunches(dataDir)[0]?.args.slice(0, 2)).toEqual(['--standalone', '-s']);
   await app.close();
 });
@@ -141,10 +168,13 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
   await panel.getByTestId('todo-confirm-tools').click();
   await expect(panel.getByTestId('todo-item')).toHaveCount(CARDS.cards.length);
   const read = syncLaunches(dataDir)[1];
-  expect(configOf(read).permissions).toEqual([
+  expect(read.args).toEqual(discover.args);
+  const readRules = [
     { action: '*', resource: '*', effect: 'deny' },
     { action: 'tracker_get_list', resource: '*', effect: 'allow' },
-  ]);
+  ];
+  expect(configOf(read).permissions).toEqual(readRules);
+  expect(configOf(read).agents['mainframe-sync'].permissions).toEqual(readRules);
 
   await expect.poll(() => helperCalls(dataDir).map((call) => call.args)).toContainEqual(['--standalone', 'session', 'delete', 'ses_fake']);
   expect(savedSettings(dataDir).agents?.opencode?.syncModel).toBe('prov/cheap');
@@ -154,11 +184,35 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
   const calls = helperCalls(dataDir).length;
   await openSettings(page);
   await expect(page.getByTestId('settings-manager-agent').locator('option')).toHaveText([/build/, 'build', 'plan']);
+  await expect(page.getByTestId('settings-manager-agent-hint')).toHaveText(
+    "A new manager chat starts on this agent. A chat that carries on keeps its agent until you switch it in the manager's terminal.",
+  );
   await expect(page.getByTestId('settings-sync-model').locator('option')).toHaveCount(3);
   expect(helperCalls(dataDir).slice(calls).map((call) => call.args)).toEqual(
     expect.arrayContaining([['--standalone', 'api', 'agent.list'], ['--standalone', 'api', 'model.list']]),
   );
   await expectNoSecretIn(page, dataDir);
+  await app.close();
+});
+
+test("with a long model list, the model ask's button stays in the window", async () => {
+  const { app, page, dataDir } = await launchWithOpencode(repo(), {}, ON_OPENCODE);
+  const price = (input: number) => [{ input, output: input * 5, cache: { read: 0, write: 0 } }];
+  const data = Array.from({ length: 40 }, (_, i) => ({
+    id: `m${i}`, modelID: `m${i}`, providerID: 'prov', name: `Model ${i}`, capabilities: {}, variants: [], time: { released: 1 },
+    status: 'active', enabled: true, limit: { context: 1, output: 1 }, cost: price(i + 1),
+  }));
+  writeFileSync(join(fakeLogDir(dataDir), 'opencode-model.list.json'), JSON.stringify({ location: { directory: '/' }, data }));
+
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-sync').click();
+  const panel = page.getByTestId('todo-panel');
+  await expect(panel.getByTestId('todo-model')).toHaveCount(40);
+  await expect(panel.getByTestId('todo-pick-model')).toBeInViewport({ ratio: 1 });
+  // The list scrolls inside the ask: its last model can be picked too.
+  await panel.getByTestId('todo-model').last().click();
+  await expect(panel.getByTestId('todo-model').last()).toHaveAttribute('aria-checked', 'true');
+  await expect(panel.getByTestId('todo-pick-model')).toBeInViewport({ ratio: 1 });
   await app.close();
 });
 
@@ -172,9 +226,13 @@ test('Settings switches the default agent from the cog, and the New task box fol
   await expect(page.getByTestId('settings-open')).toHaveCount(1);
   await expect(projectPane(page, globex).getByTestId('project-bar').getByTestId('settings-open')).toHaveCount(1);
 
+  await expect.poll(() => managerLaunches(dataDir).length).toBe(2);
   await openSettings(page);
-  await page.getByTestId('settings-default-opencode').click();
+  // Chosen from the keyboard, the radio keeps the focus when its own save comes back.
+  await page.getByTestId('settings-default-opencode').focus();
+  await page.keyboard.press('Space');
   await expect(page.getByTestId('settings-default-opencode')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('settings-default-opencode')).toBeFocused();
   await page.getByTestId('settings-close').click();
   await expect(page.getByTestId('settings-dialog')).toBeHidden();
   await expect.poll(() => savedSettings(dataDir).defaultAgent).toBe('opencode');
@@ -186,6 +244,8 @@ test('Settings switches the default agent from the cog, and the New task box fol
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('new-task-agent-opencode')).toHaveCount(0);
   }
+  // Each manager switches only at its own next start.
+  expect(managerLaunches(dataDir)).toHaveLength(2);
   await app.close();
 });
 

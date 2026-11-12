@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, For, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Index, Show } from 'solid-js';
 import { AGENT_NAMES, AGENT_ORDER, type AgentName, type SettingsView, type SyncModel } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { checkLine } from '../setup/setupCopy';
@@ -40,7 +40,7 @@ function AgentRow(props: { name: AgentName; view: SettingsView; act: (run: () =>
       <Show when={check().path}>
         {(path) => (
           <span class="settings-path" title={path()}>
-            {path()}
+            <span>{path()}</span>
           </span>
         )}
       </Show>
@@ -109,6 +109,10 @@ function OpencodeSection(props: { view: SettingsView }) {
                 </For>
               </select>
             </div>
+            <p class="settings-hint" data-testid="settings-manager-agent-hint">
+              A new manager chat starts on this agent. A chat that carries on keeps its agent until you switch it in the
+              manager's terminal.
+            </p>
             <div class="settings-row">
               <label class="settings-key" for="settings-sync-model">
                 Todo sync model
@@ -190,23 +194,24 @@ export default function SettingsDialog() {
                     Default agent
                   </span>
                   <div class="settings-seg" role="radiogroup" aria-labelledby="settings-default-label">
-                    <For each={defaultChoice(view())}>
+                    {/* By position, which AGENT_ORDER keeps: each view's new objects would otherwise rebuild the buttons and drop their focus. */}
+                    <Index each={defaultChoice(view())}>
                       {(choice) => (
                         <button
                           type="button"
                           role="radio"
-                          data-testid={`settings-default-${choice.name}`}
-                          aria-checked={view().defaultAgent === choice.name ? 'true' : 'false'}
-                          disabled={!choice.works}
-                          title={choice.works ? undefined : checkLine(choice.name, view().agents[choice.name].check, true)}
+                          data-testid={`settings-default-${choice().name}`}
+                          aria-checked={view().defaultAgent === choice().name ? 'true' : 'false'}
+                          disabled={!choice().works}
+                          title={choice().works ? undefined : checkLine(choice().name, view().agents[choice().name].check, true)}
                           onClick={() => {
-                            if (view().defaultAgent !== choice.name) act(() => window.mainframe.setDefaultAgent(choice.name));
+                            if (view().defaultAgent !== choice().name) act(() => window.mainframe.setDefaultAgent(choice().name));
                           }}
                         >
-                          {AGENT_NAMES[choice.name]}
+                          {AGENT_NAMES[choice().name]}
                         </button>
                       )}
-                    </For>
+                    </Index>
                   </div>
                 </div>
                 <p class="settings-hint">Runs the manager, the Todo sync and new tasks. Tasks that are already running keep their own agent.</p>

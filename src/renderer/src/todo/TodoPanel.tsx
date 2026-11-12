@@ -36,7 +36,7 @@ function ModelAsk(props: { dir: string; models: SyncModel[]; suggested: string |
     return id !== null && props.models.some((m) => m.id === id) ? id : props.suggested;
   };
   return (
-    <div class="todo-ask">
+    <div class="todo-ask todo-model-ask">
       <p>Pick the model the sync runs on. Cheapest first, with the price per million tokens in and out.</p>
       <div class="todo-models" role="radiogroup" aria-label="Sync model">
         <For each={props.models}>

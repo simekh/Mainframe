@@ -275,7 +275,7 @@ export const SESSION_ID = /^ses_[0-9a-f]{28}$/;
 /** The conversation a launch began. */
 export const sessionIdOf = (args: string[]) => args[args.indexOf('--session-id') + 1];
 
-const fakeLogDir = (dataDir: string) => join(dataDir, 'fake-claude');
+export const fakeLogDir = (dataDir: string) => join(dataDir, 'fake-claude');
 
 /**
  * What `e2e/fake-claude.cjs` recorded of each launch in this data folder, oldest first: each launch's file,
