@@ -9,6 +9,7 @@ export const webPreferences = (): WebPreferences => ({
   sandbox: true,
   contextIsolation: true,
   nodeIntegration: false,
-  // Keep output parsing and terminal replies running while the window is hidden.
+  // Mainframe's window keeps output parsing and terminal replies running while hidden; the diff window has no
+  // need of it, but shares the settings so the two can't drift apart.
   backgroundThrottling: false,
 });

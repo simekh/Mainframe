@@ -54,12 +54,13 @@ export function parsePatch(raw: string): Map<string, PatchBlock> {
     }
     if (path === null) continue;
 
-    const current = blocks.get(path)!;
-    const header = HUNK.exec(line);
+    // Only `@@` lines can open a hunk: the regex need not run on every line of a large patch.
+    const header = line.startsWith('@@') ? HUNK.exec(line) : null;
     if (header) {
       hunk = [];
       oldLine = Number(header[1]);
       newLine = Number(header[2]);
+      const current = blocks.get(path)!;
       if (current !== 'binary') current.push(hunk);
       continue;
     }
@@ -68,7 +69,7 @@ export function parsePatch(raw: string): Map<string, PatchBlock> {
       continue;
     }
 
-    const text = line.slice(1).replace(/\r$/, '');
+    const text = line.endsWith('\r') ? line.slice(1, -1) : line.slice(1);
     if (line[0] === ' ') hunk.push({ kind: 'context', text, oldLine: oldLine++, newLine: newLine++ });
     else if (line[0] === '-') hunk.push({ kind: 'remove', text, oldLine: oldLine++, newLine: null });
     else if (line[0] === '+') hunk.push({ kind: 'add', text, oldLine: null, newLine: newLine++ });

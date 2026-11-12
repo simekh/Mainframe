@@ -1,7 +1,7 @@
 // Adapted from Parallel Code (MIT): src/components/ChangedFilesList.tsx (its polling) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { createEffect, createSignal, Index, on, onCleanup } from 'solid-js';
 import type { ChangedFile } from '../../../shared/types';
-import { statusLetter } from '../diff/diffText';
+import FileRowContent from '../diff/FileRowContent';
 import LineCounts from '../diff/LineCounts';
 import { useProject } from '../projects/projectContext';
 
@@ -111,13 +111,7 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
                     .catch((err: unknown) => console.warn(`[diff] could not open the changes of ${path}`, err));
                 }}
               >
-                <span class="st" data-st={file().status}>
-                  {statusLetter(file().status)}
-                </span>
-                <span class="path" title={file().path}>
-                  <span>{file().path}</span>
-                </span>
-                <LineCounts added={file().added} removed={file().removed} />
+                <FileRowContent file={file()} />
               </button>
             </li>
           )}

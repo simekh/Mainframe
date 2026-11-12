@@ -4,7 +4,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
-import { assembleDiff, type UntrackedContent } from './diff/assembleDiff';
+import { assembleDiff, focusFirst, type UntrackedContent } from './diff/assembleDiff';
 import { parsePatch } from './diff/parsePatch';
 
 const execFileAsync = promisify(execFile);
@@ -188,7 +188,7 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
   // One at a time, the clicked file first, so a burst of files can't exhaust memory or file handles.
   const budget = { left: UNTRACKED_BUDGET_BYTES, spent: false };
   const paths = listed.filter((f) => f.status === '?').map((f) => f.path);
-  for (const path of [...paths.filter((p) => p === focus), ...paths.filter((p) => p !== focus)]) {
+  for (const path of focusFirst(paths, (p) => p === focus)) {
     const content = await readUntracked(worktreePath, path, budget);
     if (content) untracked.set(path, content);
   }

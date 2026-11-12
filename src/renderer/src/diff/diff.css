@@ -6,7 +6,7 @@
   height: 100%;
 }
 
-/* The panel's .file-list rows (status colours, paths cut from the start), as a full-height column of buttons. */
+/* The panel's .file-list rows (app.css: .file-row, status colours, paths cut from the start), as a full-height column. */
 .diff-list {
   max-height: none;
   padding: 8px 0;
@@ -16,12 +16,7 @@
 }
 
 .diff-list button {
-  display: flex;
-  width: 100%;
-  gap: 10px;
-  min-width: 0;
   padding: 0 12px 0 14px;
-  text-align: left;
 }
 
 .diff-list button:hover {
@@ -37,21 +32,9 @@
   color: var(--fg);
 }
 
+/* LineCounts' look is app.css's, shared with the panel. */
 .diff-page .diff {
-  display: inline-flex;
   flex: none;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.diff-page .add {
-  color: color-mix(in srgb, var(--success) 75%, var(--fg-muted));
-}
-
-.diff-page .rem {
-  color: color-mix(in srgb, var(--error) 65%, var(--fg-muted));
 }
 
 .diff-files {

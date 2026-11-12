@@ -261,12 +261,14 @@ export class TaskService {
 
   async diff(taskId: string, focus: string): Promise<{ taskTitle: string; result: DiffResult }> {
     const task = this.find(taskId);
+    let result: DiffResult;
     try {
       const files = await this.deps.git.taskDiff(task.worktreePath, focus);
-      return { taskTitle: task.title, result: files ? { kind: 'files', files } : { kind: 'noWorktree' } };
+      result = files ? { kind: 'files', files } : { kind: 'noWorktree' };
     } catch (err) {
-      return { taskTitle: task.title, result: { kind: 'failed', message: err instanceof Error ? err.message : String(err) } };
+      result = { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
     }
+    return { taskTitle: task.title, result };
   }
 
   private mine(): TaskRecord[] {

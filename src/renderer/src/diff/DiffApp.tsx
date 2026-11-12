@@ -1,8 +1,8 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import type { DiffView } from '../../../shared/types';
-import { resultMessage, statusLetter } from './diffText';
+import { resultMessage } from './diffText';
 import DiffFile from './DiffFile';
-import LineCounts from './LineCounts';
+import FileRowContent from './FileRowContent';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/jetbrains-mono/400.css';
@@ -70,18 +70,13 @@ export default function DiffApp() {
                 {(file) => (
                   <li>
                     <button
+                      class="file-row"
                       data-testid="diff-list-row"
                       data-path={file.path}
                       aria-current={selected() === file.path ? 'true' : undefined}
                       onClick={() => select(file.path)}
                     >
-                      <span class="st" data-st={file.status}>
-                        {statusLetter(file.status)}
-                      </span>
-                      <span class="path" title={file.path}>
-                        <span>{file.path}</span>
-                      </span>
-                      <LineCounts added={file.added} removed={file.removed} />
+                      <FileRowContent file={file} />
                     </button>
                   </li>
                 )}

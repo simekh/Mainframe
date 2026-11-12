@@ -2461,7 +2461,9 @@ kbd {
   margin-left: auto;
 }
 
-.p-files .diff {
+/* LineCounts, in the panel and in the diff window. */
+.p-files .diff,
+.diff-page .diff {
   display: inline-flex;
   gap: 6px;
   font-family: var(--font-mono);
@@ -2469,11 +2471,13 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.p-files .add {
+.p-files .add,
+.diff-page .add {
   color: color-mix(in srgb, var(--success) 75%, var(--fg-muted));
 }
 
-.p-files .rem {
+.p-files .rem,
+.diff-page .rem {
   color: color-mix(in srgb, var(--error) 65%, var(--fg-muted));
 }
 

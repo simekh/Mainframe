@@ -2,14 +2,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeJsonAtomic } from '../tasks/taskStore';
 
-export interface Rect {
+interface Rect {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
-export const DIFF_WINDOW_SIZE = { width: 1000, height: 720 };
+const DIFF_WINDOW_SIZE = { width: 1000, height: 720 };
 
 /** `diff-window.json`, in the data folder: where the diff window was last, for its next opening. */
 const FILE = 'diff-window.json';
