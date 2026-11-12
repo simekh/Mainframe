@@ -1,11 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import { delimiter, dirname, join } from 'node:path';
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { findExecutable, pathKey } from '../src/main/pty/findExecutable';
+import { localFiles } from '../src/main/pty/sessionHost';
+import { readSettings } from '../src/main/setup/settings';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
 import { makeRepo } from '../src/main/testing/makeRepo';
 import { STRIP_WIDTH } from '../src/renderer/src/panel/panelPrefs';
-import { removeAfterTest } from './launch';
+import { fakeClaude, removeAfterTest } from './launch';
 
 /** A repo from `makeRepo()` that is removed after the test; returns its main checkout. */
 export function repo(): string {
@@ -286,13 +290,26 @@ function allLaunches(dataDir: string): Array<{ file: string; cwd: string; args: 
     });
 }
 
-/** A sync is a `claude -p` run; sessions are interactive. */
-const isSync = (launch: { args: string[] }) => launch.args[0] === '-p';
-/** Only the manager's launches carry a role prompt. */
-const isManager = (launch: { args: string[] }) => launch.args.includes('--append-system-prompt');
+type Launch = { file: string; args: string[] };
+
+/** The environment the stand-in recorded for an OpenCode launch, beside its arguments: every OPENCODE_ variable, and PWD. */
+export const envOf = (launch: { file: string }): Record<string, string> =>
+  JSON.parse(readFileSync(launch.file.replace(/\.argv$/, '.env'), 'utf8'));
+
+/** A sync is a `claude -p` or an `opencode run` run; sessions are interactive. */
+const isSync = (launch: Launch) => launch.args[0] === '-p' || launch.args[0] === 'run';
+/** OpenCode's commands that run to an end, after the `--standalone` every OpenCode launch passes: `api …` and `session …`. */
+const isHelper = (launch: Launch) => launch.args[0] === '--standalone' && ['api', 'session'].includes(launch.args[1]);
+/** Only the manager's launches carry a role prompt: Claude Code's as an argument, OpenCode's in a config that names Mainframe's server. */
+const isManager = (launch: Launch) =>
+  launch.args.includes('--append-system-prompt') ||
+  (existsSync(launch.file.replace(/\.argv$/, '.env')) && (envOf(launch).OPENCODE_CONFIG_CONTENT ?? '').includes('"mcp"'));
 
 /** The sessions' launches in this data folder, the manager's and the tasks', oldest first. */
-export const sessionLaunches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isSync(launch));
+export const sessionLaunches = (dataDir: string) => allLaunches(dataDir).filter((launch) => !isSync(launch) && !isHelper(launch));
+
+/** OpenCode's `api …` and `session …` calls in this data folder, oldest first. */
+export const helperCalls = (dataDir: string) => allLaunches(dataDir).filter(isHelper);
 
 /** The tasks' launches in this data folder, oldest first: the manager, which starts with the app, and the syncs are left out. */
 export const launches = (dataDir: string) => sessionLaunches(dataDir).filter((launch) => !isManager(launch));
@@ -310,6 +327,21 @@ export const syncLaunches = (dataDir: string) =>
 export function syncReply(dataDir: string, answer: unknown): void {
   const printed = { type: 'result', subtype: 'success', is_error: false, result: '', structured_output: answer };
   writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), JSON.stringify(printed));
+}
+
+/**
+ * What the next OpenCode sync runs print: `opencode run --format json`'s events for one message that stopped, whose
+ * text is `answer` as JSON, in session `ses_fake`.
+ */
+export function opencodeSyncReply(dataDir: string, answer: unknown): void {
+  const sessionID = 'ses_fake';
+  const event = (type: string, part: object) =>
+    JSON.stringify({ type, timestamp: 1, sessionID, part: { id: 'p', sessionID, messageID: 'msg_fake', ...part } });
+  const events = [
+    event('text', { type: 'text', text: JSON.stringify(answer) }),
+    event('step_finish', { type: 'step-finish', reason: 'stop', cost: 0, tokens: {} }),
+  ];
+  writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), `${events.join('\n')}\n`);
 }
 
 /** From now until `releaseSyncs`, a sync run waits without replying, until it is stopped. */
@@ -363,17 +395,22 @@ interface McpResponse {
   result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }> };
 }
 
+/** Where Mainframe's MCP server is and the header that lets a client in, as a manager's config names them. */
+type McpServer = { url: string; headers: { Authorization: string } };
+
 /**
- * Posts one JSON-RPC request to Mainframe's MCP server, at the address in the manager's `mcp.json` and
- * with its token, another one, or none (`token: null`). `body` is the server's response; null without one.
+ * Posts one JSON-RPC request to Mainframe's MCP server, at the address in the manager's `mcp.json` (or `server`'s, as an
+ * OpenCode manager's config names it) and with its token, another one, or none (`token: null`). `body` is the server's
+ * response; null without one.
  */
 export async function mcpCall(
   dataDir: string,
   method: string,
   params: Record<string, unknown>,
-  { token }: { token?: string | null } = {},
+  { token, server }: { token?: string | null; server?: McpServer } = {},
 ): Promise<{ status: number; body: McpResponse | null }> {
-  const { url, headers } = JSON.parse(readFileSync(join(managerDir(dataDir), 'mcp.json'), 'utf8')).mcpServers.mainframe;
+  const { url, headers }: McpServer =
+    server ?? JSON.parse(readFileSync(join(managerDir(dataDir), 'mcp.json'), 'utf8')).mcpServers.mainframe;
   const authorization = token === undefined ? headers.Authorization : token === null ? undefined : `Bearer ${token}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -388,3 +425,66 @@ export async function mcpCall(
   const data = (await res.text()).match(/^data: (.*)$/m)?.[1];
   return { status: res.status, body: data === undefined ? null : JSON.parse(data) };
 }
+
+export const claudeFile = process.platform === 'win32' ? 'claude.exe' : 'claude';
+
+/** The git on the developer's own PATH, which the stand-in computers are given. */
+function systemGit(): string {
+  const found = findExecutable('git', {
+    env: process.env as Record<string, string>,
+    cwd: process.cwd(),
+    platform: process.platform,
+    files: localFiles,
+  });
+  if (found === null) throw new Error('the setup tests need git on PATH');
+  return found;
+}
+
+/**
+ * A computer with nothing but node, and git unless `o.git` is false: the app's PATH holds only those,
+ * and HOME, USERPROFILE and APPDATA name an empty folder (on Windows one with the AppData\Roaming
+ * Electron needs), so no claude of the developer's can be found and `MAINFRAME_CLAUDE_BIN` is unset.
+ * On POSIX PATH is a folder of links, as the stand-in for claude is a script that runs `node`; on
+ * Windows it is node's own folder and Git's own folder.
+ */
+export function computer(o: { git?: boolean } = {}) {
+  const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
+  let dirs: string[];
+  if (process.platform === 'win32') {
+    // Electron on Windows crashes at launch (exit 0x80000003) when USERPROFILE names a folder with no
+    // AppData\Roaming in it. CI run 3: with only that folder in it, Electron launched; with an empty one,
+    // one holding only AppData\Local, or C:\Users\Public (no AppData at all), it crashed.
+    mkdirSync(join(home, 'AppData', 'Roaming'), { recursive: true });
+    dirs = [dirname(process.execPath), ...(o.git === false ? [] : [dirname(systemGit())])];
+  } else {
+    const bin = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-bin-')));
+    symlinkSync(process.execPath, join(bin, 'node'));
+    if (o.git !== false) symlinkSync(systemGit(), join(bin, 'git'));
+    dirs = [bin];
+  }
+  const env: Record<string, string | undefined> = {
+    MAINFRAME_CLAUDE_BIN: undefined,
+    // Windows spells it `Path` in process.env, and the app must get one key, not two.
+    [pathKey(process.env, process.platform) ?? 'PATH']: dirs.join(delimiter),
+    HOME: home,
+    USERPROFILE: home,
+    APPDATA: home,
+  };
+  return {
+    env,
+    home,
+    /** Puts a copy of the stand-in where the native installer puts claude, and returns its path. */
+    installClaude(): string {
+      const file = join(home, '.local', 'bin', claudeFile);
+      mkdirSync(dirname(file), { recursive: true });
+      copyFileSync(fakeClaude, file);
+      return file;
+    },
+  };
+}
+
+/** settings.json as Mainframe reads it; a warning fails the test. */
+export const savedSettings = (dataDir: string) =>
+  readSettings(dataDir, (msg) => {
+    throw new Error(msg);
+  });

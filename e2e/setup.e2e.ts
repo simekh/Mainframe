@@ -1,79 +1,12 @@
-import { copyFileSync, mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
-import os from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { findExecutable, pathKey } from '../src/main/pty/findExecutable';
-import { localFiles } from '../src/main/pty/sessionHost';
-import { readSettings } from '../src/main/setup/settings';
 import { MIN_CLAUDE_VERSION } from '../src/shared/types';
-import { cleanUp, fakeClaude, launchApp, removeAfterTest } from './launch';
-import { answerDialogs, openedLinks, projectPane, repo } from './tasks';
+import { cleanUp, fakeClaude, launchApp } from './launch';
+import { answerDialogs, claudeFile, computer, openedLinks, projectPane, repo, savedSettings } from './tasks';
 
 test.afterEach(cleanUp);
 
-const claudeFile = process.platform === 'win32' ? 'claude.exe' : 'claude';
-
-/** The git on the developer's own PATH, which the stand-in computers are given. */
-function systemGit(): string {
-  const found = findExecutable('git', {
-    env: process.env as Record<string, string>,
-    cwd: process.cwd(),
-    platform: process.platform,
-    files: localFiles,
-  });
-  if (found === null) throw new Error('the setup tests need git on PATH');
-  return found;
-}
-
-/**
- * A computer with nothing but node, and git unless `o.git` is false: the app's PATH holds only those,
- * and HOME, USERPROFILE and APPDATA name an empty folder (on Windows one with the AppData\Roaming
- * Electron needs), so no claude of the developer's can be found and `MAINFRAME_CLAUDE_BIN` is unset.
- * On POSIX PATH is a folder of links, as the stand-in for claude is a script that runs `node`; on
- * Windows it is node's own folder and Git's own folder.
- */
-function computer(o: { git?: boolean } = {}) {
-  const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
-  let dirs: string[];
-  if (process.platform === 'win32') {
-    // Electron on Windows crashes at launch (exit 0x80000003) when USERPROFILE names a folder with no
-    // AppData\Roaming in it. CI run 3: with only that folder in it, Electron launched; with an empty one,
-    // one holding only AppData\Local, or C:\Users\Public (no AppData at all), it crashed.
-    mkdirSync(join(home, 'AppData', 'Roaming'), { recursive: true });
-    dirs = [dirname(process.execPath), ...(o.git === false ? [] : [dirname(systemGit())])];
-  } else {
-    const bin = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-bin-')));
-    symlinkSync(process.execPath, join(bin, 'node'));
-    if (o.git !== false) symlinkSync(systemGit(), join(bin, 'git'));
-    dirs = [bin];
-  }
-  const env: Record<string, string | undefined> = {
-    MAINFRAME_CLAUDE_BIN: undefined,
-    // Windows spells it `Path` in process.env, and the app must get one key, not two.
-    [pathKey(process.env, process.platform) ?? 'PATH']: dirs.join(delimiter),
-    HOME: home,
-    USERPROFILE: home,
-    APPDATA: home,
-  };
-  return {
-    env,
-    home,
-    /** Puts a copy of the stand-in where the native installer puts claude, and returns its path. */
-    installClaude(): string {
-      const file = join(home, '.local', 'bin', claudeFile);
-      mkdirSync(dirname(file), { recursive: true });
-      copyFileSync(fakeClaude, file);
-      return file;
-    },
-  };
-}
-
 const dialogCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { dialogCalls?: number }).dialogCalls);
-
-const savedSettings = (dataDir: string) =>
-  readSettings(dataDir, (msg) => {
-    throw new Error(msg);
-  });
 
 /** One of the setup screen's parts: a check or a button. */
 const setupItem = (page: Page, name: string) => page.getByTestId(`setup-${name}`);

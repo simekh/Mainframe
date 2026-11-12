@@ -19,9 +19,10 @@ const isOpencode = process.env.FAKE_AGENT === 'opencode' || basename(process.exe
 const versionCheck = args[0] === '--version';
 
 // As OpenCode, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
-// the tests wait on <pid>.argv.
+// the tests wait on <pid>.argv. That is every OPENCODE_ variable, and PWD, where `run` and `api` take their folder from.
 if (logDir && !versionCheck && isOpencode) {
-  writeFileSync(own('env'), JSON.stringify({ OPENCODE_CLI_CONFIG_CONTENT: process.env.OPENCODE_CLI_CONFIG_CONTENT }));
+  const env = Object.entries(process.env).filter(([key]) => key.startsWith('OPENCODE_') || key === 'PWD');
+  writeFileSync(own('env'), JSON.stringify(Object.fromEntries(env)));
 }
 if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
 
@@ -34,8 +35,12 @@ if (versionCheck && isOpencode) {
   // bridge.e2e.ts: some output and a status over OSC 7501, then a clean exit a moment later.
   process.stdout.write('bridge-ok\x1b]7501;state=working\x1b\\');
   setTimeout(() => {}, 300);
-} else if (args[0] === '-p') {
+} else if (args[0] === '-p' || (isOpencode && args[0] === 'run')) {
   sync();
+} else if (isOpencode && args[0] === '--standalone' && args[1] === 'api') {
+  api(args[2]);
+} else if (isOpencode && args[0] === '--standalone' && args[1] === 'session') {
+  // `session delete` after a sync run: nothing to do.
 } else if (process.env.FAKE_CLAUDE_RAW === '1') {
   raw();
 } else {
@@ -54,8 +59,38 @@ function raw() {
 }
 
 /**
- * A sync is a `claude -p` run: it records the prompt it reads on stdin, and prints what the test put in
- * sync-reply.json as its answer (nothing without one, which Mainframe reads as a failed run). While
+ * `opencode api <op>`: prints opencode-<op>.json from the log folder when the test wrote one. Otherwise `agent.list`
+ * and `model.list` print a default in OpenCode's shape, each with a secret in it, as a user's lists can have.
+ */
+function api(op) {
+  const file = join(logDir, `opencode-${op}.json`);
+  if (existsSync(file)) {
+    process.stdout.write(readFileSync(file));
+    return;
+  }
+  const price = (input, output) => ({ input, output, cache: { read: 0, write: 0 } });
+  const model = (id, name, cost, more = {}) => ({
+    id, modelID: id, providerID: 'prov', name, capabilities: {}, variants: [], time: { released: 1 },
+    status: 'active', enabled: true, limit: { context: 1, output: 1 }, cost, ...more,
+  });
+  const data = {
+    'agent.list': [
+      { id: 'build', mode: 'primary', hidden: false, request: { headers: { Authorization: 'Bearer fake-agent-secret' } } },
+      { id: 'plan', mode: 'primary', hidden: false },
+      { id: 'general', mode: 'subagent', hidden: false },
+    ],
+    'model.list': [
+      model('cheap', 'Cheap model', [price(0.11, 0.55)], { settings: { apiKey: 'sk-fake-secret' } }),
+      model('dear', 'Dear model', [price(2.4, 12)]),
+      model('unknown', 'Unknown model', []),
+    ],
+  }[op];
+  process.stdout.write(JSON.stringify({ location: { directory: process.env.PWD }, data: data ?? [] }));
+}
+
+/**
+ * A sync is a `claude -p` or `opencode run` run: it records the prompt it reads on stdin, and prints what the test put in
+ * sync-reply.json as its answer, JSON events for OpenCode (nothing without one, which Mainframe reads as a failed run). While
  * sync-hold is in the folder, it waits instead of replying, and records that it waits in <pid>.holding.
  * Mainframe stops a run with SIGTERM: it is recorded in <pid>.sigterm, after the run has printed its
  * reply as it went, like a run that answers just as it is stopped. It ends by an empty event loop, never
