@@ -56,9 +56,9 @@ npm start
 
 On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
 
-At the first start, Mainframe opens a setup screen. It looks for `git`, `claude` and `opencode`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…** (**Find claude.exe…** on Windows) to point it at a program it missed, **How to install** to open the install page, and **Look again** once you've fixed it. It asks which agents to use and which one is the default, then which project to start with: any folder that is a git repository.
+At the first start, Mainframe opens a setup screen. It looks for `git`, `claude` and `opencode`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…** or **Find opencode…** (**Find claude.exe…** or **Find opencode.exe…** on Windows) to point it at a program it missed, **How to install** to open the install page, and **Look again** once you've fixed it. It asks which agents to use and which one is the default, then which project to start with: any folder that is a git repository.
 
-Mainframe remembers what it found in `settings.json` in its data folder. At every start it checks `git` and the ticked agents again, and shows the setup screen only when one of them has moved or stopped working.
+Mainframe remembers what it found in `settings.json` in its data folder. At every start it checks `git` and the ticked agents again. It shows the setup screen only when `git` or every ticked agent has moved or stopped working; when only the default agent has, another ticked agent stands in and a notice says so.
 
 To open more projects, use **File → Open Project…** (⌘O) on a Mac. Windows and Linux have the system's own title bar and no menu bar: there, use the **Open project** button at the bottom of the project list, or Ctrl+Shift+O. Mainframe remembers which projects are open.
 
@@ -88,7 +88,7 @@ On Windows and Linux no key shortcut takes AltGr, which Windows reports as Ctrl+
 ## Set up the Todo panel
 
 1. In your agent (Claude Code or OpenCode), add a connector (an MCP server) for your tracker, and check that a normal session of it in your project can read your board. For OpenCode, set the connector up in OpenCode's own config.
-2. In your project's instructions file (`CLAUDE.md` or `AGENTS.md`), say which list is the to-do list. You can also say which cards are yours rather than an agent's, and which come first, for example: "Cards labelled *You* are mine; cards labelled *Urgent* come first."
+2. In your project's instructions file (`CLAUDE.md` for Claude Code; `AGENTS.md` for OpenCode, which reads `CLAUDE.md` when there is no `AGENTS.md`), say which list is the to-do list. You can also say which cards are yours rather than an agent's, and which come first, for example: "Cards labelled *You* are mine; cards labelled *Urgent* come first."
 3. Press **Sync** in the Todo panel. The first sync names the connector's tools it wants to read with. Allow them only if none of them can change your board.
 
 Each sync is a short background run of the default agent. It may use only the read tools you allowed, and it keeps no chat history. An OpenCode sync asks which model to run on the first time, and is never given a shell or the right to edit. A sync that runs over 2 minutes asks whether to go on, because large syncs can use a lot of tokens.

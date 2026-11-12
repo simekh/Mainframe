@@ -155,7 +155,7 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   await app.close();
 });
 
-test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
+test('with MAINFRAME_CLAUDE_BIN set, its path is not saved', async () => {
   const pc = computer();
   const project = repo();
   const env = { ...pc.env, MAINFRAME_CLAUDE_BIN: fakeClaude };

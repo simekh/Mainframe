@@ -626,6 +626,20 @@ describe('the agents', () => {
     expect(tickedAgents(found.settings, found.checks)).toEqual(['claude', 'opencode']);
   });
 
+  it("an upgrade's first save writes version 2, keeping Claude Code's tick, path and default and the welcome", async () => {
+    existingInstall();
+    writeFileSync(settingsFile(), JSON.stringify({ version: 1, claudeBin: NATIVE, welcomeSeen: true }));
+    const h = harness({ programs: both });
+    await h.flow.begin();
+    // OpenCode's path is new, so it is saved; nothing ticks it, so it counts as ticked only while it is found.
+    expect(JSON.parse(readFileSync(settingsFile(), 'utf8'))).toEqual({
+      version: 2,
+      welcomeSeen: true,
+      defaultAgent: 'claude',
+      agents: { claude: { enabled: true, bin: NATIVE }, opencode: { bin: OC } },
+    });
+  });
+
   it('a later start with no ticked agent working shows Something moved', async () => {
     existingInstall();
     writeSettings(dataDir, { agents: { claude: { enabled: true }, opencode: { enabled: false } }, defaultAgent: 'claude', welcomeSeen: true });
