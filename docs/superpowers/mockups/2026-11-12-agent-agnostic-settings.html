@@ -1,0 +1,48 @@
+<style>
+  .win { background:#080c10; border-radius:12px; padding:10px; position:relative; min-height:560px; font:13px/1.4 Inter, system-ui, sans-serif; color:#f0f4f7; }
+  .board { position:absolute; inset:10px; background:#10161c; border:1px solid #29343d; border-radius:12px; opacity:.35; }
+  .dlg { position:relative; margin:30px auto; width:560px; max-width:92%; background:#161e26; border:1px solid #394752; border-radius:12px; box-shadow:0 20px 60px #000a; }
+  .dh { padding:14px 18px; border-bottom:1px solid #2b3741; display:flex; align-items:center; }
+  .dh h3 { margin:0; font:600 15px Sora, Inter, sans-serif; } .dh .x { margin-left:auto; color:#a0afbd; }
+  .sec { padding:14px 18px; border-bottom:1px solid #2b3741; }
+  .sec:last-child { border-bottom:0; }
+  .st { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#a0afbd; margin-bottom:10px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; }
+  .row .k { width:150px; color:#c5ced7; flex:none; }
+  .box { width:16px; height:16px; border-radius:4px; border:1px solid #67d9ed; background:#67d9ed; color:#080c10; display:grid; place-items:center; font-size:11px; flex:none; }
+  .path { font:12px 'JetBrains Mono', monospace; color:#a0afbd; }
+  .ok { color:#98c9ae; font:12px 'JetBrains Mono', monospace; }
+  .btn { border:1px solid #394752; border-radius:6px; padding:4px 10px; background:#161e26; color:#f0f4f7; font-size:12px; margin-left:auto; }
+  .seg { display:inline-flex; border:1px solid #394752; border-radius:8px; overflow:hidden; }
+  .seg span { padding:5px 12px; color:#c5ced7; } .seg .sel { background:#67d9ed; color:#080c10; font-weight:600; }
+  .sel-box { border:1px solid #394752; border-radius:6px; padding:5px 10px; background:#0c1218; min-width:250px; display:flex; justify-content:space-between; }
+  .sel-box .c { color:#a0afbd; font:12px 'JetBrains Mono', monospace; }
+  .hint { color:#a0afbd; font-size:12px; margin:2px 0 0 160px; }
+  .menu { font:12px Inter, sans-serif; color:#a0afbd; margin-top:10px; }
+  kbd { border:1px solid #394752; border-radius:4px; padding:0 5px; font:11px 'JetBrains Mono', monospace; color:#c5ced7; }
+</style>
+
+<h2>Settings</h2>
+<p class="subtitle">A dialog over the window, like the New task box. Opened from Mainframe ▸ Settings… (<kbd>⌘,</kbd>) on the Mac, and File ▸ Settings… (<kbd>Ctrl+,</kbd>) on Windows and Linux. One list of sections that more can join later (Appearance, say).</p>
+
+<div class="win">
+  <div class="board"></div>
+  <div class="dlg">
+    <div class="dh"><h3>Settings</h3><span class="x">✕</span></div>
+
+    <div class="sec">
+      <div class="st">Agents</div>
+      <div class="row"><span class="box">✓</span> Claude Code <span class="ok">v2.1.300</span> <span class="path">~/.local/bin/claude</span> <span class="btn">Find…</span></div>
+      <div class="row"><span class="box">✓</span> OpenCode <span class="ok">v2.2.7</span> <span class="path">~/.opencode/bin/opencode</span> <span class="btn">Find…</span></div>
+      <div class="row" style="margin-top:14px"><span class="k">Default agent</span> <span class="seg"><span class="sel">Claude Code</span><span>OpenCode</span></span></div>
+      <div class="hint">Runs the manager, the Todo sync and new tasks. Tasks that are already running keep their own agent.</div>
+    </div>
+
+    <div class="sec">
+      <div class="st">OpenCode</div>
+      <div class="row"><span class="k">Manager's agent</span> <span class="sel-box">Your default (build) <span>▾</span></span></div>
+      <div class="row"><span class="k">Todo sync model</span> <span class="sel-box">litellm/claude-haiku-5-5 <span class="c">$0.11 / $0.55 ▾</span></span></div>
+      <div class="hint">Cheapest first, with the price per million tokens in and out. Asked the first time a sync runs.</div>
+    </div>
+  </div>
+</div>

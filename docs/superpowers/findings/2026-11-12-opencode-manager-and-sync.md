@@ -168,7 +168,7 @@ The owner answered on 2026-11-12.
 
 1. **The sync's model: the user picks it.** The first time a sync runs on OpenCode, Mainframe lists the user's models from `api model.list`, cheapest first, with the cheapest whose price is known picked. It saves the choice, and the Settings screen can change it.
 2. **No spending cap.** If a sync runs for a long time, Mainframe asks the user whether to go on. It warns that very large or long syncs can use a lot of tokens. The 5-minute time limit and the step limit stay as backstops.
-3. **The sync reads the user's own OpenCode config and skips the project's.** The user's own config holds their models, API keys and connectors, which the sync needs. The project's config (an `opencode.json` and `AGENTS.md` in the repo) adds nothing it needs, so it runs with `OPENCODE_DISABLE_PROJECT_CONFIG=1`.
+3. **The sync reads the user's own OpenCode config and skips the project's.** The user's own config holds their models, API keys and connectors, which the sync needs. The project's config (an `opencode.json` and `AGENTS.md` in the repo) adds nothing it needs, so it runs with `OPENCODE_DISABLE_PROJECT_CONFIG=1`. Later the same day the owner narrowed this: the sync is still handed the project's instructions file (`AGENTS.md`, or `CLAUDE.md`) by path, since it needs that file to pick the list and to mark the owner's cards and urgent ones (see the agent-agnostic design, §7).
 4. **The manager runs on the user's default agent.** Mainframe adds its rules to that agent. Settings can name another agent, and the user can switch agents in the manager's terminal for a while. "Still to check" item 1 still applies: the allow rules must also sit under that agent's own rules.
 
 ## Still untried
