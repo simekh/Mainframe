@@ -87,11 +87,14 @@ export async function opencodeAgents(o: {
   cwd: string;
   env: Record<string, string>;
   run?: typeof runOpencode;
+  /** Only the user's own agents: no project's config is read from `cwd`. */
+  noProjectConfig?: boolean;
 }): Promise<{ id: string; primary: boolean }[]> {
   const run = o.run ?? runOpencode;
   try {
     // `api` takes its folder from PWD before the process's own.
-    const stdout = await run([o.bin, '--standalone', 'api', 'agent.list'], { cwd: o.cwd, env: { ...o.env, PWD: o.cwd } });
+    const env = { ...o.env, PWD: o.cwd, ...(o.noProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: '1' }) };
+    const stdout = await run([o.bin, '--standalone', 'api', 'agent.list'], { cwd: o.cwd, env });
     let data: unknown;
     try {
       data = (JSON.parse(stdout) as { data?: unknown }).data;

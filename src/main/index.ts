@@ -5,12 +5,12 @@ import os from 'node:os';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
-import { AGENT_NAMES, type AgentName } from '../shared/types';
+import { AGENT_NAMES, type AgentName, type ProgramCheck } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { editMenuItems } from './contextMenu';
 import { gitQueries } from './git';
-import { registerIpc, registerSetupIpc, type Project } from './ipc';
+import { registerIpc, registerSettingsIpc, registerSetupIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { startMcpServer } from './mcp/mcpServer';
@@ -23,11 +23,12 @@ import { localFiles, SessionHost } from './pty/sessionHost';
 import { NODE_NEEDED } from './agents/claude';
 import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
+import type { AppSettings } from './setup/settings';
 import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
-import { isDevToolsKey } from './windowKeys';
+import { isDevToolsKey, isSettingsKey } from './windowKeys';
 
 const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 const onMac = process.platform === 'darwin';
@@ -79,12 +80,17 @@ function createWindow(e2e: boolean): BrowserWindow {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
-  // With no menu off the Mac, DevTools are Ctrl+Shift+I there; the Mac keeps its View menu's.
+  // With no menu off the Mac, DevTools are Ctrl+Shift+I there and Settings Ctrl+, (caught here, before a focused
+  // terminal gets the key); the Mac keeps its menus' View ▸ DevTools and Mainframe ▸ Settings… (Cmd+,).
   if (!onMac) {
     win.webContents.on('before-input-event', (event, input) => {
-      if (!isDevToolsKey(input)) return;
-      event.preventDefault();
-      win.webContents.toggleDevTools();
+      if (isDevToolsKey(input)) {
+        event.preventDefault();
+        win.webContents.toggleDevTools();
+      } else if (isSettingsKey(input)) {
+        event.preventDefault();
+        sendTo(win, IPC.showSettings, null);
+      }
     });
     // A right-click on something editable gets Copy and Paste there; the Mac gets no menu. In a
     // terminal xterm has already focused its textarea and filled it with the selection, so the roles'
@@ -307,8 +313,9 @@ async function start(
       dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
     }
   };
-  // The menu `launch` set, with Open Project… enabled now.
-  if (onMac) Menu.setApplicationMenu(buildMenu(() => void openPicked()));
+  // The menu `launch` set, with Open Project… and Settings… enabled now.
+  if (onMac) Menu.setApplicationMenu(buildMenu({ openProject: () => void openPicked(), openSettings: () => toWindow(IPC.showSettings, null) }));
+  registerSettingsIpc(agents, (name) => pickAgent(win, name));
   // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
     toWindow,
@@ -362,16 +369,30 @@ async function launch(config: AppConfig): Promise<void> {
   };
   onQuitBegins(win, quitBegins);
   const envBins = { claude: config.claudeBin, opencode: config.opencodeBin };
+  const lookup = lookupIn(programs.env);
+  const run = runVersion(programs.env);
+  // After start the settings are AgentsInUse's alone: the flow writes them no more.
+  const agentsFrom = (found: { settings: AppSettings; checks: Record<AgentName, ProgramCheck> }) =>
+    new AgentsInUse({
+      dataDir: config.dataDir,
+      ...found,
+      envBins,
+      run,
+      lookup,
+      nodeBin: programs.nodeBin,
+      env: programs.env,
+      onChange: (view) => sendTo(win, IPC.settingsChanged, view),
+    });
   const flow = new SetupFlow({
     dataDir: config.dataDir,
     envBins,
-    lookup: lookupIn(programs.env),
-    run: runVersion(programs.env),
+    lookup,
+    run,
     pickAgent: (name) => pickAgent(win, name),
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),
     start: async (found, dirs) => {
-      if (!quitting) await start(config, programs, new AgentsInUse({ dataDir: config.dataDir, ...found, envBins }), dirs, win);
+      if (!quitting) await start(config, programs, agentsFrom(found), dirs, win);
     },
     warn: console.warn,
   });

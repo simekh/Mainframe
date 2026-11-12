@@ -55,6 +55,14 @@ const api: MainframeApi = {
   onData: (cb) => listen(IPC.data, cb),
   onExit: (cb) => listen(IPC.exit, cb),
   onStatus: (cb) => listen(IPC.status, cb),
+  getSettings: () => ipcRenderer.invoke(IPC.getSettings),
+  onSettings: (cb) => listen(IPC.settingsChanged, cb),
+  setAgentTicked: (name, ticked) => ipcRenderer.invoke(IPC.setAgentTicked, name, ticked),
+  setDefaultAgent: (name) => ipcRenderer.invoke(IPC.setDefaultAgent, name),
+  settingsFindAgent: (name) => ipcRenderer.invoke(IPC.settingsFindAgent, name),
+  setAgentOptions: (name, patch) => ipcRenderer.invoke(IPC.setAgentOptions, name, patch),
+  opencodeChoices: () => ipcRenderer.invoke(IPC.opencodeChoices),
+  onShowSettings: (cb) => listen(IPC.showSettings, cb),
 };
 
 contextBridge.exposeInMainWorld('mainframe', api);

@@ -15,6 +15,7 @@ import {
 import { turnOffHandingFocus } from '../panel/PanelStrip';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
+import SettingsButton from '../settings/SettingsButton';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
@@ -225,6 +226,7 @@ export default function ProjectPane(props: {
               <kbd>Tab</kbd>
               <span>Next that needs you</span>
             </button>
+            <SettingsButton />
           </Show>
         </div>
 

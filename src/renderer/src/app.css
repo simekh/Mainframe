@@ -1688,6 +1688,39 @@ kbd {
   gap: 6px;
 }
 
+/* An icon alone, in the toggles' quiet style: Settings' cog, the last thing in the window's top row. */
+.tb-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.tb-icon:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.tb-icon > svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* With no pane in the top row, the cog keeps the window's top-right corner, where the last pane's bar would end. */
+.settings-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  padding: 6px 12px 4px 0;
+}
+
 /* Its own icon, not one in the state glyph an off Manager button shows. */
 .tb-toggle > svg {
   width: 14px;
@@ -3026,6 +3059,235 @@ kbd {
   align-self: center;
   color: var(--fg-subtle);
   font-size: 12px;
+}
+
+/* --- Settings: the New task box, holding a list of titled sections --------------------------- */
+
+.settings-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  padding: 14px 12px 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-head h2 {
+  margin: 0;
+  font: 600 17px/1.3 var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+.settings-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.settings-close:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.settings-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-section {
+  padding: 14px 20px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-title {
+  margin: 0 0 10px;
+  color: var(--fg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin: 4px 0;
+}
+
+.settings-agent-name {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 118px;
+  font-weight: 500;
+}
+
+.settings-agent-name input {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.settings-agent[data-works='false'] .settings-agent-name {
+  color: var(--fg-subtle);
+}
+
+.settings-version {
+  flex: none;
+  color: var(--success);
+  font: 12px var(--font-mono);
+}
+
+.settings-why {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+/* The path gives way first, from its start, so the file's name stays in sight. */
+.settings-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-subtle);
+  font: 12px var(--font-mono);
+}
+
+.settings-find {
+  margin-left: auto;
+}
+
+.settings-default {
+  margin-top: 12px;
+}
+
+/* The label column that the hints under the choices line up with. */
+.settings-key {
+  flex: none;
+  width: 140px;
+  color: var(--fg-muted);
+}
+
+.settings-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.settings-seg button {
+  padding: 5px 12px;
+  color: var(--fg-muted);
+}
+
+.settings-seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.settings-seg button:hover:not([aria-checked='true']) {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.settings-seg button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.settings-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 340px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font: 13px var(--font-ui);
+  accent-color: var(--accent);
+}
+
+.settings-select:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.settings-hint,
+.settings-quiet {
+  margin: 2px 0 0;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+.settings-hint {
+  padding-left: 150px;
+}
+
+.settings-error {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--error) 9%, transparent);
+  color: var(--error);
+  user-select: text;
+}
+
+/* Another agent stands in for the saved default: a quiet note at the window's bottom right, until its ✕. */
+.default-fallback {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 10px 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.default-fallback button {
+  flex: none;
+  padding: 0 4px;
+  color: var(--fg-subtle);
+}
+
+.default-fallback button:hover {
+  color: var(--fg);
+}
+
+@media (max-width: 520px) {
+  .settings-hint {
+    padding-left: 0;
+  }
+
+  .settings-key {
+    width: auto;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

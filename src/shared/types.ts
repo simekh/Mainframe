@@ -102,6 +102,19 @@ export interface SetupView {
   ask: AgentChoice | null;
 }
 
+/** One agent in Settings: as the setup screen shows it, with its saved options. */
+export interface AgentView { check: ProgramCheck; fromEnv: boolean; ticked: boolean; managerAgent?: string; syncModel?: string }
+
+/** What the Settings dialog shows, for the whole app. */
+export interface SettingsView {
+  agents: Record<AgentName, AgentView>;
+  /** The saved default, which the choice shows. */ defaultAgent: AgentName;
+  /** The default this run uses: another ticked agent when the saved one didn't work at start. */ runDefault: AgentName;
+}
+
+/** OpenCode's lists for Settings: only each agent's id, the first primary one marked as OpenCode's default. */
+export interface OpencodeChoices { agents: { id: string; isDefault: boolean }[]; models: SyncModel[] }
+
 export interface StartCheck {
   /** Commits on the main checkout's branch that origin/HEAD does not have. */
   ahead: number;

@@ -4,11 +4,13 @@ import type {
   ChangedFile,
   ClipboardPaste,
   ManagerView,
+  OpencodeChoices,
   PtyDataEvent,
   ProjectView,
   PtyExitEvent,
   ProgramCheck,
   RendererConfig,
+  SettingsView,
   SetupView,
   StartCheck,
   StatusEvent,
@@ -65,6 +67,14 @@ export const IPC = {
   resolvePaste: 'clipboard:resolve-paste',
   copyText: 'clipboard:copy-text',
   openLink: 'shell:open-link',
+  getSettings: 'settings:get',
+  settingsChanged: 'settings:changed',
+  setAgentTicked: 'settings:set-ticked',
+  setDefaultAgent: 'settings:set-default',
+  settingsFindAgent: 'settings:find-agent',
+  setAgentOptions: 'settings:set-options',
+  opencodeChoices: 'settings:opencode-choices',
+  showSettings: 'settings:show',
 } as const;
 
 /**
@@ -155,4 +165,17 @@ export interface MainframeApi {
   onData(cb: (e: PtyDataEvent) => void): () => void;
   onExit(cb: (e: PtyExitEvent) => void): () => void;
   onStatus(cb: (e: StatusEvent) => void): () => void;
+  /** The Settings calls are the whole app's, for every open project at once; each rejects with why when it can't. */
+  getSettings(): Promise<SettingsView>;
+  /** Every saved change to Settings, with the whole view. */
+  onSettings(cb: (view: SettingsView) => void): () => void;
+  setAgentTicked(name: AgentName, ticked: boolean): Promise<void>;
+  setDefaultAgent(name: AgentName): Promise<void>;
+  /** Asks for the agent's program file, and uses it if it works. Not offered while the agent's env var names it. */
+  settingsFindAgent(name: AgentName): Promise<void>;
+  /** `managerAgent: null` goes back to OpenCode's own default. */
+  setAgentOptions(name: AgentName, patch: { managerAgent?: string | null; syncModel?: string }): Promise<void>;
+  opencodeChoices(): Promise<OpencodeChoices>;
+  /** Cmd+, or Ctrl+, from main: the page opens Settings unless the setup screen or another dialog shows. */
+  onShowSettings(cb: () => void): () => void;
 }

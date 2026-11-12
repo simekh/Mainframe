@@ -6,6 +6,7 @@ import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
 import type { SessionHost } from './pty/sessionHost';
+import type { AgentSettingPatch, AgentsInUse } from './setup/agentsInUse';
 import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
@@ -64,6 +65,33 @@ export function registerSetupIpc(
   ipcMain.handle(IPC.setupLookAgain, () => action(() => flow.lookAgain()));
   ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgent(name) ? action(() => flow.findAgent(name)) : undefined));
   ipcMain.handle(IPC.setupChooseProject, (_e, choice: unknown) => action(() => flow.chooseProject(agentChoice(choice))));
+}
+
+/** The Settings calls: the whole app's, naming no project. Each saves through `agents`, which tells the page. */
+export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: AgentName) => Promise<string | undefined>): void {
+  const agentOf = (name: unknown): AgentName => {
+    if (!isAgent(name)) throw new Error(`There is no agent ${String(name)}`);
+    return name;
+  };
+  ipcMain.handle(IPC.getSettings, () => agents.view());
+  ipcMain.handle(IPC.setAgentTicked, (_e, name: unknown, ticked: unknown) => agents.setTicked(agentOf(name), ticked === true));
+  ipcMain.handle(IPC.setDefaultAgent, (_e, name: unknown) => agents.setDefault(agentOf(name)));
+  // Not offered while the agent's env var names it: that path wins.
+  ipcMain.handle(IPC.settingsFindAgent, async (_e, name: unknown) => {
+    const agent = agentOf(name);
+    if (agents.view().agents[agent].fromEnv) return;
+    const path = await pickAgent(agent);
+    if (path !== undefined) await agents.find(agent, path);
+  });
+  ipcMain.handle(IPC.setAgentOptions, (_e, name: unknown, raw: unknown) => {
+    // Only these two, each as its type: anything else the page sends is left out.
+    const { managerAgent, syncModel } = (raw ?? {}) as Record<string, unknown>;
+    const patch: AgentSettingPatch = {};
+    if (managerAgent === null || typeof managerAgent === 'string') patch.managerAgent = managerAgent;
+    if (typeof syncModel === 'string') patch.syncModel = syncModel;
+    agents.saveAgentSetting(agentOf(name), patch);
+  });
+  ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
 }
 
 export function registerIpc(
