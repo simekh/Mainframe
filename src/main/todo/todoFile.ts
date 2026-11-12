@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import * as z from 'zod/v4';
+import type { AgentName } from '../../shared/types';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE } from './todoSchema';
 
@@ -10,8 +11,10 @@ const VERSION = 1;
 /** What `todo.json` holds for one project: the list as the last sync found it, and what the owner confirmed for it. */
 const RECORD = z.object({
   version: z.literal(VERSION),
-  /** The tools the owner confirmed the sync may read with. */
-  readTools: z.object({ connector: z.string(), tools: z.array(z.string()) }).optional(),
+  /** The tools the owner confirmed the sync may read with, as the agent they were confirmed on names them (no agent: Claude Code). */
+  readTools: z
+    .object({ connector: z.string(), tools: z.array(z.string()), agent: z.enum(['claude', 'opencode']).optional() satisfies z.ZodType<AgentName | undefined> })
+    .optional(),
   /** The list the owner picked, where the sync found several. */
   pickedList: TODO_LIST_REF.optional(),
   source: TODO_SOURCE.optional(),

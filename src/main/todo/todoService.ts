@@ -1,37 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import type { AgentAdapter, AgentInUse, SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
-import {
-  isMcpToolName,
-  readSyncAnswer,
-  runClaude,
-  SYNC_STOPPED,
-  SYNC_TIMEOUT_MS,
-  syncArgv,
-  syncPrompt,
-  syncSettings,
-  type SyncStep,
-} from './syncRun';
+import { runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
 import { emptyTodo, loadTodo, NewerTodoError, saveTodo, type TodoRecord } from './todoFile';
 import type { SyncAnswer } from './todoSchema';
 
 const TODO_FILE = 'todo.json';
-const SETTINGS_FILE = 'sync-settings.json';
 const UNASKED = "The sync run answered something Mainframe didn't ask for";
 
 export interface TodoServiceDeps {
   projectDir: string;
   dataDir: string;
-  claudeBin: string;
-  /** What the sync's PreToolUse guard runs: a real program path, as claudeBin is. */
+  /** What an agent's sync guard may run: a real program path. */
   nodeBin: string;
-  env: NodeJS.ProcessEnv;
+  env: Record<string, string>;
+  /** The agent the next sync runs on: asked at each sync, so a change in Settings takes effect at the next one. */
+  agent(): AgentInUse;
   startTask: TaskService['start'];
   onChange(view: TodoView): void;
-  run?: typeof runClaude;
+  run?: typeof runSync;
   newId?: () => string;
   now?: () => number;
   warn?: (msg: string) => void;
@@ -60,6 +50,8 @@ export class TodoService {
   private closed = false;
   // What the sync last said: not kept in the file, so a restart starts without them.
   private ask: TodoAsk | null = null;
+  /** The agent whose run asked about tools: the names in that ask are its own. */
+  private askedBy: AgentName | null = null;
   private error: string | null = null;
 
   constructor(private readonly deps: TodoServiceDeps) {
@@ -90,20 +82,25 @@ export class TodoService {
     };
   }
 
-  /** Reads the list with a background run. A call while one runs gets that run's outcome. */
+  /**
+   * Reads the list with a background run. A call while one runs gets that run's outcome. Tools confirmed on another
+   * agent are not this one's names, so the run finds the connector again.
+   */
   sync(): Promise<SyncOutcome> {
     if (this.closed) return Promise.reject(new Error('The project is closing'));
     if (this.running) return this.running.outcome;
     if (this.newer) return Promise.reject(new Error(this.newer));
+    const agent = this.deps.agent();
     const { readTools, pickedList } = this.record;
-    return this.launch(readTools ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' });
+    const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
+    return this.launch(agent, confirmed ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' });
   }
 
   /** Keeps the tools the sync asked about as the ones it may read with, then syncs. */
   async confirmTools(): Promise<SyncOutcome> {
-    if (this.ask?.kind !== 'tools') throw new Error('Nothing to allow; sync again');
+    if (this.ask?.kind !== 'tools' || !this.askedBy) throw new Error('Nothing to allow; sync again');
     const { connector, tools } = this.ask;
-    this.save({ ...this.record, readTools: { connector, tools } });
+    this.save({ ...this.record, readTools: { connector, tools, agent: this.askedBy } });
     return this.sync();
   }
 
@@ -194,25 +191,20 @@ export class TodoService {
     this.cancel();
   }
 
-  private launch(step: SyncStep): Promise<SyncOutcome> {
-    const settingsPath = join(this.dir, SETTINGS_FILE);
+  private launch({ adapter, bin, setting }: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
+    const { nodeBin, projectDir, env } = this.deps;
+    const tools = step.kind === 'read' ? (this.record.readTools?.tools ?? []) : [];
+    let spec: SyncRunSpec;
     try {
-      mkdirSync(this.dir, { recursive: true });
-      writeFileSync(settingsPath, syncSettings(this.deps.nodeBin, step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
+      spec = adapter.sync.prepare({ bin, nodeBin, dir: this.dir, projectDir, env, step, tools, setting });
     } catch (err) {
       // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
       this.ask = null;
-      const refused = this.refuse(`Could not write the sync's settings: ${(err as Error).message}`);
+      const refused = this.refuse((err as Error).message);
       this.changed();
       return Promise.resolve(refused);
     }
-    const { done, cancel } = (this.deps.run ?? runClaude)({
-      argv: syncArgv(this.deps.claudeBin, settingsPath),
-      cwd: this.deps.projectDir,
-      env: this.deps.env,
-      input: syncPrompt(step),
-      timeoutMs: SYNC_TIMEOUT_MS,
-    });
+    const { done, cancel } = (this.deps.run ?? runSync)({ ...spec, input: adapter.sync.prompt(step), timeoutMs: SYNC_TIMEOUT_MS });
 
     let settle!: Running['settle'];
     const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
@@ -222,7 +214,7 @@ export class TodoService {
     this.changed();
 
     done.then(
-      (stdout) => this.end(running, () => this.apply(step, readSyncAnswer(stdout))),
+      (stdout) => this.end(running, () => this.apply(adapter, step, adapter.sync.readAnswer(stdout, tools))),
       (err: Error) => this.end(running, () => this.refuse(err.message)),
     );
     return outcome;
@@ -242,16 +234,17 @@ export class TodoService {
     running.settle(outcome);
   }
 
-  /** What the answer of a run for `step` changes: the cards, an ask for the owner, or an error. */
-  private apply(step: SyncStep, answer: SyncAnswer): SyncOutcome {
+  /** What the answer of `adapter`'s run for `step` changes: the cards, an ask for the owner, or an error. */
+  private apply(adapter: AgentAdapter, step: SyncStep, answer: SyncAnswer): SyncOutcome {
     if (answer.kind === 'none') return this.refuse(answer.message ?? 'The sync run found nothing to read, and did not say why');
 
     if (step.kind === 'discover') {
       const { connector, readTools } = answer;
       if (answer.kind !== 'tools' || !connector || !readTools?.length) return this.refuse(UNASKED);
-      const notMcp = readTools.filter((name) => !isMcpToolName(name));
-      if (notMcp.length > 0) return this.refuse(`The sync named tools that aren't a connector's: ${notMcp.join(', ')}`);
+      const notTools = readTools.filter((name) => !adapter.sync.isToolName(name));
+      if (notTools.length > 0) return this.refuse(`The sync named tools that aren't a connector's: ${notTools.join(', ')}`);
       this.ask = { kind: 'tools', connector, tools: readTools };
+      this.askedBy = adapter.name;
       return { ask: 'tools' };
     }
 

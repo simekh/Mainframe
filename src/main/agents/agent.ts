@@ -1,6 +1,8 @@
 import type { AgentName, ProgramCheck } from '../../shared/types';
 import type { ExecutableFiles, ExecutableLookup } from '../pty/findExecutable';
 import type { VersionRunner } from '../setup/programChecks';
+import type { SyncStep } from '../todo/syncRun';
+import type { SyncAnswer } from '../todo/todoSchema';
 
 /** How a prompt names the repo's instructions: the first mention in full, later ones short. */
 export interface Instructions { first: string; again: string; requires: string; integrates: string }
@@ -34,6 +36,29 @@ export interface ManagerLaunch {
   setting: AgentSetting;
 }
 
+/** The words the sync prompts use for this agent. */
+export interface SyncWords {
+  /** "Claude Code sessions" or "coding agent sessions". */ sessions: string;
+  instructions: Instructions;
+  /** How discover asks for tool names: "(mcp__…)" for Claude Code. */ toolNames: string;
+  /** Added to discover's "none": where to set the tracker up; '' adds nothing. */ noConnector: string;
+}
+
+export interface SyncRunSpec { argv: string[]; cwd: string; env: Record<string, string> }
+
+/** How one agent runs the Todo sync: the headless run that reads the owner's tracker. */
+export interface SyncAdapter {
+  readonly words: SyncWords;
+  /** Writes what the run reads into `dir` (the project's Todo folder) and returns the run. Throws when it can't. */
+  prepare(o: { bin: string; nodeBin: string; dir: string; projectDir: string; env: Record<string, string>; step: SyncStep; tools: string[]; setting: AgentSetting }): SyncRunSpec;
+  prompt(step: SyncStep): string;
+  /** The run's answer from what it printed; throws an Error whose message is for the panel. */
+  readAnswer(stdout: string, tools: string[]): SyncAnswer;
+  isToolName(name: string): boolean;
+  /** Tidies up after a run, from what it printed. Never throws. */
+  afterRun(o: { bin: string; dir: string; env: Record<string, string>; stdout: string }): void;
+}
+
 /** Everything Mainframe knows about one agent CLI. */
 export interface AgentAdapter {
   readonly name: AgentName;
@@ -57,4 +82,5 @@ export interface AgentAdapter {
   /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
   managerChat(dir: string, saved: string | undefined): string | null;
   managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;
+  readonly sync: SyncAdapter;
 }

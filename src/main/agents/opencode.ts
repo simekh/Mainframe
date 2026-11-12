@@ -3,7 +3,7 @@ import { posix, win32 } from 'node:path';
 import { MIN_OPENCODE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter } from './agent';
+import type { AgentAdapter, Instructions } from './agent';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
@@ -60,6 +60,17 @@ export async function findOpencode(o: { fromEnv?: string; lookup: ExecutableLook
   return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
 }
 
+const instructions: Instructions = {
+  first: "this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)",
+  again: 'those instructions',
+  requires: 'those instructions require',
+  integrates: 'those instructions integrate',
+};
+
+const notYet = (): never => {
+  throw new Error('The sync does not run on OpenCode yet');
+};
+
 export const opencodeAgent: AgentAdapter = {
   name: 'opencode',
   envVar: 'MAINFRAME_OPENCODE_BIN',
@@ -67,12 +78,7 @@ export const opencodeAgent: AgentAdapter = {
   check: checkOpencode,
   // OpenCode sets these in the shells it runs.
   droppedEnv: ['OPENCODE_TERMINAL', 'OPENCODE_PTY_HANDOFF'],
-  instructions: {
-    first: "this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)",
-    again: 'those instructions',
-    requires: 'those instructions require',
-    integrates: 'those instructions integrate',
-  },
+  instructions,
   worktreeNote: ({ branch, worktreePath, projectDir }) =>
     `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
   makesWorktree: true,
@@ -86,4 +92,12 @@ export const opencodeAgent: AgentAdapter = {
     throw new Error('The manager does not run on OpenCode yet');
   },
   managerLaunch: () => Promise.reject(new Error('The manager does not run on OpenCode yet')),
+  sync: {
+    words: { sessions: 'coding agent sessions', instructions, toolNames: '', noConnector: '' },
+    prepare: notYet,
+    prompt: notYet,
+    readAnswer: notYet,
+    isToolName: () => false,
+    afterRun: () => {},
+  },
 };

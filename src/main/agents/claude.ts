@@ -3,9 +3,10 @@ import { join, posix, win32 } from 'node:path';
 import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, type VersionRunner } from '../setup/programChecks';
-import { SYNC_TIMEOUT_MS } from '../todo/syncRun';
-import type { AgentAdapter, LaunchArgs, ManagerLaunch } from './agent';
+import { SYNC_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
+import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, SyncWords } from './agent';
 import { readResumableSession } from './claudeChat';
+import { isMcpToolName, prepareClaudeSync, readSyncAnswer } from './claudeSync';
 
 // Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
 export function parseClaudeVersion(stdout: string): string | null {
@@ -218,6 +219,15 @@ async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
   };
 }
 
+const instructions: Instructions = {
+  first: "this repo's CLAUDE.md",
+  again: "this repo's CLAUDE.md",
+  requires: "this repo's CLAUDE.md requires",
+  integrates: 'this CLAUDE.md integrates',
+};
+
+const syncWords: SyncWords = { sessions: 'Claude Code sessions', instructions, toolNames: '(mcp__…)', noConnector: '' };
+
 export const claudeAgent: AgentAdapter = {
   name: 'claude',
   envVar: 'MAINFRAME_CLAUDE_BIN',
@@ -230,12 +240,7 @@ export const claudeAgent: AgentAdapter = {
     'CLAUDE_CODE_EXECPATH', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
     'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_SESSION_ID',
   ],
-  instructions: {
-    first: "this repo's CLAUDE.md",
-    again: "this repo's CLAUDE.md",
-    requires: "this repo's CLAUDE.md requires",
-    integrates: 'this CLAUDE.md integrates',
-  },
+  instructions,
   worktreeNote: ({ branch }) =>
     `Mainframe started you in this task's own worktree, on branch ${branch}, so don't call EnterWorktree. ` +
     'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
@@ -268,4 +273,12 @@ export const claudeAgent: AgentAdapter = {
   // Claude Code's own record says which chat it was in; manager.json's saved id is not needed.
   managerChat: (dir) => readResumableSession(dir),
   managerLaunch: claudeManagerLaunch,
+  sync: {
+    words: syncWords,
+    prepare: prepareClaudeSync,
+    prompt: (step) => syncPrompt(step, syncWords),
+    readAnswer: readSyncAnswer,
+    isToolName: isMcpToolName,
+    afterRun: () => {},
+  },
 };

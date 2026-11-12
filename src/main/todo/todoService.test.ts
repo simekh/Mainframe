@@ -3,11 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
+import type { AgentInUse } from '../agents/agent';
+import { ADAPTERS } from '../agents/adapters';
+import { syncArgv, syncSettings } from '../agents/claudeSync';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
-import { SYNC_TIMEOUT_MS, syncArgv, syncPrompt, syncSettings, type runClaude } from './syncRun';
+import { SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
 import { TodoService } from './todoService';
+
+const prompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
+const CLAUDE: AgentInUse = { adapter: ADAPTERS.claude, bin: 'claude', setting: {} };
 
 const cleanup: string[] = [];
 
@@ -50,14 +56,14 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** A call of the fake `run`: the test settles it when it wants the run to end. */
 interface Call {
-  options: Parameters<typeof runClaude>[0];
+  options: Parameters<typeof runSync>[0];
   cancelled: boolean;
   answer(structured: unknown): void;
   print(stdout: string): void;
   fail(message: string): void;
 }
 
-function setup(todoFile?: string) {
+function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
   const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-todo-data-'));
   cleanup.push(dataDir);
   const projectDir = join(mkdtempSync(join(tmpdir(), 'mainframe-todo-project-')), 'Acme');
@@ -73,7 +79,7 @@ function setup(todoFile?: string) {
   }
 
   const calls: Call[] = [];
-  const run: typeof runClaude = (options) => {
+  const run: typeof runSync = (options) => {
     let resolve!: (stdout: string) => void;
     let reject!: (err: Error) => void;
     const done = new Promise<string>((res, rej) => {
@@ -106,9 +112,9 @@ function setup(todoFile?: string) {
     new TodoService({
       projectDir,
       dataDir,
-      claudeBin: 'claude',
       nodeBin: NODE,
       env: ENV,
+      agent: () => agent,
       startTask,
       onChange: (view) => changes.push(view),
       run,
@@ -157,7 +163,7 @@ it("a first sync runs with no tools allowed, then asks the owner to confirm the 
     argv: syncArgv('claude', t.settingsFile),
     cwd: t.projectDir,
     env: ENV,
-    input: syncPrompt({ kind: 'discover' }),
+    input: prompt({ kind: 'discover' }),
     timeoutMs: SYNC_TIMEOUT_MS,
   });
   expect(t.settings().permissions).toBeUndefined();
@@ -207,10 +213,10 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
   const confirming = t.service.confirmTools();
 
   expect(t.calls).toHaveLength(2);
-  expect(t.last().options.input).toBe(syncPrompt({ kind: 'read', list: null }));
+  expect(t.last().options.input).toBe(prompt({ kind: 'read', list: null }));
   expect(t.settings().permissions).toEqual({ allow: TOOLS });
   expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(NODE, TOOLS));
-  expect(t.todo().readTools).toEqual({ connector: 'Tracker', tools: TOOLS });
+  expect(t.todo().readTools).toEqual({ connector: 'Tracker', tools: TOOLS, agent: 'claude' });
   expect(t.service.view()).toMatchObject({ syncing: true, ask: null, setUp: true });
 
   t.last().answer(CARDS_ANSWER);
@@ -229,7 +235,7 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
   expect(t.service.view()).toEqual(expected);
   expect(t.todo()).toEqual({
     version: 1,
-    readTools: { connector: 'Tracker', tools: TOOLS },
+    readTools: { connector: 'Tracker', tools: TOOLS, agent: 'claude' },
     source: SOURCE,
     syncedAt: NOW,
     cards: CARDS,
@@ -238,9 +244,51 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
 
   // Another sync reads with the same tools; a restart finds the list, and no ask.
   void t.service.sync();
-  expect(t.last().options.input).toBe(syncPrompt({ kind: 'read', list: null }));
+  expect(t.last().options.input).toBe(prompt({ kind: 'read', list: null }));
   expect(t.settings().permissions).toEqual({ allow: TOOLS });
   expect(t.make().view()).toEqual(expected);
+});
+
+it("confirmed tools saved without an agent are Claude Code's", async () => {
+  const t = setup(JSON.stringify({ version: 1, readTools: { connector: 'Tracker', tools: TOOLS }, cards: [], notes: [] }));
+
+  void t.service.sync();
+
+  expect(t.last().options.input).toBe(prompt({ kind: 'read', list: null }));
+  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(NODE, TOOLS));
+});
+
+it('a switch of agent syncs at discover again and keeps the cards and notes', async () => {
+  const notes = [{ id: 'n1', title: 'Call the bank', text: '' }];
+  const record = {
+    version: 1,
+    readTools: { connector: 'Tracker', tools: TOOLS, agent: 'claude' },
+    pickedList: DOING,
+    source: SOURCE,
+    syncedAt: NOW,
+    cards: CARDS,
+    notes,
+  };
+  const t = setup(JSON.stringify(record), { adapter: { ...ADAPTERS.claude, name: 'opencode' }, bin: 'claude', setting: {} });
+
+  void t.service.sync();
+
+  expect(t.last().options.input).toBe(prompt({ kind: 'discover' }));
+  expect(readFileSync(t.settingsFile, 'utf8')).toBe(syncSettings(NODE, []));
+  expect(t.service.view().cards).toEqual(CARDS);
+  expect(t.service.view().notes).toEqual(notes);
+  expect(t.todo()).toEqual(record);
+});
+
+it('confirming saves the agent with the tools', async () => {
+  const t = setup();
+  const first = t.service.sync();
+  t.last().answer(TOOLS_ANSWER);
+  await first;
+
+  void t.service.confirmTools();
+
+  expect(t.todo().readTools.agent).toBe('claude');
 });
 
 it('several candidate lists: the one picked is kept and read', async () => {
@@ -254,7 +302,7 @@ it('several candidate lists: the one picked is kept and read', async () => {
 
   const picking = t.service.pickList(1);
 
-  expect(t.last().options.input).toBe(syncPrompt({ kind: 'read', list: DOING }));
+  expect(t.last().options.input).toBe(prompt({ kind: 'read', list: DOING }));
   expect(t.last().options.input).toContain('Doing');
   expect(t.settings().permissions).toEqual({ allow: TOOLS });
   expect(t.todo().pickedList).toEqual(DOING);
@@ -266,7 +314,7 @@ it('several candidate lists: the one picked is kept and read', async () => {
   // The answer of cards keeps the tools and the picked list; the next sync reads that list again.
   expect(t.todo()).toMatchObject({ readTools: { connector: 'Tracker', tools: TOOLS }, pickedList: DOING });
   void t.service.sync();
-  expect(t.last().options.input).toBe(syncPrompt({ kind: 'read', list: DOING }));
+  expect(t.last().options.input).toBe(prompt({ kind: 'read', list: DOING }));
 });
 
 it('confirming or picking with nothing to confirm or pick is refused', async () => {
@@ -400,7 +448,7 @@ it('Set up again forgets the tools and the list and keeps the cards and notes', 
 
   // The next sync begins again: with nothing allowed.
   void t.service.sync();
-  expect(t.last().options.input).toBe(syncPrompt({ kind: 'discover' }));
+  expect(t.last().options.input).toBe(prompt({ kind: 'discover' }));
   expect(t.settings().permissions).toBeUndefined();
 });
 

@@ -263,10 +263,10 @@ async function start(
     const todo = new TodoService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: programs.claudeBin,
       nodeBin: programs.nodeBin,
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
       env: programs.env,
+      agent: () => ({ adapter: ADAPTERS.claude, bin: programs.claudeBin, setting: {} }),
       startTask: (req) => service.start(req),
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
