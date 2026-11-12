@@ -12,6 +12,13 @@ import { TaskService } from './taskService';
 
 const cleanup: string[] = [];
 
+/** The fields of an opening prompt that depend on the agent and the project, for a Claude Code task named "Fix login". */
+const CLAUDE_AT = (projectDir: string) => ({
+  agent: 'claude' as const,
+  projectDir,
+  worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
+});
+
 afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -29,6 +36,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     branchExists: async () => false,
     worktreeBranchNames: async () => [],
     changedFiles: async () => [],
+    addWorktree: async () => {},
     ...gitOverrides,
   };
   const killed: string[] = [];
@@ -109,7 +117,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath,
-      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
+      prompt: openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
     }),
   });
   expect(changes.at(-1)).toEqual([view]);
@@ -117,19 +125,19 @@ it('start records the task, writes its hooks file and launches claude -w with th
 });
 
 it('start trims the title and passes noQuestions on to the opening prompt', async () => {
-  const { service, readState } = setup();
+  const { service, readState, projectDir } = setup();
   const view = await service.start({ title: '  Fix login  ', description: '', noQuestions: true });
   expect(view.title).toBe('Fix login');
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
-  expect(prompt).toBe(openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+  expect(prompt).toBe(openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
 });
 
 /** Over 32,000 characters once quoted, as typed: with leading spaces and a trailing newline. */
 const LONG = `  ${'Users get logged out. '.repeat(1000)}\n`;
 
 /** The launch of "Fix login" with `description`, as `start` builds it for a session whose folder is `taskDir`. */
-function expectedStart(claudeSessionId: string, taskDir: string, description: string, brief?: { dir: string; file: string }): string[] {
+function expectedStart(projectDir: string, claudeSessionId: string, taskDir: string, description: string, brief?: { dir: string; file: string }): string[] {
   return startArgv({
     claudeBin: 'claude',
     slug: 'fix-login',
@@ -138,6 +146,7 @@ function expectedStart(claudeSessionId: string, taskDir: string, description: st
     settingsPath: join(taskDir, 'settings.json'),
     ...(brief && { addDir: brief.dir }),
     prompt: openingPrompt({
+      ...CLAUDE_AT(projectDir),
       title: 'Fix login',
       description,
       branch: 'worktree-fix-login',
@@ -148,12 +157,12 @@ function expectedStart(claudeSessionId: string, taskDir: string, description: st
 }
 
 it('on Windows, a description too long for the command line goes to a file the session is given the folder of', async () => {
-  const { service, readState, taskDir } = setup({}, 'win32');
+  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
   const view = await service.start({ ...NEW_TASK, description: LONG });
 
   const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
   const { argv } = service.launchSpec(view.session!.id);
-  expect(argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
   expect(argv.at(-1)).toContain(brief.file);
   expect(argv.at(-1)).not.toContain('Users get logged out.');
   expect(argv.indexOf('--add-dir')).toBe(argv.indexOf('--settings') - 2);
@@ -163,32 +172,32 @@ it('on Windows, a description too long for the command line goes to a file the s
 });
 
 it('on Windows, a description that fits launches as it does anywhere, with no file', async () => {
-  const { service, readState, taskDir } = setup({}, 'win32');
+  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
   const view = await service.start(NEW_TASK);
 
   expect(service.launchSpec(view.session!.id).argv).toEqual(
-    expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description),
+    expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description),
   );
   expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
 });
 
 it('on the Mac, a long description stays in the prompt, with no file', async () => {
-  const { service, readState, taskDir } = setup();
+  const { service, readState, taskDir, projectDir } = setup();
   const view = await service.start({ ...NEW_TASK, description: LONG });
 
-  expect(service.launchSpec(view.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG));
+  expect(service.launchSpec(view.session!.id).argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG));
   expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
 });
 
 it('on Windows, a reopen that must begin the conversation again moves a long description to its file too', async () => {
-  const { service, readState, taskDir } = setup({}, 'win32');
+  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
   const view = await service.start({ ...NEW_TASK, description: LONG });
   // claude was missing or quit at once: SessionStart never fired.
   service.onSessionExit(view.session!.id);
 
   const reopened = await service.reopen(view.id);
   const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
-  expect(service.launchSpec(reopened.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
   expect(readFileSync(brief.file, 'utf8')).toBe(LONG);
 });
 
@@ -203,14 +212,14 @@ const CARD: TaskCardRef = {
 };
 
 it("a task started from a card keeps it, shows it, and its launch carries the card's prompt", async () => {
-  const { service, readState } = setup();
+  const { service, readState, projectDir } = setup();
   const view = await service.start({ ...NEW_TASK, card: CARD });
 
   expect(view.card).toEqual(CARD);
   expect(service.list()[0].card).toEqual(CARD);
   expect(readState()[0].card).toEqual(CARD);
   expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -892,7 +901,7 @@ it('reopen resumes the recorded conversation although no transcript of it can be
 });
 
 it('reopen of a task whose first launch never began a conversation starts one, with a fresh id and the same prompt', async () => {
-  const { service, readState, taskDir } = setup();
+  const { service, readState, taskDir, projectDir } = setup();
   const view = await service.start({ ...NEW_TASK, noQuestions: true });
   const first = readState()[0].claudeSessionId;
   // claude was missing or quit at once: SessionStart never fired.
@@ -910,13 +919,13 @@ it('reopen of a task whose first launch never began a conversation starts one, w
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath: join(taskDir(view.id), 'settings.json'),
-      prompt: openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+      prompt: openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
     }),
   );
 });
 
 it('a reopen that must begin the conversation again keeps the card in its prompt', async () => {
-  const { service } = setup();
+  const { service, projectDir } = setup();
   const view = await service.start({ ...NEW_TASK, card: CARD });
   // claude was missing or quit at once: SessionStart never fired.
   service.onSessionExit(view.session!.id);
@@ -924,7 +933,7 @@ it('a reopen that must begin the conversation again keeps the card in its prompt
   const reopened = await service.reopen(view.id);
   expect(reopened.card).toEqual(CARD);
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -949,7 +958,7 @@ it('a task kept before its noQuestions was recorded reopens with the prompt that
   const service = make();
   const reopened = await service.reopen('old');
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
+    openingPrompt({ ...CLAUDE_AT(projectDir), title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
   );
   expect(readState()[0]).not.toHaveProperty('noQuestions');
 });

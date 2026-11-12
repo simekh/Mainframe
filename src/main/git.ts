@@ -103,5 +103,19 @@ export async function changedFiles(worktreePath: string): Promise<ChangedFile[] 
   }
 }
 
-export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles };
+/** Rejects with git's error. `create` makes the branch from origin/HEAD, or from HEAD without one; otherwise the branch exists and only its folder is gone. */
+export async function addWorktree(projectDir: string, path: string, branch: string, o: { create: boolean }): Promise<void> {
+  if (!o.create) {
+    await git(projectDir, ['worktree', 'prune']);
+    await git(projectDir, ['worktree', 'add', path, branch]);
+    return;
+  }
+  const base = await git(projectDir, ['rev-parse', '--verify', '--quiet', 'origin/HEAD']).then(
+    () => 'origin/HEAD',
+    () => 'HEAD',
+  );
+  await git(projectDir, ['worktree', 'add', '-b', branch, path, base]);
+}
+
+export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, addWorktree };
 export type GitQueries = typeof gitQueries;

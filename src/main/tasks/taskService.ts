@@ -315,6 +315,9 @@ export class TaskService {
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
+          agent: 'claude',
+          projectDir: this.deps.projectDir,
+          worktreePath: task.worktreePath,
         }),
       });
 

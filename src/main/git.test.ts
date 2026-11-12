@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { branchExists, changedFiles, startCheck, worktreeBranchNames } from './git';
+import { addWorktree, branchExists, changedFiles, startCheck, worktreeBranchNames } from './git';
 import { makeRepo } from './testing/makeRepo';
 
 const cleanup: string[] = [];
@@ -111,4 +111,46 @@ it('changedFiles is null for a folder that is not a work tree', async () => {
   const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
   expect(await changedFiles(bare)).toBeNull();
+});
+
+function out(dir: string, ...args: string[]): string {
+  return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+}
+
+it('addWorktree branches from origin/HEAD when there is one', async () => {
+  const { main } = repo();
+  commitFile(main, 'local.txt', 'x\n');
+  const path = join(dirname(main), 'wt');
+  await addWorktree(main, path, 'worktree-a', { create: true });
+  expect(out(path, 'rev-parse', 'HEAD')).toBe(out(main, 'rev-parse', 'origin/HEAD'));
+  expect(out(path, 'rev-parse', 'HEAD')).not.toBe(out(main, 'rev-parse', 'HEAD'));
+});
+
+it('addWorktree branches from HEAD without origin/HEAD', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
+  cleanup.push(dir);
+  git(dir, 'init', '-b', 'stage');
+  git(dir, 'config', 'user.name', 'Test');
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'commit.gpgsign', 'false');
+  commitFile(dir, 'a.txt', 'a\n');
+  const path = join(dir, 'wt');
+  await addWorktree(dir, path, 'worktree-a', { create: true });
+  expect(out(path, 'rev-parse', 'HEAD')).toBe(out(dir, 'rev-parse', 'HEAD'));
+});
+
+it('addWorktree adds a deleted worktree back on its branch', async () => {
+  const { main } = repo();
+  const path = join(dirname(main), 'wt');
+  await addWorktree(main, path, 'worktree-a', { create: true });
+  rmSync(path, { recursive: true, force: true });
+  await addWorktree(main, path, 'worktree-a', { create: false });
+  expect(existsSync(path)).toBe(true);
+  expect(out(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('worktree-a');
+});
+
+it('addWorktree rejects when the branch is taken', async () => {
+  const { main } = repo();
+  git(main, 'branch', 'worktree-a');
+  await expect(addWorktree(main, join(dirname(main), 'wt'), 'worktree-a', { create: true })).rejects.toThrow();
 });
