@@ -41,9 +41,8 @@ async function openFrom(app: ElectronApplication, row: Locator): Promise<Page> {
  */
 async function closeWith(diff: Page, ...keys: string[]): Promise<void> {
   const closed = diff.waitForEvent('close');
-  const last = keys.pop()!;
-  for (const key of keys) await diff.keyboard.down(key);
-  void diff.keyboard.down(last).catch(() => {});
+  for (const key of keys.slice(0, -1)) await diff.keyboard.down(key);
+  void diff.keyboard.down(keys.at(-1)!).catch(() => {});
   await closed;
 }
 
