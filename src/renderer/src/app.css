@@ -1791,6 +1791,17 @@ kbd {
   background: var(--project);
 }
 
+/* Names the agent on an OpenCode task's card and panel header; a Claude Code task carries none. */
+.agent-mark {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .card-age {
   flex: none;
   margin-left: auto;
@@ -2688,7 +2699,8 @@ kbd {
   gap: 6px;
 }
 
-.field > label {
+.field > label,
+.field > .field-label {
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -2751,6 +2763,32 @@ kbd {
 
 .check .hint {
   grid-column: 2;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+/* The agent pick: two quiet radios on one line, set like the checkbox below them. */
+.nt-agents {
+  display: flex;
+  gap: 18px;
+}
+
+.nt-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nt-agent input {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+/* Why OpenCode isn't offered, when one was found that Mainframe can't use. */
+.nt-hint {
+  margin: 0;
   color: var(--fg-subtle);
   font-size: 12px;
 }

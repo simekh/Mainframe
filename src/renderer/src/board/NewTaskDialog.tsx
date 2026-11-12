@@ -1,9 +1,10 @@
-import { createSignal, onMount, Show } from 'solid-js';
-import type { StartCheck } from '../../../shared/types';
+import { createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
+import { AGENT_NAMES, MIN_OPENCODE_VERSION, type AgentName, type ProgramCheck, type StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { commandHeld, commandName } from '../keys';
 import { useProject } from '../projects/projectContext';
 import { startTask } from '../tasksStore';
+import { loadAgent, saveAgent } from './agentPrefs';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
@@ -16,6 +17,8 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
   const [description, setDescription] = createSignal('');
   const [noQuestions, setNoQuestions] = createSignal(false);
   const [check, setCheck] = createSignal<StartCheck | null>(null);
+  const [opencode, setOpencode] = createSignal<ProgramCheck | null>(null);
+  const [agent, setAgent] = createSignal<AgentName>('claude');
   const [error, setError] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal(false);
   const ahead = () => aheadOf(check());
@@ -24,6 +27,13 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
     dialog.showModal();
     titleInput.focus();
     window.mainframe.startCheck(project.dir).then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
+    window.mainframe.agentChecks().then(
+      ({ opencode }) => {
+        setOpencode(opencode);
+        setAgent(loadAgent(localStorage, project.dir, opencode.state === 'found'));
+      },
+      (err: unknown) => console.error('[new task] agent check failed', err),
+    );
   });
 
   // Esc waits for a start under way, so a failure still has the dialog to show in.
@@ -36,7 +46,8 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
     setStarting(true);
     setError(null);
     try {
-      await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions() });
+      await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions(), agent: agent() });
+      if (opencode()?.state === 'found') saveAgent(localStorage, project.dir, agent());
       dialog.close();
     } catch (err) {
       setError(errorMessage(err));
@@ -61,7 +72,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
       >
         <h2 id="nt-heading">New task</h2>
         <p class="nt-sub">
-          Starts Claude Code in a new worktree of {project.name}
+          Starts {AGENT_NAMES[agent()]} in a new worktree of {project.name}
           <Show when={check()}>
             {(c) => (
               <>
@@ -101,6 +112,45 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             }}
           />
         </div>
+        <Show when={opencode()}>
+          {(c) => (
+            <Switch>
+              <Match when={c().state === 'found'}>
+                <div class="field">
+                  <span id="nt-agent" class="field-label">
+                    Agent
+                  </span>
+                  <div class="nt-agents" role="radiogroup" aria-labelledby="nt-agent">
+                    <For each={['claude', 'opencode'] as const}>
+                      {(name) => (
+                        <label class="nt-agent">
+                          <input
+                            type="radio"
+                            name="nt-agent"
+                            data-testid={`new-task-agent-${name}`}
+                            checked={agent() === name}
+                            onChange={() => setAgent(name)}
+                          />
+                          {AGENT_NAMES[name]}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Match>
+              <Match when={c().state === 'too-old'}>
+                <p class="nt-hint" data-testid="new-task-agent-hint">
+                  OpenCode {c().version} is installed. Mainframe needs {MIN_OPENCODE_VERSION} or later.
+                </p>
+              </Match>
+              <Match when={c().state === 'broken'}>
+                <p class="nt-hint" data-testid="new-task-agent-hint">
+                  The opencode at {c().path} didn't say its version, so Mainframe can't use it.
+                </p>
+              </Match>
+            </Switch>
+          )}
+        </Show>
         <div class="check">
           <input
             id="nt-noq"
