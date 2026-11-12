@@ -337,23 +337,23 @@ it('excludeLocally adds the line once and keeps what the file held', async () =>
   const { main } = repo();
   mkdirSync(join(main, '.git', 'info'), { recursive: true });
   writeFileSync(join(main, '.git', 'info', 'exclude'), '# mine\n*.log');
-  await excludeLocally(main, '/.mainframe/');
-  await excludeLocally(main, '/.mainframe/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('# mine\n*.log\n/.mainframe/\n');
+  await excludeLocally(main, '/.mainframe/worktrees/');
+  await excludeLocally(main, '/.mainframe/worktrees/');
+  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('# mine\n*.log\n/.mainframe/worktrees/\n');
   expect(out(main, 'check-ignore', '.mainframe/worktrees/x')).toBe('.mainframe/worktrees/x');
 });
 
 it('excludeLocally creates the file and its folder when they are missing', async () => {
   const { main } = repo();
   rmSync(join(main, '.git', 'info'), { recursive: true, force: true });
-  await excludeLocally(main, '/.mainframe/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('/.mainframe/\n');
+  await excludeLocally(main, '/.mainframe/worktrees/');
+  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('/.mainframe/worktrees/\n');
 });
 
 it('excludeLocally writes to the common git dir when the project is a linked worktree', async () => {
   const { main } = repo();
   const linked = join(dirname(main), 'linked');
   await addWorktree(main, linked, 'worktree-a', { create: true });
-  await excludeLocally(linked, '/.mainframe/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toContain('/.mainframe/\n');
+  await excludeLocally(linked, '/.mainframe/worktrees/');
+  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toContain('/.mainframe/worktrees/\n');
 });

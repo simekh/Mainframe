@@ -1227,7 +1227,7 @@ it("an OpenCode task's worktree folder is hidden through the repo's local exclud
   const excluded: unknown[][] = [];
   const { service, projectDir } = setup({ excludeLocally: async (...args) => void excluded.push(args) });
   await service.start(OPENCODE_TASK);
-  expect(excluded).toEqual([[projectDir, '/.mainframe/']]);
+  expect(excluded).toEqual([[projectDir, '/.mainframe/worktrees/']]);
 });
 
 it('a failing exclude write logs a warning and the start still succeeds', async () => {

@@ -232,11 +232,11 @@ export class TaskService {
 
   /** Keeps the agent's worktrees folder out of git status through the repo's local exclude file; a failure only warns. */
   private async hideWorktreesFolder(task: TaskRecord): Promise<void> {
-    const [top] = ADAPTERS[agentOf(task)].worktreesDir.split('/');
+    const pattern = `/${ADAPTERS[agentOf(task)].worktreesDir}/`;
     try {
-      await this.deps.git.excludeLocally(this.deps.projectDir, `/${top}/`);
+      await this.deps.git.excludeLocally(this.deps.projectDir, pattern);
     } catch (err) {
-      this.deps.warn?.(`Could not add /${top}/ to the repo's local exclude file: ${err instanceof Error ? err.message : String(err)}`);
+      this.deps.warn?.(`Could not add ${pattern} to the repo's local exclude file: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
