@@ -38,6 +38,16 @@ const CARDS = {
 
 const SECRETS = ['sk-fake-secret', 'fake-agent-secret'];
 
+/** Neither secret of the stand-in's lists is in the page as it shows now, or in settings.json. */
+async function expectNoSecretIn(page: Page, dataDir: string): Promise<void> {
+  const saved = readFileSync(join(dataDir, 'settings.json'), 'utf8');
+  const content = await page.content();
+  for (const secret of SECRETS) {
+    expect(saved).not.toContain(secret);
+    expect(content).not.toContain(secret);
+  }
+}
+
 const openSettings = async (page: Page) => {
   await page.getByTestId('settings-open').click();
   await expect(page.getByTestId('settings-dialog')).toBeVisible();
@@ -113,6 +123,9 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
   const models = panel.getByTestId('todo-model');
   await expect(models).toHaveText([/Cheap model/, /Dear model/, /price unknown/]);
   await expect(models.first()).toHaveAttribute('aria-checked', 'true');
+  // The rows came from `api model.list`, whose cheap model carries a key.
+  expect(helperCalls(dataDir).map((call) => call.args)).toContainEqual(['--standalone', 'api', 'model.list']);
+  await expectNoSecretIn(page, dataDir);
 
   opencodeSyncReply(dataDir, TOOLS);
   await panel.getByTestId('todo-pick-model').click();
@@ -137,12 +150,17 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
 
   await expect.poll(() => helperCalls(dataDir).map((call) => call.args)).toContainEqual(['--standalone', 'session', 'delete', 'ses_fake']);
   expect(savedSettings(dataDir).agents?.opencode?.syncModel).toBe('prov/cheap');
-  const saved = readFileSync(join(dataDir, 'settings.json'), 'utf8');
-  const content = await page.content();
-  for (const secret of SECRETS) {
-    expect(saved).not.toContain(secret);
-    expect(content).not.toContain(secret);
-  }
+  await expectNoSecretIn(page, dataDir);
+
+  // Settings lists OpenCode's agents and models, from `api agent.list` (whose build agent carries a header) and `api model.list`.
+  const calls = helperCalls(dataDir).length;
+  await openSettings(page);
+  await expect(page.getByTestId('settings-manager-agent').locator('option')).toHaveText([/build/, 'build', 'plan']);
+  await expect(page.getByTestId('settings-sync-model').locator('option')).toHaveCount(3);
+  expect(helperCalls(dataDir).slice(calls).map((call) => call.args)).toEqual(
+    expect.arrayContaining([['--standalone', 'api', 'agent.list'], ['--standalone', 'api', 'model.list']]),
+  );
+  await expectNoSecretIn(page, dataDir);
   await app.close();
 });
 
