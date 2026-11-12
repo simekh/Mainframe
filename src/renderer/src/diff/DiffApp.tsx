@@ -7,6 +7,8 @@ import FileRowContent from './FileRowContent';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/jetbrains-mono/400.css';
+// The file list's status letters are bold, as in the panel.
+import '@fontsource/jetbrains-mono/700.css';
 import '../app.css';
 import './diff.css';
 
