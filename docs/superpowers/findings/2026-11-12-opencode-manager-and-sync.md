@@ -1,6 +1,6 @@
 # Findings: the manager and the Todo sync on OpenCode
 
-Research on 2026-11-12, worktree `multi-agent-research`. It follows `2026-11-12-other-agent-clis.md` and the OpenCode tasks design, which kept the manager and the sync on Claude Code. Everything here was read in OpenCode 2.2.7's source (tag `v2.2.7`). Points marked *(ran)* were also checked with the installed `opencode v2.2.7`, using only commands that call no model. Nothing has been tried in Mainframe yet, and no model has been called.
+Research on 2026-11-12, worktree `multi-agent-research`. It follows `2026-11-12-other-agent-clis.md` and the OpenCode tasks design, which kept the manager and the sync on Claude Code. Everything here was read in OpenCode 2.2.7's source (tag `v2.2.7`). Points marked *(ran)* were also checked with the installed `opencode v2.2.7`. The checks with a model are under "Checked by hand". Nothing has been tried in Mainframe itself yet.
 
 ## In short
 
@@ -38,10 +38,37 @@ Research on 2026-11-12, worktree `multi-agent-research`. It follows `2026-11-12-
 - If an existing id was made in another folder, `-s` reopens it in that folder, not in the folder it was launched from. For the manager this doesn't matter: its id is its own.
 - `opencode debug config` shows the `Authorization` value as `***`, so it can't be used to check that the token arrived.
 
+- **OpenCode allows everything by default.** Its built-in rule is `*` allow (`schema/src/agent.ts:46-51`), so a tool no rule names runs without asking. On Claude Code, `start_task` goes through the owner's permission mode. To keep that, the manager also needs `{action: "mainframe_start_task", resource: "*", effect: "ask"}`. *(ran: without it `start_task` ran unasked; with it, it stopped at "Permission required".)*
+- **The TUI has no `-m` flag.** A model for one launch goes in the config's `model` key.
+
 ### Still to check for the manager
 
-1. **A user's own agent rules.** The manager runs OpenCode's default agent (`build`, unless the user changed it). A user's `agents.build.permissions` would come after Mainframe's allow rules and beat them. Putting the allow rules under the default agent as well fixes that, but it needs the agent's id. Find how the TUI picks its default agent (a `default_agent` key?). Then decide whether the manager gets an agent of its own, with no `system`, so OpenCode's prompt stays.
-2. **Code Mode.** By default OpenCode offers MCP tools behind one `execute` tool, not one by one (`core/src/tool.ts:263-268`). A server has a `codemode` option. Check whether `codemode: false` on `mainframe` offers its tools directly, and whether the allow rules apply when a tool is called through `execute`.
+1. **A user's own agent rules.** The manager runs the user's default agent (the owner's decision). A user's `agents.<that agent>.permissions` would come after Mainframe's top-level rules and beat them. Putting Mainframe's rules under that agent as well fixes it, which needs the agent's id. Find how the TUI picks its default agent (a `default_agent` key?). Untested: the owner's config has no agent rules.
+
+## Checked by hand
+
+All checks ran on 2026-11-12 with `opencode v2.2.7`, `litellm/claude-haiku-5-5` and a fake MCP server, with every piece of config given per launch. The fake server had a read tool, a write tool and a slow tool. The owner's own config was not changed, and every test session was deleted afterwards.
+
+- **Sync rules** (`*` deny plus an allow for the read tool, in both places):
+  - Haiku called only the read tool and never saw the write tool. Asked to delete a card, it answered that it had no tool for that.
+  - It answered clean JSON, with no fence. It added one key it wasn't asked for, which a schema check that ignores unknown keys accepts.
+  - OpenCode's `skill` tool is still offered under `*` deny, because a built-in rule about one skill comes after Mainframe's. Calling any other skill is still denied.
+  - The run cost $0.0006 by its own `step_finish` count.
+  - The connector closed as the run ended.
+- **Stopping a run:** a SIGTERM while a tool call was waiting ended the run (exit 143) and the connector closed within seconds. Nothing was left running.
+- **A failed run:** with an expired provider key, the run printed one `error` event (`provider.auth`, with the provider's message) and exited 1.
+- **Finding the connector, two ways that both work:**
+  - **With the server's name:** `*` deny plus `{action: "tracker_*", effect: "ask"}`. The model saw the connector's three tools, and its call was refused with "This non-interactive run cannot ask the user for permission".
+  - **With no name:** `*` ask plus `{action: "execute", effect: "deny"}`, which turns the `execute` wrapper off. The model saw every tool by name, the connector's and OpenCode's built-in ones, and every call was refused.
+  - OpenCode's own tools are either unprefixed (`read`, `shell`) or `opencode_…`. The connectors' tools are `<server>_…`.
+  - If some built-in tool runs without asking for permission, the no-name way would let it run. Denying the built-in tools that write by name as well (`shell`, `write`, `edit`, `subagent`, `webfetch`, `opencode_*`) closes that.
+- **Manager:**
+  - The TUI connected to a bearer-token server on 127.0.0.1 with `oauth: false` and no OAuth attempt.
+  - The role prompt from an `instructions` file reached the model: it passed the code word that only that file held.
+  - The allowed tool ran without asking.
+  - With the `ask` rule, `start_task` showed "Permission required", and the terminal reported `state=blocked:kind=permission`, which is Mainframe's Needs you lane.
+  - **Code Mode** makes no difference to these rules. With it on, the calls go through `execute` (shown as `mainframe.list_sessions`). With `codemode: false` on the server, the tools are offered by name. Each rule held both ways.
+  - The OSC 7501 record id is the session id Mainframe chose.
 
 ## The Todo sync
 
@@ -144,14 +171,8 @@ The owner answered on 2026-11-12.
 3. **The sync reads the user's own OpenCode config and skips the project's.** The user's own config holds their models, API keys and connectors, which the sync needs. The project's config (an `opencode.json` and `AGENTS.md` in the repo) adds nothing it needs, so it runs with `OPENCODE_DISABLE_PROJECT_CONFIG=1`.
 4. **The manager runs on the user's default agent.** Mainframe adds its rules to that agent. Settings can name another agent, and the user can switch agents in the manager's terminal for a while. "Still to check" item 1 still applies: the allow rules must also sit under that agent's own rules.
 
-## To try by hand before a plan
+## Still untried
 
-These need model calls, so they would use the owner's providers (on this Mac, a work LiteLLM):
-
-- **The manager with the config above:**
-  - Does the role prompt arrive?
-  - Do the two tools run without asking?
-  - Does `sync_todo` wait out a long run?
-- **The sync's rules against a real connector:** only the confirmed tools are offered, a write tool is refused, and the answer comes back as JSON a small model gets right.
-- **The discover step:** both ways above.
-- **SIGTERM to `opencode run` mid-run:** its MCP connectors end too (`core/src/mcp/stdio.ts:46-53` says they do).
+- A real connector (Trello, say) set up in OpenCode: this Mac has none.
+- `sync_todo` waiting out a long sync from inside the manager. The default per-call timeout is 12 hours, so it should hold.
+- A user whose default agent has rules of its own (see "Still to check" above).
