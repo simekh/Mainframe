@@ -124,4 +124,11 @@ describe('findOpencode', () => {
     expect(run.calls).toEqual(['/env/opencode']);
     expect(await findOpencode({ fromEnv: '/gone/opencode', lookup, run: fakeRun({}) })).toEqual({ state: 'missing', path: '/gone/opencode' });
   });
+
+  it('tries the saved path first, and falls through to the places when it is gone', async () => {
+    const lookup = mac(mapPath, '/saved/opencode', OC);
+    const run = fakeRun({ '/saved/opencode': current, [OC]: current });
+    expect(await findOpencode({ saved: ['/saved/opencode'], lookup, run })).toEqual({ state: 'found', path: '/saved/opencode', version: '2.2.7' });
+    expect(await findOpencode({ saved: ['/gone/opencode'], lookup, run })).toEqual({ state: 'found', path: OC, version: '2.2.7' });
+  });
 });

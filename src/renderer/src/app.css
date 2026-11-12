@@ -455,7 +455,8 @@ html[data-platform='darwin'] .setup-titlebar {
 
 .setup-check {
   display: grid;
-  grid-template-columns: 10ch minmax(0, 1fr);
+  /* "› opencode" and a space. */
+  grid-template-columns: 11ch minmax(0, 1fr);
 }
 
 .setup-name {
@@ -485,12 +486,127 @@ html[data-platform='darwin'] .setup-titlebar {
   color: var(--error);
 }
 
+/* A failing agent while another works: no problem, so no red. Written after the red, which it overrides. */
+.setup-check[data-quiet] .setup-status {
+  color: var(--fg-subtle);
+}
+
 .setup-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   font-family: var(--font-ui);
   user-select: none;
+}
+
+/* The agents step: one row per agent, its tick box first. A ticked one is outlined in the accent; one that doesn't
+   work fades, keeping its buttons. */
+.setup-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.setup-agent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--fg);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.setup-agent[data-ticked='true'] {
+  border-color: var(--accent);
+}
+
+.setup-agent[data-works='false'] .setup-agent-name {
+  opacity: 0.55;
+}
+
+.setup-agent-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup-tick {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+}
+
+.setup-tick:checked {
+  background: var(--accent);
+}
+
+.setup-tick:checked::after {
+  content: '✓';
+  color: var(--accent-text);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.setup-tick:disabled:not(:checked) {
+  border-color: var(--border);
+}
+
+.setup-tick:focus-visible {
+  outline-offset: 2px;
+}
+
+.setup-agent-version,
+.setup-agent-actions {
+  margin-left: auto;
+}
+
+.setup-agent-version {
+  color: var(--fg-subtle);
+  font: 12px var(--font-mono);
+}
+
+.setup-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The default: a two-way choice, the picked one filled. */
+.setup-default {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.setup-default > button {
+  padding: 6px 14px;
+  color: var(--fg-muted);
+}
+
+.setup-default > button:hover:not([aria-checked='true']) {
+  background: var(--hover);
+}
+
+.setup-default > button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 /* --- The panes: the open projects, side by side or in a grid ---------------------------------- */

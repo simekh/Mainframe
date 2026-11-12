@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
-import type { ChangedFile, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
+import type { AgentName, ChangedFile, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
@@ -17,7 +17,28 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform = 'darwin', opencodeBin: string | null = '/bin/opencode') {
+/**
+ * The agents Mainframe found at start, as every open project shares them; change its fields to change what the next
+ * start sees. Both agents are found and ticked, and Claude Code is the default.
+ */
+function fakeAgents() {
+  return {
+    bins: { claude: 'claude', opencode: '/bin/opencode' } as Record<AgentName, string | null>,
+    on: ['claude', 'opencode'] as AgentName[],
+    default: 'claude' as AgentName,
+    bin(name: AgentName) {
+      return this.bins[name];
+    },
+    ticked() {
+      return this.on.filter((name) => this.bins[name] !== null);
+    },
+    defaultAgent() {
+      return this.default;
+    },
+  };
+}
+
+function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform = 'darwin', agents = fakeAgents()) {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-service-'));
   cleanup.push(root);
   const projectDir = join(root, 'Acme');
@@ -48,8 +69,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
       projectDir: dir,
       dataDir,
       records,
-      claudeBin: 'claude',
-      opencodeBin,
+      agents,
       nodeBin: NODE,
       platform,
       git,
@@ -68,7 +88,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
 
   return {
-    root, projectDir, dataDir, stateFile, make, service: make(), killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
+    root, projectDir, dataDir, stateFile, make, service: make(), agents, killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
   };
 }
 
@@ -1224,12 +1244,49 @@ it("a failed worktree add takes the task out of state.json, though another proje
   expect(acme.list()).toEqual([]);
 });
 
-it('OpenCode not installed', async () => {
+it("a start on an agent that isn't installed says so", async () => {
   const { added, addWorktree } = recordingAdds();
-  const { service, stateFile } = setup({ addWorktree }, 'darwin', null);
-  await expect(service.start(OPENCODE_TASK)).rejects.toThrow('OpenCode 2.1 or later is not installed');
+  const agents = fakeAgents();
+  agents.bins.opencode = null;
+  const { service, stateFile } = setup({ addWorktree }, 'darwin', agents);
+  await expect(service.start(OPENCODE_TASK)).rejects.toThrow('OpenCode 2.1.0 or later is not installed');
   expect(added).toEqual([]);
   expect(existsSync(stateFile)).toBe(false);
+});
+
+it('a start without an agent runs on the default agent', async () => {
+  const { service, agents, readState } = setup();
+  agents.default = 'opencode';
+  const view = await service.start(NEW_TASK);
+  expect(view.agent).toBe('opencode');
+  expect(readState()[0].agent).toBe('opencode');
+  expect(service.launchSpec(view.session!.id).argv[0]).toBe('/bin/opencode');
+});
+
+it('two projects share one AgentsInUse', async () => {
+  const { root, stateFile, make, agents } = setup();
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  const acme = make(records);
+  const globex = make(records, join(root, 'Globex'));
+  expect((await acme.start(NEW_TASK)).agent).toBe('claude');
+  expect((await globex.start(NEW_TASK)).agent).toBe('claude');
+
+  agents.default = 'opencode';
+  expect((await acme.start({ ...NEW_TASK, title: 'Ship it' })).agent).toBe('opencode');
+  expect((await globex.start({ ...NEW_TASK, title: 'Ship it' })).agent).toBe('opencode');
+});
+
+it("an unticked agent's task still reopens; a new task on it is refused", async () => {
+  const { service, agents, stateFile } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  service.onSessionExit(view.session!.id);
+
+  agents.on = ['claude'];
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id).argv[0]).toBe('/bin/opencode');
+  const before = readFileSync(stateFile, 'utf8');
+  await expect(service.start({ ...OPENCODE_TASK, title: 'Ship it' })).rejects.toThrow('OpenCode is turned off in Settings');
+  expect(readFileSync(stateFile, 'utf8')).toBe(before);
 });
 
 it('reopen resumes the same OpenCode session', async () => {

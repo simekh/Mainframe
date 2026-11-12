@@ -116,12 +116,12 @@ test('a first start welcomes you, finds everything and asks for the first projec
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: claude } } });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true, bin: claude } } });
   expect(await openProjectMenuItem(app)).toEqual(process.platform === 'darwin' ? { enabled: true } : null);
   await app.close();
 });
 
-test('claude missing: Find claude… checks the file and saves it', async () => {
+test('no agent works: Find claude… checks the file and saves it', async () => {
   const pc = computer();
   const project = repo();
   const { app, page, dataDir } = await launchApp(pc.env, undefined, { firstStart: true });
@@ -131,6 +131,7 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
   await expect(setupItem(page, 'claude')).toContainText('not found');
   await expect(setupItem(page, 'find-claude')).toBeVisible();
   await expect(setupItem(page, 'install-claude')).toBeVisible();
+  await expect(setupItem(page, 'install-opencode')).toBeVisible();
   await expect(setupItem(page, 'look-again')).toBeVisible();
   await expect(setupItem(page, 'choose-project')).toHaveCount(0);
 
@@ -148,7 +149,7 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
   await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: fakeClaude } } });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true, bin: fakeClaude } } });
   await app.close();
 });
 
@@ -165,7 +166,8 @@ test('a claude too old says to update', async () => {
   await expect(page.getByTestId('setup')).toContainText(update);
   await expect(setupItem(page, 'look-again')).toBeVisible();
   await expect(setupItem(page, 'find-claude')).toBeVisible();
-  await expect(setupItem(page, 'install-claude')).toHaveCount(0);
+  // With no agent working, the agents block offers both agents' links.
+  await expect(setupItem(page, 'install-opencode')).toBeVisible();
 
   await setupItem(page, 'look-again').click();
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'looking');
@@ -234,11 +236,11 @@ test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
   await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true } } });
   await app.close();
 });
 
-test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and nothing is saved', async () => {
+test('with MAINFRAME_CLAUDE_BIN naming nothing, Find claude… is not offered and nothing is saved', async () => {
   const pc = computer();
   pc.installClaude();
   // A claude is findable, but the variable names the only place looked at.
@@ -248,7 +250,7 @@ test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and n
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
   await expect(page.getByTestId('setup')).toContainText(`MAINFRAME_CLAUDE_BIN is set to ${nowhere}`);
   await expect(setupItem(page, 'look-again')).toBeVisible();
-  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
+  for (const other of ['find-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
   expect(savedSettings(dataDir)).toEqual({});
   await app.close();
 });

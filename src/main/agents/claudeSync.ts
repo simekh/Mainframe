@@ -67,7 +67,7 @@ export function syncSettings(nodeBin: string, allowTools: string[]): string {
 }
 
 /** Writes the run's `--settings` into the project's Todo folder, with `tools` allowed, and returns the run. */
-export function prepareClaudeSync(o: Parameters<SyncAdapter['prepare']>[0]): SyncRunSpec {
+export function prepareClaudeSync(o: Parameters<SyncAdapter['prepare']>[0] & { nodeBin: string }): SyncRunSpec {
   const settingsPath = join(o.dir, 'sync-settings.json');
   try {
     mkdirSync(o.dir, { recursive: true });

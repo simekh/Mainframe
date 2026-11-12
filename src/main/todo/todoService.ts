@@ -14,8 +14,8 @@ const UNASKED = "The sync run answered something Mainframe didn't ask for";
 export interface TodoServiceDeps {
   projectDir: string;
   dataDir: string;
-  /** What an agent's sync guard may run: a real program path. */
-  nodeBin: string;
+  /** What an agent's sync guard may run: a real program path; null when no node was found. */
+  nodeBin: string | null;
   env: Record<string, string>;
   /** The agent the next sync runs on: asked at each sync, so a change in Settings takes effect at the next one. */
   agent(): AgentInUse;

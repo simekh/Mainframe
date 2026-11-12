@@ -10,9 +10,10 @@ export interface Instructions { first: string; again: string; requires: string; 
 /** What a launch adds to the session host's own environment. */
 export interface LaunchArgs { argv: string[]; env?: Record<string, string> }
 
-export interface TaskStart { bin: string; nodeBin: string; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
+/** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
+export interface TaskStart { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
 
-export interface TaskReopen { bin: string; nodeBin: string; taskDir: string; slug: string; sessionId: string; branchExists: boolean; prompt?: string }
+export interface TaskReopen { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; branchExists: boolean; prompt?: string }
 
 /** What settings.json keeps of one agent (Task 4 saves it). */
 export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }
@@ -22,7 +23,7 @@ export interface AgentInUse { adapter: AgentAdapter; bin: string; setting: Agent
 
 export interface ManagerLaunch {
   bin: string;
-  nodeBin: string;
+  nodeBin: string | null;
   env: Record<string, string>;
   /** The manager's folder in the data folder: the adapter writes what the launch reads there. */
   dir: string;
@@ -50,7 +51,7 @@ export interface SyncRunSpec { argv: string[]; cwd: string; env: Record<string, 
 export interface SyncAdapter {
   readonly words: SyncWords;
   /** Writes what the run reads into `dir` (the project's Todo folder) and returns the run. Throws when it can't. */
-  prepare(o: { bin: string; nodeBin: string; dir: string; projectDir: string; env: Record<string, string>; step: SyncStep; tools: string[]; setting: AgentSetting }): SyncRunSpec;
+  prepare(o: { bin: string; nodeBin: string | null; dir: string; projectDir: string; env: Record<string, string>; step: SyncStep; tools: string[]; setting: AgentSetting }): SyncRunSpec;
   prompt(step: SyncStep): string;
   /** The run's answer from what it printed; throws an Error whose message is for the panel. */
   readAnswer(stdout: string, tools: string[]): SyncAnswer;

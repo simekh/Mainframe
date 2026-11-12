@@ -116,6 +116,16 @@ export function managerArgv(o: {
   ];
 }
 
+/** Why a Claude Code launch can't go on without node: the hooks Mainframe writes for it run node, with no shell. */
+export const NODE_NEEDED =
+  'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.';
+
+/** The node a Claude Code launch's hooks run; throws NODE_NEEDED when none was found. */
+function needNode(nodeBin: string | null): string {
+  if (nodeBin === null) throw new Error(NODE_NEEDED);
+  return nodeBin;
+}
+
 /** The file the SessionStart hook writes, in each task's folder and in the manager's. */
 export const SESSION_START_FILE = 'session-start.json';
 
@@ -200,7 +210,7 @@ const MANAGER_ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe_
 
 /** Writes the manager's settings.json and mcp.json into its folder, on every launch: the port and the token change with each run of the app. */
 async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
-  const settingsPath = writeHookSettings(o.dir, o.nodeBin, MANAGER_ALLOWED_TOOLS);
+  const settingsPath = writeHookSettings(o.dir, needNode(o.nodeBin), MANAGER_ALLOWED_TOOLS);
   const mcpConfigPath = join(o.dir, 'mcp.json');
   // Made anew, as the mode is only for a file that is made here; one that was there would keep its own.
   rmSync(mcpConfigPath, { force: true });
@@ -254,7 +264,7 @@ export const claudeAgent: AgentAdapter = {
       slug: o.slug,
       name: o.name,
       claudeSessionId: o.sessionId,
-      settingsPath: writeHookSettings(o.taskDir, o.nodeBin),
+      settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
       ...(o.addDir && { addDir: o.addDir }),
       prompt: o.prompt,
     }),
@@ -264,7 +274,7 @@ export const claudeAgent: AgentAdapter = {
       claudeBin: o.bin,
       slug: o.slug,
       claudeSessionId: o.sessionId,
-      settingsPath: writeHookSettings(o.taskDir, o.nodeBin),
+      settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
       branchExists: o.branchExists,
       prompt: o.prompt,
     }),
@@ -275,7 +285,7 @@ export const claudeAgent: AgentAdapter = {
   managerLaunch: claudeManagerLaunch,
   sync: {
     words: syncWords,
-    prepare: prepareClaudeSync,
+    prepare: (o) => prepareClaudeSync({ ...o, nodeBin: needNode(o.nodeBin) }),
     prompt: (step) => syncPrompt(step, syncWords),
     readAnswer: readSyncAnswer,
     isToolName: isMcpToolName,

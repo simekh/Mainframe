@@ -13,6 +13,7 @@ import {
   hookSettings,
   managerArgv,
   mcpConfigJson,
+  NODE_NEEDED,
   parseClaudeVersion,
   readRecordedSession,
   readSessionStart,
@@ -151,6 +152,23 @@ it('the recorded session is the id SessionStart gave, whether or not Claude Code
 
 it('there is no recorded session while SessionStart has not fired', () => {
   expect(readRecordedSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
+});
+
+it('Claude Code needs Node', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-no-node-'));
+  const claude = ADAPTERS.claude;
+  expect(() => claude.taskStart({ bin: 'claude', nodeBin: null, taskDir: dir, slug: 's', name: 'p-s', sessionId: U, prompt: 'P' })).toThrow(
+    NODE_NEEDED,
+  );
+  await expect(
+    claude.managerLaunch({
+      bin: 'claude', nodeBin: null, env: {}, dir, projectDir: dir, name: 'acme-manager', mcp: { url: 'http://x', token: 't' },
+      rolePrompt: 'ROLE', chat: U, resume: false, setting: {},
+    }),
+  ).rejects.toThrow(NODE_NEEDED);
+  expect(() =>
+    claude.sync.prepare({ bin: 'claude', nodeBin: null, dir, projectDir: dir, env: {}, step: { kind: 'discover' }, tools: [], setting: {} }),
+  ).toThrow(NODE_NEEDED);
 });
 
 const claudeOutput = (version: string) => `${version} (Claude Code)\n`;

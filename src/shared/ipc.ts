@@ -1,4 +1,5 @@
 import type {
+  AgentChoice,
   AgentName,
   ChangedFile,
   ClipboardPaste,
@@ -23,7 +24,7 @@ export const IPC = {
   getSetup: 'setup:get',
   setupChanged: 'setup:changed',
   setupLookAgain: 'setup:look-again',
-  setupFindClaude: 'setup:find-claude',
+  setupFindAgent: 'setup:find-agent',
   setupChooseProject: 'setup:choose-project',
   listProjects: 'projects:list',
   openProject: 'projects:open',
@@ -74,7 +75,7 @@ export interface MainframeApi {
   platform: NodeJS.Platform;
   getConfig(): Promise<RendererConfig>;
   /**
-   * The setup screen to show, once main has checked git and claude: null when none is needed, which
+   * The setup screen to show, once main has checked git and the agents: null when none is needed, which
    * also means the projects have started. The project calls below are answered only from then on.
    */
   getSetup(): Promise<SetupView | null>;
@@ -82,10 +83,10 @@ export interface MainframeApi {
   onSetup(cb: (view: SetupView | null) => void): () => void;
   /** Checks again what was not found. Rejects when Mainframe can't start, and main then says why and ends the app. */
   setupLookAgain(): Promise<void>;
-  /** Asks for a claude file, and uses it if it works. Not offered when MAINFRAME_CLAUDE_BIN names the claude. */
-  setupFindClaude(): Promise<void>;
-  /** Asks for the first project's folder and starts Mainframe on it. */
-  setupChooseProject(): Promise<void>;
+  /** Asks for the agent's program file, and uses it if it works. Not offered while the agent's env var names it. */
+  setupFindAgent(name: AgentName): Promise<void>;
+  /** Asks for the first project's folder and starts Mainframe on it with this choice of agents; rejects a choice that can't be used. */
+  setupChooseProject(choice: AgentChoice): Promise<void>;
   /** The open projects, in the order the owner opened them. */
   listProjects(): Promise<ProjectView[]>;
   /** Asks for a folder and opens it as a project; main says why when it can't. */
@@ -98,7 +99,7 @@ export interface MainframeApi {
   onShowProject(cb: (dir: string) => void): () => void;
   listTasks(dir: string): Promise<TaskView[]>;
   startCheck(dir: string): Promise<StartCheck | null>;
-  /** Without `agent`, the task runs on Claude Code. */
+  /** Without `agent`, the task runs on the default agent. */
   startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;
   closeTask(dir: string, taskId: string): void;

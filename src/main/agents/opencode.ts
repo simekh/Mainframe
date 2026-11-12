@@ -48,11 +48,11 @@ export function opencodePlaces(lookup: ExecutableLookup): string[] {
   return [...new Set(places.filter((place) => place !== null))];
 }
 
-/** Like `findClaude`, with no saved paths: `fromEnv` (MAINFRAME_OPENCODE_BIN) alone when set, else `opencodePlaces`. */
-export async function findOpencode(o: { fromEnv?: string; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
+/** Like `findClaude`: `fromEnv` (MAINFRAME_OPENCODE_BIN) alone when set, else the saved paths in order, then `opencodePlaces`. */
+export async function findOpencode(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
   if (o.fromEnv) return checkOpencode(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
   const failures: ProgramCheck[] = [];
-  for (const path of opencodePlaces(o.lookup)) {
+  for (const path of new Set([...(o.saved ?? []), ...opencodePlaces(o.lookup)])) {
     const check = await checkOpencode(path, o.run, o.lookup.files);
     if (check.state === 'found') return check;
     failures.push(check);

@@ -1,60 +1,83 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_CLAUDE_VERSION, type ProgramCheck, type SetupView } from '../../../shared/types';
-import { buttonLabel, checkLine, explanations, intro, type SetupButton } from './setupCopy';
+import { MIN_CLAUDE_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type ProgramCheck, type SetupView } from '../../../shared/types';
+import { agentStep, buttonLabel, checkLine, explanations, intro, type SetupButton } from './setupCopy';
 
 const found = (path: string, version: string): ProgramCheck => ({ state: 'found', path, version });
+const missing: ProgramCheck = { state: 'missing' };
 
-/** A view where everything is found; each test changes what it is about. */
-const view = (over: Partial<SetupView> = {}): SetupView => ({
-  intro: 'welcome',
-  git: found('/usr/bin/git', '2.56.0'),
-  claude: found('/home/me/.local/bin/claude', '2.1.319'),
-  claudeFromEnv: false,
-  lookedAgain: false,
-  askProject: false,
-  ...over,
-});
+interface Over extends Partial<Omit<SetupView, 'agents'>> {
+  claude?: ProgramCheck;
+  claudeFromEnv?: boolean;
+  opencode?: ProgramCheck;
+  opencodeFromEnv?: boolean;
+}
 
-const blocks = (over: Partial<SetupView>, platform: NodeJS.Platform = 'linux') => explanations(view(over), platform);
-const buttonsOf = (over: Partial<SetupView>) => blocks(over).map((b) => b.buttons);
+/** A view where git and Claude Code are found and OpenCode is not; each test changes what it is about. */
+const view = (over: Over = {}): SetupView => {
+  const { claude = found('/home/me/.local/bin/claude', '2.1.319'), claudeFromEnv = false, opencode = missing, opencodeFromEnv = false, ...rest } = over;
+  return {
+    intro: 'welcome',
+    git: found('/usr/bin/git', '2.56.0'),
+    agents: { claude: { check: claude, fromEnv: claudeFromEnv }, opencode: { check: opencode, fromEnv: opencodeFromEnv } },
+    lookedAgain: false,
+    ask: null,
+    ...rest,
+  };
+};
+
+const blocks = (over: Over, platform: NodeJS.Platform = 'linux') => explanations(view(over), platform);
+const buttonsOf = (over: Over) => blocks(over).map((b) => b.buttons);
 
 const NEW_TERMINAL =
   'Just installed it? A program installed after Mainframe started is often invisible to it: close Mainframe, open a new terminal and run npm start again.';
+const NONE = "I need a coding agent to run your tasks, Claude Code or OpenCode, and I couldn't use either.";
+const ASK = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
+const CLAUDE_NOWHERE = "Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.";
+const OPENCODE_NOWHERE = "I looked on your PATH and in ~/.opencode/bin, and OpenCode wasn't in either.";
+const ALL_BUTTONS: SetupButton[] = ['find-claude', 'install-claude', 'find-opencode', 'install-opencode', 'look-again'];
 
 describe('checkLine', () => {
   it('says what a found git is', () => {
-    expect(checkLine('git', found('/usr/bin/git', '2.56.0'))).toBe('found  git 2.56.0  ✓');
+    expect(checkLine('git', found('/usr/bin/git', '2.56.0'), false)).toBe('found  git 2.56.0  ✓');
   });
 
-  it('says where a found claude is and which version, in full', () => {
-    expect(checkLine('claude', found('C:\\Users\\me\\.local\\bin\\claude.exe', '2.1.319'))).toBe(
+  it('says where a found agent is and which version, in full', () => {
+    expect(checkLine('claude', found('C:\\Users\\me\\.local\\bin\\claude.exe', '2.1.319'), false)).toBe(
       'found  C:\\Users\\me\\.local\\bin\\claude.exe · v2.1.319  ✓',
+    );
+    expect(checkLine('opencode', found('/home/me/.opencode/bin/opencode', '2.2.7'), true)).toBe(
+      'found  /home/me/.opencode/bin/opencode · v2.2.7  ✓',
     );
   });
 
   it('says it is looking while a new look runs', () => {
-    expect(checkLine('git', 'looking')).toBe('looking…');
-    expect(checkLine('claude', 'looking')).toBe('looking…');
+    expect(checkLine('git', 'looking', false)).toBe('looking…');
+    expect(checkLine('claude', 'looking', true)).toBe('looking…');
   });
 
   it('says a program that is nowhere is not found', () => {
-    expect(checkLine('git', { state: 'missing' })).toBe('not found  ✗');
-    expect(checkLine('claude', { state: 'missing' })).toBe('not found  ✗');
+    expect(checkLine('git', missing, false)).toBe('not found  ✗');
+    expect(checkLine('claude', missing, false)).toBe('not found  ✗');
   });
 
   it('says a file that was picked and is no program, with its path', () => {
-    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' })).toBe("/opt/claude isn't a program I can run  ✗");
+    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' }, false)).toBe("/opt/claude isn't a program I can run  ✗");
   });
 
-  it('says a claude that is too old, with its path and version', () => {
-    expect(checkLine('claude', { state: 'too-old', path: '/opt/claude', version: '2.0.1' })).toBe(
-      '/opt/claude · v2.0.1, too old  ✗',
-    );
+  it('says an agent that is too old, with its path and version', () => {
+    expect(checkLine('claude', { state: 'too-old', path: '/opt/claude', version: '2.0.1' }, false)).toBe('/opt/claude · v2.0.1, too old  ✗');
   });
 
   it("says a program that doesn't run, with its path", () => {
-    expect(checkLine('git', { state: 'broken', path: '/usr/bin/git' })).toBe("/usr/bin/git doesn't run  ✗");
-    expect(checkLine('claude', { state: 'broken', path: '/opt/claude' })).toBe("/opt/claude doesn't run  ✗");
+    expect(checkLine('git', { state: 'broken', path: '/usr/bin/git' }, false)).toBe("/usr/bin/git doesn't run  ✗");
+    expect(checkLine('claude', { state: 'broken', path: '/opt/claude' }, false)).toBe("/opt/claude doesn't run  ✗");
+  });
+
+  it('says a failing agent quietly while another works: no path and no ✗', () => {
+    expect(checkLine('claude', missing, true)).toBe('not found');
+    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' }, true)).toBe('not found');
+    expect(checkLine('opencode', { state: 'too-old', path: '/opt/opencode', version: '1.18.35' }, true)).toBe('v1.18.35, too old');
+    expect(checkLine('opencode', { state: 'broken', path: '/opt/opencode' }, true)).toBe("doesn't run");
   });
 });
 
@@ -67,10 +90,16 @@ describe('intro', () => {
     );
     expect(lines.slice(1).map((l) => l.text)).toEqual([
       "Hi, I'm Mainframe.",
-      "I keep a whole crew of Claude Code sessions busy at once, each on its own task in its own git worktree, and I only tap you on the shoulder when one of them needs you.",
+      "I keep a whole crew of coding agent sessions busy at once, each on its own task in its own git worktree, and I only tap you on the shoulder when one of them needs you.",
       "Before we get going, I'm going to have a quick look around this computer.",
     ]);
     expect(lines[3].aside).toBe("(Nothing leaves it. I'm just checking what's installed.)");
+  });
+
+  it('names no agent in the welcome', () => {
+    const text = intro(view({ intro: 'welcome' })).map((l) => l.text).join('\n');
+    expect(text).toContain('coding agent sessions');
+    expect(text).not.toContain('Claude Code');
   });
 
   it('is one line at any later start', () => {
@@ -85,11 +114,14 @@ describe('buttonLabel', () => {
     expect(buttonLabel('find-claude', 'win32')).toBe('Find claude.exe…');
     expect(buttonLabel('find-claude', 'darwin')).toBe('Find claude…');
     expect(buttonLabel('find-claude', 'linux')).toBe('Find claude…');
+    expect(buttonLabel('find-opencode', 'win32')).toBe('Find opencode.exe…');
+    expect(buttonLabel('find-opencode', 'darwin')).toBe('Find opencode…');
   });
 
   it('labels the others the same everywhere', () => {
-    const labels: Record<Exclude<SetupButton, 'find-claude'>, string> = {
-      'install-claude': 'How to install ↗',
+    const labels: Record<Exclude<SetupButton, 'find-claude' | 'find-opencode'>, string> = {
+      'install-claude': 'How to install Claude Code ↗',
+      'install-opencode': 'How to install OpenCode ↗',
       'install-git': 'How to install git ↗',
       'look-again': 'Look again',
       'choose-project': 'Choose a folder…',
@@ -107,7 +139,7 @@ describe('explanations', () => {
   });
 
   it('asks which project to start with, once everything is found', () => {
-    expect(blocks({ askProject: true })).toEqual([
+    expect(blocks({ ask: { ticked: ['claude'], defaultAgent: 'claude' } })).toEqual([
       {
         check: 'project',
         lines: ['All here. Last thing: which project should we start with?', "Any folder that's a git repository. You can open more later."],
@@ -118,12 +150,17 @@ describe('explanations', () => {
   });
 
   it('asks about the project only when nothing is missing', () => {
-    expect(blocks({ askProject: true, git: { state: 'missing' } }).map((b) => b.check)).toEqual(['git']);
+    expect(blocks({ ask: { ticked: ['claude'], defaultAgent: 'claude' }, git: missing }).map((b) => b.check)).toEqual(['git']);
+  });
+
+  it('has no agents block while one agent works', () => {
+    expect(blocks({ claude: missing, opencode: found('/o', '2.2.7') })).toEqual([]);
+    expect(blocks({ claude: { state: 'too-old', path: '/c', version: '2.0.1' } , opencode: found('/o', '2.2.7') })).toEqual([]);
   });
 
   describe('git', () => {
     it('is missing: asks to install it', () => {
-      expect(blocks({ git: { state: 'missing' } })).toEqual([
+      expect(blocks({ git: missing })).toEqual([
         {
           check: 'git',
           lines: [
@@ -156,101 +193,88 @@ describe('explanations', () => {
     });
   });
 
-  describe('claude missing', () => {
-    const ASK = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
+  describe('no agent works', () => {
+    it('gives one agents block: why, each agent in turn, and the five buttons', () => {
+      expect(blocks({ claude: missing })).toEqual([
+        { check: 'agents', lines: [NONE, CLAUDE_NOWHERE, OPENCODE_NOWHERE, ASK], buttons: ALL_BUTTONS },
+      ]);
+    });
 
-    it('on Windows: names the three places looked in', () => {
-      expect(blocks({ claude: { state: 'missing' } }, 'win32')).toEqual([
-        {
-          check: 'claude',
-          lines: [
-            "Hmm. I looked on your PATH, in %USERPROFILE%\\.local\\bin and in npm's global folder, and Claude Code wasn't in any of them.",
-            ASK,
-          ],
-          buttons: ['find-claude', 'install-claude', 'look-again'],
-        },
+    it('on Windows: names the places looked in there', () => {
+      expect(blocks({ claude: missing }, 'win32')[0].lines).toEqual([
+        NONE,
+        "Hmm. I looked on your PATH, in %USERPROFILE%\\.local\\bin and in npm's global folder, and Claude Code wasn't in any of them.",
+        "I looked on your PATH and in %USERPROFILE%\\.opencode\\bin, and OpenCode wasn't in either.",
+        ASK,
       ]);
     });
 
     it("after a file was picked that can't be run: says which file, in place of the places looked in", () => {
-      for (const platform of ['darwin', 'linux', 'win32'] as const) {
-        expect(blocks({ claude: { state: 'missing', path: '/opt/claude' } }, platform)).toEqual([
-          {
-            check: 'claude',
-            lines: ["/opt/claude isn't a program I can run.", ASK],
-            buttons: ['find-claude', 'install-claude', 'look-again'],
-          },
-        ]);
-      }
+      expect(blocks({ claude: { state: 'missing', path: '/opt/claude' }, opencode: { state: 'missing', path: '/opt/opencode' } })[0].lines).toEqual([
+        NONE,
+        "/opt/claude isn't a program I can run.",
+        "/opt/opencode isn't a program I can run.",
+        ASK,
+      ]);
     });
 
-    it('on macOS and Linux: names the two places looked in', () => {
-      for (const platform of ['darwin', 'linux'] as const) {
-        expect(blocks({ claude: { state: 'missing' } }, platform)).toEqual([
-          {
-            check: 'claude',
-            lines: ["Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.", ASK],
-            buttons: ['find-claude', 'install-claude', 'look-again'],
-          },
-        ]);
-      }
-    });
-  });
-
-  it('claude too old: asks to update it, and offers another file second', () => {
-    expect(blocks({ claude: { state: 'too-old', path: '/opt/claude', version: '2.0.1' } })).toEqual([
-      {
-        check: 'claude',
-        lines: [`This Claude Code is v2.0.1, and I need v${MIN_CLAUDE_VERSION} or newer. Run claude update in a terminal, then I'll look again.`],
-        buttons: ['look-again', 'find-claude'],
-      },
-    ]);
-  });
-
-  describe('claude broken', () => {
-    const broken: ProgramCheck = { state: 'broken', path: '/opt/claude' };
-
-    it("on macOS and Linux: says it didn't tell its version", () => {
-      for (const platform of ['darwin', 'linux'] as const) {
-        expect(blocks({ claude: broken }, platform)).toEqual([
-          {
-            check: 'claude',
-            lines: ["/opt/claude is there, but it didn't tell me its version."],
-            buttons: ['find-claude', 'install-claude', 'look-again'],
-          },
-        ]);
-      }
+    it('too old: asks to update each, and asks nothing more when none is missing', () => {
+      const result = blocks({
+        claude: { state: 'too-old', path: '/opt/claude', version: '2.0.1' },
+        opencode: { state: 'too-old', path: '/opt/opencode', version: '1.18.35' },
+      });
+      expect(result).toEqual([
+        {
+          check: 'agents',
+          lines: [
+            NONE,
+            `This Claude Code is v2.0.1, and I need v${MIN_CLAUDE_VERSION} or newer. Run claude update in a terminal, then I'll look again.`,
+            `This OpenCode is v1.18.35, and I need v${MIN_OPENCODE_VERSION} or newer. Run opencode upgrade in a terminal, then I'll look again.`,
+          ],
+          buttons: ALL_BUTTONS,
+        },
+      ]);
     });
 
-    it("on Windows: adds why an npm launcher doesn't work", () => {
-      expect(blocks({ claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' } }, 'win32')[0].lines).toEqual([
+    it("broken: says it didn't tell its version, and on Windows why an npm launcher doesn't work", () => {
+      const broken = { claude: { state: 'broken', path: '/opt/claude' }, opencode: { state: 'broken', path: '/opt/opencode' } } as const;
+      expect(blocks(broken, 'darwin')[0].lines).toEqual([
+        NONE,
+        "/opt/claude is there, but it didn't tell me its version.",
+        "/opt/opencode is there, but it didn't tell me its version.",
+      ]);
+      expect(blocks({ ...broken, claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' } }, 'win32')[0].lines).toEqual([
+        NONE,
         "C:\\npm\\claude.cmd is there, but it didn't tell me its version.",
         "If Claude Code came from npm, its launcher can't run on its own; Anthropic's native installer gives me a claude.exe I can use.",
+        "/opt/opencode is there, but it didn't tell me its version.",
       ]);
     });
-  });
 
-  describe('claude from MAINFRAME_CLAUDE_BIN', () => {
-    const fromEnv = (claude: ProgramCheck) => blocks({ claudeFromEnv: true, claude });
-    const SET = "MAINFRAME_CLAUDE_BIN is set to /opt/claude, so that's the only place I look.";
-    const CHANGE = 'Change it or unset it, then start Mainframe again.';
-
-    it('names the variable, says why the file is no good, and offers only Look again', () => {
-      expect(fromEnv({ state: 'missing', path: '/opt/claude' })).toEqual([
-        { check: 'claude', lines: [SET, "There's nothing there I can run.", CHANGE], buttons: ['look-again'] },
+    it("names an agent's env var, says why its file is no good, and leaves out its Find button", () => {
+      const SET = "MAINFRAME_CLAUDE_BIN is set to /opt/claude, so that's the only place I look.";
+      const CHANGE = 'Change it or unset it, then start Mainframe again.';
+      const fromEnv = (claude: ProgramCheck) => blocks({ claudeFromEnv: true, claude })[0];
+      expect(fromEnv({ state: 'missing', path: '/opt/claude' })).toEqual({
+        check: 'agents',
+        lines: [NONE, SET, "There's nothing there I can run.", CHANGE, OPENCODE_NOWHERE, ASK],
+        buttons: ['install-claude', 'find-opencode', 'install-opencode', 'look-again'],
+      });
+      expect(fromEnv({ state: 'too-old', path: '/opt/claude', version: '2.0.1' }).lines.slice(1, 4)).toEqual([
+        SET,
+        `It's v2.0.1, and I need v${MIN_CLAUDE_VERSION} or newer.`,
+        CHANGE,
       ]);
-      expect(fromEnv({ state: 'too-old', path: '/opt/claude', version: '2.0.1' })).toEqual([
-        { check: 'claude', lines: [SET, `It's v2.0.1, and I need v${MIN_CLAUDE_VERSION} or newer.`, CHANGE], buttons: ['look-again'] },
-      ]);
-      expect(fromEnv({ state: 'broken', path: '/opt/claude' })).toEqual([
-        { check: 'claude', lines: [SET, "It's there, but it didn't tell me its version.", CHANGE], buttons: ['look-again'] },
-      ]);
+      expect(fromEnv({ state: 'broken', path: '/opt/claude' }).lines.slice(1, 4)).toEqual([SET, "It's there, but it didn't tell me its version.", CHANGE]);
+      expect(
+        blocks({ claude: missing, opencodeFromEnv: true, opencode: { state: 'missing', path: '/opt/opencode' } })[0].lines.slice(2, 5),
+      ).toEqual(["MAINFRAME_OPENCODE_BIN is set to /opt/opencode, so that's the only place I look.", "There's nothing there I can run.", CHANGE]);
     });
   });
 
   describe('looked again', () => {
     it('adds the new-terminal hint after a git that is still missing, before the buttons', () => {
-      expect(blocks({ lookedAgain: true, git: { state: 'missing' } })).toEqual([
+      expect(blocks({ lookedAgain: true, git: missing })).toEqual([
         {
           check: 'git',
           lines: [expect.stringContaining("I couldn't find git"), NEW_TERMINAL],
@@ -259,67 +283,91 @@ describe('explanations', () => {
       ]);
     });
 
-    it('adds it after a claude that is still missing', () => {
-      const [block] = blocks({ lookedAgain: true, claude: { state: 'missing' } });
+    it('adds it after agents that are still missing', () => {
+      const [block] = blocks({ lookedAgain: true, claude: missing });
       expect(block.lines.at(-1)).toBe(NEW_TERMINAL);
-      expect(block.buttons).toEqual(['find-claude', 'install-claude', 'look-again']);
+      expect(block.buttons).toEqual(ALL_BUTTONS);
     });
 
-    it('adds it once, to the last block, when both are missing', () => {
-      const result = blocks({ lookedAgain: true, git: { state: 'missing' }, claude: { state: 'missing' } });
-      expect(result.map((b) => b.check)).toEqual(['git', 'claude']);
+    it('adds it once, to the last block, when git and the agents are missing', () => {
+      const result = blocks({ lookedAgain: true, git: missing, claude: missing });
+      expect(result.map((b) => b.check)).toEqual(['git', 'agents']);
       expect(result[0].lines).not.toContain(NEW_TERMINAL);
       expect(result[1].lines.at(-1)).toBe(NEW_TERMINAL);
     });
 
-    it('puts it in the last block even when that block is a claude that is only too old', () => {
+    it('puts it in the last block even when that block has agents that are only too old', () => {
       const result = blocks({
         lookedAgain: true,
-        git: { state: 'missing' },
+        git: missing,
         claude: { state: 'too-old', path: '/opt/claude', version: '2.0.1' },
+        opencode: { state: 'broken', path: '/opt/opencode' },
       });
       expect(result[0].lines).not.toContain(NEW_TERMINAL);
       expect(result[1].lines.at(-1)).toBe(NEW_TERMINAL);
     });
 
-    it("is left out when nothing is missing: git that doesn't run, claude too old or broken", () => {
+    it("is left out when nothing is missing: git that doesn't run, agents too old or broken", () => {
       expect(blocks({ lookedAgain: true, git: { state: 'broken', path: '/usr/bin/git' } })[0].lines).not.toContain(NEW_TERMINAL);
-      expect(blocks({ lookedAgain: true, claude: { state: 'too-old', path: '/p', version: '2.0.1' } })[0].lines).not.toContain(NEW_TERMINAL);
-      expect(blocks({ lookedAgain: true, claude: { state: 'broken', path: '/p' } })[0].lines).not.toContain(NEW_TERMINAL);
+      const oldOrBroken = { claude: { state: 'too-old', path: '/p', version: '2.0.1' }, opencode: { state: 'broken', path: '/q' } } as const;
+      expect(blocks({ lookedAgain: true, ...oldOrBroken })[0].lines).not.toContain(NEW_TERMINAL);
     });
 
-    it('is left out for a claude from MAINFRAME_CLAUDE_BIN: a new terminal changes nothing there', () => {
-      const [block] = blocks({ lookedAgain: true, claudeFromEnv: true, claude: { state: 'missing', path: '/opt/claude' } });
+    it('is left out for agents from their env vars: a new terminal changes nothing there', () => {
+      const [block] = blocks({
+        lookedAgain: true,
+        claudeFromEnv: true,
+        claude: { state: 'missing', path: '/opt/claude' },
+        opencodeFromEnv: true,
+        opencode: { state: 'missing', path: '/opt/opencode' },
+      });
       expect(block.lines).not.toContain(NEW_TERMINAL);
     });
 
     it('is not there before the first look again', () => {
-      expect(blocks({ git: { state: 'missing' } })[0].lines).not.toContain(NEW_TERMINAL);
+      expect(blocks({ git: missing })[0].lines).not.toContain(NEW_TERMINAL);
     });
   });
 
-  describe('git and claude both failing', () => {
+  describe('git and the agents both failing', () => {
     it("gives two blocks, git's first, with Look again only in the second", () => {
-      expect(buttonsOf({ git: { state: 'missing' }, claude: { state: 'missing' } })).toEqual([
-        ['install-git'],
-        ['find-claude', 'install-claude', 'look-again'],
-      ]);
-      expect(blocks({ git: { state: 'missing' }, claude: { state: 'missing' } }).map((b) => b.check)).toEqual(['git', 'claude']);
-    });
-
-    it('keeps each block first button its primary one', () => {
-      const result = blocks({ git: { state: 'broken', path: '/g' }, claude: { state: 'too-old', path: '/c', version: '2.0.1' } });
-      expect(result.map((b) => b.buttons[0])).toEqual(['install-git', 'look-again']);
-    });
-
-    it('gives Look again alone for a git that fails beside a claude from MAINFRAME_CLAUDE_BIN', () => {
-      expect(
-        buttonsOf({ git: { state: 'missing' }, claudeFromEnv: true, claude: { state: 'missing', path: '/opt/claude' } }),
-      ).toEqual([['install-git'], ['look-again']]);
+      expect(buttonsOf({ git: missing, claude: missing })).toEqual([['install-git'], ALL_BUTTONS]);
     });
   });
 
   it('puts Look again with the git block alone when only git fails', () => {
-    expect(buttonsOf({ git: { state: 'missing' } })).toEqual([['install-git', 'look-again']]);
+    expect(buttonsOf({ git: missing })).toEqual([['install-git', 'look-again']]);
+  });
+});
+
+describe('agentStep', () => {
+  const both: Over = { opencode: found('/home/me/.opencode/bin/opencode', '2.2.7') };
+  const step = (over: Over, choice: AgentChoice) => agentStep(view(over), choice);
+
+  it('gives a row per agent, ticked as the choice says, with its version', () => {
+    expect(step(both, { ticked: ['claude', 'opencode'], defaultAgent: 'claude' }).rows).toEqual([
+      { name: 'claude', works: true, ticked: true, version: '2.1.319', buttons: [] },
+      { name: 'opencode', works: true, ticked: true, version: '2.2.7', buttons: [] },
+    ]);
+  });
+
+  it('asks for the default, and says the New task box can still pick the other, only with two ticked', () => {
+    const two = step(both, { ticked: ['claude', 'opencode'], defaultAgent: 'claude' });
+    expect(two.showDefault).toBe(true);
+    expect(two.hint).toBe('You can still pick the other one for a single task in the New task box. All of this can be changed in Settings later.');
+    const one = step(both, { ticked: ['opencode'], defaultAgent: 'opencode' });
+    expect(one.showDefault).toBe(false);
+    expect(one.hint).toBe('OpenCode runs everything: the manager, the Todo sync and your tasks. Settings can change this later.');
+  });
+
+  it("offers How to install and Find on a row that doesn't work, and Find only while no env var names it", () => {
+    const choice: AgentChoice = { ticked: ['opencode'], defaultAgent: 'opencode' };
+    expect(step({ ...both, claude: missing }, choice).rows[0]).toEqual({
+      name: 'claude',
+      works: false,
+      ticked: false,
+      buttons: ['install-claude', 'find-claude'],
+    });
+    expect(step({ ...both, claude: missing, claudeFromEnv: true }, choice).rows[0].buttons).toEqual(['install-claude']);
   });
 });

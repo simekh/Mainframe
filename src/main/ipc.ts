@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { AgentName, ProgramCheck, RendererConfig, TodoItemRef, TodoNoteDraft } from '../shared/types';
+import { AGENT_ORDER, type AgentChoice, type AgentName, type ProgramCheck, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -9,6 +9,15 @@ import type { SessionHost } from './pty/sessionHost';
 import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
+
+const isAgent = (name: unknown): name is AgentName => AGENT_ORDER.includes(name as AgentName);
+
+/** The page's choice of agents, with only names in AGENT_ORDER; anything else is refused. */
+function agentChoice(raw: unknown): AgentChoice {
+  const { ticked, defaultAgent } = (raw ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(ticked) || !ticked.every(isAgent) || !isAgent(defaultAgent)) throw new Error("That choice of agents can't be used");
+  return { ticked, defaultAgent };
+}
 
 export interface ClipboardDeps {
   /** Electron's clipboard: a paste reads it, and a terminal's copy keys write it. */
@@ -44,7 +53,7 @@ export function registerSetupIpc(
     return flow.view();
   });
   // The screen would wait for an answer that never comes, so a failure is told and ends the app; the page's invoke still rejects.
-  const action = (run: () => Promise<void>) => async () => {
+  const action = async (run: () => Promise<void>) => {
     try {
       await run();
     } catch (err) {
@@ -52,9 +61,9 @@ export function registerSetupIpc(
       throw err;
     }
   };
-  ipcMain.handle(IPC.setupLookAgain, action(() => flow.lookAgain()));
-  ipcMain.handle(IPC.setupFindClaude, action(() => flow.findClaude()));
-  ipcMain.handle(IPC.setupChooseProject, action(() => flow.chooseProject()));
+  ipcMain.handle(IPC.setupLookAgain, () => action(() => flow.lookAgain()));
+  ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgent(name) ? action(() => flow.findAgent(name)) : undefined));
+  ipcMain.handle(IPC.setupChooseProject, (_e, choice: unknown) => action(() => flow.chooseProject(agentChoice(choice))));
 }
 
 export function registerIpc(
@@ -65,7 +74,7 @@ export function registerIpc(
   openPicked: () => Promise<void>,
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
-  /** What the start finds of the agents besides Claude Code. */
+  /** What the start found of the agents besides Claude Code. */
   agentChecks: Promise<{ opencode: ProgramCheck }>,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
@@ -87,8 +96,8 @@ export function registerIpc(
   // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,
-    (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: AgentName }) =>
-      tasksOf(dir).start({ title, description, noQuestions, agent: agent === 'opencode' ? 'opencode' : 'claude' }),
+    (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: unknown }) =>
+      tasksOf(dir).start({ title, description, noQuestions, ...(isAgent(agent) && { agent }) }),
   );
   ipcMain.handle(IPC.agentChecks, () => agentChecks);
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));

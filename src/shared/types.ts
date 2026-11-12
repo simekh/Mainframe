@@ -69,7 +69,7 @@ export const AGENT_ORDER: readonly AgentName[] = ['claude', 'opencode'];
 
 export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
 
-/** What looking for a program Mainframe needs (git, claude) found. */
+/** What looking for a program Mainframe needs (git, an agent) found. */
 type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
 
 export type ProgramCheck = {
@@ -79,18 +79,23 @@ export type ProgramCheck = {
   version?: string;
 } & ({ state: 'found'; path: string } | { state: Exclude<CheckState, 'found'> });
 
+/** Which agents Mainframe uses, and the one the manager, the Todo sync and new tasks run on. */
+export interface AgentChoice {
+  ticked: AgentName[];
+  defaultAgent: AgentName;
+}
+
 /** What the setup screen shows. The main process publishes a new one at every step, and `null` once the board can appear. */
 export interface SetupView {
   /** The welcome at a true first start; "something moved" at any later start. */
   intro: 'welcome' | 'moved';
   git: ProgramCheck;
-  claude: ProgramCheck;
-  /** MAINFRAME_CLAUDE_BIN names the claude, so it is the only place looked at and nothing is saved. */
-  claudeFromEnv: boolean;
+  /** `fromEnv`: the agent's env var (MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN) names it, so it is the only place looked at and nothing is saved. */
+  agents: Record<AgentName, { check: ProgramCheck; fromEnv: boolean }>;
   /** The user asked to look again and something is still missing: a fresh install may need a new terminal. */
   lookedAgain: boolean;
-  /** Everything is found, and a first project is the next question. */
-  askProject: boolean;
+  /** Everything needed is found at a first start: the agents step and the project question, starting from this choice. */
+  ask: AgentChoice | null;
 }
 
 export interface StartCheck {

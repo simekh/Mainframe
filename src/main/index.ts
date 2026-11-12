@@ -5,6 +5,7 @@ import os from 'node:os';
 import { basename, join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
 import { IPC } from '../shared/ipc';
+import { AGENT_NAMES, type AgentName } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { editMenuItems } from './contextMenu';
@@ -19,8 +20,8 @@ import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
-import { ADAPTERS } from './agents/adapters';
-import { findOpencode } from './agents/opencode';
+import { NODE_NEEDED } from './agents/claude';
+import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
 import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
@@ -118,11 +119,11 @@ const pickProjectFolder = (win: BrowserWindow) =>
 /**
  * On Windows only `.exe` files are offered: Mainframe runs nothing else there. A symlink is kept as
  * picked (macOS would give its target, and the target of a Homebrew one changes at every upgrade),
- * and hidden folders, where a package manager may have put claude, are shown (macOS and Windows).
+ * and hidden folders, where a package manager may have put the agent, are shown (macOS and Windows).
  */
-const pickClaude = (win: BrowserWindow) =>
+const pickAgent = (win: BrowserWindow, name: AgentName) =>
   pickPath(win, {
-    title: 'Find Claude Code',
+    title: `Find ${AGENT_NAMES[name]}`,
     buttonLabel: 'Use this',
     properties: ['openFile', 'noResolveAliases', 'showHiddenFiles'],
     filters: process.platform === 'win32' ? [{ name: 'Programs', extensions: ['exe'] }] : undefined,
@@ -136,19 +137,12 @@ const lookupIn = (env: Record<string, string>): ExecutableLookup => ({
 });
 
 /**
- * The environment every session and sync run gets, and where node is in it, looked up once at
- * start. Node not found, Mainframe can't start: the hooks it writes for Claude Code run node, with
- * no shell. Claude is the setup's to find; the projects start with the path it settles on.
+ * The environment every session and sync run gets, and where node is in it (null when it isn't), looked up once at
+ * start. The agents are the setup's to find; the projects start with what it settles on.
  */
-function findPrograms(): { env: Record<string, string>; nodeBin: string } {
+function findPrograms(): { env: Record<string, string>; nodeBin: string | null } {
   const env = buildSpawnEnv(process.env, process.platform);
-  const nodeBin = findExecutable('node', lookupIn(env));
-  if (nodeBin === null) {
-    throw new Error(
-      'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.',
-    );
-  }
-  return { env, nodeBin };
+  return { env, nodeBin: findExecutable('node', lookupIn(env)) };
 }
 
 /** Sends to the window, unless it has gone: exits and setup answers keep arriving while the app quits. */
@@ -168,19 +162,19 @@ function onQuitBegins(win: BrowserWindow, onBegin: () => void): void {
 }
 
 /**
- * Starts the projects in the window, once the setup has a claude that works. Throws when Mainframe
- * can't start; a project that can't open is said and left out.
+ * Starts the projects in the window, once the setup has an agent that works. `agents` is shared by every project.
+ * Throws when Mainframe can't start; a project that can't open is said and left out.
  */
 async function start(
   config: AppConfig,
-  programs: ReturnType<typeof findPrograms> & { claudeBin: string },
+  programs: ReturnType<typeof findPrograms>,
+  agents: AgentsInUse,
   projectDirs: string[],
   win: BrowserWindow,
 ): Promise<void> {
-  // Looked for once, while the rest of the start goes on: OpenCode is optional, and a task picks it only when it was found.
-  const agentChecks = findOpencode({ fromEnv: config.opencodeBin, lookup: lookupIn(programs.env), run: runVersion(programs.env) }).then(
-    (opencode) => ({ opencode }),
-  );
+  // The hooks Mainframe writes for Claude Code run node, with no shell; nothing else needs it.
+  if (agents.ticked().includes('claude') && programs.nodeBin === null) throw new Error(NODE_NEEDED);
+  const agentChecks = Promise.resolve({ opencode: agents.check('opencode') });
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
@@ -251,8 +245,7 @@ async function start(
       projectDir: dir,
       dataDir: config.dataDir,
       records,
-      claudeBin: programs.claudeBin,
-      opencodeBin,
+      agents,
       nodeBin: programs.nodeBin,
       platform: process.platform,
       git: gitQueries,
@@ -266,7 +259,7 @@ async function start(
       nodeBin: programs.nodeBin,
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
       env: programs.env,
-      agent: () => ({ adapter: ADAPTERS.claude, bin: programs.claudeBin, setting: {} }),
+      agent: () => agents.inUse(),
       startTask: (req) => service.start(req),
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
@@ -278,7 +271,7 @@ async function start(
       nodeBin: programs.nodeBin,
       env: programs.env,
       mcp: { url: mcp.url, token: mcp.token },
-      agent: () => ({ adapter: ADAPTERS.claude, bin: programs.claudeBin, setting: {} }),
+      agent: () => agents.inUse(),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });
     const project: Project = {
@@ -324,10 +317,6 @@ async function start(
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
     agentChecks,
   );
-  // The projects' task services are handed the opencode found.
-  const { opencode } = await agentChecks;
-  const opencodeBin = opencode.state === 'found' ? opencode.path : null;
-
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
@@ -345,7 +334,7 @@ function failStart(err: unknown): void {
 
 /**
  * Start-up, in order: the window opens first, so the setup can show in it; the setup then checks
- * git and claude and starts the projects once both work, asking for what it can't find. A quit
+ * git and the agents and starts the projects once git and an agent work, asking for what it can't find. A quit
  * before that starts no project. Throws when Mainframe can't start.
  */
 async function launch(config: AppConfig): Promise<void> {
@@ -371,16 +360,17 @@ async function launch(config: AppConfig): Promise<void> {
     quitting = true;
   };
   onQuitBegins(win, quitBegins);
+  const envBins = { claude: config.claudeBin, opencode: config.opencodeBin };
   const flow = new SetupFlow({
     dataDir: config.dataDir,
-    envClaudeBin: config.claudeBin,
+    envBins,
     lookup: lookupIn(programs.env),
     run: runVersion(programs.env),
-    pickClaude: () => pickClaude(win),
+    pickAgent: (name) => pickAgent(win, name),
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),
-    start: async (claudeBin, dirs) => {
-      if (!quitting) await start(config, { ...programs, claudeBin }, dirs, win);
+    start: async (found, dirs) => {
+      if (!quitting) await start(config, programs, new AgentsInUse({ dataDir: config.dataDir, ...found, envBins }), dirs, win);
     },
     warn: console.warn,
   });

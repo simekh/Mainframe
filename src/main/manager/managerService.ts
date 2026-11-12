@@ -16,8 +16,8 @@ const VERSION = 1;
 export interface ManagerServiceDeps {
   projectDir: string;
   dataDir: string;
-  /** A real program path, for what the agent runs beside it (Claude Code's SessionStart hook). */
-  nodeBin: string;
+  /** A real program path, for what the agent runs beside it (Claude Code's SessionStart hook); null when no node was found. */
+  nodeBin: string | null;
   env: Record<string, string>;
   /** Where Mainframe's MCP server is: its port and token change with each run of the app. */
   mcp: { url: string; token: string };

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentName, ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import type { GitQueries } from '../git';
+import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { inTurn, resumePromptFor, TurnTracker } from './carryOn';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
@@ -16,11 +17,10 @@ export interface TaskServiceDeps {
   dataDir: string;
   /** Every project's tasks, shared with the other open projects' services. */
   records: TaskRecords;
-  claudeBin: string;
-  /** The opencode Mainframe found at start; null when it found none that works. */
-  opencodeBin: string | null;
-  /** What the SessionStart hook runs: a real program path, as claudeBin is. */
-  nodeBin: string;
+  /** The agents found at start, shared with the other open projects' services: asked at each start and reopen. */
+  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked'>;
+  /** What Claude Code's SessionStart hook runs: a real program path; null when no node was found. */
+  nodeBin: string | null;
   /**
    * Windows caps a command line, so a task's long description goes to a file there; and it reserves
    * names a task's folder can't take.
@@ -120,9 +120,11 @@ export class TaskService {
   async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName }): Promise<TaskView> {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
-    const agent = req.agent ?? 'claude';
+    // Without one, the default: that covers the tasks the manager starts and those started from a Todo card.
+    const agent = req.agent ?? this.deps.agents.defaultAgent();
     const adapter = ADAPTERS[agent];
     const bin = this.binOf(agent);
+    if (!this.deps.agents.ticked().includes(agent)) throw new Error(`${AGENT_NAMES[agent]} is turned off in Settings`);
 
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug, or both take the same card.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
@@ -387,11 +389,11 @@ export class TaskService {
     }
   }
 
-  /** The program the agent's sessions run. */
+  /** The program the agent's sessions run. A reopen needs only this: an agent unticked since keeps its tasks. */
   private binOf(agent: AgentName): string {
-    if (agent === 'claude') return this.deps.claudeBin;
-    if (this.deps.opencodeBin === null) throw new Error('OpenCode 2.1 or later is not installed');
-    return this.deps.opencodeBin;
+    const bin = this.deps.agents.bin(agent);
+    if (bin === null) throw new Error(`${AGENT_NAMES[agent]} ${MIN_AGENT_VERSION[agent]} or later is not installed`);
+    return bin;
   }
 
   /** The launch that resumes the task's conversation, `claudeSessionId`. */
