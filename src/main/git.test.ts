@@ -11,7 +11,9 @@ const cleanup: string[] = [];
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // Retries: a test whose call fails fast can leave its other git processes running, and Windows keeps
+  // their files locked until they have gone.
+  for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function repo(): { origin: string; main: string } {

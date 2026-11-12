@@ -35,12 +35,15 @@ async function openFrom(app: ElectronApplication, row: Locator): Promise<Page> {
 }
 
 /**
- * Presses Esc in the diff window and resolves once it has closed. Only the key's down: the page closes
- * on it, so there is no page left for the key's up to reach.
+ * Presses the keys down in the diff window, in order, and resolves once it has closed. Only their downs:
+ * the page closes on the last one, so no key's up has a page to reach. The last down's own reply can be
+ * lost with the page (Linux rejects it, Windows never answers), so the close is what is awaited.
  */
-async function pressEsc(diff: Page): Promise<void> {
+async function closeWith(diff: Page, ...keys: string[]): Promise<void> {
   const closed = diff.waitForEvent('close');
-  await diff.keyboard.down('Escape');
+  const last = keys.pop()!;
+  for (const key of keys) await diff.keyboard.down(key);
+  void diff.keyboard.down(last).catch(() => {});
   await closed;
 }
 
@@ -124,18 +127,14 @@ test('Esc and Cmd+W (Ctrl+W off the Mac) close the diff window, and a click open
   const diff = await openFrom(app, rows.nth(1));
   await expect(diff.getByTestId('diff-file')).toHaveCount(2);
 
-  await pressEsc(diff);
+  await closeWith(diff, 'Escape');
   expect(app.windows()).toHaveLength(1);
 
   const again = await openFrom(app, rows.nth(0));
   await expect(again.getByTestId('diff-file')).toHaveCount(2);
   expect(app.windows()).toHaveLength(2);
 
-  // Only the keys' downs, as in pressEsc.
-  const closed = again.waitForEvent('close');
-  await again.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
-  await again.keyboard.down('w');
-  await closed;
+  await closeWith(again, process.platform === 'darwin' ? 'Meta' : 'Control', 'w');
   expect(app.windows()).toHaveLength(1);
   await app.close();
 });
@@ -148,7 +147,7 @@ test('the diff window opens at the size it was left', async () => {
     app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getParentWindow() !== null)!.getSize());
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getParentWindow() !== null)!.setSize(900, 600));
 
-  await pressEsc(diff);
+  await closeWith(diff, 'Escape');
   expect(existsSync(join(dataDir, 'diff-window.json'))).toBe(true);
 
   const again = await openFrom(app, rows.nth(1));
