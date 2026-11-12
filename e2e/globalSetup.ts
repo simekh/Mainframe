@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { dirname, join } from 'node:path';
 import { findExecutable } from '../src/main/pty/findExecutable';
@@ -31,7 +31,8 @@ function gitBash(): string {
 /**
  * On Windows, builds `e2e/fake-claude.cjs` into a real `.exe` (a Node single executable application)
  * and hands its path to the tests as FAKE_CLAUDE_EXE: Mainframe starts `claude` there only as an .exe,
- * never a script. It also names the stand-in's shell in FAKE_CLAUDE_SHELL, unless that is set already.
+ * never a script. A copy named `fake-opencode.exe`, which acts as OpenCode, goes to the tests as FAKE_OPENCODE_EXE.
+ * It also names the stand-in's shell in FAKE_CLAUDE_SHELL, unless that is set already.
  * Returns the teardown that removes the .exe. Elsewhere the tests run the script itself.
  */
 export default function globalSetup(): (() => void) | undefined {
@@ -46,5 +47,8 @@ export default function globalSetup(): (() => void) | undefined {
   );
   execFileSync(process.execPath, ['--build-sea', config], { stdio: 'inherit' });
   process.env.FAKE_CLAUDE_EXE = exe;
+  const opencodeExe = join(dir, 'fake-opencode.exe');
+  copyFileSync(exe, opencodeExe);
+  process.env.FAKE_OPENCODE_EXE = opencodeExe;
   return () => rmSync(dir, { recursive: true, force: true });
 }

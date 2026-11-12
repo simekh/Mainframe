@@ -19,8 +19,11 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in | native installer, Homebrew or npm | native installer or WinGet; npm, see below | native installer or npm |
 | A compiler for `npm install` | no | no | yes, see below |
+| Optional: [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or any `opencode` on PATH | yes | yes | yes |
 
 Each project you open must be a git repository.
+
+The New task box offers OpenCode as a task's agent when Mainframe finds it. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). The manager, the Todo sync and tasks started from cards still use Claude Code. To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
 
 On macOS and Linux, any Claude Code whose `claude` runs in your terminal works, and so does the native installer's `~/.local/bin/claude` when that folder isn't on your PATH.
 
