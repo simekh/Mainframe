@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { SYNC_ANSWER_JSON } from '../todo/todoSchema';
+import { cheapestKnown } from './agent';
 import { makeOpencodeAgent, opencodeAgent } from './opencode';
 import { isOpencodeToolName, readOpencodeAnswer, syncConfig } from './opencodeSync';
 
@@ -201,5 +202,71 @@ describe("OpenCode's sync", () => {
     const run = vi.fn(async () => '');
     makeOpencodeAgent({ run }).sync.afterRun({ bin: 'oc', dir: '/d', env: {}, stdout: 'Error: no such model\n' });
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe('models', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // As `api model.list` prints it: `response()` wraps the list in `data` (server/src/location.ts).
+  const cost = (input: number, output: number, tier?: object) => ({ ...(tier && { tier }), input, output, cache: { read: 0, write: 0 } });
+  const model = (id: string, over: object) => ({
+    id,
+    modelID: `${id}-api`,
+    providerID: 'prov',
+    name: `Model ${id}`,
+    capabilities: {},
+    variants: [],
+    time: { released: 1 },
+    status: 'active',
+    enabled: true,
+    limit: { context: 1, output: 1 },
+    ...over,
+  });
+  const LISTED = JSON.stringify({
+    location: { directory: '/x' },
+    data: [
+      model('dear', { cost: [cost(9, 9, { type: 'context', size: 200000 }), cost(2.4, 12)] }),
+      model('cheap', { cost: [cost(0.11, 0.55)], settings: { apiKey: 'sk-SECRET-2' }, headers: { Authorization: 'Bearer sk-SECRET-2' }, status: 'beta' }),
+      model('unknown', { cost: [] }),
+      model('off', { cost: [cost(0, 0)], enabled: false }),
+    ],
+  });
+
+  const list = async (run: (argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'mainframe-oc-models-'));
+    dirs.push(dir);
+    const result = await makeOpencodeAgent({ run }).sync.models!({ bin: 'oc', dir, env: { HOME: '/h' } });
+    return { result, dir };
+  };
+
+  it('models keep only id, name, status and price, cheapest first, and no secrets', async () => {
+    const run = vi.fn(async () => LISTED);
+    const { result, dir } = await list(run);
+    const runDir = join(dir, 'opencode-run');
+
+    expect(run).toHaveBeenCalledWith(['oc', '--standalone', 'api', 'model.list'], {
+      cwd: runDir,
+      env: { HOME: '/h', PWD: runDir, OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
+    });
+    expect(existsSync(runDir)).toBe(true);
+    expect(result).toEqual([
+      { id: 'prov/cheap', name: 'Model cheap', status: 'beta', price: { input: 0.11, output: 0.55 } },
+      { id: 'prov/dear', name: 'Model dear', status: 'active', price: { input: 2.4, output: 12 } },
+      { id: 'prov/unknown', name: 'Model unknown', status: 'active', price: null },
+    ]);
+    for (const m of result) expect(Object.keys(m).sort()).toEqual(['id', 'name', 'price', 'status']);
+    expect(JSON.stringify(result)).not.toContain('sk-SECRET-2');
+    expect(cheapestKnown(result)).toBe('prov/cheap');
+    expect(cheapestKnown([result[2]])).toBeNull();
+  });
+
+  it('a list that fails, or is not JSON, says OpenCode could not list its models, without the output', async () => {
+    await expect(list(async () => Promise.reject(new Error('no providers')))).rejects.toThrow('OpenCode could not list its models: no providers');
+    await expect(list(async () => 'sk-SECRET-2 {')).rejects.toThrow(/^OpenCode could not list its models: its answer was not JSON$/);
+    await expect(list(async () => '{"data":{}}')).rejects.toThrow('OpenCode could not list its models: its answer held no list of models');
   });
 });

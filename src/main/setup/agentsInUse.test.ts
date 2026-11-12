@@ -1,8 +1,11 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AgentName, ProgramCheck } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import { AgentsInUse } from './agentsInUse';
-import type { AppSettings } from './settings';
+import { readSettings, type AppSettings } from './settings';
 
 const C = '/bin/claude';
 const O = '/bin/opencode';
@@ -43,5 +46,27 @@ describe('AgentsInUse', () => {
     const a = agents({ defaultAgent: 'opencode', agents: { opencode: setting } }, { claude: found(C), opencode: found(O) });
     expect(a.inUse()).toEqual({ adapter: ADAPTERS.opencode, bin: O, setting });
     expect(agents({}, { claude: found(C), opencode: missing }).inUse()).toEqual({ adapter: ADAPTERS.claude, bin: C, setting: {} });
+  });
+
+  it('saveAgentSetting writes settings.json and inUse() sees it', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-agents-'));
+    try {
+      const settings: AppSettings = { defaultAgent: 'opencode', agents: { opencode: { enabled: true, syncModel: 'p/old' } }, welcomeSeen: true };
+      const a = new AgentsInUse({ dataDir, settings, checks: { claude: found(C), opencode: found(O) }, envBins: {} });
+
+      a.saveAgentSetting('opencode', { syncModel: 'p/new' });
+
+      const setting = { enabled: true, syncModel: 'p/new' };
+      expect(a.inUse().setting).toEqual(setting);
+      expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({
+        version: 2,
+        defaultAgent: 'opencode',
+        agents: { opencode: setting },
+        welcomeSeen: true,
+      });
+      expect(readSettings(dataDir, () => {})).toEqual({ defaultAgent: 'opencode', agents: { opencode: setting }, welcomeSeen: true });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });

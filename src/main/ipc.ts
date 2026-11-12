@@ -126,6 +126,9 @@ export function registerIpc(
   ipcMain.handle(IPC.pickTodoList, async (_e, dir: string, index: number) => {
     await todoOf(dir).pickList(index);
   });
+  ipcMain.handle(IPC.pickTodoModel, async (_e, dir: string, id: string) => {
+    await todoOf(dir).pickModel(id);
+  });
   ipcMain.handle(IPC.resetTodoSource, (_e, dir: string) => todoOf(dir).resetSource());
   ipcMain.handle(IPC.saveTodoNote, (_e, dir: string, note: TodoNoteDraft) => todoOf(dir).saveNote(note));
   ipcMain.handle(IPC.deleteTodoNote, (_e, dir: string, id: string) => todoOf(dir).deleteNote(id));

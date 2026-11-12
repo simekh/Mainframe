@@ -12,10 +12,11 @@ const failure = (err: unknown) => ({ content: [{ type: 'text' as const, text: er
 const NEEDS_OWNER = {
   tools: 'Allow the tools that read the to-do list, in the Todo panel',
   lists: 'Pick the to-do list, in the Todo panel',
+  model: 'Pick the model the sync runs on, in the Todo panel',
 };
 
 /** What the Todo panel's question is about, to name it to the manager. */
-const ASKS_ABOUT = { tools: 'tools', lists: 'a list' };
+const ASKS_ABOUT = { tools: 'tools', lists: 'a list', model: 'the model' };
 
 /** What the new-task dialog warns of, as a sentence; the dialog's own "Push … first" is for the owner to act on. */
 const aheadWarning = ({ ahead, branch, base }: StartCheck) =>

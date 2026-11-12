@@ -1,8 +1,8 @@
 import type { AgentName, ProgramCheck } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
-import type { AgentInUse } from '../agents/agent';
+import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { runDefault, tickedAgents } from './agentChoice';
-import type { AppSettings } from './settings';
+import { writeSettings, type AppSettings } from './settings';
 
 /**
  * Which agents this run of Mainframe uses and from which path, as the start found them. One object, made at start and
@@ -56,5 +56,13 @@ export class AgentsInUse {
   inUse(): AgentInUse {
     const agent = this.run.agent;
     return { adapter: ADAPTERS[agent], bin: this.bin(agent)!, setting: this.deps.settings.agents?.[agent] ?? {} };
+  }
+
+  /** Merges `patch` into the agent's setting and writes settings.json at once; every project's next `inUse()` has it. */
+  saveAgentSetting(name: AgentName, patch: Partial<AgentSetting>): void {
+    const { settings } = this.deps;
+    const next = { ...settings, agents: { ...settings.agents, [name]: { ...settings.agents?.[name], ...patch } } };
+    writeSettings(this.deps.dataDir, next);
+    this.deps.settings = next;
   }
 }

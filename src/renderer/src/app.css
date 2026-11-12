@@ -908,6 +908,56 @@ html[data-platform='darwin'] .setup-titlebar {
   font-weight: 400;
 }
 
+/* The models, cheapest first: a choice of one, so a row is picked rather than pressed, and only the button runs. */
+.todo-models {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todo-model {
+  align-items: center;
+}
+
+.todo-model[aria-checked='true'] {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* A radio's dot: a ring, filled once picked. */
+.todo-model-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--fg-subtle);
+  border-radius: 50%;
+}
+
+.todo-model[aria-checked='true'] .todo-model-dot {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 2.5px, transparent 3px);
+}
+
+.todo-model-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Prices line up down the list, so the cheapest is plain to see. */
+.todo-model-price {
+  flex: none;
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-model-price.unknown {
+  font-style: italic;
+}
+
 /* It can name the Todo file by its full path. */
 .todo-panel .todo-error {
   flex: none;

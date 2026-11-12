@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
-import type { AgentAdapter, AgentInUse, SyncRunSpec } from '../agents/agent';
+import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
@@ -19,6 +19,8 @@ export interface TodoServiceDeps {
   env: Record<string, string>;
   /** The agent the next sync runs on: asked at each sync, so a change in Settings takes effect at the next one. */
   agent(): AgentInUse;
+  /** Saves an agent's setting for every project, so the next `agent()` has it. */
+  saveAgentSetting(name: AgentName, patch: Partial<AgentSetting>): void;
   startTask: TaskService['start'];
   onChange(view: TodoView): void;
   run?: typeof runSync;
@@ -50,7 +52,7 @@ export class TodoService {
   private closed = false;
   // What the sync last said: not kept in the file, so a restart starts without them.
   private ask: TodoAsk | null = null;
-  /** The agent whose run asked about tools: the names in that ask are its own. */
+  /** The agent whose sync asked about tools or a model: the names in that ask are its own. */
   private askedBy: AgentName | null = null;
   private error: string | null = null;
 
@@ -93,7 +95,15 @@ export class TodoService {
     const agent = this.deps.agent();
     const { readTools, pickedList } = this.record;
     const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
-    return this.launch(agent, confirmed ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' });
+    const step: SyncStep = confirmed ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' };
+    return agent.adapter.sync.models ? this.withModel(agent, step) : this.launch(agent, step);
+  }
+
+  /** Keeps the model the sync asked about as the one it runs on, in settings.json, then syncs. */
+  async pickModel(id: string): Promise<SyncOutcome> {
+    if (this.ask?.kind !== 'model' || !this.askedBy || !this.ask.models.some((m) => m.id === id)) throw new Error('No such model; sync again');
+    this.deps.saveAgentSetting(this.askedBy, { syncModel: id });
+    return this.sync();
   }
 
   /** Keeps the tools the sync asked about as the ones it may read with, then syncs. */
@@ -189,6 +199,39 @@ export class TodoService {
   close(): void {
     this.closed = true;
     this.cancel();
+  }
+
+  /**
+   * Lists the agent's models before the run, and asks the owner for one when the saved model is not among them (none
+   * saved yet, or its provider since removed). While it lists, the sync counts as running: a second Sync joins it and
+   * Stop ends it.
+   */
+  private withModel(agent: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
+    const { adapter, bin, setting } = agent;
+    let settle!: Running['settle'];
+    const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
+    const listing: Running = { outcome, settle, cancel: () => {} };
+    this.running = listing;
+    this.ask = this.error = null;
+    this.changed();
+
+    adapter.sync.models!({ bin, dir: this.dir, env: this.deps.env }).then(
+      (models) => {
+        if (this.running !== listing) return;
+        if (models.some((m) => m.id === setting.syncModel)) {
+          this.running = null;
+          void this.launch(agent, step).then(settle);
+          return;
+        }
+        this.end(listing, () => {
+          this.ask = { kind: 'model', models, suggested: cheapestKnown(models) };
+          this.askedBy = adapter.name;
+          return { ask: 'model' };
+        });
+      },
+      (err: Error) => this.end(listing, () => this.refuse(err.message)),
+    );
+    return outcome;
   }
 
   private launch({ adapter, bin, setting }: AgentInUse, step: SyncStep): Promise<SyncOutcome> {

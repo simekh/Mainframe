@@ -48,6 +48,7 @@ export const IPC = {
   cancelTodoSync: 'todo:cancel-sync',
   confirmTodoTools: 'todo:confirm-tools',
   pickTodoList: 'todo:pick-list',
+  pickTodoModel: 'todo:pick-model',
   resetTodoSource: 'todo:reset-source',
   saveTodoNote: 'todo:save-note',
   deleteTodoNote: 'todo:delete-note',
@@ -125,6 +126,8 @@ export interface MainframeApi {
   confirmTodoTools(dir: string): Promise<void>;
   /** Picks the list the sync asked about, by its index in the ask, and syncs again. */
   pickTodoList(dir: string, index: number): Promise<void>;
+  /** Picks the model the sync asked about, by its id, saves it for every project, and syncs again. */
+  pickTodoModel(dir: string, id: string): Promise<void>;
   /** Forgets the allowed tools and the picked list; the cards and notes stay. */
   resetTodoSource(dir: string): Promise<void>;
   /** Adds a note, or changes the one with `id`. */

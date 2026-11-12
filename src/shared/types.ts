@@ -187,8 +187,14 @@ export interface TodoListRef {
   url: string | null;
 }
 
+/** A model the OpenCode sync can run on; `price` is USD per million tokens, null when OpenCode doesn't know it. */
+export interface SyncModel { id: string; name: string; status: string; price: { input: number; output: number } | null }
+
 /** What the sync run needs from the owner before it can go on. */
-export type TodoAsk = { kind: 'tools'; connector: string; tools: string[] } | { kind: 'lists'; lists: TodoListRef[] };
+export type TodoAsk =
+  | { kind: 'tools'; connector: string; tools: string[] }
+  | { kind: 'lists'; lists: TodoListRef[] }
+  | { kind: 'model'; models: SyncModel[]; suggested: string | null };
 
 export interface TodoView {
   source: TodoSource | null;

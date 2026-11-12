@@ -2,14 +2,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
-import type { AgentInUse } from '../agents/agent';
+import type { AgentName, SyncModel, TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
+import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { ADAPTERS } from '../agents/adapters';
 import { syncArgv, syncSettings } from '../agents/claudeSync';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
-import { SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
+import { SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
 import { TodoService } from './todoService';
 
 const prompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
@@ -107,6 +107,9 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
 
   const changes: ReturnType<TodoService['view']>[] = [];
   const warnings: string[] = [];
+  // As AgentsInUse does: a saved setting is what the next `agent()` gives.
+  const saves: [AgentName, Partial<AgentSetting>][] = [];
+  let current = agent;
   let counter = 0;
   const make = () =>
     new TodoService({
@@ -114,7 +117,11 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
       dataDir,
       nodeBin: NODE,
       env: ENV,
-      agent: () => agent,
+      agent: () => current,
+      saveAgentSetting: (name, patch) => {
+        saves.push([name, patch]);
+        current = { ...current, setting: { ...current.setting, ...patch } };
+      },
       startTask,
       onChange: (view) => changes.push(view),
       run,
@@ -132,6 +139,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     last: () => calls[calls.length - 1],
     starts,
     control,
+    saves,
     changes,
     warnings,
     file,
@@ -315,6 +323,93 @@ it('several candidate lists: the one picked is kept and read', async () => {
   expect(t.todo()).toMatchObject({ readTools: { connector: 'Tracker', tools: TOOLS }, pickedList: DOING });
   void t.service.sync();
   expect(t.last().options.input).toBe(prompt({ kind: 'read', list: DOING }));
+});
+
+const MODELS: SyncModel[] = [
+  { id: 'prov/cheap', name: 'Cheap', status: 'active', price: { input: 0.11, output: 0.55 } },
+  { id: 'prov/dear', name: 'Dear', status: 'active', price: { input: 2.4, output: 12 } },
+  { id: 'prov/unknown', name: 'Unknown', status: 'active', price: null },
+];
+/** OpenCode, with `models` answering as the test says. */
+const opencode = (models: () => Promise<SyncModel[]>, setting: AgentSetting = {}): AgentInUse => ({
+  adapter: { ...ADAPTERS.opencode, sync: { ...ADAPTERS.opencode.sync, models } },
+  bin: 'opencode',
+  setting,
+});
+
+it('a first OpenCode sync asks for a model and runs nothing', async () => {
+  const t = setup(undefined, opencode(async () => MODELS));
+
+  expect(await t.service.sync()).toEqual({ ask: 'model' });
+
+  expect(t.service.view()).toMatchObject({ syncing: false, error: null, ask: { kind: 'model', models: MODELS, suggested: 'prov/cheap' } });
+  expect(t.calls).toHaveLength(0);
+});
+
+it('a saved model that is gone asks again', async () => {
+  const t = setup(undefined, opencode(async () => MODELS, { syncModel: 'gone/model' }));
+
+  expect(await t.service.sync()).toEqual({ ask: 'model' });
+
+  expect(t.service.view().ask).toEqual({ kind: 'model', models: MODELS, suggested: 'prov/cheap' });
+  expect(t.calls).toHaveLength(0);
+});
+
+it('picking a model saves it and syncs with it', async () => {
+  const t = setup(undefined, opencode(async () => MODELS));
+  await t.service.sync();
+  await expect(t.service.pickModel('other/model')).rejects.toThrow('No such model; sync again');
+  expect(t.saves).toEqual([]);
+
+  const picking = t.service.pickModel('prov/dear');
+  await flush();
+
+  expect(t.saves).toEqual([['opencode', { syncModel: 'prov/dear' }]]);
+  expect(t.calls).toHaveLength(1);
+  expect(t.last().options.argv.slice(-2)).toEqual(['-m', 'prov/dear']);
+  expect(t.service.view()).toMatchObject({ syncing: true, ask: null });
+  t.last().fail('opencode exited with code 1');
+  expect(await picking).toEqual({ error: 'opencode exited with code 1' });
+  // Once picked, the next sync asks nothing.
+  void t.service.sync();
+  await flush();
+  expect(t.calls).toHaveLength(2);
+});
+
+it('a model list that fails says why', async () => {
+  const t = setup(undefined, opencode(() => Promise.reject(new Error('OpenCode could not list its models: no providers'))));
+
+  expect(await t.service.sync()).toEqual({ error: 'OpenCode could not list its models: no providers' });
+
+  expect(t.service.view()).toMatchObject({ syncing: false, ask: null, error: 'OpenCode could not list its models: no providers' });
+  expect(t.calls).toHaveLength(0);
+});
+
+it('a second Sync while the models are listed joins it, and Stop ends it', async () => {
+  let listed!: (models: SyncModel[]) => void;
+  const t = setup(undefined, opencode(() => new Promise((resolve) => (listed = resolve)), { syncModel: 'prov/cheap' }));
+
+  const first = t.service.sync();
+  expect(t.service.sync()).toBe(first);
+  expect(t.service.view().syncing).toBe(true);
+  t.service.cancel();
+  listed(MODELS);
+
+  expect(await first).toEqual({ error: SYNC_STOPPED });
+  await flush();
+  expect(t.calls).toHaveLength(0);
+  expect(t.service.view()).toMatchObject({ syncing: false, ask: null });
+});
+
+it('a Claude sync asks for no model', async () => {
+  const t = setup();
+
+  const pending = t.service.sync();
+
+  expect(t.calls).toHaveLength(1);
+  t.last().answer(TOOLS_ANSWER);
+  expect(await pending).toEqual({ ask: 'tools' });
+  expect(t.saves).toEqual([]);
 });
 
 it('confirming or picking with nothing to confirm or pick is refused', async () => {

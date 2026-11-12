@@ -1,4 +1,4 @@
-import type { AgentName, ProgramCheck } from '../../shared/types';
+import type { AgentName, ProgramCheck, SyncModel } from '../../shared/types';
 import type { ExecutableFiles, ExecutableLookup } from '../pty/findExecutable';
 import type { VersionRunner } from '../setup/programChecks';
 import type { SyncStep } from '../todo/syncRun';
@@ -58,7 +58,12 @@ export interface SyncAdapter {
   isToolName(name: string): boolean;
   /** Tidies up after a run, from what it printed. Never throws. */
   afterRun(o: { bin: string; dir: string; env: Record<string, string>; stdout: string }): void;
+  /** The models the sync may run on, cheapest first; only an agent whose sync needs one picked has it. */
+  models?(o: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]>;
 }
+
+/** The first model with a price: the cheapest known, as `models` sorts them. */
+export const cheapestKnown = (models: SyncModel[]): string | null => models.find((m) => m.price !== null)?.id ?? null;
 
 /** Everything Mainframe knows about one agent CLI. */
 export interface AgentAdapter {

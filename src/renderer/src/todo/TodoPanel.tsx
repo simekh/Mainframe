@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
-import type { StartCheck } from '../../../shared/types';
+import type { StartCheck, SyncModel } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
@@ -17,10 +17,62 @@ import {
   reopenTaskId, sourcePlace, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
 } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
-import { cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
+import {
+  cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, pickTodoModel, resetTodoSource, syncTodo, todoOf,
+} from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
+
+const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+const priceLine = (price: SyncModel['price']) => (price ? `${usd(price.input)} / ${usd(price.output)}` : 'price unknown');
+
+/** The models the sync can run on, cheapest first: the suggested one starts picked, and nothing runs until the button. */
+function ModelAsk(props: { dir: string; models: SyncModel[]; suggested: string | null }) {
+  const [picked, setPicked] = createSignal<string | null>(null);
+  // A later ask may not hold the earlier pick: it then starts from its own suggestion.
+  const chosen = () => {
+    const id = picked();
+    return id !== null && props.models.some((m) => m.id === id) ? id : props.suggested;
+  };
+  return (
+    <div class="todo-ask">
+      <p>Pick the model the sync runs on. Cheapest first, with the price per million tokens in and out.</p>
+      <div class="todo-models" role="radiogroup" aria-label="Sync model">
+        <For each={props.models}>
+          {(model) => (
+            <button
+              class="todo-pick todo-model"
+              data-testid="todo-model"
+              role="radio"
+              aria-checked={chosen() === model.id ? 'true' : 'false'}
+              onMouseDown={keepFocus}
+              onClick={() => setPicked(model.id)}
+            >
+              <span class="todo-model-dot" aria-hidden="true" />
+              <span class="todo-model-name">{model.name}</span>
+              <span class="todo-model-price" classList={{ unknown: !model.price }}>
+                {priceLine(model.price)}
+              </span>
+            </button>
+          )}
+        </For>
+      </div>
+      <button
+        class="btn primary"
+        data-testid="todo-pick-model"
+        disabled={chosen() === null}
+        onMouseDown={keepFocus}
+        onClick={() => {
+          const id = chosen();
+          if (id !== null) pickTodoModel(props.dir, id);
+        }}
+      >
+        Use this and sync
+      </button>
+    </div>
+  );
+}
 
 function SyncIcon() {
   return (
@@ -202,6 +254,10 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'lists' ? ask : undefined;
   };
+  const modelAsk = () => {
+    const ask = view()?.ask;
+    return ask?.kind === 'model' ? ask : undefined;
+  };
   const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open', (open) =>
     props.onOpenChange(open),
   );
@@ -363,6 +419,9 @@ export default function TodoPanel(props: {
                       </For>
                     </div>
                   )}
+                </Match>
+                <Match when={modelAsk()}>
+                  {(ask) => <ModelAsk dir={project.dir} models={ask().models} suggested={ask().suggested} />}
                 </Match>
               </Switch>
 

@@ -260,6 +260,7 @@ async function start(
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
       env: programs.env,
       agent: () => agents.inUse(),
+      saveAgentSetting: (name, patch) => agents.saveAgentSetting(name, patch),
       startTask: (req) => service.start(req),
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });

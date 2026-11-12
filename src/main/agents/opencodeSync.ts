@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { SyncModel } from '../../shared/types';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { SYNC_ANSWER, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
 import type { Instructions, SyncAdapter, SyncWords } from './agent';
@@ -89,6 +90,47 @@ export function readOpencodeAnswer(stdout: string, tools: string[]): SyncAnswer 
 /** The empty folder the run starts in, so that no project's config or instructions are read from where it runs. */
 const runDirOf = (dir: string) => join(dir, 'opencode-run');
 
+type Cost = { tier?: unknown; input: number; output: number };
+type ListedModel = { id: string; providerID: string; name: string; status: string; enabled?: boolean; cost?: Cost[] };
+
+/** The price of the base tier: the entry without a `tier`, else the first. */
+function priceOf(cost: Cost[] = []): SyncModel['price'] {
+  const base = cost.find((c) => c.tier === undefined) ?? cost[0];
+  return base ? { input: base.input, output: base.output } : null;
+}
+
+const byPrice = (a: SyncModel, b: SyncModel): number => {
+  if (!a.price || !b.price) return Number(!a.price) - Number(!b.price);
+  return a.price.input - b.price.input || a.price.output - b.price.output;
+};
+
+/**
+ * The enabled models, cheapest first with the unpriced last. `api model.list` can hold API keys (a model's
+ * `settings` and `headers`): only the id `run -m` takes, the name, the status and the price leave here.
+ */
+async function listModels(run: typeof runOpencode, { bin, dir, env }: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]> {
+  const runDir = runDirOf(dir);
+  try {
+    mkdirSync(runDir, { recursive: true });
+    // `api` takes its folder from PWD before the process's own.
+    const stdout = await run([bin, '--standalone', 'api', 'model.list'], { cwd: runDir, env: { ...env, PWD: runDir, OPENCODE_DISABLE_PROJECT_CONFIG: '1' } });
+    let data: unknown;
+    try {
+      data = (JSON.parse(stdout) as { data?: unknown }).data;
+    } catch {
+      // Not JSON.parse's own message, which quotes the output.
+      throw new Error('its answer was not JSON');
+    }
+    if (!Array.isArray(data)) throw new Error('its answer held no list of models');
+    return (data as ListedModel[])
+      .filter((m) => m.enabled !== false)
+      .map((m) => ({ id: `${m.providerID}/${m.id}`, name: m.name, status: m.status, price: priceOf(m.cost) }))
+      .sort(byPrice);
+  } catch (err) {
+    throw new Error(`OpenCode could not list its models: ${(err as Error).message}`);
+  }
+}
+
 /** OpenCode's sync. `run` runs `session delete` after a run; tests hand it a fake. */
 export function makeOpencodeSync({ run, instructions }: { run: typeof runOpencode; instructions: Instructions }): SyncAdapter {
   const words: SyncWords = {
@@ -128,5 +170,6 @@ export function makeOpencodeSync({ run, instructions }: { run: typeof runOpencod
       if (id === undefined) return;
       run([bin, '--standalone', 'session', 'delete', id], { cwd: runDirOf(dir), env }).catch(() => {});
     },
+    models: (o) => listModels(run, o),
   };
 }

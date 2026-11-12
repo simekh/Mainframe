@@ -79,6 +79,10 @@ export function pickTodoList(dir: string, index: number): void {
   window.mainframe.pickTodoList(dir, index).catch(logged('pick the list', dir));
 }
 
+export function pickTodoModel(dir: string, id: string): void {
+  window.mainframe.pickTodoModel(dir, id).catch(logged('pick the model', dir));
+}
+
 export function resetTodoSource(dir: string): void {
   window.mainframe.resetTodoSource(dir).catch(logged('set up the sync again', dir));
 }
