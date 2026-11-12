@@ -55,9 +55,10 @@ function createWindow(e2e: boolean): BrowserWindow {
     title: 'Mainframe',
     width: 1400,
     height: 900,
-    // An e2e run's window stays hidden (MAINFRAME_E2E=1): shown, each test's launch would come to the front and take
-    // the focus from whatever the user is doing. Playwright drives a hidden window as it does a shown one.
-    show: !e2e,
+    // On the Mac an e2e run's window stays hidden (MAINFRAME_E2E=1): shown, each test's launch would come to the front
+    // and take the focus from whatever the user is doing. Windows and Linux give a window that has never been shown
+    // no keyboard input, so there it shows.
+    show: !(e2e && onMac),
     // macOS only: in an e2e run the window may be larger than the runner's screen (MAINFRAME_E2E=1).
     enableLargerThanScreen: e2e,
     backgroundColor: APP_BACKGROUND,
