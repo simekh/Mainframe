@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mainframe: a window for a task's changes</title>
+<style>
+  :root { --bg:#080c10; --island:#10161c; --line:#29343d; --fg:#f0f4f7; --muted:#a0afbd; --accent:#67d9ed;
+          --add:#98c9ae; --rem:#f08f8a; --addbg:rgba(152,201,174,.12); --rembg:rgba(240,143,138,.12); }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #05080b; color: var(--fg);
+         font: 12px/1.45 Inter, -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; } p.sub { color: var(--muted); margin: 0 0 24px; max-width: 760px; }
+  h2 { font-size: 14px; margin: 32px 0 10px; }
+  .scene { position: relative; height: 260px; max-width: 900px; }
+  .win { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+         box-shadow: 0 18px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; }
+  .bar { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: #0e141a;
+         border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; flex: none; }
+  .dots { display: flex; gap: 5px; margin-right: 6px; }
+  .dots i { width: 9px; height: 9px; border-radius: 50%; background: #3a4752; display: block; }
+  .main-win { position: absolute; left: 0; top: 0; width: 72%; height: 230px; opacity: .55; }
+  .main-win .body { flex: 1; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 6px; padding: 6px; }
+  .main-win .body div { background: var(--island); border: 1px solid var(--line); border-radius: 6px; }
+  .diff-win { position: absolute; left: 34%; top: 38px; width: 58%; height: 200px; border-color: #3d4c57; }
+  .grip { position: absolute; right: 5px; bottom: 3px; color: var(--muted); }
+  .tag { position: absolute; font-size: 11px; color: var(--muted); }
+  .big { max-width: 900px; height: 420px; }
+  .big .body { flex: 1; display: flex; min-height: 0; }
+  .list { width: 230px; flex: none; border-right: 1px solid var(--line); padding: 8px 0; background: #0c1218; }
+  .list div { display: flex; gap: 8px; padding: 4px 10px; white-space: nowrap; overflow: hidden; }
+  .list div.sel { background: #1b252f; box-shadow: inset 2px 0 0 var(--accent); }
+  .st { width: 10px; font-family: 'JetBrains Mono', Menlo, monospace; color: var(--accent); flex: none; }
+  .st.a { color: var(--add); } .st.u { color: var(--add); }
+  .p { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .n { color: var(--muted); font-size: 11px; }
+  .n b { color: var(--add); font-weight: 500; } .n s { color: var(--rem); text-decoration: none; }
+  .code { flex: 1; overflow: hidden; font: 11.5px/1.65 'JetBrains Mono', Menlo, monospace; }
+  .fh { display: flex; justify-content: space-between; padding: 6px 10px; background: #161e26;
+        border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); font: 12px Inter, system-ui, sans-serif; }
+  .fh:first-child { border-top: 0; }
+  .ln { display: flex; white-space: pre; }
+  .ln .g { width: 34px; text-align: right; padding-right: 8px; color: #5b6b78; flex: none; }
+  .ln.add { background: var(--addbg); } .ln.add .t { color: var(--add); }
+  .ln.rem { background: var(--rembg); } .ln.rem .t { color: var(--rem); }
+  .ln .t { color: #c5ced7; padding-left: 6px; }
+  .hunk { color: #6f8494; padding: 3px 10px; border-top: 1px dashed #233039; }
+  .note { color: var(--muted); padding: 8px 12px; font: italic 12px Inter, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<h1>The diff window</h1>
+<p class="sub">Clicking a file in a task's changed-files list opens this window above Mainframe, scrolled to that file. The owner can move and resize it. It is a snapshot of the task's changes, in layout A: the file list on the left, every file in one scroll on the right.</p>
+
+<div class="scene">
+  <div class="win main-win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span>Mainframe</div>
+    <div class="body"><div></div><div></div><div></div></div>
+  </div>
+  <div class="win diff-win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span>Changes · Fix login redirect · my-app</div>
+    <div class="code" style="padding-top:6px">
+      <div class="ln"><span class="g">41</span><span class="g">41</span><span class="t">  const target = params.get('next');</span></div>
+      <div class="ln rem"><span class="g">42</span><span class="g"></span><span class="t">- redirect(target);</span></div>
+      <div class="ln add"><span class="g"></span><span class="g">42</span><span class="t">+ redirect(isSafe(target) ? target : '/');</span></div>
+      <div class="ln"><span class="g">43</span><span class="g">43</span><span class="t">}</span></div>
+    </div>
+    <span class="grip">◢</span>
+  </div>
+  <span class="tag" style="left:2px;top:236px">Mainframe's window, behind</span>
+  <span class="tag" style="left:34%;top:244px">The diff window: on top of Mainframe, movable, resizable</span>
+</div>
+
+<h2>Layout A, the approved one</h2>
+<div class="win big">
+  <div class="bar"><span class="dots"><i></i><i></i><i></i></span>Changes · Fix login redirect · my-app</div>
+  <div class="body">
+    <div class="list">
+      <div><span class="st">M</span><span class="p">auth/login.ts</span><span class="n"><b>+1</b> <s>−1</s></span></div>
+      <div class="sel"><span class="st">M</span><span class="p">auth/redirect.ts</span><span class="n"><b>+2</b> <s>−1</s></span></div>
+      <div><span class="st u">U</span><span class="p">auth/isSafe.ts</span><span class="n"><b>+4</b></span></div>
+      <div><span class="st">M</span><span class="p">assets/logo.png</span><span class="n"></span></div>
+    </div>
+    <div class="code">
+      <div class="fh"><span>auth/login.ts</span><span class="n"><b>+1</b> <s>−1</s></span></div>
+      <div class="ln"><span class="g">17</span><span class="g">17</span><span class="t">  const user = await find(id);</span></div>
+      <div class="ln rem"><span class="g">18</span><span class="g"></span><span class="t">- if (!user) return;</span></div>
+      <div class="ln add"><span class="g"></span><span class="g">18</span><span class="t">+ if (!user) return fail();</span></div>
+      <div class="fh"><span>auth/redirect.ts</span><span class="n"><b>+2</b> <s>−1</s></span></div>
+      <div class="ln"><span class="g">40</span><span class="g">40</span><span class="t">export function back(q) {</span></div>
+      <div class="ln"><span class="g">41</span><span class="g">41</span><span class="t">  const target = q.get('next');</span></div>
+      <div class="ln rem"><span class="g">42</span><span class="g"></span><span class="t">- redirect(target);</span></div>
+      <div class="ln add"><span class="g"></span><span class="g">42</span><span class="t">+ redirect(isSafe(target)</span></div>
+      <div class="ln add"><span class="g"></span><span class="g">43</span><span class="t">+   ? target : '/');</span></div>
+      <div class="ln"><span class="g">43</span><span class="g">44</span><span class="t">}</span></div>
+      <div class="hunk">⋯</div>
+      <div class="ln"><span class="g">88</span><span class="g">89</span><span class="t">export default back;</span></div>
+      <div class="fh"><span>auth/isSafe.ts</span><span class="n"><b>+4</b></span></div>
+      <div class="ln add"><span class="g"></span><span class="g">1</span><span class="t">+ export function isSafe(url) {</span></div>
+      <div class="ln add"><span class="g"></span><span class="g">2</span><span class="t">+   return url?.startsWith('/') &amp;&amp; !url.startsWith('//');</span></div>
+      <div class="fh"><span>assets/logo.png</span><span class="n"></span></div>
+      <div class="note">Binary file, not shown.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
