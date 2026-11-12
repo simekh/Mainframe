@@ -183,7 +183,8 @@ test('Settings lets a stand-in become the default', async () => {
   await expect(page.getByTestId('settings-default-opencode')).toBeDisabled();
   await expect(page.getByTestId('settings-default-claude')).toHaveAttribute('aria-checked', 'false');
   await page.getByTestId('settings-default-claude').click();
-  await expect(page.getByTestId('settings-default-claude')).toHaveAttribute('aria-checked', 'true');
+  // With nothing standing in and only one agent working, there is no choice left to show.
+  await expect(page.getByTestId('settings-default-claude')).toHaveCount(0);
   await expect(page.getByTestId('default-fallback')).toHaveCount(0);
   await expect.poll(() => savedSettings(dataDir).defaultAgent).toBe('claude');
   await app.close();
