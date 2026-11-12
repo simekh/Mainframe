@@ -139,7 +139,7 @@ git commit -m "feat: Mainframe can find OpenCode 2.1 or later, on PATH, in its i
   - `opencodeStartArgv(o: { opencodeBin: string; sessionId: string; prompt: string }): string[]` returns `[bin, '--standalone', '-s', id, '--prompt', prompt]`
   - `opencodeReopenArgv(o: { opencodeBin: string; sessionId: string; prompt?: string }): string[]` returns `[bin, '--standalone', '-s', id]`, plus `'--prompt', prompt` when given. It throws `not a session id: <id>` when `!isOpencodeSessionId(id)`.
 - Produces, in `git.ts`: `addWorktree(projectDir: string, path: string, branch: string, o: { create: boolean }): Promise<void>`
-  - `create: true` runs `git worktree add -b <branch> <path> <base>`. `<base>` is `origin/HEAD` when `git rev-parse --verify --quiet origin/HEAD` succeeds, and `HEAD` otherwise.
+  - `create: true` runs `git worktree add --no-track -b <branch> <path> <base>`. `<base>` is `origin/HEAD` when `git rev-parse --verify --quiet origin/HEAD` succeeds, and `HEAD` otherwise.
   - `create: false` runs `git worktree prune`, then `git worktree add <path> <branch>`.
   - It rejects with git's error when git fails.
 - Produces, in `openingPrompt.ts`: `openingPrompt(t)` takes two more fields, `agent: AgentName` and `projectDir: string`, and keeps `worktreePath` from the task. For `'claude'` the text is byte for byte today's. For `'opencode'`:

@@ -1,4 +1,4 @@
-import { createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
+import { createSignal, For, onMount, Show } from 'solid-js';
 import { AGENT_NAMES, MIN_OPENCODE_VERSION, type AgentName, type ProgramCheck, type StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { commandHeld, commandName } from '../keys';
@@ -119,34 +119,28 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             }}
           />
         </div>
-        <Show when={opencode()}>
-          {(c) => (
-            <Switch>
-              <Match when={c().state === 'found'}>
-                <div class="field">
-                  <span id="nt-agent" class="field-label">
-                    Agent
-                  </span>
-                  <div class="nt-agents" role="radiogroup" aria-labelledby="nt-agent">
-                    <For each={Object.keys(AGENT_NAMES) as AgentName[]}>
-                      {(name) => (
-                        <label class="nt-agent">
-                          <input
-                            type="radio"
-                            name="nt-agent"
-                            data-testid={`new-task-agent-${name}`}
-                            checked={agent() === name}
-                            onChange={() => setAgent(name)}
-                          />
-                          {AGENT_NAMES[name]}
-                        </label>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </Match>
-            </Switch>
-          )}
+        <Show when={opencode()?.state === 'found'}>
+          <div class="field">
+            <span id="nt-agent" class="field-label">
+              Agent
+            </span>
+            <div class="nt-agents" role="radiogroup" aria-labelledby="nt-agent">
+              <For each={Object.keys(AGENT_NAMES) as AgentName[]}>
+                {(name) => (
+                  <label class="nt-agent">
+                    <input
+                      type="radio"
+                      name="nt-agent"
+                      data-testid={`new-task-agent-${name}`}
+                      checked={agent() === name}
+                      onChange={() => setAgent(name)}
+                    />
+                    {AGENT_NAMES[name]}
+                  </label>
+                )}
+              </For>
+            </div>
+          </div>
         </Show>
         <Show when={agentHint(opencode())}>
           {(hint) => (

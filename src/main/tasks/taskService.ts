@@ -171,8 +171,8 @@ export class TaskService {
         await this.addWorktree(task, true);
       } catch (err) {
         this.deps.records.all.splice(this.deps.records.all.indexOf(task), 1);
-        // Another project may have saved it meanwhile. Nothing on screen showed it, so it is only saved.
-        this.deps.records.save();
+        // Another project may have saved it meanwhile, and another change here may have shown its card.
+        this.commit();
         throw err;
       }
       const argv = this.startArgvOf(task, (prompt) => opencodeStartArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt }));

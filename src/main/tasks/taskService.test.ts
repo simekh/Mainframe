@@ -120,7 +120,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
 });
 
 it('start trims the title and passes noQuestions on to the opening prompt', async () => {
-  const { service, readState, projectDir } = setup();
+  const { service, readState } = setup();
   const view = await service.start({ title: '  Fix login  ', description: '', noQuestions: true });
   expect(view.title).toBe('Fix login');
   expect(readState()[0].noQuestions).toBe(true);
@@ -132,7 +132,7 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
 const LONG = `  ${'Users get logged out. '.repeat(1000)}\n`;
 
 /** The launch of "Fix login" with `description`, as `start` builds it for a session whose folder is `taskDir`. */
-function expectedStart(projectDir: string, claudeSessionId: string, taskDir: string, description: string, brief?: { dir: string; file: string }): string[] {
+function expectedStart(claudeSessionId: string, taskDir: string, description: string, brief?: { dir: string; file: string }): string[] {
   return startArgv({
     claudeBin: 'claude',
     slug: 'fix-login',
@@ -152,12 +152,12 @@ function expectedStart(projectDir: string, claudeSessionId: string, taskDir: str
 }
 
 it('on Windows, a description too long for the command line goes to a file the session is given the folder of', async () => {
-  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
+  const { service, readState, taskDir } = setup({}, 'win32');
   const view = await service.start({ ...NEW_TASK, description: LONG });
 
   const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
   const { argv } = service.launchSpec(view.session!.id);
-  expect(argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
   expect(argv.at(-1)).toContain(brief.file);
   expect(argv.at(-1)).not.toContain('Users get logged out.');
   expect(argv.indexOf('--add-dir')).toBe(argv.indexOf('--settings') - 2);
@@ -167,32 +167,32 @@ it('on Windows, a description too long for the command line goes to a file the s
 });
 
 it('on Windows, a description that fits launches as it does anywhere, with no file', async () => {
-  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
+  const { service, readState, taskDir } = setup({}, 'win32');
   const view = await service.start(NEW_TASK);
 
   expect(service.launchSpec(view.session!.id).argv).toEqual(
-    expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description),
+    expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description),
   );
   expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
 });
 
 it('on the Mac, a long description stays in the prompt, with no file', async () => {
-  const { service, readState, taskDir, projectDir } = setup();
+  const { service, readState, taskDir } = setup();
   const view = await service.start({ ...NEW_TASK, description: LONG });
 
-  expect(service.launchSpec(view.session!.id).argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG));
+  expect(service.launchSpec(view.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG));
   expect(existsSync(join(taskDir(view.id), 'brief'))).toBe(false);
 });
 
 it('on Windows, a reopen that must begin the conversation again moves a long description to its file too', async () => {
-  const { service, readState, taskDir, projectDir } = setup({}, 'win32');
+  const { service, readState, taskDir } = setup({}, 'win32');
   const view = await service.start({ ...NEW_TASK, description: LONG });
   // claude was missing or quit at once: SessionStart never fired.
   service.onSessionExit(view.session!.id);
 
   const reopened = await service.reopen(view.id);
   const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
-  expect(service.launchSpec(reopened.session!.id).argv).toEqual(expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
   expect(readFileSync(brief.file, 'utf8')).toBe(LONG);
 });
 
@@ -207,7 +207,7 @@ const CARD: TaskCardRef = {
 };
 
 it("a task started from a card keeps it, shows it, and its launch carries the card's prompt", async () => {
-  const { service, readState, projectDir } = setup();
+  const { service, readState } = setup();
   const view = await service.start({ ...NEW_TASK, card: CARD });
 
   expect(view.card).toEqual(CARD);
@@ -896,7 +896,7 @@ it('reopen resumes the recorded conversation although no transcript of it can be
 });
 
 it('reopen of a task whose first launch never began a conversation starts one, with a fresh id and the same prompt', async () => {
-  const { service, readState, taskDir, projectDir } = setup();
+  const { service, readState, taskDir } = setup();
   const view = await service.start({ ...NEW_TASK, noQuestions: true });
   const first = readState()[0].claudeSessionId;
   // claude was missing or quit at once: SessionStart never fired.
@@ -920,7 +920,7 @@ it('reopen of a task whose first launch never began a conversation starts one, w
 });
 
 it('a reopen that must begin the conversation again keeps the card in its prompt', async () => {
-  const { service, projectDir } = setup();
+  const { service } = setup();
   const view = await service.start({ ...NEW_TASK, card: CARD });
   // claude was missing or quit at once: SessionStart never fired.
   service.onSessionExit(view.session!.id);
@@ -1181,7 +1181,7 @@ it("a Claude task's launch is unchanged", async () => {
 
   const spec = service.launchSpec(view.session!.id);
   expect(spec).not.toHaveProperty('env');
-  expect(spec).toEqual({ cwd: projectDir, argv: expectedStart(projectDir, readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
+  expect(spec).toEqual({ cwd: projectDir, argv: expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
   expect(added).toEqual([]);
   expect(view.agent).toBe('claude');
   expect(readState()[0].agent).toBe('claude');
@@ -1201,7 +1201,8 @@ it('a failed worktree add leaves no task', async () => {
   await expect(service.start(OPENCODE_TASK)).rejects.toThrow('fatal: x');
   expect(service.list()).toEqual([]);
   expect(service.sessionIds()).toEqual([]);
-  expect(changes).toEqual([]);
+  // The window gets the list without the task, in case another change meanwhile showed it.
+  expect(changes).toEqual([[]]);
   expect(JSON.parse(readFileSync(stateFile, 'utf8')).tasks).toEqual([]);
 });
 

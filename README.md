@@ -2,12 +2,12 @@
 
 Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) sessions side by side, across your projects, in one window.
 
-- **A board of tasks.** Each task is a Claude Code session in its own git worktree (`.claude/worktrees/<name>` in your project). The board shows which sessions are working and which need you.
+- **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (`.claude/worktrees/<name>` in your project). The board shows which sessions are working and which need you.
 - **A manager.** Each project has one Claude session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
 - **A Todo panel.** It reads your to-do list from your task tracker through a Claude Code connector, so it works with any tracker you have one for: Trello, Linear, GitHub Issues and others. You start a task from a card.
 - **Several projects at once.** Show them one at a time, side by side, or in a grid. Quit ends every session, and the next start brings them back.
 
-Every session is a real `claude` process. It runs with your own Claude Code login, settings and permissions.
+Every session is a real `claude` or `opencode` process. It runs with your own login, settings and permissions.
 
 ## What you need
 
@@ -19,7 +19,7 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in | native installer, Homebrew or npm | native installer or WinGet; npm, see below | native installer or npm |
 | A compiler for `npm install` | no | no | yes, see below |
-| Optional: [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or any `opencode` on PATH | yes | yes | yes |
+| Optional: [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH | `opencode` | `opencode.exe` | `opencode` |
 
 Each project you open must be a git repository.
 

@@ -114,7 +114,7 @@ export async function addWorktree(projectDir: string, path: string, branch: stri
     () => 'origin/HEAD',
     () => 'HEAD',
   );
-  await git(projectDir, ['worktree', 'add', '-b', branch, path, base]);
+  await git(projectDir, ['worktree', 'add', '--no-track', '-b', branch, path, base]);
 }
 
 export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, addWorktree };

@@ -42,7 +42,7 @@ OpenCode's launch lives in `src/main/tasks/opencode.ts`, beside Claude's in `lau
 
 ### OpenCode's launch
 
-- **Worktree.** Mainframe makes it, in the same place and with the same branch names as Claude: `.claude/worktrees/<slug>` on `worktree-<slug>`. It runs `git worktree add -b worktree-<slug> <path> origin/HEAD`, or `HEAD` when the repo has no `origin/HEAD`, which matches the base the start check warns about. The rest of Mainframe (changed files, the diff window, slug checks) then needs no change.
+- **Worktree.** Mainframe makes it, in the same place and with the same branch names as Claude: `.claude/worktrees/<slug>` on `worktree-<slug>`. It runs `git worktree add --no-track -b worktree-<slug> <path> origin/HEAD` (the branch tracks nothing, as a Claude one doesn't), or `HEAD` when the repo has no `origin/HEAD`, which matches the base the start check warns about. The rest of Mainframe (changed files, the diff window, slug checks) then needs no change.
 - **Start:** `opencode --standalone -s <id> --prompt <opening prompt>`, run in the worktree, with tabs off. The id is `ses_` plus 28 hex characters, which keeps it within the 32 bytes of an OSC 7501 record id.
 - **Reopen:** `opencode --standalone -s <id> [--prompt <carry-on>]`, run in the worktree. When the worktree folder is gone but its branch is still there, Mainframe adds the worktree back first. When both are gone, the session runs in the project folder, as a Claude reopen does.
 - **Windows.** `--prompt` takes the whole opening prompt, so the long-description file and `fitsWindowsCommandLine` apply as they do for Claude. The brief folder is passed to OpenCode with no `--add-dir` flag: V2 allows reads outside the project by default.

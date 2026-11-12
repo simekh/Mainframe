@@ -124,6 +124,10 @@ it('addWorktree branches from origin/HEAD when there is one', async () => {
   await addWorktree(main, path, 'worktree-a', { create: true });
   expect(out(path, 'rev-parse', 'HEAD')).toBe(out(main, 'rev-parse', 'origin/HEAD'));
   expect(out(path, 'rev-parse', 'HEAD')).not.toBe(out(main, 'rev-parse', 'HEAD'));
+  // Like a Claude task's branch, it tracks nothing on the remote.
+  expect(() =>
+    execFileSync('git', ['-C', main, 'rev-parse', '--abbrev-ref', 'worktree-a@{upstream}'], { stdio: 'pipe' }),
+  ).toThrow(/no upstream/);
 });
 
 it('addWorktree branches from HEAD without origin/HEAD', async () => {
