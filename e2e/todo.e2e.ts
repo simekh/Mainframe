@@ -245,6 +245,33 @@ test('Stop ends a running sync quietly: the list stays, a reply from the stopped
   await app.close();
 });
 
+test("a sync past two minutes says so, and the line's Stop ends the run", async () => {
+  const dir = folder();
+  const { app, page, dataDir } = await launchApp({}, dir);
+  await syncFirstTime(page, dataDir);
+  holdSyncs(dataDir);
+  await page.getByTestId('todo-sync').click();
+  await expect.poll(() => heldSyncs(dataDir)).toBe(1);
+
+  // Main's own timer waits the real two minutes: main sends the view it would send then.
+  const view = await page.evaluate((dir) => window.mainframe.getTodo(dir), dir);
+  expect(view.syncing).toBe(true);
+  await app.evaluate(
+    ({ BrowserWindow }, { channel, dir, view }) => BrowserWindow.getAllWindows()[0].webContents.send(channel, { dir, view }),
+    { channel: IPC.todoChanged, dir, view: { ...view, longSync: true } },
+  );
+  const line = page.getByTestId('todo-long-sync');
+  await expect(line.locator('p')).toHaveText('Still syncing (2 min). Large syncs can use a lot of tokens.', { useInnerText: true });
+  await expect(line.getByTestId('todo-keep-going')).toBeVisible();
+
+  await line.getByTestId('todo-long-stop').click();
+  await expect.poll(() => stoppedSyncs(dataDir)).toBe(1);
+  await expect(page.getByTestId('todo-sync')).toHaveText('Sync');
+  await expect(line).toHaveCount(0);
+  releaseSyncs(dataDir);
+  await app.close();
+});
+
 test('a sync that changes a card updates its row in place, and the other rows stay as they were', async () => {
   const { app, page, dataDir } = await launchApp({}, folder());
   await syncFirstTime(page, dataDir);

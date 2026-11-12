@@ -39,6 +39,10 @@ test('an OpenCode task starts in its own worktree', async () => {
   expect(envOf(first).OPENCODE_CLI_CONFIG_CONTENT).toBe('{"tabs":{"mode":"off"}}');
   expect(envOf(first).OPENCODE_CONFIG_CONTENT).toBeUndefined();
   await expect(card(page, id).getByTestId('task-agent')).toHaveText('OpenCode');
+
+  // The box keeps no choice: the next one starts on the default again.
+  await page.getByTestId('new-task').click();
+  await expect(page.getByTestId('new-task-agent-claude')).toBeChecked();
   await app.close();
 });
 
