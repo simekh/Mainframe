@@ -38,6 +38,11 @@ describe('restoreBounds', () => {
     expect(onScreen(0, 0)).toEqual({ x: 0, y: 0, ...size });
   });
 
+  it('keeps saved bounds no larger than the display their title bar shows on', () => {
+    const saved = { x: 0, y: 0, width: 2400, height: 1400 };
+    expect(restoreBounds(saved, [screen], parent)).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+  });
+
   it('drops saved bounds whose title bar is above every display, though the rest shows', () => {
     const saved = { x: 0, y: -600, width: 1000, height: 720 };
     expect(restoreBounds(saved, [screen], parent)).toEqual({ x: 300, y: 140, width: 1000, height: 720 });

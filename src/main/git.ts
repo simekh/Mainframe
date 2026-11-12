@@ -137,8 +137,8 @@ async function readUntracked(
     // A link's size is its target's length.
     const info = await lstat(file);
     if (!info.isFile() && !info.isSymbolicLink()) return undefined;
-    if (budget.spent) return { kind: 'notRead' };
     if (info.size > DIFF_LIMITS.fileChars) return { kind: 'tooLarge' };
+    if (budget.spent) return { kind: 'notRead' };
     if (info.size > budget.left) {
       budget.spent = true;
       return { kind: 'notRead' };

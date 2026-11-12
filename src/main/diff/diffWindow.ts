@@ -35,8 +35,8 @@ export class DiffWindow implements DiffWindowControl {
   show(view: DiffView): void {
     // A read can land after Mainframe's window closed, while the app waits to quit.
     if (this.o.parent.isDestroyed()) return;
-    // A slow read for an earlier click must not replace a later one's.
-    // It outlives the window, so a read from before a close can't reopen it with an older view.
+    // A slow read for an earlier click must not replace a later one's, and one from before a close must
+    // not reopen the window the user just closed (`closed`).
     if (view.seq < this.latestSeq) return;
     this.latestSeq = view.seq;
     this.view = view;
@@ -81,6 +81,7 @@ export class DiffWindow implements DiffWindowControl {
       if (this.win !== win) return;
       this.win = null;
       this.view = null;
+      this.latestSeq = this.seq + 1;
     });
     this.win = win;
     // The page asks for the latest view (`current`) once it has loaded.

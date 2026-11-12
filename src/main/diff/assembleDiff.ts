@@ -19,8 +19,8 @@ interface DiffLimits {
 export const DIFF_LIMITS: DiffLimits = {
   fileLines: 3000,
   totalLines: 15000,
-  // Also git.ts's cap on an untracked file's bytes, so a file is too large whether it is tracked or not:
-  // UTF-8 text is never longer than its bytes.
+  // Also git.ts's cap on an untracked file's bytes, checked before it is read: the same limit for ASCII
+  // text, and a stricter one for text of several bytes a character.
   fileChars: 1024 * 1024,
   totalChars: 4 * 1024 * 1024,
 };

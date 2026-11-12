@@ -34,7 +34,9 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
  * that window's centre, so the title bar can't open off-screen.
  */
 export function restoreBounds(saved: Rect | null, workAreas: Rect[], parent: Rect): Rect {
-  if (saved && workAreas.some((area) => titleBarShows(saved, area))) return saved;
+  const shownOn = saved ? workAreas.find((a) => titleBarShows(saved, a)) : undefined;
+  // No larger than that display: a larger one it was on may have been unplugged.
+  if (saved && shownOn) return { ...saved, width: Math.min(saved.width, shownOn.width), height: Math.min(saved.height, shownOn.height) };
   const centre = { x: parent.x + parent.width / 2, y: parent.y + parent.height / 2 };
   const area =
     workAreas.find((a) => centre.x >= a.x && centre.x < a.x + a.width && centre.y >= a.y && centre.y < a.y + a.height) ??

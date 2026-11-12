@@ -271,13 +271,16 @@ it('taskDiff notes an untracked nested repository', async () => {
   expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note])).toEqual([['nested/', 'repository']]);
 });
 
-it('taskDiff reads untracked files within a budget, the clicked file first', async () => {
+it('taskDiff reads untracked files within a budget, the clicked file first, and one too large is so past it', async () => {
   const { main } = repo();
   const wt = worktreeOf(main);
   const names = Array.from({ length: 17 }, (_, i) => `f${String(i + 1).padStart(2, '0')}.txt`);
   // Binary, so the files read cost nothing against the diff's own text limit.
   for (const name of names) writeFileSync(join(wt, name), '\0' + 'x'.repeat(999_999));
+  // After the budget is spent: clicking it would not show it either.
+  writeFileSync(join(wt, 'g.txt'), 'x'.repeat(1_100_000));
   const files = (await taskDiff(wt, 'f17.txt'))!;
   expect(files.find((f) => f.path === 'f17.txt')!.note).toBe('binary');
   expect(files.filter((f) => f.note === 'notShown').map((f) => f.path)).toEqual(['f16.txt']);
+  expect(files.find((f) => f.path === 'g.txt')!.note).toBe('tooLarge');
 });
