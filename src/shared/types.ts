@@ -135,7 +135,7 @@ export interface TaskView {
   slug: string;
   /** `worktree-<slug>`. */
   branch: string;
-  /** `<projectDir>/.claude/worktrees/<slug>`. */
+  /** `<projectDir>/<the agent's worktrees folder>/<slug>`. */
   worktreePath: string;
   createdAt: number;
   /** When its last session ended; null while one runs. Closed cards show their age from it. */

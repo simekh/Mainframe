@@ -79,6 +79,8 @@ export interface AgentAdapter {
   worktreeNote(o: { branch: string; worktreePath: string; projectDir: string }): string;
   /** True: Mainframe adds the task's worktree and runs the agent in it. False: the agent's own flag makes it, from the project folder. */
   readonly mainframeAddsWorktree: boolean;
+  /** Where this agent's task worktrees live, relative to the project folder, with `/` between the names. */
+  readonly worktreesDir: string;
   /** Its launches run node (Claude Code's hooks), so it can't be used while no node was found. */
   readonly needsNode: boolean;
   /** A new conversation id; Claude Code's comes from `uuid`, so tests can name it. */

@@ -152,7 +152,7 @@ export class TaskService {
       slug,
       name: sessionName(this.deps.projectDir, slug),
       claudeSessionId: adapter.newSessionId(this.newId),
-      worktreePath: join(this.deps.projectDir, '.claude', 'worktrees', slug),
+      worktreePath: join(this.deps.projectDir, adapter.worktreesDir, slug),
       branch: `worktree-${slug}`,
       createdAt: this.now(),
       closedAt: null,
@@ -223,9 +223,20 @@ export class TaskService {
   private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
     this.launching.add(task.id);
     try {
+      await this.hideWorktreesFolder(task);
       await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
     } finally {
       this.launching.delete(task.id);
+    }
+  }
+
+  /** Keeps the agent's worktrees folder out of git status through the repo's local exclude file; a failure only warns. */
+  private async hideWorktreesFolder(task: TaskRecord): Promise<void> {
+    const [top] = ADAPTERS[agentOf(task)].worktreesDir.split('/');
+    try {
+      await this.deps.git.excludeLocally(this.deps.projectDir, `/${top}/`);
+    } catch (err) {
+      this.deps.warn?.(`Could not add /${top}/ to the repo's local exclude file: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -394,11 +405,13 @@ export class TaskService {
   }
 
   private worktreeFolders(): string[] {
-    try {
-      return readdirSync(join(this.deps.projectDir, '.claude', 'worktrees'));
-    } catch {
-      return [];
-    }
+    return Object.values(ADAPTERS).flatMap((adapter) => {
+      try {
+        return readdirSync(join(this.deps.projectDir, adapter.worktreesDir));
+      } catch {
+        return [];
+      }
+    });
   }
 
   /** The program the agent's sessions run. A reopen needs only this: an agent unticked since keeps its tasks. */

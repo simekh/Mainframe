@@ -29,7 +29,7 @@ test('an OpenCode task starts in its own worktree', async () => {
 
   const [first, ...rest] = launches(dataDir);
   expect(rest).toEqual([]);
-  expect(realpathSync(first.cwd)).toBe(realpathSync(join(main, '.claude', 'worktrees', 'fix-login')));
+  expect(realpathSync(first.cwd)).toBe(realpathSync(join(main, '.mainframe', 'worktrees', 'fix-login')));
   expect(first.args).toHaveLength(5);
   expect(first.args.slice(0, 2)).toEqual(['--standalone', '-s']);
   expect(first.args[2]).toMatch(SESSION_ID);

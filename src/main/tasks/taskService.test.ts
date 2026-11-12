@@ -53,6 +53,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     changedFiles: async () => [],
     taskDiff: async () => [],
     addWorktree: async () => {},
+    excludeLocally: async () => {},
     ...gitOverrides,
   };
   const killed: string[] = [];
@@ -1203,7 +1204,7 @@ it('an OpenCode task starts in its worktree', async () => {
   const { added, addWorktree } = recordingAdds();
   const { service, projectDir, readState, taskDir } = setup({ addWorktree });
   const view = await service.start(OPENCODE_TASK);
-  const worktreePath = join(projectDir, '.claude', 'worktrees', 'fix-login');
+  const worktreePath = join(projectDir, '.mainframe', 'worktrees', 'fix-login');
 
   expect(added).toEqual([[projectDir, worktreePath, 'worktree-fix-login', { create: true }]]);
   const [record] = readState();
@@ -1220,6 +1221,33 @@ it('an OpenCode task starts in its worktree', async () => {
   expect(service.list()[0].agent).toBe('opencode');
   expect(view.session).toMatchObject({ startedWithPrompt: true });
   expect(existsSync(join(taskDir(view.id), 'settings.json'))).toBe(false);
+});
+
+it("an OpenCode task's worktree folder is hidden through the repo's local exclude file", async () => {
+  const excluded: unknown[][] = [];
+  const { service, projectDir } = setup({ excludeLocally: async (...args) => void excluded.push(args) });
+  await service.start(OPENCODE_TASK);
+  expect(excluded).toEqual([[projectDir, '/.mainframe/']]);
+});
+
+it('a failing exclude write logs a warning and the start still succeeds', async () => {
+  const { service, warnings } = setup({ excludeLocally: async () => { throw new Error('read-only'); } });
+  const view = await service.start(OPENCODE_TASK);
+  expect(view.session).toBeTruthy();
+  expect(warnings.some((w) => w.includes('read-only'))).toBe(true);
+});
+
+it("a Claude task doesn't touch the exclude file", async () => {
+  const excluded: unknown[][] = [];
+  const { service } = setup({ excludeLocally: async (...args) => void excluded.push(args) });
+  await service.start(NEW_TASK);
+  expect(excluded).toEqual([]);
+});
+
+it('a slug whose folder exists under .mainframe/worktrees counts as taken', async () => {
+  const { service, projectDir } = setup();
+  mkdirSync(join(projectDir, '.mainframe', 'worktrees', 'fix-login'), { recursive: true });
+  expect((await service.start(NEW_TASK)).slug).toBe('fix-login-2');
 });
 
 it("a Claude task's launch is unchanged", async () => {
@@ -1347,7 +1375,7 @@ const opencodeOpening = (projectDir: string, title = 'Fix login', slug = 'fix-lo
   openingPrompt({
     agent: 'opencode',
     projectDir,
-    worktreePath: join(projectDir, '.claude', 'worktrees', slug),
+    worktreePath: join(projectDir, '.mainframe', 'worktrees', slug),
     title,
     description: 'Users get logged out',
     branch: `worktree-${slug}`,

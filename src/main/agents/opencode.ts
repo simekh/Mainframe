@@ -168,6 +168,7 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     worktreeNote: ({ branch, worktreePath, projectDir }) =>
       `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
     mainframeAddsWorktree: true,
+    worktreesDir: '.mainframe/worktrees',
     needsNode: false,
     newSessionId: newOpencodeSessionId,
     // No `addDir`: OpenCode reads outside the project by default.

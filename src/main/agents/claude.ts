@@ -241,6 +241,8 @@ export const claudeAgent: AgentAdapter = {
     'checkout, for example to merge, call ExitWorktree with action "keep" first.',
   // `claude -w` makes the task's worktree as it starts.
   mainframeAddsWorktree: false,
+  // Where `claude -w` puts them.
+  worktreesDir: '.claude/worktrees',
   needsNode: true,
   newSessionId: (uuid) => uuid(),
   taskStart: (o) => ({
