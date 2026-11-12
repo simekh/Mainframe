@@ -24,16 +24,26 @@ function overlaps(a: Rect, b: Rect): boolean {
   return width >= MIN_VISIBLE.width && height >= MIN_VISIBLE.height;
 }
 
+/** `value`, moved into [min, max]; `min` wins where the range is empty. */
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
+
 /**
  * Where the window opens: where it was, if enough of it still shows on a display (one may have been
- * unplugged), else the default size centred over Mainframe's window.
+ * unplugged), else the default size centred over Mainframe's window, kept within the display that holds
+ * that window's centre, so the title bar can't open off-screen.
  */
 export function restoreBounds(saved: Rect | null, workAreas: Rect[], parent: Rect): Rect {
   if (saved && workAreas.some((area) => overlaps(saved, area))) return saved;
+  const centre = { x: parent.x + parent.width / 2, y: parent.y + parent.height / 2 };
+  const area =
+    workAreas.find((a) => centre.x >= a.x && centre.x < a.x + a.width && centre.y >= a.y && centre.y < a.y + a.height) ??
+    workAreas[0];
+  const { width, height } = DIFF_WINDOW_SIZE;
   return {
-    x: Math.round(parent.x + (parent.width - DIFF_WINDOW_SIZE.width) / 2),
-    y: Math.round(parent.y + (parent.height - DIFF_WINDOW_SIZE.height) / 2),
-    ...DIFF_WINDOW_SIZE,
+    x: clamp(Math.round(centre.x - width / 2), area.x, area.x + area.width - width),
+    y: clamp(Math.round(centre.y - height / 2), area.y, area.y + area.height - height),
+    width,
+    height,
   };
 }
 

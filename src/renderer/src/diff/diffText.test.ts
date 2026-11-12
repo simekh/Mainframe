@@ -22,7 +22,8 @@ describe('noteText', () => {
     expect(noteText(file({ note: 'notShown' }))).toBe(
       "Not shown: this task's changes are too large to show at once. Click this file in the session panel to see it.",
     );
-    expect(noteText(file({ note: 'noLines' }))).toBe('No line changes (file mode changed).');
+    expect(noteText(file({ note: 'modeOnly' }))).toBe('No line changes (file mode changed).');
+    expect(noteText(file({ note: 'noLines' }))).toBe('No line changes.');
     expect(noteText(file({ note: 'empty' }))).toBe('Empty file.');
   });
 

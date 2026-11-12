@@ -16,8 +16,10 @@ export function noteText(file: FileDiff): string | null {
         : 'Too large to show here.';
     case 'notShown':
       return "Not shown: this task's changes are too large to show at once. Click this file in the session panel to see it.";
-    case 'noLines':
+    case 'modeOnly':
       return 'No line changes (file mode changed).';
+    case 'noLines':
+      return 'No line changes.';
     case 'empty':
       return 'Empty file.';
   }

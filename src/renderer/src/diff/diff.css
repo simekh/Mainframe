@@ -119,7 +119,7 @@
 }
 
 .diff-line .code,
-.diff-page .path {
+.diff-file-head .path {
   user-select: text;
 }
 

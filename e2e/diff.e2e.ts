@@ -8,7 +8,7 @@ test.afterEach(cleanUp);
 
 /**
  * Mainframe on a repo with one task, Fix login, whose worktree has a committed `a.txt` of 200 lines
- * and an untracked `b.txt`, once the panel lists both.
+ * and an untracked `b.txt` with blank lines in it, once the panel lists both.
  */
 async function withTask() {
   const main = repo();
@@ -21,7 +21,7 @@ async function withTask() {
   writeFileSync(join(worktree, 'a.txt'), Array.from({ length: 200 }, (_, i) => `line ${i + 1}\n`).join(''));
   git('-C', worktree, 'add', 'a.txt');
   git('-C', worktree, 'commit', '-m', 'a');
-  writeFileSync(join(worktree, 'b.txt'), 'b\n');
+  writeFileSync(join(worktree, 'b.txt'), 'first\n\n\nfourth\n  indented\n');
   const rows = page.getByTestId('changed-file');
   await expect(rows).toHaveCount(2, { timeout: 12_000 });
   return { ...launched, main, worktree, rows };
@@ -62,6 +62,23 @@ test("clicking a changed file opens the diff window above Mainframe's, titled fo
   await expect(diff.locator('[data-testid=diff-list-row][data-path="b.txt"]')).toHaveAttribute('aria-current', 'true');
   await expect(diff.locator('[data-testid=diff-file][data-path="b.txt"]')).toBeInViewport();
   expect(await windowsOf(app)).toEqual([{ title: `Changes · Fix login · ${basename(main)}`, aboveMainframe: true }]);
+  await app.close();
+});
+
+test("selecting a file's lines copies only the code, blank lines kept", async () => {
+  const { app, rows } = await withTask();
+  const diff = await openFrom(app, rows.nth(1));
+  const code = diff.locator('[data-testid=diff-file][data-path="b.txt"] .code');
+  await expect(code).toHaveCount(5);
+  const selected = await code.evaluateAll((spans) => {
+    const range = document.createRange();
+    range.setStart(spans[0].firstChild!, 0);
+    range.setEnd(spans[4].firstChild!, spans[4].textContent!.length);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    return getSelection()!.toString();
+  });
+  expect(selected).toBe('first\n\n\nfourth\n  indented');
   await app.close();
 });
 

@@ -31,7 +31,8 @@ export default function DiffFile(props: { file: FileDiff }) {
                           <span class="ln">{line.oldLine}</span>
                           <span class="ln">{line.newLine}</span>
                           <span class="mk">{MARKER[line.kind]}</span>
-                          <span class="code">{line.text}</span>
+                          {/* A blank line holds a newline: an empty span between unselectable ones copies as nothing. */}
+                          <span class="code">{line.text || '\n'}</span>
                         </div>
                       )}
                     </For>

@@ -4,7 +4,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
-import { assembleDiff, focusFirst, type UntrackedContent } from './diff/assembleDiff';
+import { assembleDiff, DIFF_LIMITS, focusFirst, type UntrackedContent } from './diff/assembleDiff';
 import { parsePatch } from './diff/parsePatch';
 
 const execFileAsync = promisify(execFile);
@@ -183,7 +183,11 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
       }
       throw err;
     }),
-  ]);
+  ]).catch((err: unknown) => {
+    // git's own words: execFile's message leads with the whole command line.
+    const stderr = String((err as { stderr?: unknown }).stderr ?? '').trim();
+    throw stderr ? new Error(stderr) : err;
+  });
   const untracked = new Map<string, UntrackedContent>();
   // One at a time, the clicked file first, so a burst of files can't exhaust memory or file handles.
   const budget = { left: UNTRACKED_BUDGET_BYTES, spent: false };
@@ -192,7 +196,7 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
     const content = await readUntracked(worktreePath, path, budget);
     if (content) untracked.set(path, content);
   }
-  return assembleDiff(listed, parsePatch(patch), untracked, focus);
+  return assembleDiff(listed, parsePatch(patch, DIFF_LIMITS.fileLines), untracked, focus);
 }
 
 export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, taskDiff };

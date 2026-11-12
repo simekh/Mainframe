@@ -24,7 +24,7 @@ describe('parsePatch', () => {
       '+ten-and-a-half',
       ' eleven',
     ]);
-    expect(parsePatch(raw)).toEqual(
+    expect(parsePatch(raw, Infinity)).toEqual(
       new Map([
         [
           'f.txt',
@@ -55,7 +55,7 @@ describe('parsePatch', () => {
       '@@ -1 +0,0 @@',
       '-gone',
     ]);
-    expect(parsePatch(raw)).toEqual(
+    expect(parsePatch(raw, Infinity)).toEqual(
       new Map([
         ['new.txt', [[add('a', 1), add('b', 2)]]],
         ['old.txt', [[rem('gone', 1)]]],
@@ -65,12 +65,12 @@ describe('parsePatch', () => {
 
   it('marks a binary file', () => {
     const raw = patch(['diff --git a/b.bin b/b.bin', 'index 111..222 100644', 'Binary files a/b.bin and b/b.bin differ']);
-    expect(parsePatch(raw)).toEqual(new Map([['b.bin', 'binary']]));
+    expect(parsePatch(raw, Infinity)).toEqual(new Map([['b.bin', 'binary']]));
   });
 
   it('keeps a mode-only change with no hunks', () => {
     const raw = patch(['diff --git a/run.sh b/run.sh', 'old mode 100644', 'new mode 100755']);
-    expect(parsePatch(raw)).toEqual(new Map([['run.sh', []]]));
+    expect(parsePatch(raw, Infinity)).toEqual(new Map([['run.sh', []]]));
   });
 
   it('skips the no-newline marker and strips CR', () => {
@@ -83,7 +83,7 @@ describe('parsePatch', () => {
       '\\ No newline at end of file',
       '+y',
     ]);
-    expect(parsePatch(raw)).toEqual(new Map([['f.txt', [[rem('x', 1), add('y', 1)]]]]));
+    expect(parsePatch(raw, Infinity)).toEqual(new Map([['f.txt', [[rem('x', 1), add('y', 1)]]]]));
   });
 
   it('reads paths with spaces, a " b/" inside, and quoted ones', () => {
@@ -101,7 +101,34 @@ describe('parsePatch', () => {
       'old mode 100644',
       'new mode 100755',
     ]);
-    expect([...parsePatch(raw).keys()]).toEqual(['a b.txt', 'x b/y.txt', 't\tab.txt', 'ö.txt']);
+    expect([...parsePatch(raw, Infinity).keys()]).toEqual(['a b.txt', 'x b/y.txt', 't\tab.txt', 'ö.txt']);
+  });
+
+  it('reads an emoji in a quoted path', () => {
+    const raw = patch(['diff --git "a/t\\t😀.txt" "b/t\\t😀.txt"', 'old mode 100644', 'new mode 100755']);
+    expect([...parsePatch(raw, Infinity).keys()]).toEqual(['t\t😀.txt']);
+  });
+
+  it("stops collecting a file's lines one past the limit, and goes on with the next file", () => {
+    const raw = patch([
+      'diff --git a/big b/big',
+      '@@ -1,2 +1,3 @@',
+      ' one',
+      '+two',
+      '@@ -10,2 +11,2 @@',
+      '-three',
+      '+four',
+      ' five',
+      'diff --git a/small b/small',
+      '@@ -1 +1 @@',
+      '+six',
+    ]);
+    expect(parsePatch(raw, 2)).toEqual(
+      new Map([
+        ['big', [[ctx('one', 1, 1), add('two', 2)], [rem('three', 10)]]],
+        ['small', [[add('six', 1)]]],
+      ]),
+    );
   });
 
   it('merges two blocks of one path', () => {
@@ -119,10 +146,10 @@ describe('parsePatch', () => {
       '@@ -0,0 +1 @@',
       '+text',
     ]);
-    expect(parsePatch(raw)).toEqual(new Map([['f', [[rem('target', 1)], [add('text', 1)]]]]));
+    expect(parsePatch(raw, Infinity)).toEqual(new Map([['f', [[rem('target', 1)], [add('text', 1)]]]]));
   });
 
   it('is empty for an empty patch', () => {
-    expect(parsePatch('')).toEqual(new Map());
+    expect(parsePatch('', Infinity)).toEqual(new Map());
   });
 });

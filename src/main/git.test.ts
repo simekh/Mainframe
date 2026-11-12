@@ -155,11 +155,32 @@ it('taskDiff notes binary, empty and mode-only files', async () => {
   expect(notes).toEqual({ 'b.bin': 'binary', 'e.txt': 'empty', 'ub.bin': 'binary' });
 });
 
-it.skipIf(process.platform === 'win32')('taskDiff notes a mode-only change as having no lines', async () => {
+it.skipIf(process.platform === 'win32')('taskDiff notes a mode-only change', async () => {
   const { main } = repo();
   const wt = worktreeOf(main);
   chmodSync(join(wt, 'README.md'), 0o755);
-  expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note])).toEqual([['README.md', 'noLines']]);
+  expect((await taskDiff(wt, ''))!.map((f) => [f.path, f.note])).toEqual([['README.md', 'modeOnly']]);
+});
+
+it('taskDiff shows a deleted file with every line removed', async () => {
+  const { main } = repo();
+  commitFile(main, 'gone.txt', 'one\ntwo\n');
+  git(main, 'push', 'origin', 'stage');
+  const wt = worktreeOf(main);
+  git(wt, 'rm', 'gone.txt');
+  git(wt, 'commit', '-m', 'remove gone.txt');
+  expect((await taskDiff(wt, 'gone.txt'))!.map((f) => [f.path, f.status, f.hunks])).toEqual([
+    ['gone.txt', 'D', [[rem('one', 1), rem('two', 2)]]],
+  ]);
+});
+
+it("taskDiff fails with git's message when git fails after finding the worktree", async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  writeFileSync(join(main, '.git', 'worktrees', 'x', 'index'), 'not an index');
+  const failure = taskDiff(wt, '');
+  await expect(failure).rejects.toThrow(/index/);
+  await expect(failure).rejects.not.toThrow(/Command failed/);
 });
 
 it('taskDiff keeps paths with spaces and non-ASCII letters', async () => {
@@ -210,6 +231,16 @@ it('taskDiff marks untracked files over the limits too large', async () => {
   expect(files.find((f) => f.path === 'wide.txt')).toMatchObject({ note: 'tooLarge', added: null });
 });
 
+it("taskDiff marks tracked files over the limits too large, with the listing's counts", async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  commitFile(wt, 'lines.txt', 'x\n'.repeat(3001));
+  commitFile(wt, 'wide.txt', 'x'.repeat(1_100_000) + '\n');
+  const files = (await taskDiff(wt, ''))!;
+  expect(files.find((f) => f.path === 'lines.txt')).toMatchObject({ note: 'tooLarge', hunks: [], added: 3001, removed: 0 });
+  expect(files.find((f) => f.path === 'wide.txt')).toMatchObject({ note: 'tooLarge', hunks: [], added: 1, removed: 0 });
+});
+
 it('taskDiff is null for a folder that is not a work tree', async () => {
   const bare = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
   cleanup.push(bare);
@@ -221,8 +252,9 @@ it('taskDiff reads untracked files within a budget, the clicked file first', asy
   const { main } = repo();
   const wt = worktreeOf(main);
   const names = Array.from({ length: 17 }, (_, i) => `f${String(i + 1).padStart(2, '0')}.txt`);
-  for (const name of names) writeFileSync(join(wt, name), 'x'.repeat(999_999) + '\n');
+  // Binary, so the files read cost nothing against the diff's own text limit.
+  for (const name of names) writeFileSync(join(wt, name), '\0' + 'x'.repeat(999_999));
   const files = (await taskDiff(wt, 'f17.txt'))!;
-  expect(files.find((f) => f.path === 'f17.txt')!.hunks).toHaveLength(1);
+  expect(files.find((f) => f.path === 'f17.txt')!.note).toBe('binary');
   expect(files.filter((f) => f.note === 'notShown').map((f) => f.path)).toEqual(['f16.txt']);
 });

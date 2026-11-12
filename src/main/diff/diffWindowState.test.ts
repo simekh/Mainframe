@@ -20,6 +20,12 @@ describe('restoreBounds', () => {
     },
   );
 
+  it("keeps the default's top edge on the display under a short parent near its top", () => {
+    const area = { x: 0, y: 25, width: 1920, height: 1055 };
+    const short = { x: 200, y: 40, width: 1200, height: 500 };
+    expect(restoreBounds(null, [area], short)).toEqual({ x: 300, y: 25, width: 1000, height: 720 });
+  });
+
   it('needs 100 by 40 px on a display', () => {
     const size = { width: 500, height: 500 };
     const onScreen = (x: number, y: number) => restoreBounds({ x, y, ...size }, [screen], parent);

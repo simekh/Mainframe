@@ -9,9 +9,20 @@ interface DiffLimits {
   fileLines: number;
   /** Lines shown across the whole diff, clicked file first. */
   totalLines: number;
+  /** A file with more text than this shows a note instead: a few long lines can be as slow to lay out as many. */
+  fileChars: number;
+  /** Text shown across the whole diff, for the same reason. */
+  totalChars: number;
 }
 
-const DIFF_LIMITS: DiffLimits = { fileLines: 3000, totalLines: 15000 };
+/** parsePatch stops collecting a file's lines at `fileLines`, so the two share it. */
+export const DIFF_LIMITS: DiffLimits = {
+  fileLines: 3000,
+  totalLines: 15000,
+  // The untracked read's cap, so a file is too large whether it is tracked or not.
+  fileChars: 1024 * 1024,
+  totalChars: 4 * 1024 * 1024,
+};
 
 /** The clicked file first, then the rest in their order: it gets the limits' room before any other. */
 export const focusFirst = <T>(items: T[], isFocus: (item: T) => boolean): T[] => [
@@ -33,9 +44,10 @@ function untrackedFile(f: ChangedFile, content: UntrackedContent | undefined): F
 
 function trackedFile(f: ChangedFile, block: PatchBlock | undefined): FileDiff {
   if (block === 'binary') return noteOnly(f, 'binary');
-  // No block: the file changed after the listing. An empty block is a mode change, or an empty file added or removed.
+  // No block: the file changed after the listing, or was only touched. An empty block is a mode change,
+  // or an empty file added or removed.
   if (block === undefined) return noteOnly(f, 'noLines');
-  if (block.length === 0) return noteOnly(f, f.status === 'A' || f.status === 'D' ? 'empty' : 'noLines');
+  if (block.length === 0) return noteOnly(f, f.status === 'A' || f.status === 'D' ? 'empty' : 'modeOnly');
   return { ...f, hunks: block, note: null };
 }
 
@@ -52,18 +64,32 @@ export function assembleDiff(
   limits: DiffLimits = DIFF_LIMITS,
 ): FileDiff[] {
   const files = listed.map((f) => (f.status === '?' ? untrackedFile(f, untracked.get(f.path)) : trackedFile(f, blocks.get(f.path))));
-  const lineCount = (f: FileDiff): number => f.hunks.reduce((n, h) => n + h.length, 0);
+  const sizeOf = (f: FileDiff): { lines: number; chars: number } => {
+    let lines = 0;
+    let chars = 0;
+    for (const hunk of f.hunks) {
+      lines += hunk.length;
+      for (const line of hunk) chars += line.text.length;
+    }
+    return { lines, chars };
+  };
 
-  const limited = files.map((f) => (lineCount(f) > limits.fileLines ? noteOnly(f, 'tooLarge') : f));
+  const limited = files.map((f) => {
+    const size = sizeOf(f);
+    return size.lines > limits.fileLines || size.chars > limits.fileChars ? noteOnly(f, 'tooLarge') : f;
+  });
 
   // Files that already carry a note cost nothing, and keep it.
   const walk = focusFirst(limited, (f) => f.path === focus);
   const notShown = new Set<string>();
-  let total = 0;
+  const total = { lines: 0, chars: 0 };
   for (const f of walk) {
     if (f.note !== null) continue;
-    if (notShown.size === 0 && total + lineCount(f) <= limits.totalLines) total += lineCount(f);
-    else notShown.add(f.path);
+    const size = sizeOf(f);
+    if (notShown.size === 0 && total.lines + size.lines <= limits.totalLines && total.chars + size.chars <= limits.totalChars) {
+      total.lines += size.lines;
+      total.chars += size.chars;
+    } else notShown.add(f.path);
   }
   return limited.map((f) => (notShown.has(f.path) ? noteOnly(f, 'notShown') : f));
 }

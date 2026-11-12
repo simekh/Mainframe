@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangedFile, DiffLine } from '../../shared/types';
-import { assembleDiff, type UntrackedContent } from './assembleDiff';
+import { assembleDiff, DIFF_LIMITS, type UntrackedContent } from './assembleDiff';
 import type { PatchBlock } from './parsePatch';
+
+/** The real limits, with some made small. */
+const limits = (small: Partial<typeof DIFF_LIMITS>): typeof DIFF_LIMITS => ({ ...DIFF_LIMITS, ...small });
 
 const add = (text: string, n: number): DiffLine => ({ kind: 'add', text, oldLine: null, newLine: n });
 const file = (path: string, status: ChangedFile['status'], added: number | null, removed: number | null): ChangedFile => ({
@@ -31,6 +34,7 @@ describe('assembleDiff', () => {
     const listed = [
       file('bin', 'M', null, null),
       file('mode', 'M', 0, 0),
+      file('type', 'T', 0, 0),
       file('empty', 'A', 0, 0),
       file('gone', 'D', 0, 0),
       file('late', 'M', 1, 1),
@@ -38,13 +42,15 @@ describe('assembleDiff', () => {
     const blocks = new Map<string, PatchBlock>([
       ['bin', 'binary'],
       ['mode', []],
+      ['type', []],
       ['empty', []],
       ['gone', []],
     ]);
     const files = assembleDiff(listed, blocks, none, 'bin');
     expect(files.map((f) => [f.note, f.hunks])).toEqual([
       ['binary', []],
-      ['noLines', []],
+      ['modeOnly', []],
+      ['modeOnly', []],
       ['empty', []],
       ['empty', []],
       ['noLines', []],
@@ -80,8 +86,28 @@ describe('assembleDiff', () => {
 
   it('marks a file over the per-file limit too large, keeping its counts', () => {
     const listed = [file('big', 'M', 3, 1)];
-    const files = assembleDiff(listed, new Map([['big', lines(4)]]), none, 'big', { fileLines: 3, totalLines: 100 });
+    const files = assembleDiff(listed, new Map([['big', lines(4)]]), none, 'big', limits({ fileLines: 3, totalLines: 100 }));
     expect(files[0]).toMatchObject({ added: 3, removed: 1, hunks: [], note: 'tooLarge' });
+  });
+
+  it('marks a file over the per-file text limit too large, keeping its counts', () => {
+    const listed = [file('wide', 'M', 1, 0), file('fits', 'M', 1, 0)];
+    const blocks = new Map<string, PatchBlock>([
+      ['wide', [[add('x'.repeat(11), 1)]]],
+      ['fits', [[add('x'.repeat(10), 1)]]],
+    ]);
+    const files = assembleDiff(listed, blocks, none, 'wide', limits({ fileChars: 10 }));
+    expect(files.map((f) => f.note)).toEqual(['tooLarge', null]);
+    expect(files[0]).toMatchObject({ added: 1, removed: 0, hunks: [] });
+  });
+
+  it('stops at the whole-diff text limit, the clicked file first', () => {
+    const listed = [file('a', 'M', 1, 0), file('b', 'M', 1, 0), file('c', 'M', 1, 0)];
+    const blocks = new Map<string, PatchBlock>(
+      listed.map((f) => [f.path, [[add('x'.repeat(4), 1)]]] as [string, PatchBlock]),
+    );
+    const files = assembleDiff(listed, blocks, none, 'c', limits({ totalChars: 9 }));
+    expect(files.map((f) => f.note)).toEqual([null, 'notShown', null]);
   });
 
   it('serves the clicked file first, then path order, until the whole-diff limit', () => {
@@ -91,7 +117,7 @@ describe('assembleDiff', () => {
       ['b', lines(3)],
       ['c', lines(1)],
     ]);
-    const files = assembleDiff(listed, blocks, none, 'c', { fileLines: 5, totalLines: 6 });
+    const files = assembleDiff(listed, blocks, none, 'c', limits({ fileLines: 5, totalLines: 6 }));
     expect(files.map((f) => f.note)).toEqual([null, 'notShown', null]);
     expect(files[1].hunks).toEqual([]);
   });
@@ -103,7 +129,7 @@ describe('assembleDiff', () => {
       ['b', lines(5)],
       ['c', lines(1)],
     ]);
-    const files = assembleDiff(listed, blocks, none, 'a', { fileLines: 5, totalLines: 6 });
+    const files = assembleDiff(listed, blocks, none, 'a', limits({ fileLines: 5, totalLines: 6 }));
     expect(files.map((f) => f.note)).toEqual([null, 'notShown', 'notShown']);
   });
 
@@ -114,7 +140,7 @@ describe('assembleDiff', () => {
       ['bin', 'binary'],
       ['c', lines(3)],
     ]);
-    const files = assembleDiff(listed, blocks, none, 'a', { fileLines: 5, totalLines: 6 });
+    const files = assembleDiff(listed, blocks, none, 'a', limits({ fileLines: 5, totalLines: 6 }));
     expect(files.map((f) => f.note)).toEqual([null, 'binary', null]);
   });
 });

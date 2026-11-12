@@ -31,6 +31,8 @@ export class DiffWindow implements DiffWindowControl {
   }
 
   show(view: DiffView): void {
+    // A read can land after Mainframe's window closed, while the app waits to quit.
+    if (this.o.parent.isDestroyed()) return;
     // A slow read for an earlier click must not replace a later one's.
     if (this.latest && view.seq < this.latest.seq) return;
     this.latest = view;
