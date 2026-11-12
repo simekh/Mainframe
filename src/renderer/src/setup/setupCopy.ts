@@ -156,6 +156,7 @@ function agentReason(name: AgentName, { check, fromEnv }: SetupView['agents'][Ag
     return [`${copy.envVar} is set to ${check.path}, so that's the only place I look.`, reason, 'Change it or unset it, then start Mainframe again.'];
   }
   switch (check.state) {
+    // The block lists only the agents that aren't found; this keeps the switch whole.
     case 'found':
       return [];
     case 'missing':
@@ -177,12 +178,20 @@ function agentReason(name: AgentName, { check, fromEnv }: SetupView['agents'][Ag
 /** Missing where a new terminal may find it: not one its env var names. */
 const findable = (view: SetupView, name: AgentName) => view.agents[name].check.state === 'missing' && !view.agents[name].fromEnv;
 
-/** A failing agent is a problem only while none works: then one block says why for each, with both agents' buttons. */
+/** An agent Mainframe can run on: ticked and found. A found agent that is unticked doesn't count. */
+export const someAgentWorks = (view: SetupView) =>
+  AGENT_ORDER.some((name) => view.agents[name].ticked && view.agents[name].check.state === 'found');
+
+/**
+ * A failing agent is a problem only while no agent works: then one block says why for each that isn't found, with
+ * its buttons. A found agent that is unticked has nothing to fix.
+ */
 function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | null {
-  if (AGENT_ORDER.some((name) => view.agents[name].check.state === 'found')) return null;
-  const lines = [NO_AGENT, ...AGENT_ORDER.flatMap((name) => agentReason(name, view.agents[name], platform))];
-  if (AGENT_ORDER.some((name) => findable(view, name))) lines.push(POINT_ME);
-  const buttons = AGENT_ORDER.flatMap((name): SetupButton[] => [
+  if (someAgentWorks(view)) return null;
+  const failing = AGENT_ORDER.filter((name) => view.agents[name].check.state !== 'found');
+  const lines = [NO_AGENT, ...failing.flatMap((name) => agentReason(name, view.agents[name], platform))];
+  if (failing.some((name) => findable(view, name))) lines.push(POINT_ME);
+  const buttons = failing.flatMap((name): SetupButton[] => [
     ...(view.agents[name].fromEnv ? [] : [`find-${name}` as const]),
     `install-${name}`,
   ]);

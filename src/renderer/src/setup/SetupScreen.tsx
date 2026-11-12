@@ -2,7 +2,7 @@ import { createComputed, createEffect, createSignal, For, onCleanup, onMount, Sh
 import { createStore, reconcile } from 'solid-js/store';
 import { AGENT_NAMES, AGENT_ORDER, type AgentChoice, type AgentName, type ProgramCheck, type SetupView } from '../../../shared/types';
 import { openLinkLogged } from '../openLink';
-import { agentStep, buttonLabel, checkLine, explanations, intro, type AgentRow, type SetupButton } from './setupCopy';
+import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type AgentRow, type SetupButton } from './setupCopy';
 import { agentChoice, chooseProject, findAgent, isLooking, lookAgain, setDefaultAgent, toggleAgent } from './setupStore';
 
 /** How long each line waits for the one before it. */
@@ -46,8 +46,8 @@ function agentUnits(view: SetupView, choice: AgentChoice): Unit[] {
 }
 
 function unitsOf(view: SetupView, choice: AgentChoice | null, looking: boolean, platform: NodeJS.Platform): Unit[] {
-  // A failing agent is no problem while another works, so its line goes quiet.
-  const agentWorks = AGENT_ORDER.some((name) => view.agents[name].check.state === 'found');
+  // A failing agent is no problem while another works (ticked and found), so its line goes quiet.
+  const agentWorks = someAgentWorks(view);
   const checks = (['git', ...AGENT_ORDER] as const).map((name): Unit => {
     const check = name === 'git' ? view.git : view.agents[name].check;
     const unseen = looking && check.state !== 'found';

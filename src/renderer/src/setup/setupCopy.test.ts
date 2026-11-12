@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_CLAUDE_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type ProgramCheck, type SetupView } from '../../../shared/types';
-import { agentStep, buttonLabel, checkLine, explanations, intro, type SetupButton } from './setupCopy';
+import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type SetupButton } from './setupCopy';
 
 const found = (path: string, version: string): ProgramCheck => ({ state: 'found', path, version });
 const missing: ProgramCheck = { state: 'missing' };
@@ -10,15 +10,27 @@ interface Over extends Partial<Omit<SetupView, 'agents'>> {
   claudeFromEnv?: boolean;
   opencode?: ProgramCheck;
   opencodeFromEnv?: boolean;
+  /** With nothing saved an agent is ticked when it is found; this says otherwise. */
+  ticked?: Partial<Record<'claude' | 'opencode', boolean>>;
 }
 
 /** A view where git and Claude Code are found and OpenCode is not; each test changes what it is about. */
 const view = (over: Over = {}): SetupView => {
-  const { claude = found('/home/me/.local/bin/claude', '2.1.319'), claudeFromEnv = false, opencode = missing, opencodeFromEnv = false, ...rest } = over;
+  const {
+    claude = found('/home/me/.local/bin/claude', '2.1.319'),
+    claudeFromEnv = false,
+    opencode = missing,
+    opencodeFromEnv = false,
+    ticked = {},
+    ...rest
+  } = over;
   return {
     intro: 'welcome',
     git: found('/usr/bin/git', '2.56.0'),
-    agents: { claude: { check: claude, fromEnv: claudeFromEnv }, opencode: { check: opencode, fromEnv: opencodeFromEnv } },
+    agents: {
+      claude: { check: claude, fromEnv: claudeFromEnv, ticked: ticked.claude ?? claude.state === 'found' },
+      opencode: { check: opencode, fromEnv: opencodeFromEnv, ticked: ticked.opencode ?? opencode.state === 'found' },
+    },
     lookedAgain: false,
     ask: null,
     ...rest,
@@ -269,6 +281,22 @@ describe('explanations', () => {
       expect(
         blocks({ claude: missing, opencodeFromEnv: true, opencode: { state: 'missing', path: '/opt/opencode' } })[0].lines.slice(2, 5),
       ).toEqual(["MAINFRAME_OPENCODE_BIN is set to /opt/opencode, so that's the only place I look.", "There's nothing there I can run.", CHANGE]);
+    });
+  });
+
+  describe('a found agent that is unticked does not count', () => {
+    // A later start: only OpenCode was ticked, and it has moved; Claude Code is still installed.
+    const moved: Over = { intro: 'moved', claude: found('/c', '2.1.319'), opencode: missing, ticked: { claude: false, opencode: true } };
+
+    it('no agent works, so the failing one is not quiet', () => {
+      expect(someAgentWorks(view(moved))).toBe(false);
+      expect(someAgentWorks(view({ ...moved, ticked: { claude: true, opencode: true } }))).toBe(true);
+    });
+
+    it("gives the agents block for the agent that isn't found, with its buttons and Look again", () => {
+      expect(blocks(moved)).toEqual([
+        { check: 'agents', lines: [NONE, OPENCODE_NOWHERE, ASK], buttons: ['find-opencode', 'install-opencode', 'look-again'] },
+      ]);
     });
   });
 

@@ -3,7 +3,7 @@ import type { ExecutableLookup } from '../pty/findExecutable';
 import { hasProjectsFile, rememberedProjects } from '../projects';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentSetting } from '../agents/agent';
-import { runDefault } from './agentChoice';
+import { runDefault, tickedAgents } from './agentChoice';
 import { checkGit, type VersionRunner } from './programChecks';
 import { readSettings, writeSettings, type AppSettings } from './settings';
 
@@ -182,7 +182,8 @@ export class SetupFlow {
   }
 
   private show(ask: AgentChoice | null): void {
-    const agentView = (name: AgentName) => ({ check: this.agents[name], fromEnv: Boolean(this.deps.envBins[name]) });
+    const ticked = tickedAgents(this.settings, this.agents);
+    const agentView = (name: AgentName) => ({ check: this.agents[name], fromEnv: Boolean(this.deps.envBins[name]), ticked: ticked.includes(name) });
     this.publish({
       intro: this.firstStart ? 'welcome' : 'moved',
       git: this.git,

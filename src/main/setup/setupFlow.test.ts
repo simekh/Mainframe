@@ -24,14 +24,23 @@ const foundOpencode = (path = OC): ProgramCheck => ({ state: 'found', path, vers
 /** The question at a first start with only Claude Code found. */
 const CLAUDE_ONLY: AgentChoice = { ticked: ['claude'], defaultAgent: 'claude' };
 const OPENCODE_ONLY: AgentChoice = { ticked: ['opencode'], defaultAgent: 'opencode' };
+/** With nothing saved an agent is ticked when it is found; `ticked` says otherwise. */
 const expectedView = (
-  o: Partial<Omit<SetupView, 'agents'>> & { claude?: ProgramCheck; claudeFromEnv?: boolean; opencode?: ProgramCheck } = {},
+  o: Partial<Omit<SetupView, 'agents'>> & {
+    claude?: ProgramCheck;
+    claudeFromEnv?: boolean;
+    opencode?: ProgramCheck;
+    ticked?: Partial<Record<AgentName, boolean>>;
+  } = {},
 ): SetupView => {
-  const { claude = foundClaude(), claudeFromEnv = false, opencode = { state: 'missing' }, ...rest } = o;
+  const { claude = foundClaude(), claudeFromEnv = false, opencode = { state: 'missing' }, ticked = {}, ...rest } = o;
   return {
     intro: 'welcome',
     git: foundGit,
-    agents: { claude: { check: claude, fromEnv: claudeFromEnv }, opencode: { check: opencode, fromEnv: false } },
+    agents: {
+      claude: { check: claude, fromEnv: claudeFromEnv, ticked: ticked.claude ?? claude.state === 'found' },
+      opencode: { check: opencode, fromEnv: false, ticked: ticked.opencode ?? opencode.state === 'found' },
+    },
     lookedAgain: false,
     ask: null,
     ...rest,
@@ -622,7 +631,25 @@ describe('the agents', () => {
     writeSettings(dataDir, { agents: { claude: { enabled: true }, opencode: { enabled: false } }, defaultAgent: 'claude', welcomeSeen: true });
     const h = harness({ programs: { [GIT]: 'git version 2.56.0\n', [OC]: OC_CURRENT } });
     await h.flow.begin();
-    expect(h.flow.view()).toEqual(expectedView({ intro: 'moved', claude: { state: 'missing' }, opencode: foundOpencode() }));
+    // Claude Code is ticked though missing, OpenCode found though unticked: the screen is told both.
+    expect(h.flow.view()).toEqual(
+      expectedView({ intro: 'moved', claude: { state: 'missing' }, opencode: foundOpencode(), ticked: { claude: true, opencode: false } }),
+    );
+    expect(h.start).not.toHaveBeenCalled();
+  });
+
+  it('a later start whose only ticked agent has moved shows it as ticked, beside a found agent that is not', async () => {
+    existingInstall();
+    writeSettings(dataDir, {
+      agents: { claude: { enabled: false, bin: NATIVE }, opencode: { enabled: true, bin: '/gone/opencode' } },
+      defaultAgent: 'opencode',
+      welcomeSeen: true,
+    });
+    const h = harness();
+    await h.flow.begin();
+    expect(h.flow.view()).toEqual(
+      expectedView({ intro: 'moved', claude: foundClaude(), opencode: { state: 'missing' }, ticked: { claude: false, opencode: true } }),
+    );
     expect(h.start).not.toHaveBeenCalled();
   });
 
@@ -631,7 +658,7 @@ describe('the agents', () => {
     const h = harness({ envOpencodeBin: ENV_OC, programs: { [GIT]: 'git version 2.56.0\n', [ENV_OC]: OC_CURRENT, [OC]: OC_CURRENT } });
     await h.flow.begin();
     expect(h.ran.filter((file) => file !== GIT)).toEqual([ENV_OC]);
-    expect(h.flow.view()?.agents.opencode).toEqual({ check: foundOpencode(ENV_OC), fromEnv: true });
+    expect(h.flow.view()?.agents.opencode).toEqual({ check: foundOpencode(ENV_OC), fromEnv: true, ticked: true });
     h.picks.folder = acme;
     await h.flow.chooseProject(OPENCODE_ONLY);
     expect(settings()).toStrictEqual({ welcomeSeen: true, defaultAgent: 'opencode', agents: { opencode: { enabled: true } } });

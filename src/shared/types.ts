@@ -90,8 +90,12 @@ export interface SetupView {
   /** The welcome at a true first start; "something moved" at any later start. */
   intro: 'welcome' | 'moved';
   git: ProgramCheck;
-  /** `fromEnv`: the agent's env var (MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN) names it, so it is the only place looked at and nothing is saved. */
-  agents: Record<AgentName, { check: ProgramCheck; fromEnv: boolean }>;
+  /**
+   * `fromEnv`: the agent's env var (MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN) names it, so it is the only place looked
+   * at and nothing is saved. `ticked`: the settings use it (with nothing saved, when it is found). An agent works for
+   * Mainframe when it is ticked and found.
+   */
+  agents: Record<AgentName, { check: ProgramCheck; fromEnv: boolean; ticked: boolean }>;
   /** The user asked to look again and something is still missing: a fresh install may need a new terminal. */
   lookedAgain: boolean;
   /** Everything needed is found at a first start: the agents step and the project question, starting from this choice. */
