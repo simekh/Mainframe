@@ -2,7 +2,7 @@ import type { ChangedFile, DiffLine, DiffNote, FileDiff } from '../../shared/typ
 import type { PatchBlock } from './parsePatch';
 
 /** An untracked file as read from disk: git's patch has nothing for it. */
-export type UntrackedContent = { kind: 'text'; lines: string[] } | { kind: 'binary' } | { kind: 'tooLarge' };
+export type UntrackedContent = { kind: 'text'; lines: string[] } | { kind: 'binary' } | { kind: 'tooLarge' } | { kind: 'notRead' };
 
 export interface DiffLimits {
   /** A file with more lines than this shows a note instead. */
@@ -27,6 +27,7 @@ function untrackedFile(f: ChangedFile, content: UntrackedContent | undefined): F
   if (content === undefined) return noteOnly(f, 'noLines'); // went away since the listing
   if (content.kind === 'binary') return noteOnly(f, 'binary');
   if (content.kind === 'tooLarge') return noteOnly(f, 'tooLarge');
+  if (content.kind === 'notRead') return noteOnly(f, 'notShown'); // left unread to bound memory
   if (content.lines.length === 0) return noteOnly(f, 'empty', { added: 0, removed: 0 });
   const hunk: DiffLine[] = content.lines.map((text, i) => ({ kind: 'add', text, oldLine: null, newLine: i + 1 }));
   return { path: f.path, status: f.status, added: hunk.length, removed: 0, hunks: [hunk], note: null };

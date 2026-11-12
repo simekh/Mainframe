@@ -119,15 +119,30 @@ export async function changedFiles(worktreePath: string): Promise<ChangedFile[] 
 }
 
 const UNTRACKED_MAX_BYTES = 1024 * 1024;
+// Untracked files are read into memory before the diff's own limits apply: a stray build folder must not fill it.
+const UNTRACKED_BUDGET_BYTES = 16 * 1024 * 1024;
 const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 
-/** Undefined for a file that is gone since the listing, or is not a regular file (a link, say). */
-async function readUntracked(worktreePath: string, path: string): Promise<UntrackedContent | undefined> {
+/**
+ * Undefined for a file that is gone since the listing, or is not a regular file (a link, say).
+ * The first file that would take `budget` past its bytes, and every file after it, is left unread.
+ */
+async function readUntracked(
+  worktreePath: string,
+  path: string,
+  budget: { left: number; spent: boolean },
+): Promise<UntrackedContent | undefined> {
   const file = join(worktreePath, path);
   try {
     const stat = await lstat(file);
     if (!stat.isFile()) return undefined;
+    if (budget.spent) return { kind: 'notRead' };
     if (stat.size > UNTRACKED_MAX_BYTES) return { kind: 'tooLarge' };
+    if (stat.size > budget.left) {
+      budget.spent = true;
+      return { kind: 'notRead' };
+    }
+    budget.left -= stat.size;
     const bytes = await readFile(file);
     if (bytes.subarray(0, 8000).includes(0)) return { kind: 'binary' };
     const lines = bytes.toString('utf8').split('\n');
@@ -156,9 +171,10 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
       worktreePath,
       [
         '-c', 'core.quotePath=false',
+        '-c', 'diff.suppressBlankEmpty=false',
         ...NO_INDEX_REFRESH,
         'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-relative', '--no-renames',
-        '--src-prefix=a/', '--dst-prefix=b/', '-U3', base, '--',
+        '--submodule=short', '--src-prefix=a/', '--dst-prefix=b/', '-U3', base, '--',
       ],
       { maxBuffer: DIFF_MAX_BUFFER },
     ).catch((err: unknown) => {
@@ -169,14 +185,13 @@ export async function taskDiff(worktreePath: string, focus: string): Promise<Fil
     }),
   ]);
   const untracked = new Map<string, UntrackedContent>();
-  await Promise.all(
-    listed
-      .filter((f) => f.status === '?')
-      .map(async (f) => {
-        const content = await readUntracked(worktreePath, f.path);
-        if (content) untracked.set(f.path, content);
-      }),
-  );
+  // One at a time, the clicked file first, so a burst of files can't exhaust memory or file handles.
+  const budget = { left: UNTRACKED_BUDGET_BYTES, spent: false };
+  const paths = listed.filter((f) => f.status === '?').map((f) => f.path);
+  for (const path of [...paths.filter((p) => p === focus), ...paths.filter((p) => p !== focus)]) {
+    const content = await readUntracked(worktreePath, path, budget);
+    if (content) untracked.set(path, content);
+  }
   return assembleDiff(listed, parsePatch(patch), untracked, focus);
 }
 

@@ -73,6 +73,11 @@ describe('assembleDiff', () => {
     expect(files[4]).toMatchObject({ hunks: [], note: 'noLines' });
   });
 
+  it('shows an untracked file that was not read as not shown', () => {
+    const files = assembleDiff([file('n', '?', null, null)], new Map(), new Map([['n', { kind: 'notRead' }]]), 'n');
+    expect(files[0]).toMatchObject({ added: null, hunks: [], note: 'notShown' });
+  });
+
   it('marks a file over the per-file limit too large, keeping its counts', () => {
     const listed = [file('big', 'M', 3, 1)];
     const files = assembleDiff(listed, new Map([['big', lines(4)]]), none, 'big', { fileLines: 3, totalLines: 100 });

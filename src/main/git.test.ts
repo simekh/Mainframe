@@ -173,25 +173,30 @@ it('taskDiff keeps paths with spaces and non-ASCII letters', async () => {
 it("taskDiff ignores the user's diff settings", async () => {
   const { main } = repo();
   // ten.txt is on the base, so only the edit below is a change.
-  commitFile(main, 'ten.txt', Array.from({ length: 10 }, (_, i) => `${i + 1}\n`).join(''));
+  const ten = (changed: boolean) =>
+    Array.from({ length: 10 }, (_, i) => `${i === 4 && changed ? 'five' : i === 2 ? '' : i + 1}\n`).join('');
+  commitFile(main, 'ten.txt', ten(false));
   git(main, 'push', 'origin', 'stage');
   const wt = worktreeOf(main);
   commitFile(wt, 'ö.txt', 'y\n');
-  writeFileSync(join(wt, 'ten.txt'), Array.from({ length: 10 }, (_, i) => `${i === 4 ? 'five' : i + 1}\n`).join(''));
+  writeFileSync(join(wt, 'ten.txt'), ten(true));
   for (const [key, value] of [
     ['diff.noprefix', 'true'],
     ['diff.mnemonicPrefix', 'true'],
     ['color.ui', 'always'],
     ['diff.context', '10'],
     ['core.quotePath', 'true'],
+    ['diff.suppressBlankEmpty', 'true'],
+    ['diff.submodule', 'log'],
   ]) {
     git(wt, 'config', key, value);
   }
   const files = (await taskDiff(wt, ''))!;
-  const ten = files.find((f) => f.path === 'ten.txt')!;
-  expect(ten.hunks).toHaveLength(1);
-  expect(ten.hunks[0]).toHaveLength(8);
-  expect(ten.hunks[0][0]).toEqual(ctx('2', 2, 2));
+  const changed = files.find((f) => f.path === 'ten.txt')!;
+  expect(changed.hunks).toHaveLength(1);
+  expect(changed.hunks[0]).toHaveLength(8);
+  expect(changed.hunks[0].slice(0, 4)).toEqual([ctx('2', 2, 2), ctx('', 3, 3), ctx('4', 4, 4), rem('5', 5)]);
+  expect(changed.hunks[0][7]).toEqual(ctx('8', 8, 8));
   expect(files.map((f) => f.path)).toContain('ö.txt');
 });
 
@@ -210,4 +215,14 @@ it('taskDiff is null for a folder that is not a work tree', async () => {
   cleanup.push(bare);
   expect(await taskDiff(bare, '')).toBeNull();
   expect(await taskDiff(join(bare, 'missing'), '')).toBeNull();
+});
+
+it('taskDiff reads untracked files within a budget, the clicked file first', async () => {
+  const { main } = repo();
+  const wt = worktreeOf(main);
+  const names = Array.from({ length: 17 }, (_, i) => `f${String(i + 1).padStart(2, '0')}.txt`);
+  for (const name of names) writeFileSync(join(wt, name), 'x'.repeat(999_999) + '\n');
+  const files = (await taskDiff(wt, 'f17.txt'))!;
+  expect(files.find((f) => f.path === 'f17.txt')!.hunks).toHaveLength(1);
+  expect(files.filter((f) => f.note === 'notShown').map((f) => f.path)).toEqual(['f16.txt']);
 });
