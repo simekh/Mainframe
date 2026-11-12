@@ -28,7 +28,7 @@ On macOS and Linux, any Claude Code whose `claude` runs in your terminal works, 
 
 **On Windows**, Mainframe finds the native installer's `claude.exe` in `%USERPROFILE%\.local\bin`, even when that folder isn't on your PATH (the installer doesn't add it). Claude Code installed with npm puts a `claude.cmd` on your PATH, which Mainframe never runs: it uses the `claude.exe` in npm's package instead, once npm has put the real one in place. When it hasn't, the setup screen says so and suggests the native installer. No compiler is needed: node-pty comes ready-built for Windows.
 
-Each task's files sit inside your project, under `.claude\worktrees\<name>\`, so in a deep repository their paths can pass Windows' 260-character limit. To let git use longer paths, run this once:
+Each task's files sit inside your project, under `.claude\worktrees\<name>\` (Claude Code) or `.mainframe\worktrees\<name>\` (OpenCode), so in a deep repository their paths can pass Windows' 260-character limit. To let git use longer paths, run this once:
 
 ```sh
 git config --global core.longpaths true
