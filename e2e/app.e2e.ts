@@ -30,7 +30,7 @@ test('the window follows its system: the Mac keeps its menu and the room for its
   } else {
     const bar = await app.evaluate(({ BrowserWindow, Menu }) => ({
       appMenu: Menu.getApplicationMenu() !== null,
-      menuBarVisible: BrowserWindow.getAllWindows()[0].isMenuBarVisible(),
+      menuBarVisible: BrowserWindow.getAllWindows().find((w) => w.getParentWindow() === null)!.isMenuBarVisible(),
     }));
     expect(bar).toEqual({ appMenu: false, menuBarVisible: false });
   }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import type { GitQueries } from '../git';
@@ -346,6 +346,18 @@ export class TaskService {
   async changedFiles(taskId: string): Promise<ChangedFile[] | null> {
     const task = this.mine().find((t) => t.id === taskId);
     return task ? this.deps.git.changedFiles(task.worktreePath) : null;
+  }
+
+  async diff(taskId: string, focus: string): Promise<{ taskTitle: string; result: DiffResult }> {
+    const task = this.find(taskId);
+    let result: DiffResult;
+    try {
+      const files = await this.deps.git.taskDiff(task.worktreePath, focus);
+      result = files ? { kind: 'files', files } : { kind: 'noWorktree' };
+    } catch (err) {
+      result = { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+    }
+    return { taskTitle: task.title, result };
   }
 
   private mine(): TaskRecord[] {

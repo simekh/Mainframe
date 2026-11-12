@@ -1,6 +1,7 @@
+import { basename } from 'node:path';
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import { isAgentName, type AgentChoice, type AgentName, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
+import { isAgentName, type AgentChoice, type AgentName, type DiffView, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -23,6 +24,15 @@ export interface ClipboardDeps {
   clipboard: ClipboardReader & { writeText(text: string): Promise<void> };
   writeFile: (path: string, data: Buffer) => Promise<void>;
   newImagePath: () => string;
+}
+
+/** The one diff window, which shows a task of any open project. */
+export interface DiffWindowControl {
+  /** Taken at the click, so a slower read for an earlier one can be told apart. */
+  nextSeq(): number;
+  show(view: DiffView): void;
+  current(): DiffView | null;
+  close(): void;
 }
 
 /** An open project: its tasks, its manager and its to-do list. */
@@ -105,6 +115,7 @@ export function registerIpc(
   openPicked: () => Promise<void>,
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
+  diff: DiffWindowControl,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
@@ -130,6 +141,13 @@ export function registerIpc(
   );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
+  ipcMain.handle(IPC.openDiff, async (_e, dir: string, taskId: string, path: string) => {
+    const seq = diff.nextSeq();
+    const { taskTitle, result } = await tasksOf(dir).diff(taskId, path);
+    diff.show({ seq, projectName: basename(dir), taskTitle, focus: path, result });
+  });
+  ipcMain.handle(IPC.getDiff, () => diff.current());
+  ipcMain.on(IPC.closeDiff, () => diff.close());
   ipcMain.on(IPC.closeTask, (_e, dir: string, taskId: string) => {
     try {
       tasksOf(dir).close(taskId);

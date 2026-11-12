@@ -1,0 +1,162 @@
+/* The diff window: the changed files on the left, every file's changes in one scroll on the right.
+   Each column scrolls on its own; the page itself never does (app.css: body { overflow: hidden }). */
+.diff-page {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  height: 100%;
+}
+
+/* The panel's .file-list rows (app.css: .file-row, status colours, paths cut from the start), as a full-height column. */
+.diff-list {
+  max-height: none;
+  padding: 8px 0;
+  overflow-y: auto;
+  background: var(--bg-input);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.diff-list button {
+  padding: 0 12px 0 14px;
+}
+
+.diff-list button:hover {
+  background: var(--hover);
+}
+
+.diff-list button[aria-current='true'] {
+  background: var(--hover);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.diff-list button[aria-current='true'] .path {
+  color: var(--fg);
+}
+
+/* LineCounts' look is app.css's, shared with the panel. */
+.diff-page .diff {
+  flex: none;
+}
+
+.diff-files {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+/* Sticky, so the file being read stays named while its lines scroll by. */
+.diff-file-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding: 7px 16px;
+  background: var(--bg-elevated);
+  border-block: 1px solid var(--border-subtle);
+  font: 500 12px/18px var(--font-ui);
+  color: var(--fg);
+}
+
+.diff-file:first-child .diff-file-head {
+  border-top: 0;
+}
+
+.diff-file-head .path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-head .diff {
+  margin-left: auto;
+}
+
+/* Long lines scroll sideways within their file; the rows take the widest line's width, so every tint spans it. */
+.diff-body {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.diff-rows {
+  width: max-content;
+  min-width: 100%;
+  padding-bottom: 8px;
+  font: 12px/20px var(--font-mono);
+}
+
+.diff-line {
+  display: flex;
+  color: var(--fg-muted);
+}
+
+/* Only the code copies: the numbers and markers stay out of a selection (spec §4.2). */
+.diff-line .ln,
+.diff-line .mk {
+  flex: none;
+  user-select: none;
+  color: var(--fg-subtle);
+  opacity: 0.6;
+}
+
+.diff-line .ln {
+  width: 6ch;
+  padding-right: 1ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-line .mk {
+  width: 3ch;
+  text-align: center;
+}
+
+.diff-line .code {
+  padding-right: 16px;
+  white-space: pre;
+}
+
+.diff-line .code,
+.diff-file-head .path {
+  user-select: text;
+}
+
+.diff-line[data-kind='add'] {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.diff-line[data-kind='remove'] {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
+}
+
+.diff-line[data-kind='add'] .mk,
+.diff-line[data-kind='remove'] .mk {
+  color: inherit;
+  opacity: 1;
+}
+
+.diff-sep {
+  height: 10px;
+  margin: 4px 0;
+  border-block: 1px dashed var(--border-subtle);
+  background: color-mix(in srgb, var(--fg-subtle) 4%, transparent);
+}
+
+.diff-note {
+  margin: 0;
+  padding: 10px 16px 14px;
+  color: var(--fg-subtle);
+}
+
+.diff-message {
+  grid-column: 1 / -1;
+  place-self: center;
+  margin: 0;
+  padding: 0 24px;
+  color: var(--fg-muted);
+  text-align: center;
+}

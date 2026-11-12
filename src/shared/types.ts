@@ -161,6 +161,42 @@ export interface ChangedFile {
   removed: number | null;
 }
 
+/** One line of a file's diff: a removed line has no new number, an added one no old number. */
+export interface DiffLine {
+  kind: 'add' | 'remove' | 'context';
+  text: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+/** Why a file shows a note in place of its lines. */
+export type DiffNote = 'binary' | 'tooLarge' | 'notShown' | 'modeOnly' | 'noLines' | 'empty' | 'repository';
+
+export interface FileDiff {
+  path: string;
+  status: ChangedFile['status'];
+  /** The panel's counts; for an untracked text file, its line count and 0. Null where unknown. */
+  added: number | null;
+  removed: number | null;
+  /** Each hunk a run of lines; empty when `note` is set. */
+  hunks: DiffLine[][];
+  note: DiffNote | null;
+}
+
+export type DiffResult =
+  | { kind: 'files'; files: FileDiff[] }
+  | { kind: 'noWorktree' }
+  | { kind: 'failed'; message: string };
+
+/** What the diff window shows. `seq` orders the requests: a higher one is a later click. */
+export interface DiffView {
+  seq: number;
+  projectName: string;
+  taskTitle: string;
+  focus: string;
+  result: DiffResult;
+}
+
 /** Where a project's to-do list came from, as the sync run found it. */
 export interface TodoSource {
   kind: string;
