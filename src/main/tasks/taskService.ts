@@ -172,6 +172,8 @@ export class TaskService {
         await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create: true });
       } catch (err) {
         this.deps.records.all.splice(this.deps.records.all.indexOf(task), 1);
+        // Another project may have saved it meanwhile. Nothing on screen showed it, so it is only saved.
+        this.deps.records.save();
         throw err;
       } finally {
         this.launching.delete(task.id);

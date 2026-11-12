@@ -1209,7 +1209,25 @@ it('a failed worktree add leaves no task', async () => {
   expect(service.list()).toEqual([]);
   expect(service.sessionIds()).toEqual([]);
   expect(changes).toEqual([]);
-  expect(existsSync(stateFile)).toBe(false);
+  expect(JSON.parse(readFileSync(stateFile, 'utf8')).tasks).toEqual([]);
+});
+
+it("a failed worktree add takes the task out of state.json, though another project saved it meanwhile", async () => {
+  let fail!: (err: Error) => void;
+  const { root, stateFile, make, readState } = setup({ addWorktree: () => new Promise((_, reject) => (fail = reject)) });
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  const acme = make(records);
+  const globex = make(records, join(root, 'Globex'));
+
+  const starting = acme.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  const shipped = await globex.start({ ...NEW_TASK, title: 'Ship it' });
+  expect(readState().map((t) => t.title)).toEqual(['Fix login', 'Ship it']);
+
+  fail(new Error('fatal: x'));
+  await expect(starting).rejects.toThrow('fatal: x');
+  expect(readState().map((t) => t.id)).toEqual([shipped.id]);
+  expect(acme.list()).toEqual([]);
 });
 
 it('OpenCode not installed', async () => {
