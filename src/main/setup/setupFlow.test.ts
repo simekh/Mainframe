@@ -107,7 +107,7 @@ describe('first start (no projects.json, no welcomeSeen)', () => {
     await h.flow.begin();
     h.picks.folder = acme;
     await h.flow.chooseProject();
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE, welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
     expect(h.start).toHaveBeenCalledOnce();
     expect(h.start).toHaveBeenCalledWith(NATIVE, [acme]);
     expect(h.events).toEqual(['view shown', 'start finished', 'view cleared']);
@@ -145,12 +145,12 @@ describe('first start (no projects.json, no welcomeSeen)', () => {
   });
 
   it('takes a claude from the native folder it finds when the saved path is gone, and saves it with the project', async () => {
-    writeSettings(dataDir, { claudeBin: '/gone/claude' });
+    writeSettings(dataDir, { agents: { claude: { bin: '/gone/claude' } } });
     const h = harness();
     await h.flow.begin();
     h.picks.folder = acme;
     await h.flow.chooseProject();
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE, welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
   });
 });
 
@@ -169,19 +169,19 @@ describe('a later start', () => {
   it('saves the claude path it found, and not that the welcome was seen', async () => {
     existingInstall();
     await harness().flow.begin();
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } } });
   });
 
   it('does not rewrite settings that already hold the claude path', async () => {
     existingInstall();
-    const text = JSON.stringify({ version: 1, claudeBin: NATIVE, welcomeSeen: true });
+    const text = JSON.stringify({ version: 2, agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
     writeFileSync(settingsFile(), text);
     await harness().flow.begin();
     expect(readFileSync(settingsFile(), 'utf8')).toBe(text);
   });
 
   it('counts a seen welcome with no projects.json as a later start, and starts with no project', async () => {
-    writeSettings(dataDir, { claudeBin: NATIVE, welcomeSeen: true });
+    writeSettings(dataDir, { agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
     const h = harness();
     await h.flow.begin();
     expect(h.start).toHaveBeenCalledWith(NATIVE, []);
@@ -197,11 +197,11 @@ describe('a later start', () => {
 
   it('with the saved claude gone but one in the native folder, starts with that one, saves it, and shows nothing', async () => {
     existingInstall();
-    writeSettings(dataDir, { claudeBin: '/gone/claude', welcomeSeen: true });
+    writeSettings(dataDir, { agents: { claude: { bin: '/gone/claude' } }, welcomeSeen: true });
     const h = harness();
     await h.flow.begin();
     expect(h.start).toHaveBeenCalledWith(NATIVE, [acme, globex]);
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE, welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
     expect(h.views).toEqual([]);
   });
 
@@ -230,7 +230,7 @@ describe('a later start', () => {
 
   it('refuses settings from a newer Mainframe, and starts nothing', async () => {
     existingInstall();
-    writeFileSync(settingsFile(), JSON.stringify({ version: 2 }));
+    writeFileSync(settingsFile(), JSON.stringify({ version: 3 }));
     const h = harness();
     await expect(h.flow.begin()).rejects.toThrow('newer Mainframe');
     expect(h.start).not.toHaveBeenCalled();
@@ -243,24 +243,24 @@ describe('with MAINFRAME_CLAUDE_BIN set', () => {
 
   it('checks only that path, starts with it, and leaves a saved path as it was', async () => {
     existingInstall();
-    writeSettings(dataDir, { claudeBin: '/saved/claude', welcomeSeen: true });
+    writeSettings(dataDir, { agents: { claude: { bin: '/saved/claude' } }, welcomeSeen: true });
     const h = harness({ envClaudeBin: ENV, programs: envPrograms });
     await h.flow.begin();
     expect(h.ran.filter((file) => file !== GIT)).toEqual([ENV]);
     expect(h.start).toHaveBeenCalledWith(ENV, [acme, globex]);
-    expect(settings()).toStrictEqual({ claudeBin: '/saved/claude', welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: '/saved/claude' } }, welcomeSeen: true });
     expect(h.views).toEqual([]);
   });
 
   it('writes no claude path at first start either, and keeps a saved one as it was', async () => {
-    writeSettings(dataDir, { claudeBin: '/saved/claude' });
+    writeSettings(dataDir, { agents: { claude: { bin: '/saved/claude' } } });
     const h = harness({ envClaudeBin: ENV, programs: envPrograms });
     await h.flow.begin();
     expect(h.flow.view()).toEqual(expectedView({ claude: foundClaude(ENV), claudeFromEnv: true, askProject: true }));
     h.picks.folder = acme;
     await h.flow.chooseProject();
     expect(h.start).toHaveBeenCalledWith(ENV, [acme]);
-    expect(settings()).toStrictEqual({ claudeBin: '/saved/claude', welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: '/saved/claude' } }, welcomeSeen: true });
   });
 
   it('records only that the welcome was seen when nothing was saved', async () => {
@@ -319,7 +319,7 @@ describe('lookAgain', () => {
     h.programs[NATIVE] = CURRENT;
     await h.flow.lookAgain();
     expect(h.start).toHaveBeenCalledWith(NATIVE, [acme, globex]);
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } } });
     expect(h.events).toEqual(['view shown', 'start finished', 'view cleared']);
     expect(h.flow.view()).toBeNull();
   });
@@ -348,7 +348,7 @@ describe('lookAgain', () => {
 
   it('tries the saved claude again after a claude picked by hand has failed', async () => {
     const SAVED = '/saved/claude';
-    writeSettings(dataDir, { claudeBin: SAVED });
+    writeSettings(dataDir, { agents: { claude: { bin: SAVED } } });
     const h = harness({ programs: { [GIT]: 'git version 2.56.0\n', [SAVED]: 'hello\n' } });
     await h.flow.begin();
     expect(h.flow.view()?.claude).toEqual({ state: 'broken', path: SAVED });
@@ -371,7 +371,7 @@ describe('findClaude', () => {
     await h.flow.begin();
     h.picks.claude = PICKED;
     await h.flow.findClaude();
-    expect(settings()).toStrictEqual({ claudeBin: PICKED });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: PICKED } } });
     expect(h.start).toHaveBeenCalledWith(PICKED, [acme, globex]);
     expect(h.events).toEqual(['view shown', 'start finished', 'view cleared']);
     expect(h.flow.view()).toBeNull();
@@ -382,7 +382,7 @@ describe('findClaude', () => {
     await h.flow.begin();
     h.picks.claude = PICKED;
     await h.flow.findClaude();
-    expect(settings()).toStrictEqual({ claudeBin: PICKED });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: PICKED } } });
     expect(h.flow.view()).toEqual(expectedView({ claude: foundClaude(PICKED), askProject: true }));
     expect(h.start).not.toHaveBeenCalled();
   });
@@ -403,7 +403,7 @@ describe('findClaude', () => {
     await h.flow.begin();
     h.picks.claude = PICKED;
     await h.flow.findClaude();
-    expect(settings()).toStrictEqual({ claudeBin: PICKED });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: PICKED } } });
     expect(h.flow.view()).toEqual(expectedView({ git: { state: 'missing' }, claude: foundClaude(PICKED), askProject: false }));
     expect(h.start).not.toHaveBeenCalled();
   });
@@ -501,7 +501,7 @@ describe('one action at a time', () => {
     expect(h.pickFolder).toHaveBeenCalledOnce();
     expect(h.ran).toEqual([]);
     expect(h.start).toHaveBeenCalledOnce();
-    expect(settings()).toStrictEqual({ claudeBin: NATIVE, welcomeSeen: true });
+    expect(settings()).toStrictEqual({ agents: { claude: { bin: NATIVE } }, welcomeSeen: true });
     expect(h.flow.view()).toBeNull();
     expect(h.views).toEqual([expectedView({ askProject: true }), null]);
   });

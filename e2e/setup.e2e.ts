@@ -116,7 +116,7 @@ test('a first start welcomes you, finds everything and asks for the first projec
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: claude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: claude } } });
   expect(await openProjectMenuItem(app)).toEqual(process.platform === 'darwin' ? { enabled: true } : null);
   await app.close();
 });
@@ -142,13 +142,13 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
 
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
   await expect(setupItem(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
-  expect(savedSettings(dataDir)).toEqual({ claudeBin: fakeClaude });
+  expect(savedSettings(dataDir)).toEqual({ agents: { claude: { bin: fakeClaude } } });
 
   await answerDialogs(app, project);
   await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: fakeClaude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: fakeClaude } } });
   await app.close();
 });
 
@@ -203,7 +203,7 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   const pc = computer();
   const project = repo();
   const gone = join(pc.home, 'elsewhere', claudeFile);
-  const { app, page, dataDir } = await launchApp(pc.env, project, { settings: { welcomeSeen: true, claudeBin: gone } });
+  const { app, page, dataDir } = await launchApp(pc.env, project, { settings: { welcomeSeen: true, agents: { claude: { bin: gone } } } });
 
   await expect(page.getByText('Something moved since last time, so I had another look around.')).toBeVisible();
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
@@ -216,7 +216,7 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: claude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: claude } } });
   await app.close();
 });
 

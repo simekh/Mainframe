@@ -64,6 +64,9 @@ export type AgentName = 'claude' | 'opencode';
 
 export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
 
+/** The order agents are listed and tried in. */
+export const AGENT_ORDER: readonly AgentName[] = ['claude', 'opencode'];
+
 export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
 
 /** What looking for a program Mainframe needs (git, claude) found. */

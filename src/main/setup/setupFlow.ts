@@ -116,7 +116,7 @@ export class SetupFlow {
    */
   private async recheck(): Promise<void> {
     const { envClaudeBin, lookup, run } = this.deps;
-    const saved = [this.claude.path, this.settings.claudeBin].filter((path) => path !== undefined);
+    const saved = [this.claude.path, this.settings.agents?.claude?.bin].filter((path) => path !== undefined);
     [this.git, this.claude] = await Promise.all([
       this.git.state === 'found' ? this.git : checkGit(lookup, run),
       this.claude.state === 'found' ? this.claude : findClaude({ fromEnv: envClaudeBin, saved, lookup, run }),
@@ -143,16 +143,21 @@ export class SetupFlow {
 
   /** What to save about claude: nothing while MAINFRAME_CLAUDE_BIN names it. */
   private claudePatch(claudeBin: string): AppSettings {
-    return this.deps.envClaudeBin ? {} : { claudeBin };
+    return this.deps.envClaudeBin ? {} : { agents: { claude: { bin: claudeBin } } };
   }
 
   private rememberClaude(claudeBin: string): void {
     const patch = this.claudePatch(claudeBin);
-    if (patch.claudeBin !== undefined && patch.claudeBin !== this.settings.claudeBin) this.save(patch);
+    if (patch.agents?.claude?.bin !== undefined && patch.agents.claude.bin !== this.settings.agents?.claude?.bin) this.save(patch);
   }
 
   private save(patch: AppSettings): void {
-    this.settings = { ...this.settings, ...patch };
+    const claude = patch.agents?.claude;
+    this.settings = {
+      ...this.settings,
+      ...patch,
+      ...(claude && { agents: { ...this.settings.agents, claude: { ...this.settings.agents?.claude, ...claude } } }),
+    };
     writeSettings(this.deps.dataDir, this.settings);
   }
 
