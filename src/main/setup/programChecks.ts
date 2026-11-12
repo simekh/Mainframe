@@ -26,9 +26,10 @@ export function parseClaudeVersion(stdout: string): string | null {
   return /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(stdout.trim())?.[1] ?? null;
 }
 
-// Only opencode's own line counts, for the same reason as claude's.
+// Only opencode's own line counts, for the same reason as claude's. It colours that line when FORCE_COLOR is set.
 export function parseOpencodeVersion(stdout: string): string | null {
-  return /^opencode v(\d+\.\d+\.\d+)$/.exec(stdout.trim())?.[1] ?? null;
+  const plain = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+  return /^opencode v(\d+\.\d+\.\d+)$/.exec(plain.trim())?.[1] ?? null;
 }
 
 export function isAtLeast(version: string, min: string): boolean {

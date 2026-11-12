@@ -317,6 +317,10 @@ describe('parseOpencodeVersion', () => {
     expect(parseOpencodeVersion('opencode v2.2.7\n')).toBe('2.2.7');
   });
 
+  it('reads the line when FORCE_COLOR makes opencode print colour codes', () => {
+    expect(parseOpencodeVersion('\x1b[1mopencode\x1b[0m \x1b[2mv\x1b[0m\x1b[1m2.2.7\x1b[0m\n')).toBe('2.2.7');
+  });
+
   it('takes nothing else for the version', () => {
     expect(parseOpencodeVersion('2.2.7 (Claude Code)')).toBeNull();
     expect(parseOpencodeVersion('2.2.7')).toBeNull();
