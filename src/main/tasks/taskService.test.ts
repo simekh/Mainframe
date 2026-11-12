@@ -1239,6 +1239,9 @@ it('reopen resumes the same OpenCode session', async () => {
   // A Claude SessionStart record is not an OpenCode task's to follow.
   mkdirSync(taskDir(view.id), { recursive: true });
   writeFileSync(join(taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: '11111111-1111-4111-8111-111111111111' }));
+  // Its conversation began, and its turn is over.
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus(view.session!.id, 'done');
   service.onSessionExit(view.session!.id);
   expect(readState()[0].claudeSessionId).toBe(claudeSessionId);
 
@@ -1252,6 +1255,93 @@ it('reopen resumes the same OpenCode session', async () => {
   expect(service.launchSpec(carriedOn.session!.id).argv).toEqual(['/bin/opencode', '--standalone', '-s', claudeSessionId, '--prompt', RESUME_PROMPT]);
   expect(carriedOn.session).toMatchObject({ startedWithPrompt: true });
   expect(readState()[0]).toMatchObject({ claudeSessionId, midTurn: false, open: true });
+});
+
+/** The opening prompt of an OpenCode task started from OPENCODE_TASK in `projectDir`. */
+const opencodeOpening = (projectDir: string, title = 'Fix login', slug = 'fix-login') =>
+  openingPrompt({
+    agent: 'opencode',
+    projectDir,
+    worktreePath: join(projectDir, '.claude', 'worktrees', slug),
+    title,
+    description: 'Users get logged out',
+    branch: `worktree-${slug}`,
+    noQuestions: false,
+  });
+
+it('an OpenCode task whose conversation never began gets its brief on reopen', async () => {
+  const { service, projectDir, readState } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  const { claudeSessionId } = readState()[0];
+  // OpenCode was quit at its login screen: it never reported a turn.
+  service.noteStatus(view.session!.id, 'idle');
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id).argv).toEqual([
+    '/bin/opencode', '--standalone', '-s', claudeSessionId, '--prompt', opencodeOpening(projectDir),
+  ]);
+  expect(reopened.session).toMatchObject({ startedWithPrompt: true });
+});
+
+it('an OpenCode task remembers its conversation began across runs', async () => {
+  const { service, make, readState } = setup();
+  const view = await service.start(OPENCODE_TASK);
+  service.noteStatus(view.session!.id, 'blocked');
+  expect(readState()[0].began).toBe(true);
+  service.beginQuit();
+  service.onSessionExit(view.session!.id);
+
+  const next = make();
+  await next.restore();
+  const [reopened] = next.list();
+  // Blocked as it quit: the carry-on prompt, not the brief.
+  expect(next.launchSpec(reopened.session!.id).argv.slice(-2)).toEqual(['--prompt', ASK_AGAIN_PROMPT]);
+});
+
+it('a Claude task records no began', async () => {
+  const { service, readState } = setup();
+  const view = await service.start(NEW_TASK);
+  service.noteStatus(view.session!.id, 'working');
+  expect(readState()[0]).not.toHaveProperty('began');
+});
+
+it('an OpenCode start that meets a quit records the task, which begins with its brief at the next start', async () => {
+  let added!: () => void;
+  const { service, make, projectDir, readState } = setup({ addWorktree: () => new Promise<void>((resolve) => (added = resolve)) });
+  const starting = service.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  service.beginQuit();
+  added();
+
+  const view = await starting;
+  expect(view.session).toBeNull();
+  expect(service.sessionIds()).toEqual([]);
+  expect(readState()[0]).toMatchObject({ id: view.id, open: true });
+
+  const next = make();
+  await next.restore();
+  const [restored] = next.list();
+  expect(next.launchSpec(restored.session!.id).argv).toEqual([
+    '/bin/opencode', '--standalone', '-s', readState()[0].claudeSessionId, '--prompt', opencodeOpening(projectDir),
+  ]);
+});
+
+it('an OpenCode task stays off the list and the reports until its worktree is there', async () => {
+  let added!: () => void;
+  const { service, changes } = setup({ addWorktree: () => new Promise<void>((resolve) => (added = resolve)) });
+  const starting = service.start(OPENCODE_TASK);
+  await new Promise((resolve) => setImmediate(resolve));
+  // Another task's change meanwhile shows the board without it.
+  await service.start({ ...NEW_TASK, title: 'Ship it' });
+  expect(service.list().map((t) => t.title)).toEqual(['Ship it']);
+  expect(service.reports().map((r) => r.title)).toEqual(['Ship it']);
+  expect(changes.at(-1)!.map((t) => t.title)).toEqual(['Ship it']);
+
+  added();
+  const view = await starting;
+  expect(service.list().map((t) => t.id)).toContain(view.id);
+  expect(service.reports().map((r) => r.taskId)).toContain(view.id);
 });
 
 it('reopen adds a deleted worktree back', async () => {

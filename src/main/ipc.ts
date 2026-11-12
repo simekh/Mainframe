@@ -65,8 +65,8 @@ export function registerIpc(
   openPicked: () => Promise<void>,
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
-  /** What the start found of the agents besides Claude Code. */
-  agentChecks: { opencode: ProgramCheck },
+  /** What the start finds of the agents besides Claude Code. */
+  agentChecks: Promise<{ opencode: ProgramCheck }>,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());

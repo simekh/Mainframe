@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { AgentName, ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
 import type { GitQueries } from '../git';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
-import { resumePromptFor, TurnTracker } from './carryOn';
+import { inTurn, resumePromptFor, TurnTracker } from './carryOn';
 import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
 import { newOpencodeSessionId, OPENCODE_ENV, opencodeReopenArgv, opencodeStartArgv } from './opencode';
@@ -79,6 +79,8 @@ export class TaskService {
   private readonly sessions = new Map<string, Session>();
   /** Tasks whose worktree git is adding before their session starts: a reopen meanwhile would start a second one. */
   private readonly launching = new Set<string>();
+  /** Tasks start has recorded but not yet given a session: off the board and the manager's list until then. */
+  private readonly starting = new Set<string>();
   private quitting = false;
 
   constructor(private readonly deps: TaskServiceDeps) {
@@ -88,12 +90,12 @@ export class TaskService {
   }
 
   list(): TaskView[] {
-    return this.mine().map((task) => this.view(task));
+    return this.shown().map((task) => this.view(task));
   }
 
   /** Every task of the project, oldest first, with what its session last reported. */
   reports(): SessionReport[] {
-    return this.mine().map((task) => {
+    return this.shown().map((task) => {
       const running = this.sessionOf(task.id);
       const status = running ? this.deps.status(running.id) : null;
       return {
@@ -165,18 +167,24 @@ export class TaskService {
       this.deps.records.all.push(task);
       this.addSession({ taskId: task.id, launch: { argv, cwd: this.deps.projectDir }, startedWithPrompt: true, resumePending: false });
     } else {
-      // Listed before git runs, so a start meanwhile takes another slug; saved only once the worktree is there.
+      // Recorded before git runs, so a start meanwhile takes another slug; shown and saved only once the worktree is there.
       this.deps.records.all.push(task);
+      this.starting.add(task.id);
       try {
         await this.addWorktree(task, true);
       } catch (err) {
         this.deps.records.all.splice(this.deps.records.all.indexOf(task), 1);
-        // Another project may have saved it meanwhile, and another change here may have shown its card.
+        // Another project may have saved it meanwhile.
         this.commit();
         throw err;
+      } finally {
+        this.starting.delete(task.id);
       }
-      const argv = this.startArgvOf(task, (prompt) => opencodeStartArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt }));
-      this.addSession({ taskId: task.id, launch: { argv, cwd: task.worktreePath, env: OPENCODE_ENV }, startedWithPrompt: true, resumePending: false });
+      // The project closed, or the app began to quit, while git ran: the task is kept, open, and begins at the next open.
+      if (!this.quitting) {
+        const argv = this.startArgvOf(task, this.opencodeStart(task, opencodeBin));
+        this.addSession({ taskId: task.id, launch: { argv, cwd: task.worktreePath, env: OPENCODE_ENV }, startedWithPrompt: true, resumePending: false });
+      }
     }
     this.commit();
     return this.view(task);
@@ -189,7 +197,7 @@ export class TaskService {
     // Another reopen may have finished while git answered, or the project closed or the app began
     // to quit: then the task stays as recorded, to carry on when the project next opens.
     if (this.sessionOf(task.id) || this.launching.has(task.id) || this.quitting) return this.view(task);
-    if (task.agent === 'opencode') return this.reopenOpencode(task, branchExists);
+    if (agentOf(task) === 'opencode') return this.reopenOpencode(task, branchExists);
 
     const settingsPath = writeHookSettings(this.taskDir(task.id), this.deps.nodeBin);
     const recorded = readRecordedSession(this.taskDir(task.id));
@@ -226,8 +234,9 @@ export class TaskService {
   }
 
   /**
-   * Resumes the session Mainframe started, in the task's worktree. A worktree folder deleted by hand is
-   * added back from its branch; with the branch gone too, the session runs in the project folder.
+   * Resumes the session Mainframe started, in the task's worktree, or starts it again with the opening prompt when
+   * its conversation never began. A worktree folder deleted by hand is added back from its branch; with the branch
+   * gone too, the session runs in the project folder.
    */
   private async reopenOpencode(task: TaskRecord, branchExists: boolean): Promise<TaskView> {
     const opencodeBin = this.opencodeBin();
@@ -239,6 +248,11 @@ export class TaskService {
       // As in reopen: the project may have closed, or the app begun to quit, while git ran.
       if (this.quitting) return this.view(task);
       cwd = task.worktreePath;
+    }
+    if (!task.began) {
+      // OpenCode never took the brief: it failed to start, was quit at its login screen, or Mainframe quit first.
+      const argv = this.startArgvOf(task, this.opencodeStart(task, opencodeBin));
+      return this.relaunch(task, { argv, cwd, env: OPENCODE_ENV }, { startedWithPrompt: true, resumePending: false });
     }
     const prompt = resumePromptFor(task);
     const carryOn = prompt !== undefined;
@@ -297,7 +311,15 @@ export class TaskService {
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
   noteStatus(sessionId: string, state: ProgramState | null): void {
-    this.sessions.get(sessionId)?.turn.note(state);
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.turn.note(state);
+    const task = this.find(session.taskId);
+    if (agentOf(task) === 'opencode' && !task.began && inTurn(state)) {
+      task.began = true;
+      // Saved, not sent: nothing the window shows has changed.
+      this.deps.records.save();
+    }
   }
 
   onSessionExit(sessionId: string): void {
@@ -332,6 +354,11 @@ export class TaskService {
 
   private mine(): TaskRecord[] {
     return this.deps.records.all.filter((t) => t.projectDir === this.deps.projectDir);
+  }
+
+  /** The tasks the board and the manager see: those a start is still adding the worktree of are left out. */
+  private shown(): TaskRecord[] {
+    return this.mine().filter((t) => !this.starting.has(t.id));
   }
 
   private find(taskId: string): TaskRecord {
@@ -383,6 +410,11 @@ export class TaskService {
         ...(addDir && { addDir }),
         prompt,
       });
+  }
+
+  /** OpenCode's launch that begins the task's conversation. */
+  private opencodeStart(task: TaskRecord, opencodeBin: string): (prompt: string) => string[] {
+    return (prompt) => opencodeStartArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt });
   }
 
   /**

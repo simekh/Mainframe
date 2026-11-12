@@ -175,6 +175,10 @@ async function start(
   projectDirs: string[],
   win: BrowserWindow,
 ): Promise<void> {
+  // Looked for once, while the rest of the start goes on: OpenCode is optional, and a task picks it only when it was found.
+  const agentChecks = findOpencode({ fromEnv: config.opencodeBin, lookup: lookupIn(programs.env), run: runVersion(programs.env) }).then(
+    (opencode) => ({ opencode }),
+  );
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
@@ -189,9 +193,6 @@ async function start(
   });
   // A state.json it can't use stops the start here, before any project call is registered.
   const records = new TaskRecords(join(config.dataDir, 'state.json'), Date.now(), console.warn);
-  // Looked for once: OpenCode is optional, and a task picks it only when it was found.
-  const opencode = await findOpencode({ fromEnv: config.opencodeBin, lookup: lookupIn(programs.env), run: runVersion(programs.env) });
-  const opencodeBin = opencode.state === 'found' && opencode.path !== undefined ? opencode.path : null;
   const toWindow = (channel: string, payload: unknown) => sendTo(win, channel, payload);
 
   // The page is not told of the projects while they open, one after another: it would take the list so
@@ -322,8 +323,11 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
-    { opencode },
+    agentChecks,
   );
+  // The projects' task services are handed the opencode found.
+  const { opencode } = await agentChecks;
+  const opencodeBin = opencode.state === 'found' ? opencode.path : null;
 
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));

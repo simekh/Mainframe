@@ -1,6 +1,6 @@
 # Mainframe
 
-Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) sessions side by side, across your projects, in one window.
+Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) and [OpenCode](https://opencode.ai) sessions side by side, across your projects, in one window.
 
 - **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (`.claude/worktrees/<name>` in your project). The board shows which sessions are working and which need you.
 - **A manager.** Each project has one Claude session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
