@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SyncModel } from '../../shared/types';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
-import { SYNC_ANSWER, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
+import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
 import type { Instructions, SyncAdapter, SyncWords } from './agent';
 import type { runOpencode } from './opencode';
 
@@ -82,9 +82,7 @@ export function readOpencodeAnswer(stdout: string, tools: string[]): SyncAnswer 
   } catch {
     throw new Error("The sync run's answer wasn't JSON");
   }
-  const answer = SYNC_ANSWER.safeParse(printed);
-  if (!answer.success) throw new Error("The sync run's answer didn't have the shape Mainframe asked for");
-  return answer.data;
+  return parseSyncAnswer(printed);
 }
 
 /** The empty folder the run starts in, so that no project's config or instructions are read from where it runs. */
@@ -105,15 +103,19 @@ const byPrice = (a: SyncModel, b: SyncModel): number => {
 };
 
 /**
- * The enabled models, cheapest first with the unpriced last. `api model.list` can hold API keys (a model's
- * `settings` and `headers`): only the id `run -m` takes, the name, the status and the price leave here.
+ * `opencode api <what>.list` run in `cwd`, its rows mapped by `rows`. Every failure, the mapping's too, says which list
+ * it was. `makeCwd` makes the folder first, when it is Mainframe's own.
  */
-async function listModels(run: typeof runOpencode, { bin, dir, env }: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]> {
-  const runDir = runDirOf(dir);
+export async function apiList<T>(
+  run: typeof runOpencode,
+  what: 'agent' | 'model',
+  o: { bin: string; cwd: string; env: Record<string, string>; makeCwd?: boolean },
+  rows: (data: unknown[]) => T,
+): Promise<T> {
   try {
-    mkdirSync(runDir, { recursive: true });
+    if (o.makeCwd) mkdirSync(o.cwd, { recursive: true });
     // `api` takes its folder from PWD before the process's own.
-    const stdout = await run([bin, '--standalone', 'api', 'model.list'], { cwd: runDir, env: { ...env, PWD: runDir, OPENCODE_DISABLE_PROJECT_CONFIG: '1' } });
+    const stdout = await run([o.bin, '--standalone', 'api', `${what}.list`], { cwd: o.cwd, env: { ...o.env, PWD: o.cwd } });
     let data: unknown;
     try {
       data = (JSON.parse(stdout) as { data?: unknown }).data;
@@ -121,14 +123,25 @@ async function listModels(run: typeof runOpencode, { bin, dir, env }: { bin: str
       // Not JSON.parse's own message, which quotes the output.
       throw new Error('its answer was not JSON');
     }
-    if (!Array.isArray(data)) throw new Error('its answer held no list of models');
-    return (data as ListedModel[])
+    if (!Array.isArray(data)) throw new Error(`its answer held no list of ${what}s`);
+    return rows(data);
+  } catch (err) {
+    throw new Error(`OpenCode could not list its ${what}s: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * The enabled models, cheapest first with the unpriced last. `api model.list` can hold API keys (a model's
+ * `settings` and `headers`): only the id `run -m` takes, the name, the status and the price leave here.
+ */
+export function listModels(run: typeof runOpencode, { bin, dir, env }: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]> {
+  const o = { bin, cwd: runDirOf(dir), env: { ...env, OPENCODE_DISABLE_PROJECT_CONFIG: '1' }, makeCwd: true };
+  return apiList(run, 'model', o, (data) =>
+    (data as ListedModel[])
       .filter((m) => m.enabled !== false)
       .map((m) => ({ id: `${m.providerID}/${m.id}`, name: m.name, status: m.status, price: priceOf(m.cost) }))
-      .sort(byPrice);
-  } catch (err) {
-    throw new Error(`OpenCode could not list its models: ${(err as Error).message}`);
-  }
+      .sort(byPrice),
+  );
 }
 
 /** OpenCode's sync. `run` runs `session delete` after a run; tests hand it a fake. */

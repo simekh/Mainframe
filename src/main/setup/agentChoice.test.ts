@@ -24,14 +24,11 @@ describe('tickedAgents', () => {
 
 describe('runDefault', () => {
   it('runs a saved default that works', () => {
-    expect(runDefault({ defaultAgent: 'opencode' }, checks(found, found))).toEqual({ agent: 'opencode', fellBack: false });
+    expect(runDefault({ defaultAgent: 'opencode' }, checks(found, found))).toBe('opencode');
   });
 
   it('falls back to the other ticked, found agent when the saved default is broken', () => {
-    expect(runDefault({ defaultAgent: 'opencode', agents: { opencode: { enabled: true } } }, checks(found, broken))).toEqual({
-      agent: 'claude',
-      fellBack: true,
-    });
+    expect(runDefault({ defaultAgent: 'opencode', agents: { opencode: { enabled: true } } }, checks(found, broken))).toBe('claude');
   });
 
   it('is null when no ticked agent is found', () => {
@@ -40,6 +37,6 @@ describe('runDefault', () => {
   });
 
   it('takes the first ticked agent when no default is saved', () => {
-    expect(runDefault({}, checks(found, found))).toEqual({ agent: 'claude', fellBack: false });
+    expect(runDefault({}, checks(found, found))).toBe('claude');
   });
 });

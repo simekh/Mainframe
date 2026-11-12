@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
-import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncRunSpec } from '../agents/agent';
+import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncAdapter, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { LONG_SYNC_MS, runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
@@ -57,7 +57,7 @@ export class TodoService {
   private closed = false;
   // What the sync last said: not kept in the file, so a restart starts without them.
   private ask: TodoAsk | null = null;
-  /** The agent whose sync asked about tools or a model: the names in that ask are its own. */
+  /** The agent whose sync asked about tools or a model: the names in that ask are its own. Set with every such ask. */
   private askedBy: AgentName | null = null;
   private error: string | null = null;
 
@@ -102,21 +102,22 @@ export class TodoService {
     const { readTools, pickedList } = this.record;
     const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
     const step: SyncStep = confirmed ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' };
-    return agent.adapter.sync.models ? this.withModel(agent, step) : this.launch(agent, step);
+    const { models } = agent.adapter.sync;
+    return models ? this.withModel(agent, models, step) : this.launch(agent, step);
   }
 
   /** Keeps the model the sync asked about as the one it runs on, in settings.json, then syncs. */
   async pickModel(id: string): Promise<SyncOutcome> {
-    if (this.ask?.kind !== 'model' || !this.askedBy || !this.ask.models.some((m) => m.id === id)) throw new Error('No such model; sync again');
-    this.deps.saveAgentSetting(this.askedBy, { syncModel: id });
+    if (this.ask?.kind !== 'model' || !this.ask.models.some((m) => m.id === id)) throw new Error('No such model; sync again');
+    this.deps.saveAgentSetting(this.askedBy!, { syncModel: id });
     return this.sync();
   }
 
   /** Keeps the tools the sync asked about as the ones it may read with, then syncs. */
   async confirmTools(): Promise<SyncOutcome> {
-    if (this.ask?.kind !== 'tools' || !this.askedBy) throw new Error('Nothing to allow; sync again');
+    if (this.ask?.kind !== 'tools') throw new Error('Nothing to allow; sync again');
     const { connector, tools } = this.ask;
-    this.save({ ...this.record, readTools: { connector, tools, agent: this.askedBy } });
+    this.save({ ...this.record, readTools: { connector, tools, agent: this.askedBy! } });
     return this.sync();
   }
 
@@ -219,21 +220,16 @@ export class TodoService {
    * saved yet, or its provider since removed). While it lists, the sync counts as running: a second Sync joins it and
    * Stop ends it.
    */
-  private withModel(agent: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
+  private withModel(agent: AgentInUse, list: NonNullable<SyncAdapter['models']>, step: SyncStep): Promise<SyncOutcome> {
     const { adapter, bin, setting } = agent;
-    let settle!: Running['settle'];
-    const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
-    const listing: Running = { outcome, settle, cancel: () => {}, long: false, stopTimer: () => {} };
-    this.running = listing;
-    this.ask = this.error = null;
-    this.changed();
+    const listing = this.begin(() => {});
 
-    adapter.sync.models!({ bin, dir: this.dir, env: this.deps.env }).then(
+    list({ bin, dir: this.dir, env: this.deps.env }).then(
       (models) => {
         if (this.running !== listing) return;
         if (models.some((m) => m.id === setting.syncModel)) {
           this.running = null;
-          void this.launch(agent, step).then(settle);
+          void this.launch(agent, step).then(listing.settle);
           return;
         }
         this.end(listing, () => {
@@ -244,7 +240,18 @@ export class TodoService {
       },
       (err: Error) => this.end(listing, () => this.refuse(err.message)),
     );
-    return outcome;
+    return listing.outcome;
+  }
+
+  /** Makes a run the sync in progress, with no ask or error shown; its outcome settles when `end` ends it. */
+  private begin(cancel: () => void): Running {
+    let settle!: Running['settle'];
+    const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
+    const running: Running = { outcome, settle, cancel, long: false, stopTimer: () => {} };
+    this.running = running;
+    this.ask = this.error = null;
+    this.changed();
+    return running;
   }
 
   private launch({ adapter, bin, setting }: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
@@ -262,26 +269,16 @@ export class TodoService {
     }
     const { done, cancel } = (this.deps.run ?? runSync)({ ...spec, input: adapter.sync.prompt(step), timeoutMs: SYNC_TIMEOUT_MS });
 
-    let settle!: Running['settle'];
-    const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
     const setTimer = this.deps.setTimer ?? ((fn, ms) => {
       const id = setTimeout(fn, ms);
       return () => clearTimeout(id);
     });
-    const running: Running = {
-      outcome,
-      settle,
-      cancel,
-      long: false,
-      stopTimer: setTimer(() => {
-        if (this.running !== running) return;
-        running.long = true;
-        this.changed();
-      }, LONG_SYNC_MS),
-    };
-    this.running = running;
-    this.ask = this.error = null;
-    this.changed();
+    const running = this.begin(cancel);
+    running.stopTimer = setTimer(() => {
+      if (this.running !== running) return;
+      running.long = true;
+      this.changed();
+    }, LONG_SYNC_MS);
 
     done.then(
       (stdout) => {
@@ -290,7 +287,7 @@ export class TodoService {
       },
       (err: Error) => this.end(running, () => this.refuse(err.message)),
     );
-    return outcome;
+    return running.outcome;
   }
 
   /** Ends `running` with what `compute` makes of its answer, unless it was stopped or replaced meanwhile. */

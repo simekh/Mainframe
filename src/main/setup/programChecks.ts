@@ -44,6 +44,30 @@ export async function checkProgram(
   return { state: isAtLeast(version, min) ? 'found' : 'too-old', path, version };
 }
 
+export type FindOptions = { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner };
+
+/**
+ * `fromEnv` (the agent's MAINFRAME_*_BIN) is the only place looked at when set. Otherwise the saved paths in order,
+ * then `places`, and the first that works wins; an old one on PATH doesn't hide a current one beside it. When none
+ * works, the failure that helps most: too old, then broken, then missing.
+ */
+export async function findProgram(
+  o: FindOptions,
+  places: (lookup: ExecutableLookup) => string[],
+  check: (path: string, run: VersionRunner, files: ExecutableFiles) => Promise<ProgramCheck>,
+): Promise<ProgramCheck> {
+  // An empty fromEnv counts as unset (config already throws on an empty one). Looked up as sessions look it up,
+  // so the absolute path that is checked is the one they will run.
+  if (o.fromEnv) return check(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
+  const failures: ProgramCheck[] = [];
+  for (const path of new Set([...(o.saved ?? []), ...places(o.lookup)])) {
+    const result = await check(path, o.run, o.lookup.files);
+    if (result.state === 'found') return result;
+    failures.push(result);
+  }
+  return failures.find((f) => f.state === 'too-old') ?? failures.find((f) => f.state === 'broken') ?? { state: 'missing' };
+}
+
 export async function checkGit(lookup: ExecutableLookup, run: VersionRunner): Promise<ProgramCheck> {
   const path = findExecutable('git', lookup);
   if (path === null) return { state: 'missing' };

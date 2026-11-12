@@ -115,7 +115,6 @@ export interface MainframeApi {
   closeTask(dir: string, taskId: string): void;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
   changedFiles(dir: string, taskId: string): Promise<ChangedFile[] | null>;
-  /** What Mainframe found at start of the agents a task may run on besides Claude Code. */
   /** Every change to a project's tasks, with its whole list. */
   onTasks(cb: (e: { dir: string; tasks: TaskView[] }) => void): () => void;
   getManager(dir: string): Promise<ManagerView>;

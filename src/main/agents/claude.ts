@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
-import { checkProgram, type VersionRunner } from '../setup/programChecks';
+import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { SYNC_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, SyncWords } from './agent';
 import { readResumableSession } from './claudeChat';
@@ -38,23 +38,7 @@ export function claudePlaces(lookup: ExecutableLookup): string[] {
 export const checkClaude = (path: string, run: VersionRunner, files: ExecutableFiles) =>
   checkProgram(path, parseClaudeVersion, MIN_CLAUDE_VERSION, run, files);
 
-/**
- * `fromEnv` (MAINFRAME_CLAUDE_BIN) is the only place looked at when set. Otherwise the saved paths in
- * order, then `claudePlaces`, and the first that works wins; an old claude on PATH doesn't hide a
- * current one beside it. When none works, the failure that helps most: too old, then broken, then missing.
- */
-export async function findClaude(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
-  // An empty fromEnv counts as unset (config already throws on an empty MAINFRAME_CLAUDE_BIN). Looked
-  // up as sessions look it up, so the absolute path that is checked is the one they will run.
-  if (o.fromEnv) return checkClaude(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
-  const failures: ProgramCheck[] = [];
-  for (const path of new Set([...(o.saved ?? []), ...claudePlaces(o.lookup)])) {
-    const check = await checkClaude(path, o.run, o.lookup.files);
-    if (check.state === 'found') return check;
-    failures.push(check);
-  }
-  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
-}
+export const findClaude = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, claudePlaces, checkClaude);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -256,7 +240,8 @@ export const claudeAgent: AgentAdapter = {
     'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
     'checkout, for example to merge, call ExitWorktree with action "keep" first.',
   // `claude -w` makes the task's worktree as it starts.
-  makesWorktree: false,
+  mainframeAddsWorktree: false,
+  needsNode: true,
   newSessionId: (uuid) => uuid(),
   taskStart: (o) => ({
     argv: startArgv({
@@ -281,7 +266,7 @@ export const claudeAgent: AgentAdapter = {
   }),
   recordedSession: readRecordedSession,
   // Claude Code's own record says which chat it was in; manager.json's saved id is not needed.
-  managerChat: (dir) => readResumableSession(dir),
+  managerChat: readResumableSession,
   managerLaunch: claudeManagerLaunch,
   sync: {
     words: syncWords,

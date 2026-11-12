@@ -162,7 +162,7 @@ export class TaskService {
       agent,
     };
 
-    if (!adapter.makesWorktree) {
+    if (!adapter.mainframeAddsWorktree) {
       // The agent makes the task's worktree as it starts.
       const launch = this.startLaunch(task, bin);
       this.deps.records.all.push(task);
@@ -200,7 +200,7 @@ export class TaskService {
     if (this.sessionOf(task.id) || this.launching.has(task.id) || this.quitting) return this.view(task);
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
-    if (adapter.makesWorktree) return this.reopenInWorktree(task, branchExists);
+    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, branchExists);
 
     const bin = this.binOf(agent);
     const recorded = adapter.recordedSession(this.taskDir(task.id));
@@ -431,9 +431,9 @@ export class TaskService {
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
-          ...(agent === 'opencode'
-            ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
-            : { agent: 'claude' as const }),
+          agent,
+          projectDir: this.deps.projectDir,
+          worktreePath: task.worktreePath,
         }),
         ...(brief && { addDir: brief.dir }),
       });

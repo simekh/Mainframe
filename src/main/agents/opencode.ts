@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
-import { MIN_OPENCODE_VERSION, type ProgramCheck } from '../../shared/types';
+import { MIN_OPENCODE_VERSION, type OpencodeChoices, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
-import { checkProgram, type VersionRunner } from '../setup/programChecks';
+import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch } from './agent';
-import { makeOpencodeSync } from './opencodeSync';
+import { apiList, listModels, makeOpencodeSync } from './opencodeSync';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
@@ -51,17 +51,7 @@ export function opencodePlaces(lookup: ExecutableLookup): string[] {
   return [...new Set(places.filter((place) => place !== null))];
 }
 
-/** Like `findClaude`: `fromEnv` (MAINFRAME_OPENCODE_BIN) alone when set, else the saved paths in order, then `opencodePlaces`. */
-export async function findOpencode(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
-  if (o.fromEnv) return checkOpencode(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
-  const failures: ProgramCheck[] = [];
-  for (const path of new Set([...(o.saved ?? []), ...opencodePlaces(o.lookup)])) {
-    const check = await checkOpencode(path, o.run, o.lookup.files);
-    if (check.state === 'found') return check;
-    failures.push(check);
-  }
-  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
-}
+export const findOpencode = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, opencodePlaces, checkOpencode);
 
 /**
  * Runs opencode with no shell and resolves with what it printed. Its output may hold API keys, so it is never
@@ -82,7 +72,7 @@ export function runOpencode(argv: string[], o: { cwd: string; env: Record<string
  * OpenCode's agents in its own order, which puts its default first. Only each id and whether it is a primary agent
  * leave here: the rest of the list can hold API keys (an agent's request headers).
  */
-export async function opencodeAgents(o: {
+export function opencodeAgents(o: {
   bin: string;
   cwd: string;
   env: Record<string, string>;
@@ -90,26 +80,30 @@ export async function opencodeAgents(o: {
   /** Only the user's own agents: no project's config is read from `cwd`. */
   noProjectConfig?: boolean;
 }): Promise<{ id: string; primary: boolean }[]> {
-  const run = o.run ?? runOpencode;
-  try {
-    // `api` takes its folder from PWD before the process's own.
-    const env = { ...o.env, PWD: o.cwd, ...(o.noProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: '1' }) };
-    const stdout = await run([o.bin, '--standalone', 'api', 'agent.list'], { cwd: o.cwd, env });
-    let data: unknown;
-    try {
-      data = (JSON.parse(stdout) as { data?: unknown }).data;
-    } catch {
-      // Not JSON.parse's own message, which quotes the output.
-      throw new Error('its answer was not JSON');
-    }
-    if (!Array.isArray(data)) throw new Error('its answer held no list of agents');
-    return data.map((a: { id?: unknown; mode?: unknown; hidden?: unknown }) => ({
+  const env = { ...o.env, ...(o.noProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: '1' }) };
+  return apiList(o.run ?? runOpencode, 'agent', { bin: o.bin, cwd: o.cwd, env }, (data) =>
+    (data as { id?: unknown; mode?: unknown; hidden?: unknown }[]).map((a) => ({
       id: String(a.id),
       primary: a.mode !== 'subagent' && !a.hidden,
-    }));
-  } catch (err) {
-    throw new Error(`OpenCode could not list its agents: ${(err as Error).message}`);
-  }
+    })),
+  );
+}
+
+/**
+ * OpenCode's primary agents and its models, listed in an empty folder of their own in `dataDir`, so no project's
+ * config is read. Only ids and the models' kept fields come back: the lists can hold API keys.
+ */
+export async function opencodeChoices(o: { bin: string; dataDir: string; env: Record<string, string>; run?: typeof runOpencode }): Promise<OpencodeChoices> {
+  const dir = join(o.dataDir, 'opencode-lists');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const { bin, env, run = runOpencode } = o;
+  const [agents, models] = await Promise.all([
+    opencodeAgents({ bin, cwd: dir, env, run, noProjectConfig: true }),
+    listModels(run, { bin, dir, env }),
+  ]);
+  const primary = agents.filter((a) => a.primary);
+  return { agents: primary.map((a, i) => ({ id: a.id, isDefault: i === 0 })), models };
 }
 
 /** What the manager may call without asking. Starting a task asks: OpenCode otherwise allows every tool. */
@@ -173,8 +167,9 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     instructions,
     worktreeNote: ({ branch, worktreePath, projectDir }) =>
       `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
-    makesWorktree: true,
-    newSessionId: () => newOpencodeSessionId(),
+    mainframeAddsWorktree: true,
+    needsNode: false,
+    newSessionId: newOpencodeSessionId,
     // No `addDir`: OpenCode reads outside the project by default.
     taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
     taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AGENT_NAMES, type AgentName, type ManagerView, type ProgramState } from '../../shared/types';
+import { isAgentName, type AgentName, type ManagerView, type ProgramState } from '../../shared/types';
 import type { AgentInUse, LaunchArgs } from '../agents/agent';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
 import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
@@ -186,13 +186,12 @@ function loadRecord(file: string, warn: (msg: string) => void): Partial<ManagerR
     );
   }
   const flag = (value: unknown) => value === undefined || typeof value === 'boolean';
-  const isAgent = (value: unknown) => typeof value === 'string' && Object.hasOwn(AGENT_NAMES, value);
   const chats = (value: unknown) =>
     value === undefined ||
-    (typeof value === 'object' && value !== null && Object.entries(value).every(([k, v]) => isAgent(k) && typeof v === 'string'));
+    (typeof value === 'object' && value !== null && Object.entries(value).every(([k, v]) => isAgentName(k) && typeof v === 'string'));
   if (
     record.version !== VERSION || !flag(record.midTurn) || !flag(record.askAgain) ||
-    !(record.agent === undefined || isAgent(record.agent)) || !chats(record.chats)
+    !(record.agent === undefined || isAgentName(record.agent)) || !chats(record.chats)
   ) {
     warn(`Could not use ${file} (it does not hold a version ${VERSION} record); treating it as missing`);
     return {};

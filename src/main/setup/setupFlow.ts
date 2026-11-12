@@ -3,7 +3,7 @@ import type { ExecutableLookup } from '../pty/findExecutable';
 import { hasProjectsFile, rememberedProjects } from '../projects';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentSetting } from '../agents/agent';
-import { runDefault, tickedAgents } from './agentChoice';
+import { agentStatus, runDefault } from './agentChoice';
 import { checkGit, type VersionRunner } from './programChecks';
 import { readSettings, writeSettings, type AppSettings } from './settings';
 
@@ -85,7 +85,7 @@ export class SetupFlow {
   chooseProject(choice: AgentChoice): Promise<void> {
     return this.once(async () => {
       if (this.ready() === null) return;
-      const found = AGENT_ORDER.filter((name) => this.agents[name].state === 'found');
+      const found = this.foundAgents();
       if (choice.ticked.length === 0 || !choice.ticked.every((name) => found.includes(name)) || !choice.ticked.includes(choice.defaultAgent)) {
         throw new Error("That choice of agents can't be used");
       }
@@ -131,17 +131,18 @@ export class SetupFlow {
       const saved = [check.path, this.settings.agents?.[name]?.bin].filter((path) => path !== undefined);
       return ADAPTERS[name].find({ fromEnv: envBins[name], saved, lookup, run });
     };
-    const [git, agents] = await Promise.all([
-      this.git.state === 'found' ? this.git : checkGit(lookup, run),
-      Promise.all(AGENT_ORDER.map(look)),
-    ]);
+    const [git, claude, opencode] = await Promise.all([this.git.state === 'found' ? this.git : checkGit(lookup, run), look('claude'), look('opencode')]);
     this.git = git;
-    this.agents = Object.fromEntries(AGENT_ORDER.map((name, i) => [name, agents[i]])) as Checks;
+    this.agents = { claude, opencode };
   }
 
   /** The agent to run by default, once git works and so does a ticked agent. */
-  private ready(): ReturnType<typeof runDefault> {
+  private ready(): AgentName | null {
     return this.git.state === 'found' ? runDefault(this.settings, this.agents) : null;
+  }
+
+  private foundAgents(): AgentName[] {
+    return AGENT_ORDER.filter((name) => this.agents[name].state === 'found');
   }
 
   private async proceed(): Promise<void> {
@@ -149,7 +150,7 @@ export class SetupFlow {
     if (run === null) {
       this.show(null);
     } else if (this.firstStart) {
-      this.show({ ticked: AGENT_ORDER.filter((name) => this.agents[name].state === 'found'), defaultAgent: run.agent });
+      this.show({ ticked: this.foundAgents(), defaultAgent: run });
     } else {
       this.rememberBins(AGENT_ORDER);
       await this.startProjects(rememberedProjects(this.deps.dataDir, this.deps.warn));
@@ -182,12 +183,10 @@ export class SetupFlow {
   }
 
   private show(ask: AgentChoice | null): void {
-    const ticked = tickedAgents(this.settings, this.agents);
-    const agentView = (name: AgentName) => ({ check: this.agents[name], fromEnv: Boolean(this.deps.envBins[name]), ticked: ticked.includes(name) });
     this.publish({
       intro: this.firstStart ? 'welcome' : 'moved',
       git: this.git,
-      agents: { claude: agentView('claude'), opencode: agentView('opencode') },
+      agents: agentStatus(this.settings, this.agents, this.deps.envBins),
       // The hint is for what is still missing; an agent picked by hand since may have fixed it.
       lookedAgain: this.lookedAgain && ask === null,
       ask,

@@ -132,7 +132,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath,
-      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
+      prompt: openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
     }),
   });
   expect(changes.at(-1)).toEqual([view]);
@@ -145,7 +145,7 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
   expect(view.title).toBe('Fix login');
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
-  expect(prompt).toBe(openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+  expect(prompt).toBe(openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
 });
 
 /** Over 32,000 characters once quoted, as typed: with leading spaces and a trailing newline. */
@@ -162,6 +162,8 @@ function expectedStart(claudeSessionId: string, taskDir: string, description: st
     ...(brief && { addDir: brief.dir }),
     prompt: openingPrompt({
       agent: 'claude',
+      projectDir: '',
+      worktreePath: '',
       title: 'Fix login',
       description,
       branch: 'worktree-fix-login',
@@ -234,7 +236,7 @@ it("a task started from a card keeps it, shows it, and its launch carries the ca
   expect(service.list()[0].card).toEqual(CARD);
   expect(readState()[0].card).toEqual(CARD);
   expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -934,7 +936,7 @@ it('reopen of a task whose first launch never began a conversation starts one, w
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath: join(taskDir(view.id), 'settings.json'),
-      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+      prompt: openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
     }),
   );
 });
@@ -948,7 +950,7 @@ it('a reopen that must begin the conversation again keeps the card in its prompt
   const reopened = await service.reopen(view.id);
   expect(reopened.card).toEqual(CARD);
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -973,7 +975,7 @@ it('a task kept before its noQuestions was recorded reopens with the prompt that
   const service = make();
   const reopened = await service.reopen('old');
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
+    openingPrompt({ agent: 'claude', projectDir: '', worktreePath: '', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
   );
   expect(readState()[0]).not.toHaveProperty('noQuestions');
 });

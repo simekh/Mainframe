@@ -1,6 +1,6 @@
 import type { AgentName, ProgramCheck, SyncModel } from '../../shared/types';
-import type { ExecutableFiles, ExecutableLookup } from '../pty/findExecutable';
-import type { VersionRunner } from '../setup/programChecks';
+import type { ExecutableFiles } from '../pty/findExecutable';
+import type { FindOptions, VersionRunner } from '../setup/programChecks';
 import type { SyncStep } from '../todo/syncRun';
 import type { SyncAnswer } from '../todo/todoSchema';
 
@@ -70,7 +70,7 @@ export interface AgentAdapter {
   readonly name: AgentName;
   /** MAINFRAME_CLAUDE_BIN or MAINFRAME_OPENCODE_BIN. */
   readonly envVar: string;
-  find(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck>;
+  find(o: FindOptions): Promise<ProgramCheck>;
   check(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck>;
   /** Keys this agent sets in the shells it runs, which a session must not inherit. */
   readonly droppedEnv: readonly string[];
@@ -78,7 +78,9 @@ export interface AgentAdapter {
   /** The opening prompt's note on where the session runs. */
   worktreeNote(o: { branch: string; worktreePath: string; projectDir: string }): string;
   /** True: Mainframe adds the task's worktree and runs the agent in it. False: the agent's own flag makes it, from the project folder. */
-  readonly makesWorktree: boolean;
+  readonly mainframeAddsWorktree: boolean;
+  /** Its launches run node (Claude Code's hooks), so it can't be used while no node was found. */
+  readonly needsNode: boolean;
   /** A new conversation id; Claude Code's comes from `uuid`, so tests can name it. */
   newSessionId(uuid: () => string): string;
   taskStart(o: TaskStart): LaunchArgs;

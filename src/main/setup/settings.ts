@@ -21,7 +21,7 @@ export interface AppSettings {
   welcomeSeen?: boolean;
 }
 
-const agentName = z.enum(AGENT_ORDER as [AgentName, ...AgentName[]]);
+const agentName = z.enum(AGENT_ORDER);
 const agentSetting = z.strictObject({
   enabled: z.boolean().optional(),
   bin: z.string().optional(),

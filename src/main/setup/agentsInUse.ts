@@ -1,12 +1,10 @@
-import { mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
-import { makeOpencodeAgent, opencodeAgents, runOpencode } from '../agents/opencode';
+import { opencodeChoices, type runOpencode } from '../agents/opencode';
 import type { ExecutableLookup } from '../pty/findExecutable';
-import { runDefault, tickedAgents } from './agentChoice';
+import { agentStatus, runDefault, tickedAgents } from './agentChoice';
 import type { VersionRunner } from './programChecks';
 import { writeSettings, type AppSettings } from './settings';
 
@@ -49,28 +47,18 @@ export class AgentsInUse {
   }
 
   /** Never null after the constructor: no change leaves no ticked agent that works. */
-  private current(): ReturnType<typeof runDefault> {
+  private current(): AgentName | null {
     return runDefault(this.deps.settings, this.deps.checks);
   }
 
   /** The default this run uses: `runDefault`'s agent. */
   defaultAgent(): AgentName {
-    return this.current()!.agent;
-  }
-
-  /** The saved default doesn't work, so another ticked agent stands in. */
-  fellBack(): boolean {
-    return this.current()!.fellBack;
+    return this.current()!;
   }
 
   /** Ticked and found, in AGENT_ORDER. */
   ticked(): AgentName[] {
     return tickedAgents(this.deps.settings, this.deps.checks).filter((name) => this.bin(name) !== null);
-  }
-
-  /** What was last found of the agent. */
-  check(name: AgentName): ProgramCheck {
-    return this.deps.checks[name];
   }
 
   /** The path of a found agent, ticked or not; null when it isn't found. */
@@ -86,27 +74,21 @@ export class AgentsInUse {
   }
 
   view(): SettingsView {
-    const { settings, envBins } = this.deps;
-    const ticked = tickedAgents(settings, this.deps.checks);
+    const { settings, checks, envBins } = this.deps;
+    const status = agentStatus(settings, checks, envBins);
     const agentView = (name: AgentName) => {
       const { managerAgent, syncModel } = settings.agents?.[name] ?? {};
-      return {
-        check: this.check(name),
-        fromEnv: Boolean(envBins[name]),
-        ticked: ticked.includes(name),
-        ...(managerAgent !== undefined && { managerAgent }),
-        ...(syncModel !== undefined && { syncModel }),
-      };
+      return { ...status[name], ...(managerAgent !== undefined && { managerAgent }), ...(syncModel !== undefined && { syncModel }) };
     };
-    const runDefault = this.defaultAgent();
-    return { agents: { claude: agentView('claude'), opencode: agentView('opencode') }, defaultAgent: settings.defaultAgent ?? runDefault, runDefault };
+    const inUse = this.defaultAgent();
+    return { agents: { claude: agentView('claude'), opencode: agentView('opencode') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
   }
 
   setTicked(name: AgentName, ticked: boolean): void {
     if (ticked) {
       if (this.bin(name) === null) throw new Error(`${AGENT_NAMES[name]} doesn't work, so it can't be ticked`);
       // The hooks Mainframe writes for Claude Code run node.
-      if (name === 'claude' && this.deps.nodeBin === null) throw new Error(NODE_NEEDED);
+      if (ADAPTERS[name].needsNode && this.deps.nodeBin === null) throw new Error(NODE_NEEDED);
     } else {
       if (this.view().defaultAgent === name) throw new Error('Make another agent the default first');
       if (this.ticked().every((other) => other === name)) throw new Error('At least one agent must stay ticked');
@@ -135,24 +117,11 @@ export class AgentsInUse {
     this.save({ ...settings, agents: { ...settings.agents, [name]: setting as AgentSetting } });
   }
 
-  /**
-   * OpenCode's primary agents and its models, listed in an empty folder of their own, so no project's config is read.
-   * Only ids and the models' kept fields come back: the lists can hold API keys.
-   */
+  /** OpenCode's primary agents and its models, for Settings. */
   async opencodeChoices(): Promise<OpencodeChoices> {
     const bin = this.bin('opencode');
     if (bin === null) throw new Error(`${AGENT_NAMES.opencode} doesn't work`);
-    const dir = join(this.deps.dataDir, 'opencode-lists');
-    rmSync(dir, { recursive: true, force: true });
-    mkdirSync(dir, { recursive: true });
-    const run = this.deps.runOpencode ?? runOpencode;
-    const { env } = this.deps;
-    const [agents, models] = await Promise.all([
-      opencodeAgents({ bin, cwd: dir, env, run, noProjectConfig: true }),
-      makeOpencodeAgent({ run }).sync.models!({ bin, dir, env }),
-    ]);
-    const primary = agents.filter((a) => a.primary);
-    return { agents: primary.map((a, i) => ({ id: a.id, isDefault: i === 0 })), models };
+    return opencodeChoices({ bin, dataDir: this.deps.dataDir, env: this.deps.env, run: this.deps.runOpencode });
   }
 
   private save(next: AppSettings): void {

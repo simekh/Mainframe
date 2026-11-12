@@ -24,8 +24,8 @@ describe('the agent adapters', () => {
   });
 
   it('Claude Code makes its own worktree, and Mainframe makes OpenCode its worktree', () => {
-    expect(ADAPTERS.claude.makesWorktree).toBe(false);
-    expect(ADAPTERS.opencode.makesWorktree).toBe(true);
+    expect(ADAPTERS.claude.mainframeAddsWorktree).toBe(false);
+    expect(ADAPTERS.opencode.mainframeAddsWorktree).toBe(true);
   });
 
   it("a Claude task's start is today's argv, with no env", () => {

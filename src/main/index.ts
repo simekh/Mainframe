@@ -20,6 +20,7 @@ import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
+import { ADAPTERS } from './agents/adapters';
 import { NODE_NEEDED } from './agents/claude';
 import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
@@ -178,8 +179,7 @@ async function start(
   projectDirs: string[],
   win: BrowserWindow,
 ): Promise<void> {
-  // The hooks Mainframe writes for Claude Code run node, with no shell; nothing else needs it.
-  if (agents.ticked().includes('claude') && programs.nodeBin === null) throw new Error(NODE_NEEDED);
+  if (agents.ticked().some((name) => ADAPTERS[name].needsNode) && programs.nodeBin === null) throw new Error(NODE_NEEDED);
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);

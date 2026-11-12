@@ -53,13 +53,11 @@ describe('AgentsInUse', () => {
   it('runs on the saved default while it works', () => {
     const a = agents({ defaultAgent: 'opencode' }, { claude: found(C), opencode: found(O) });
     expect(a.defaultAgent()).toBe('opencode');
-    expect(a.fellBack()).toBe(false);
   });
 
   it('falls back to another ticked agent when the saved default does not work', () => {
     const a = agents({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O) });
     expect(a.defaultAgent()).toBe('opencode');
-    expect(a.fellBack()).toBe(true);
   });
 
   it('ticked() leaves out an agent that is not found', () => {

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SYNC_ANSWER, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
+import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
 import type { SyncAdapter, SyncRunSpec } from './agent';
 
 /** A connector's tool: the only kind of tool the owner may confirm for a sync. */
@@ -102,7 +102,5 @@ export function readSyncAnswer(stdout: string): SyncAnswer {
     const shown = said.length > 300 ? `${said.slice(0, 300)}…` : said;
     throw new Error(`The sync run ended without an answer (${how})${shown ? `: ${shown}` : ''}`);
   }
-  const answer = SYNC_ANSWER.safeParse(structured_output);
-  if (!answer.success) throw new Error("The sync run's answer didn't have the shape Mainframe asked for");
-  return answer.data;
+  return parseSyncAnswer(structured_output);
 }

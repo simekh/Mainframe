@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import { AGENT_ORDER, type AgentChoice, type AgentName, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
+import { isAgentName, type AgentChoice, type AgentName, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -11,12 +11,10 @@ import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
 
-const isAgent = (name: unknown): name is AgentName => AGENT_ORDER.includes(name as AgentName);
-
 /** The page's choice of agents, with only names in AGENT_ORDER; anything else is refused. */
 function agentChoice(raw: unknown): AgentChoice {
   const { ticked, defaultAgent } = (raw ?? {}) as Record<string, unknown>;
-  if (!Array.isArray(ticked) || !ticked.every(isAgent) || !isAgent(defaultAgent)) throw new Error("That choice of agents can't be used");
+  if (!Array.isArray(ticked) || !ticked.every(isAgentName) || !isAgentName(defaultAgent)) throw new Error("That choice of agents can't be used");
   return { ticked, defaultAgent };
 }
 
@@ -63,14 +61,14 @@ export function registerSetupIpc(
     }
   };
   ipcMain.handle(IPC.setupLookAgain, () => action(() => flow.lookAgain()));
-  ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgent(name) ? action(() => flow.findAgent(name)) : undefined));
+  ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgentName(name) ? action(() => flow.findAgent(name)) : undefined));
   ipcMain.handle(IPC.setupChooseProject, (_e, choice: unknown) => action(() => flow.chooseProject(agentChoice(choice))));
 }
 
 /** The Settings calls: the whole app's, naming no project. Each saves through `agents`, which tells the page. */
 export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: AgentName) => Promise<string | undefined>): void {
   const agentOf = (name: unknown): AgentName => {
-    if (!isAgent(name)) throw new Error(`There is no agent ${String(name)}`);
+    if (!isAgentName(name)) throw new Error(`There is no agent ${String(name)}`);
     return name;
   };
   ipcMain.handle(IPC.getSettings, () => agents.view());
@@ -123,7 +121,7 @@ export function registerIpc(
   ipcMain.handle(
     IPC.startTask,
     (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: unknown }) =>
-      tasksOf(dir).start({ title, description, noQuestions, ...(isAgent(agent) && { agent }) }),
+      tasksOf(dir).start({ title, description, noQuestions, ...(isAgentName(agent) && { agent }) }),
   );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));

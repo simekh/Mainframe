@@ -59,13 +59,14 @@ export const MIN_CLAUDE_VERSION = '2.1.295';
 /** The oldest OpenCode Mainframe works with. */
 export const MIN_OPENCODE_VERSION = '2.1.0';
 
-/** The agent CLIs a task can run on. */
-export type AgentName = 'claude' | 'opencode';
+/** The agent CLIs a task can run on, in the order they are listed and tried in. */
+export const AGENT_ORDER = ['claude', 'opencode'] as const;
+
+export type AgentName = (typeof AGENT_ORDER)[number];
+
+export const isAgentName = (value: unknown): value is AgentName => AGENT_ORDER.includes(value as AgentName);
 
 export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
-
-/** The order agents are listed and tried in. */
-export const AGENT_ORDER: readonly AgentName[] = ['claude', 'opencode'];
 
 export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
 
@@ -85,6 +86,8 @@ export interface AgentChoice {
   defaultAgent: AgentName;
 }
 
+export interface AgentStatus { check: ProgramCheck; fromEnv: boolean; ticked: boolean }
+
 /** What the setup screen shows. The main process publishes a new one at every step, and `null` once the board can appear. */
 export interface SetupView {
   /** The welcome at a true first start; "something moved" at any later start. */
@@ -95,7 +98,7 @@ export interface SetupView {
    * at and nothing is saved. `ticked`: the settings use it (with nothing saved, when it is found). An agent works for
    * Mainframe when it is ticked and found.
    */
-  agents: Record<AgentName, { check: ProgramCheck; fromEnv: boolean; ticked: boolean }>;
+  agents: Record<AgentName, AgentStatus>;
   /** The user asked to look again and something is still missing: a fresh install may need a new terminal. */
   lookedAgain: boolean;
   /** Everything needed is found at a first start: the agents step and the project question, starting from this choice. */
@@ -103,7 +106,7 @@ export interface SetupView {
 }
 
 /** One agent in Settings: as the setup screen shows it, with its saved options. */
-export interface AgentView { check: ProgramCheck; fromEnv: boolean; ticked: boolean; managerAgent?: string; syncModel?: string }
+export interface AgentView extends AgentStatus { managerAgent?: string; syncModel?: string }
 
 /** What the Settings dialog shows, for the whole app. */
 export interface SettingsView {
