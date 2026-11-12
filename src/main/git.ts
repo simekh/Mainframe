@@ -1,7 +1,7 @@
 // Adapted from Parallel Code (MIT): electron/ipc/git.ts (getChangedFiles) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { execFile } from 'node:child_process';
-import { lstat, mkdir, open, readFile, readlink, realpath, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
 import { assembleDiff, DIFF_LIMITS, focusFirst, type UntrackedContent } from './diff/assembleDiff';
@@ -234,18 +234,5 @@ export async function addWorktree(projectDir: string, path: string, branch: stri
   await git(projectDir, ['worktree', 'add', '--no-track', '-b', branch, path, base]);
 }
 
-/**
- * Adds `pattern` to the repo's own exclude file (`info/exclude` in the common git dir, which a linked worktree
- * shares with its main checkout), so git status leaves it alone without a change to a tracked file. Once only.
- */
-export async function excludeLocally(projectDir: string, pattern: string): Promise<void> {
-  const commonDir = resolve(projectDir, (await git(projectDir, ['rev-parse', '--git-common-dir'])).trim());
-  const file = join(commonDir, 'info', 'exclude');
-  const held = await readFile(file, 'utf8').catch(() => '');
-  if (held.split(/\r?\n/).includes(pattern)) return;
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, `${held}${held === '' || held.endsWith('\n') ? '' : '\n'}${pattern}\n`);
-}
-
-export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, taskDiff, addWorktree, excludeLocally };
+export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, taskDiff, addWorktree };
 export type GitQueries = typeof gitQueries;

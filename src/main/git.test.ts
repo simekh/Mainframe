@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { DiffLine } from '../shared/types';
-import { addWorktree, branchExists, changedFiles, excludeLocally, startCheck, taskDiff, worktreeBranchNames } from './git';
+import { addWorktree, branchExists, changedFiles, startCheck, taskDiff, worktreeBranchNames } from './git';
 import { makeRepo } from './testing/makeRepo';
 
 const cleanup: string[] = [];
@@ -333,27 +333,13 @@ it('addWorktree rejects when the branch is taken', async () => {
   await expect(addWorktree(main, join(dirname(main), 'wt'), 'worktree-a', { create: true })).rejects.toThrow();
 });
 
-it('excludeLocally adds the line once and keeps what the file held', async () => {
+it("a folder holding a .gitignore of * stays out of git status, in a repo's root or in a subfolder project", () => {
   const { main } = repo();
-  mkdirSync(join(main, '.git', 'info'), { recursive: true });
-  writeFileSync(join(main, '.git', 'info', 'exclude'), '# mine\n*.log');
-  await excludeLocally(main, '/.mainframe/worktrees/');
-  await excludeLocally(main, '/.mainframe/worktrees/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('# mine\n*.log\n/.mainframe/worktrees/\n');
-  expect(out(main, 'check-ignore', '.mainframe/worktrees/x')).toBe('.mainframe/worktrees/x');
-});
-
-it('excludeLocally creates the file and its folder when they are missing', async () => {
-  const { main } = repo();
-  rmSync(join(main, '.git', 'info'), { recursive: true, force: true });
-  await excludeLocally(main, '/.mainframe/worktrees/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toBe('/.mainframe/worktrees/\n');
-});
-
-it('excludeLocally writes to the common git dir when the project is a linked worktree', async () => {
-  const { main } = repo();
-  const linked = join(dirname(main), 'linked');
-  await addWorktree(main, linked, 'worktree-a', { create: true });
-  await excludeLocally(linked, '/.mainframe/worktrees/');
-  expect(readFileSync(join(main, '.git', 'info', 'exclude'), 'utf8')).toContain('/.mainframe/worktrees/\n');
+  for (const project of [main, join(main, 'sub')]) {
+    const folder = join(project, '.mainframe', 'worktrees');
+    mkdirSync(join(folder, 'x'), { recursive: true });
+    writeFileSync(join(folder, '.gitignore'), '*\n');
+    writeFileSync(join(folder, 'x', 'a.txt'), 'a\n');
+  }
+  expect(out(main, 'status', '--porcelain')).toBe('');
 });

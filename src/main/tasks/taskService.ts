@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
@@ -223,20 +223,25 @@ export class TaskService {
   private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
     this.launching.add(task.id);
     try {
-      await this.hideWorktreesFolder(task);
+      this.hideWorktreesFolder(task);
       await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
     } finally {
       this.launching.delete(task.id);
     }
   }
 
-  /** Keeps the agent's worktrees folder out of git status through the repo's local exclude file; a failure only warns. */
-  private async hideWorktreesFolder(task: TaskRecord): Promise<void> {
-    const pattern = `/${ADAPTERS[agentOf(task)].worktreesDir}/`;
+  /**
+   * Gives the folder that holds the task's worktree a `.gitignore` of `*`, so git ignores everything in it, the
+   * file too, and the folder never shows in git status. One that is there is left as it is; a failure only warns.
+   */
+  private hideWorktreesFolder(task: TaskRecord): void {
+    const folder = dirname(task.worktreePath);
     try {
-      await this.deps.git.excludeLocally(this.deps.projectDir, pattern);
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, '.gitignore'), '*\n', { flag: 'wx' });
     } catch (err) {
-      this.deps.warn?.(`Could not add ${pattern} to the repo's local exclude file: ${err instanceof Error ? err.message : String(err)}`);
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') return;
+      this.warn(`Could not hide ${folder} from git status: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

@@ -53,7 +53,6 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     changedFiles: async () => [],
     taskDiff: async () => [],
     addWorktree: async () => {},
-    excludeLocally: async () => {},
     ...gitOverrides,
   };
   const killed: string[] = [];
@@ -1223,25 +1222,45 @@ it('an OpenCode task starts in its worktree', async () => {
   expect(existsSync(join(taskDir(view.id), 'settings.json'))).toBe(false);
 });
 
-it("an OpenCode task's worktree folder is hidden through the repo's local exclude file", async () => {
-  const excluded: unknown[][] = [];
-  const { service, projectDir } = setup({ excludeLocally: async (...args) => void excluded.push(args) });
+it("an OpenCode task's worktrees folder gets a .gitignore of *", async () => {
+  const { service, projectDir } = setup();
   await service.start(OPENCODE_TASK);
-  expect(excluded).toEqual([[projectDir, '/.mainframe/worktrees/']]);
+  expect(readFileSync(join(projectDir, '.mainframe', 'worktrees', '.gitignore'), 'utf8')).toBe('*\n');
 });
 
-it('a failing exclude write logs a warning and the start still succeeds', async () => {
-  const { service, warnings } = setup({ excludeLocally: async () => { throw new Error('read-only'); } });
+it('a .gitignore already in the worktrees folder is left as it is', async () => {
+  const { service, projectDir } = setup();
+  mkdirSync(join(projectDir, '.mainframe', 'worktrees'), { recursive: true });
+  writeFileSync(join(projectDir, '.mainframe', 'worktrees', '.gitignore'), 'mine\n');
+  await service.start(OPENCODE_TASK);
+  expect(readFileSync(join(projectDir, '.mainframe', 'worktrees', '.gitignore'), 'utf8')).toBe('mine\n');
+});
+
+it("re-adding an older task's worktree hides the folder it is recorded in", async () => {
+  const { service, projectDir, make, readState, stateFile } = setup({ branchExists: async () => true });
+  const view = await service.start(OPENCODE_TASK);
+  const older = join(projectDir, '.claude', 'worktrees', 'fix-login');
+  const records = new TaskRecords(stateFile, 1000, () => {});
+  records.all.find((t) => t.id === view.id)!.worktreePath = older;
+  const again = make(records);
+  again.onSessionExit?.(view.session!.id);
+  await again.reopen(view.id);
+  expect(readFileSync(join(projectDir, '.claude', 'worktrees', '.gitignore'), 'utf8')).toBe('*\n');
+  expect(readState()).toHaveLength(1);
+});
+
+it('a worktrees folder that cannot be hidden logs a warning and the start still succeeds', async () => {
+  const { service, projectDir, warnings } = setup();
+  writeFileSync(join(projectDir, '.mainframe'), 'a file, not a folder');
   const view = await service.start(OPENCODE_TASK);
   expect(view.session).toBeTruthy();
-  expect(warnings.some((w) => w.includes('read-only'))).toBe(true);
+  expect(warnings.some((w) => w.includes('Could not hide'))).toBe(true);
 });
 
-it("a Claude task doesn't touch the exclude file", async () => {
-  const excluded: unknown[][] = [];
-  const { service } = setup({ excludeLocally: async (...args) => void excluded.push(args) });
+it("a Claude task doesn't make a .mainframe folder", async () => {
+  const { service, projectDir } = setup();
   await service.start(NEW_TASK);
-  expect(excluded).toEqual([]);
+  expect(existsSync(join(projectDir, '.mainframe'))).toBe(false);
 });
 
 it('a slug whose folder exists under .mainframe/worktrees counts as taken', async () => {
