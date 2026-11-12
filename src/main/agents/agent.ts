@@ -15,7 +15,7 @@ export interface TaskStart { bin: string; nodeBin: string | null; taskDir: strin
 
 export interface TaskReopen { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; branchExists: boolean; prompt?: string }
 
-/** What settings.json keeps of one agent (Task 4 saves it). */
+/** What settings.json keeps of one agent. */
 export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }
 
 /** The agent a service runs now, where it is, and its settings. */

@@ -178,6 +178,7 @@ describe("OpenCode's sync", () => {
     expect(isOpencodeToolName('trello_trelloReadCard')).toBe(true);
     expect(isOpencodeToolName('read')).toBe(false);
     expect(isOpencodeToolName('opencode_shell')).toBe(false);
+    expect(isOpencodeToolName('experimental_image_generate')).toBe(false);
     expect(opencodeAgent.sync.isToolName).toBe(isOpencodeToolName);
   });
 
