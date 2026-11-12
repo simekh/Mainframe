@@ -1,5 +1,16 @@
-import { win32 } from 'node:path';
-import { pathFor, pathKey } from './spawnEnv';
+import { posix, win32 } from 'node:path';
+
+/**
+ * The key a program's search path is under: PATH on POSIX; on Windows, whichever key spells it in
+ * any case (the first, as `Path` is what Windows itself uses).
+ */
+export function pathKey(env: Record<string, string | undefined>, platform: NodeJS.Platform): string | undefined {
+  if (platform !== 'win32') return env.PATH === undefined ? undefined : 'PATH';
+  return Object.keys(env).find((key) => key.toUpperCase() === 'PATH');
+}
+
+/** The path module for the platform's own paths: Windows' backslashes and `;`, or POSIX's. */
+export const pathFor = (platform: NodeJS.Platform) => (platform === 'win32' ? win32 : posix);
 
 /** What the lookup asks of the file system. */
 export interface ExecutableFiles {

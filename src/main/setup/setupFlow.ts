@@ -1,7 +1,8 @@
 import type { ProgramCheck, SetupView } from '../../shared/types';
 import type { ExecutableLookup } from '../pty/findExecutable';
 import { hasProjectsFile, rememberedProjects } from '../projects';
-import { checkClaude, checkGit, findClaude, type VersionRunner } from './programChecks';
+import { checkClaude, findClaude } from '../agents/claude';
+import { checkGit, type VersionRunner } from './programChecks';
 import { readSettings, writeSettings, type AppSettings } from './settings';
 
 export interface SetupDeps {

@@ -1,21 +1,6 @@
 import type { TaskCardRef } from '../../shared/types';
-
-/** How the prompt names the repo's instructions: the first mention in full, later ones short. */
-type Instructions = { first: string; again: string; requires: string; integrates: string };
-
-const CLAUDE_INSTRUCTIONS: Instructions = {
-  first: "this repo's CLAUDE.md",
-  again: "this repo's CLAUDE.md",
-  requires: "this repo's CLAUDE.md requires",
-  integrates: 'this CLAUDE.md integrates',
-};
-
-const OPENCODE_INSTRUCTIONS: Instructions = {
-  first: "this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)",
-  again: 'those instructions',
-  requires: 'those instructions require',
-  integrates: 'those instructions integrate',
-};
+import { ADAPTERS } from '../agents/adapters';
+import type { Instructions } from '../agents/agent';
 
 const brief = (i: Instructions) =>
   `This task is your brief: read it, plan, then start. Follow ${i.first}, and ask me when you need me.`;
@@ -56,12 +41,8 @@ export function openingPrompt(t: {
   /** `projectDir` is the main checkout. */
   | { agent: 'opencode'; projectDir: string; worktreePath: string }
 )): string {
-  const instructions = t.agent === 'opencode' ? OPENCODE_INSTRUCTIONS : CLAUDE_INSTRUCTIONS;
-  const worktreeNote = t.agent === 'opencode'
-    ? `Mainframe started you in this task's own worktree, ${t.worktreePath}, on branch ${t.branch}. The main checkout is ${t.projectDir}: when you need it, for example to merge, run git there with git -C ${t.projectDir}.`
-    : `Mainframe started you in this task's own worktree, on branch ${t.branch}, so don't call EnterWorktree. ` +
-    'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
-    'checkout, for example to merge, call ExitWorktree with action "keep" first.';
+  const { instructions, worktreeNote } = ADAPTERS[t.agent];
+  const where = t.agent === 'opencode' ? t : { projectDir: '', worktreePath: '' };
   const description = t.description.trim();
   const parts = [brief(instructions), `Task: ${t.card?.number ? `${t.card.number} ` : ''}${t.title.trim()}`];
   if (t.card) parts.push(...cardParts(t.card, instructions));
@@ -69,7 +50,7 @@ export function openingPrompt(t: {
     if (t.descriptionFile) parts.push(descriptionInFile(t.descriptionFile, t.card !== undefined));
     else parts.push(t.card ? `From the owner: ${description}` : description);
   }
-  parts.push(worktreeNote);
+  parts.push(worktreeNote({ branch: t.branch, projectDir: where.projectDir, worktreePath: where.worktreePath }));
   if (t.noQuestions) parts.push(noQuestions(instructions));
   return parts.join('\n\n');
 }

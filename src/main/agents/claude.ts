@@ -1,5 +1,57 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
+import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
+import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
+import { checkProgram, type VersionRunner } from '../setup/programChecks';
+import type { AgentAdapter } from './agent';
+
+// Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
+export function parseClaudeVersion(stdout: string): string | null {
+  return /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(stdout.trim())?.[1] ?? null;
+}
+
+/**
+ * Where claude may be, after a saved path: PATH, the native installer's file, and on Windows npm's
+ * real executable (npm's `claude.cmd` is a launcher script Mainframe never runs). That executable
+ * is in the package beside `claude.cmd`, in the global folder of whichever npm prefix is on PATH
+ * (a version manager's, say), or else of the default one in %APPDATA%. On macOS and Linux npm's
+ * `claude` sits beside `node`, which is on PATH, so PATH covers it.
+ */
+export function claudePlaces(lookup: ExecutableLookup): string[] {
+  const { env } = lookup;
+  const places = [findExecutable('claude', lookup)];
+  if (lookup.platform === 'win32') {
+    if (env.USERPROFILE) places.push(win32.join(env.USERPROFILE, '.local', 'bin', 'claude.exe'));
+    // On Windows a file is executable when it is there, so this asks whether claude.cmd is.
+    const npmFolders = searchDirs(lookup).filter((dir) => lookup.files.isExecutableFile(win32.join(dir, 'claude.cmd')));
+    if (env.APPDATA) npmFolders.push(win32.join(env.APPDATA, 'npm'));
+    for (const dir of npmFolders) places.push(win32.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
+  } else if (env.HOME) {
+    places.push(posix.join(env.HOME, '.local', 'bin', 'claude'));
+  }
+  return [...new Set(places.filter((place) => place !== null))];
+}
+
+export const checkClaude = (path: string, run: VersionRunner, files: ExecutableFiles) =>
+  checkProgram(path, parseClaudeVersion, MIN_CLAUDE_VERSION, run, files);
+
+/**
+ * `fromEnv` (MAINFRAME_CLAUDE_BIN) is the only place looked at when set. Otherwise the saved paths in
+ * order, then `claudePlaces`, and the first that works wins; an old claude on PATH doesn't hide a
+ * current one beside it. When none works, the failure that helps most: too old, then broken, then missing.
+ */
+export async function findClaude(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
+  // An empty fromEnv counts as unset (config already throws on an empty MAINFRAME_CLAUDE_BIN). Looked
+  // up as sessions look it up, so the absolute path that is checked is the one they will run.
+  if (o.fromEnv) return checkClaude(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
+  const failures: ProgramCheck[] = [];
+  for (const path of new Set([...(o.saved ?? []), ...claudePlaces(o.lookup)])) {
+    const check = await checkClaude(path, o.run, o.lookup.files);
+    if (check.state === 'found') return check;
+    failures.push(check);
+  }
+  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -128,3 +180,52 @@ export function readRecordedStart(dir: string): ReturnType<typeof readSessionSta
 export function readRecordedSession(dir: string): string | null {
   return readRecordedStart(dir)?.id ?? null;
 }
+
+export const claudeAgent: AgentAdapter = {
+  name: 'claude',
+  envVar: 'MAINFRAME_CLAUDE_BIN',
+  find: findClaude,
+  check: checkClaude,
+  // Keys that describe the Claude Code session the app was started from: a session that inherits them
+  // behaves as a nested Claude Code session. Other CLAUDE_CODE_* keys are the owner's own settings and pass through.
+  droppedEnv: [
+    'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT',
+    'CLAUDE_CODE_EXECPATH', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
+    'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_SESSION_ID',
+  ],
+  instructions: {
+    first: "this repo's CLAUDE.md",
+    again: "this repo's CLAUDE.md",
+    requires: "this repo's CLAUDE.md requires",
+    integrates: 'this CLAUDE.md integrates',
+  },
+  worktreeNote: ({ branch }) =>
+    `Mainframe started you in this task's own worktree, on branch ${branch}, so don't call EnterWorktree. ` +
+    'From inside a worktree, Claude Code refuses git commands aimed at the main checkout: when you need the main ' +
+    'checkout, for example to merge, call ExitWorktree with action "keep" first.',
+  // `claude -w` makes the task's worktree as it starts.
+  makesWorktree: false,
+  newSessionId: (uuid) => uuid(),
+  taskStart: (o) => ({
+    argv: startArgv({
+      claudeBin: o.bin,
+      slug: o.slug,
+      name: o.name,
+      claudeSessionId: o.sessionId,
+      settingsPath: writeHookSettings(o.taskDir, o.nodeBin),
+      ...(o.addDir && { addDir: o.addDir }),
+      prompt: o.prompt,
+    }),
+  }),
+  taskReopen: (o) => ({
+    argv: reopenArgv({
+      claudeBin: o.bin,
+      slug: o.slug,
+      claudeSessionId: o.sessionId,
+      settingsPath: writeHookSettings(o.taskDir, o.nodeBin),
+      branchExists: o.branchExists,
+      prompt: o.prompt,
+    }),
+  }),
+  recordedSession: readRecordedSession,
+};

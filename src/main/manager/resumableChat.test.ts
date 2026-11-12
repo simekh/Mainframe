@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { SESSION_START_FILE } from '../tasks/launch';
+import { SESSION_START_FILE } from '../agents/claude';
 import { readResumableSession } from './resumableChat';
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';

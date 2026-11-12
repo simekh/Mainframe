@@ -2,12 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentName, ChangedFile, ProgramState, ProgramStatus, StartCheck, TaskCardRef, TaskView } from '../../shared/types';
+import { ADAPTERS } from '../agents/adapters';
+import type { LaunchArgs } from '../agents/agent';
 import type { GitQueries } from '../git';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { inTurn, resumePromptFor, TurnTracker } from './carryOn';
-import { readRecordedSession, reopenArgv, startArgv, writeHookSettings } from './launch';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
-import { newOpencodeSessionId, OPENCODE_ENV, opencodeReopenArgv, opencodeStartArgv } from './opencode';
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
 
@@ -57,10 +57,8 @@ export interface SessionReport {
 }
 
 /** How a session is launched; `env` is laid over the session host's own. */
-interface LaunchSpec {
-  argv: string[];
+interface LaunchSpec extends LaunchArgs {
   cwd: string;
-  env?: Record<string, string>;
 }
 
 /** One agent process of a task, held with its launch spec until it exits. */
@@ -123,7 +121,8 @@ export class TaskService {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
     const agent = req.agent ?? 'claude';
-    const opencodeBin = agent === 'opencode' ? this.opencodeBin() : null;
+    const adapter = ADAPTERS[agent];
+    const bin = this.binOf(agent);
 
     // Everything after this await is synchronous, so two starts at once cannot pick the same slug, or both take the same card.
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
@@ -150,7 +149,7 @@ export class TaskService {
       description: req.description,
       slug,
       name: sessionName(this.deps.projectDir, slug),
-      claudeSessionId: agent === 'opencode' ? newOpencodeSessionId() : this.newId(),
+      claudeSessionId: adapter.newSessionId(this.newId),
       worktreePath: join(this.deps.projectDir, '.claude', 'worktrees', slug),
       branch: `worktree-${slug}`,
       createdAt: this.now(),
@@ -161,11 +160,11 @@ export class TaskService {
       agent,
     };
 
-    if (opencodeBin === null) {
-      // A Claude task: `claude -w` makes its worktree as it starts.
-      const argv = this.startArgvOf(task, this.claudeStart(task, writeHookSettings(this.taskDir(task.id), this.deps.nodeBin)));
+    if (!adapter.makesWorktree) {
+      // The agent makes the task's worktree as it starts.
+      const launch = this.startLaunch(task, bin);
       this.deps.records.all.push(task);
-      this.addSession({ taskId: task.id, launch: { argv, cwd: this.deps.projectDir }, startedWithPrompt: true, resumePending: false });
+      this.addSession({ taskId: task.id, launch: { ...launch, cwd: this.deps.projectDir }, startedWithPrompt: true, resumePending: false });
     } else {
       // Recorded before git runs, so a start meanwhile takes another slug; shown and saved only once the worktree is there.
       this.deps.records.all.push(task);
@@ -182,8 +181,8 @@ export class TaskService {
       }
       // The project closed, or the app began to quit, while git ran: the task is kept, open, and begins at the next open.
       if (!this.quitting) {
-        const argv = this.startArgvOf(task, this.opencodeStart(task, opencodeBin));
-        this.addSession({ taskId: task.id, launch: { argv, cwd: task.worktreePath, env: OPENCODE_ENV }, startedWithPrompt: true, resumePending: false });
+        const launch = this.startLaunch(task, bin);
+        this.addSession({ taskId: task.id, launch: { ...launch, cwd: task.worktreePath }, startedWithPrompt: true, resumePending: false });
       }
     }
     this.commit();
@@ -197,30 +196,25 @@ export class TaskService {
     // Another reopen may have finished while git answered, or the project closed or the app began
     // to quit: then the task stays as recorded, to carry on when the project next opens.
     if (this.sessionOf(task.id) || this.launching.has(task.id) || this.quitting) return this.view(task);
-    if (agentOf(task) === 'opencode') return this.reopenOpencode(task, branchExists);
+    const agent = agentOf(task);
+    const adapter = ADAPTERS[agent];
+    if (adapter.makesWorktree) return this.reopenInWorktree(task, branchExists);
 
-    const settingsPath = writeHookSettings(this.taskDir(task.id), this.deps.nodeBin);
-    const recorded = readRecordedSession(this.taskDir(task.id));
+    const bin = this.binOf(agent);
+    const recorded = adapter.recordedSession(this.taskDir(task.id));
     const prompt = recorded === null ? undefined : resumePromptFor(task);
     const carryOn = prompt !== undefined;
-    let argv: string[];
+    let launch: LaunchArgs;
     if (recorded) {
       task.claudeSessionId = recorded;
-      argv = reopenArgv({
-        claudeBin: this.deps.claudeBin,
-        slug: task.slug,
-        claudeSessionId: task.claudeSessionId,
-        settingsPath,
-        branchExists,
-        prompt,
-      });
+      launch = this.reopenLaunch(task, bin, branchExists, prompt);
     } else {
-      // SessionStart never fired: claude was missing, or quit before the conversation began, so
+      // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
-      task.claudeSessionId = this.newId();
-      argv = this.startArgvOf(task, this.claudeStart(task, settingsPath));
+      task.claudeSessionId = adapter.newSessionId(this.newId);
+      launch = this.startLaunch(task, bin);
     }
-    return this.relaunch(task, { argv, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
+    return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
   }
 
   /** Adds the task's worktree, marking the task as launching while git runs. */
@@ -238,8 +232,9 @@ export class TaskService {
    * its conversation never began. A worktree folder deleted by hand is added back from its branch; with the branch
    * gone too, the session runs in the project folder.
    */
-  private async reopenOpencode(task: TaskRecord, branchExists: boolean): Promise<TaskView> {
-    const opencodeBin = this.opencodeBin();
+  private async reopenInWorktree(task: TaskRecord, branchExists: boolean): Promise<TaskView> {
+    const agent = agentOf(task);
+    const bin = this.binOf(agent);
     let cwd = this.deps.projectDir;
     if (existsSync(task.worktreePath)) {
       cwd = task.worktreePath;
@@ -251,13 +246,12 @@ export class TaskService {
     }
     if (!task.began) {
       // OpenCode never took the brief: it failed to start, was quit at its login screen, or Mainframe quit first.
-      const argv = this.startArgvOf(task, this.opencodeStart(task, opencodeBin));
-      return this.relaunch(task, { argv, cwd, env: OPENCODE_ENV }, { startedWithPrompt: true, resumePending: false });
+      return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const prompt = resumePromptFor(task);
     const carryOn = prompt !== undefined;
-    const argv = opencodeReopenArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt });
-    return this.relaunch(task, { argv, cwd, env: OPENCODE_ENV }, { startedWithPrompt: carryOn, resumePending: carryOn });
+    const launch = this.reopenLaunch(task, bin, branchExists, prompt);
+    return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn });
   }
 
   private relaunch(task: TaskRecord, launch: LaunchSpec, o: { startedWithPrompt: boolean; resumePending: boolean }): TaskView {
@@ -329,8 +323,8 @@ export class TaskService {
     if (!session.turn.ending) this.markEnding(session);
     const task = this.find(session.taskId);
 
-    // OpenCode has no SessionStart hook: its task keeps the session Mainframe started.
-    if (agentOf(task) === 'claude') task.claudeSessionId = readRecordedSession(this.taskDir(task.id)) ?? task.claudeSessionId;
+    // An agent that records no conversation keeps the session Mainframe started.
+    task.claudeSessionId = ADAPTERS[agentOf(task)].recordedSession(this.taskDir(task.id)) ?? task.claudeSessionId;
     // While quitting, the SIGHUPs end sessions that should run again at the next start.
     if (!(this.quitting && task.open)) {
       task.open = false;
@@ -393,54 +387,57 @@ export class TaskService {
     }
   }
 
-  private opencodeBin(): string {
+  /** The program the agent's sessions run. */
+  private binOf(agent: AgentName): string {
+    if (agent === 'claude') return this.deps.claudeBin;
     if (this.deps.opencodeBin === null) throw new Error('OpenCode 2.1 or later is not installed');
     return this.deps.opencodeBin;
   }
 
-  /** Claude's launch that begins the task's conversation; `addDir` is the folder of a description put in a file. */
-  private claudeStart(task: TaskRecord, settingsPath: string): (prompt: string, addDir?: string) => string[] {
-    return (prompt, addDir) =>
-      startArgv({
-        claudeBin: this.deps.claudeBin,
-        slug: task.slug,
-        name: task.name,
-        claudeSessionId: task.claudeSessionId,
-        settingsPath,
-        ...(addDir && { addDir }),
-        prompt,
-      });
-  }
-
-  /** OpenCode's launch that begins the task's conversation. */
-  private opencodeStart(task: TaskRecord, opencodeBin: string): (prompt: string) => string[] {
-    return (prompt) => opencodeStartArgv({ opencodeBin, sessionId: task.claudeSessionId, prompt });
+  /** The launch that resumes the task's conversation, `claudeSessionId`. */
+  private reopenLaunch(task: TaskRecord, bin: string, branchExists: boolean, prompt: string | undefined): LaunchArgs {
+    return ADAPTERS[agentOf(task)].taskReopen({
+      bin,
+      nodeBin: this.deps.nodeBin,
+      taskDir: this.taskDir(task.id),
+      slug: task.slug,
+      sessionId: task.claudeSessionId,
+      branchExists,
+      prompt,
+    });
   }
 
   /**
    * The launch that begins the task's conversation, under its `claudeSessionId`, with its opening prompt. On Windows,
-   * when it would overflow the command line, the description goes to a file in a folder the session may read, and the
-   * prompt points at it. OpenCode is not told the folder: it reads outside the project by default.
+   * when it would overflow the command line, the description goes to a file in a folder the session may read (`addDir`),
+   * and the prompt points at it.
    */
-  private startArgvOf(task: TaskRecord, launch: (prompt: string, addDir?: string) => string[]): string[] {
+  private startLaunch(task: TaskRecord, bin: string): LaunchArgs {
+    const agent = agentOf(task);
     const build = (brief?: { dir: string; file: string }) =>
-      launch(
-        openingPrompt({
+      ADAPTERS[agent].taskStart({
+        bin,
+        nodeBin: this.deps.nodeBin,
+        taskDir: this.taskDir(task.id),
+        slug: task.slug,
+        name: task.name,
+        sessionId: task.claudeSessionId,
+        prompt: openingPrompt({
           title: task.title,
           description: task.description,
           branch: task.branch,
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
-          ...(agentOf(task) === 'opencode'
+          ...(agent === 'opencode'
             ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
             : { agent: 'claude' as const }),
         }),
-        brief?.dir,
-      );
+        ...(brief && { addDir: brief.dir }),
+      });
 
-    const argv = build();
-    if (this.deps.platform !== 'win32' || fitsWindowsCommandLine(argv)) return argv;
+    const launch = build();
+    if (this.deps.platform !== 'win32' || fitsWindowsCommandLine(launch.argv)) return launch;
     const dir = join(this.taskDir(task.id), 'brief');
     const file = join(dir, 'description.md');
     mkdirSync(dir, { recursive: true });

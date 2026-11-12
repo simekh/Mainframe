@@ -64,6 +64,8 @@ export type AgentName = 'claude' | 'opencode';
 
 export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
 
+export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
+
 /** What looking for a program Mainframe needs (git, claude) found. */
 type CheckState = 'found' | 'missing' | 'too-old' | 'broken';
 

@@ -3,7 +3,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
-import { managerArgv, writeHookSettings } from '../tasks/launch';
+import { managerArgv, writeHookSettings } from '../agents/claude';
 import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { readResumableSession } from './resumableChat';

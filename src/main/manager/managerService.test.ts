@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { ASK_AGAIN_PROMPT, RESUME_PROMPT } from '../tasks/carryOn';
-import { hookSettings, managerArgv, SESSION_START_FILE } from '../tasks/launch';
+import { hookSettings, managerArgv, SESSION_START_FILE } from '../agents/claude';
 import { NODE } from '../testing/lookups';
 import { ManagerService } from './managerService';
 import { ROLE_PROMPT } from './rolePrompt';
