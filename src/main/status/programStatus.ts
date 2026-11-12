@@ -28,7 +28,14 @@ export class ProgramStatusRecords {
     }
   }
 
+  /**
+   * The record that stands for the whole terminal: the summary record (id '') when there is one,
+   * because OpenCode sends one summary plus one record per pending sub-session, and a sub-session
+   * updated later must not stand for the session. Otherwise the record updated last.
+   */
   current(): ProgramStatus | null {
+    const summary = this.records.get('');
+    if (summary) return summary;
     let last: ProgramStatus | null = null;
     for (const record of this.records.values()) last = record;
     return last;

@@ -1,12 +1,12 @@
 import { it, expect } from 'vitest';
 import { ProgramStatusRecords } from './programStatus';
 
-it('current() is the most recently updated record', () => {
+it('current() is the summary record, else the most recently updated', () => {
   const r = new ProgramStatusRecords();
   expect(r.current()).toBeNull();
   r.apply({ state: 'working', id: '' }, 1);
   r.apply({ state: 'blocked', id: 'sub', kind: 'permission' }, 2);
-  expect(r.current()).toEqual({ state: 'blocked', id: 'sub', kind: 'permission', updatedAt: 2 });
+  expect(r.current()).toEqual({ state: 'working', id: '', updatedAt: 1 });
   r.apply({ state: 'idle', id: '' }, 3);
   expect(r.current()).toEqual({ state: 'idle', id: '', updatedAt: 3 });
 });
@@ -34,4 +34,18 @@ it('keeps at most 256 records, evicting the least recently updated', () => {
   for (let i = 0; i < 257; i++) r.apply({ state: 'idle', id: `r${i}` }, i);
   expect(r.ids()).toHaveLength(256);
   expect(r.ids()).not.toContain('r0');
+});
+
+it('returns the summary record over a child updated later', () => {
+  const r = new ProgramStatusRecords();
+  r.apply({ id: '', state: 'working' }, 1);
+  r.apply({ id: 'ses_child', state: 'idle' }, 2);
+  expect(r.current()?.state).toBe('working');
+});
+
+it('returns the child updated last when there is no summary record', () => {
+  const r = new ProgramStatusRecords();
+  r.apply({ id: 'a', state: 'working' }, 1);
+  r.apply({ id: 'b', state: 'blocked', kind: 'permission' }, 2);
+  expect(r.current()?.id).toBe('b');
 });
