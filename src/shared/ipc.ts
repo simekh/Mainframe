@@ -1,6 +1,7 @@
 import type {
   ChangedFile,
   ClipboardPaste,
+  DiffView,
   ManagerView,
   PtyDataEvent,
   ProjectView,
@@ -34,6 +35,10 @@ export const IPC = {
   reopenTask: 'tasks:reopen',
   closeTask: 'tasks:close',
   changedFiles: 'tasks:changed-files',
+  openDiff: 'diff:open',
+  getDiff: 'diff:get',
+  closeDiff: 'diff:close',
+  diffChanged: 'diff:changed',
   tasksChanged: 'tasks:changed',
   getManager: 'manager:get',
   restartManager: 'manager:restart',
@@ -100,6 +105,12 @@ export interface MainframeApi {
   closeTask(dir: string, taskId: string): void;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
   changedFiles(dir: string, taskId: string): Promise<ChangedFile[] | null>;
+  /** Opens the diff window on the task's changes, scrolled to `path`; reads them afresh each time. */
+  openDiff(dir: string, taskId: string, path: string): Promise<void>;
+  /** The diff window's current view; null before the first open. */
+  getDiff(): Promise<DiffView | null>;
+  onDiff(cb: (view: DiffView) => void): () => void;
+  closeDiff(): void;
   /** Every change to a project's tasks, with its whole list. */
   onTasks(cb: (e: { dir: string; tasks: TaskView[] }) => void): () => void;
   getManager(dir: string): Promise<ManagerView>;

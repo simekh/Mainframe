@@ -1,25 +1,14 @@
 // Adapted from Parallel Code (MIT): src/components/ChangedFilesList.tsx (its polling) at 97c3558. See THIRD_PARTY_NOTICES.md.
-import { createEffect, createSignal, Index, on, onCleanup, Show } from 'solid-js';
+import { createEffect, createSignal, Index, on, onCleanup } from 'solid-js';
 import type { ChangedFile } from '../../../shared/types';
+import { statusLetter } from '../diff/diffText';
+import LineCounts from '../diff/LineCounts';
 import { useProject } from '../projects/projectContext';
 
 const POLL_MS = 5_000;
 
 // The heading doesn't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
-
-/** Untracked files read as U, as in Parallel Code. */
-const letter = (status: ChangedFile['status']) => (status === '?' ? 'U' : status);
-
-/** Line counts; a count that is zero or that git doesn't give shows nothing. */
-function Diff(props: { added: number | null; removed: number | null }) {
-  return (
-    <span class="diff">
-      <Show when={props.added}>{(n) => <span class="add">+{n()}</span>}</Show>
-      <Show when={props.removed}>{(n) => <span class="rem">−{n()}</span>}</Show>
-    </span>
-  );
-}
 
 /** What the selected task changed in its worktree, refreshed while it stays selected. */
 export default function ChangedFiles(props: { taskId: string | null; running: boolean }) {
@@ -106,19 +95,19 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
           <path d="M3.5 2 6.5 5l-3 3" />
         </svg>
         <span class="label">{label()}</span>
-        <Diff added={total('added')} removed={total('removed')} />
+        <LineCounts added={total('added')} removed={total('removed')} />
       </button>
       <ul class="file-list" id="changed-file-list" aria-label="Changed files" hidden={!open() || count() === 0}>
         <Index each={files() ?? []}>
           {(file) => (
             <li data-testid="changed-file" data-status={file().status}>
               <span class="st" data-st={file().status}>
-                {letter(file().status)}
+                {statusLetter(file().status)}
               </span>
               <span class="path" title={file().path}>
                 <span>{file().path}</span>
               </span>
-              <Diff added={file().added} removed={file().removed} />
+              <LineCounts added={file().added} removed={file().removed} />
             </li>
           )}
         </Index>
