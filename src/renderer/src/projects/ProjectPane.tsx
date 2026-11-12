@@ -1,5 +1,5 @@
 import { createMemo, createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import type { ProjectView, RendererConfig } from '../../../shared/types';
+import { AGENT_NAMES, type ProjectView, type RendererConfig } from '../../../shared/types';
 import Board from '../board/Board';
 import { glyphOf, stateLabel } from '../board/lanes';
 import NewTaskDialog from '../board/NewTaskDialog';
@@ -16,6 +16,7 @@ import { turnOffHandingFocus } from '../panel/PanelStrip';
 import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import SettingsButton from '../settings/SettingsButton';
+import { settingsView } from '../settings/settingsStore';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
@@ -287,7 +288,7 @@ export default function ProjectPane(props: {
               selected() ? undefined : (
                 <>
                   <strong>Select a session on the board</strong>
-                  New task starts Claude Code in a worktree of its own.
+                  New task starts {settingsView() ? AGENT_NAMES[settingsView()!.runDefault] : 'an agent'} in a worktree of its own.
                 </>
               )
             }

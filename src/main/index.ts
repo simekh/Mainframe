@@ -180,7 +180,6 @@ async function start(
 ): Promise<void> {
   // The hooks Mainframe writes for Claude Code run node, with no shell; nothing else needs it.
   if (agents.ticked().includes('claude') && programs.nodeBin === null) throw new Error(NODE_NEEDED);
-  const agentChecks = Promise.resolve({ opencode: agents.check('opencode') });
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
@@ -323,7 +322,6 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
-    agentChecks,
   );
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));

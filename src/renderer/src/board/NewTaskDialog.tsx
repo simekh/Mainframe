@@ -1,18 +1,12 @@
-import { createSignal, For, onMount, Show } from 'solid-js';
-import { AGENT_NAMES, MIN_OPENCODE_VERSION, type AgentName, type ProgramCheck, type StartCheck } from '../../../shared/types';
+import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { AGENT_NAMES, type AgentName, type StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { commandHeld, commandName } from '../keys';
 import { useProject } from '../projects/projectContext';
+import { loadSettings, settingsView } from '../settings/settingsStore';
 import { startTask } from '../tasksStore';
-import { loadAgent, saveAgent } from './agentPrefs';
+import { newTaskAgents } from './newTaskAgents';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
-
-/** Why OpenCode can't be offered, when it is installed but unusable. */
-function agentHint(check: ProgramCheck | null): string | undefined {
-  if (check?.state === 'too-old') return `OpenCode ${check.version} is installed. Mainframe needs ${MIN_OPENCODE_VERSION} or later.`;
-  if (check?.state === 'broken') return `The opencode at ${check.path} didn't say its version, so Mainframe can't use it.`;
-  return undefined;
-}
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
@@ -24,8 +18,13 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
   const [description, setDescription] = createSignal('');
   const [noQuestions, setNoQuestions] = createSignal(false);
   const [check, setCheck] = createSignal<StartCheck | null>(null);
-  const [opencode, setOpencode] = createSignal<ProgramCheck | null>(null);
-  const [agent, setAgent] = createSignal<AgentName>('claude');
+  // Each box starts on the default agent; a pick lasts for this box only.
+  const agents = createMemo(() => {
+    const view = settingsView();
+    return view && newTaskAgents(view);
+  });
+  const [picked, setPicked] = createSignal<AgentName | undefined>();
+  const agent = () => picked() ?? agents()?.start;
   const [error, setError] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal(false);
   const ahead = () => aheadOf(check());
@@ -34,13 +33,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
     dialog.showModal();
     titleInput.focus();
     window.mainframe.startCheck(project.dir).then(setCheck, (err: unknown) => console.error('[new task] start check failed', err));
-    window.mainframe.agentChecks().then(
-      ({ opencode }) => {
-        setOpencode(opencode);
-        setAgent(loadAgent(localStorage, project.dir, opencode.state === 'found'));
-      },
-      (err: unknown) => console.error('[new task] agent check failed', err),
-    );
+    if (!settingsView()) void loadSettings();
   });
 
   // Esc waits for a start under way, so a failure still has the dialog to show in.
@@ -54,7 +47,6 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
     setError(null);
     try {
       await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions(), agent: agent() });
-      if (opencode()?.state === 'found') saveAgent(localStorage, project.dir, agent());
       dialog.close();
     } catch (err) {
       setError(errorMessage(err));
@@ -79,7 +71,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
       >
         <h2 id="nt-heading">New task</h2>
         <p class="nt-sub">
-          Starts {AGENT_NAMES[agent()]} in a new worktree of {project.name}
+          Starts {agent() ? AGENT_NAMES[agent()!] : 'a session'} in a new worktree of {project.name}
           <Show when={check()}>
             {(c) => (
               <>
@@ -119,13 +111,13 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             }}
           />
         </div>
-        <Show when={opencode()?.state === 'found'}>
+        <Show when={(agents()?.options.length ?? 0) > 1}>
           <div class="field">
             <span id="nt-agent" class="field-label">
               Agent
             </span>
             <div class="nt-agents" role="radiogroup" aria-labelledby="nt-agent">
-              <For each={Object.keys(AGENT_NAMES) as AgentName[]}>
+              <For each={agents()?.options}>
                 {(name) => (
                   <label class="nt-agent">
                     <input
@@ -133,7 +125,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
                       name="nt-agent"
                       data-testid={`new-task-agent-${name}`}
                       checked={agent() === name}
-                      onChange={() => setAgent(name)}
+                      onChange={() => setPicked(name)}
                     />
                     {AGENT_NAMES[name]}
                   </label>
@@ -142,13 +134,13 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             </div>
           </div>
         </Show>
-        <Show when={agentHint(opencode())}>
+        <For each={agents()?.hints}>
           {(hint) => (
             <p class="nt-hint" data-testid="new-task-agent-hint">
-              {hint()}
+              {hint}
             </p>
           )}
-        </Show>
+        </For>
         <div class="check">
           <input
             id="nt-noq"
