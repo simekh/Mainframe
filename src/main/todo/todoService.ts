@@ -214,7 +214,10 @@ export class TodoService {
     this.changed();
 
     done.then(
-      (stdout) => this.end(running, () => this.apply(adapter, step, adapter.sync.readAnswer(stdout, tools))),
+      (stdout) => {
+        adapter.sync.afterRun({ bin, dir: this.dir, env, stdout });
+        this.end(running, () => this.apply(adapter, step, adapter.sync.readAnswer(stdout, tools)));
+      },
       (err: Error) => this.end(running, () => this.refuse(err.message)),
     );
     return outcome;
@@ -236,7 +239,11 @@ export class TodoService {
 
   /** What the answer of `adapter`'s run for `step` changes: the cards, an ask for the owner, or an error. */
   private apply(adapter: AgentAdapter, step: SyncStep, answer: SyncAnswer): SyncOutcome {
-    if (answer.kind === 'none') return this.refuse(answer.message ?? 'The sync run found nothing to read, and did not say why');
+    if (answer.kind === 'none') {
+      const message = answer.message ?? 'The sync run found nothing to read, and did not say why';
+      const { noConnector } = adapter.sync.words;
+      return this.refuse(step.kind === 'discover' && noConnector !== '' ? `${message} ${noConnector}` : message);
+    }
 
     if (step.kind === 'discover') {
       const { connector, readTools } = answer;

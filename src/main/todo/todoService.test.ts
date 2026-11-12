@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { dirname, join } from 'node:path';
+import { afterEach, expect, it, vi } from 'vitest';
 import type { TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
 import type { AgentInUse } from '../agents/agent';
 import { ADAPTERS } from '../agents/adapters';
@@ -410,6 +410,44 @@ it("a sync whose settings can't be written says why in the view, and runs nothin
   await expect(t.service.sync()).resolves.toEqual({ error: expect.stringMatching(/^Could not write the sync's settings: EISDIR/) });
   expect(t.calls).toHaveLength(0);
   expect(t.changes.at(-1)).toMatchObject({ syncing: false, error: expect.stringMatching(/^Could not write the sync's settings/) });
+});
+
+it('afterRun gets what each run printed', async () => {
+  const afterRun = vi.fn();
+  const t = setup(undefined, { ...CLAUDE, adapter: { ...ADAPTERS.claude, sync: { ...ADAPTERS.claude.sync, afterRun } } });
+  const dir = dirname(t.settingsFile);
+
+  await synced(t);
+  const unreadable = t.service.sync();
+  t.last().print('not json');
+  await unreadable;
+  const failed = t.service.sync();
+  t.last().fail('claude exited with code 1');
+  await failed;
+
+  expect(afterRun.mock.calls).toEqual([
+    [{ bin: 'claude', dir, env: ENV, stdout: printed(TOOLS_ANSWER) }],
+    [{ bin: 'claude', dir, env: ENV, stdout: printed(CARDS_ANSWER) }],
+    [{ bin: 'claude', dir, env: ENV, stdout: 'not json' }],
+  ]);
+});
+
+it('a discover that finds no connector says where to set it up', async () => {
+  const none = { kind: 'none', message: 'No connector holds a to-do list.' };
+  const { noConnector } = ADAPTERS.opencode.sync.words;
+  const opencodeWords: AgentInUse = {
+    ...CLAUDE,
+    adapter: { ...ADAPTERS.claude, sync: { ...ADAPTERS.claude.sync, words: ADAPTERS.opencode.sync.words } },
+  };
+  const t = setup(undefined, opencodeWords);
+  const first = t.service.sync();
+  t.last().answer(none);
+  expect(await first).toEqual({ error: `No connector holds a to-do list. ${noConnector}` });
+
+  const c = setup();
+  const second = c.service.sync();
+  c.last().answer(none);
+  expect(await second).toEqual({ error: 'No connector holds a to-do list.' });
 });
 
 it('a second Sync while one runs joins it', async () => {

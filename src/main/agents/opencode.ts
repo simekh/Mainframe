@@ -6,6 +6,7 @@ import { MIN_OPENCODE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, type VersionRunner } from '../setup/programChecks';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch } from './agent';
+import { makeOpencodeSync } from './opencodeSync';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
@@ -157,10 +158,6 @@ const instructions: Instructions = {
   integrates: 'those instructions integrate',
 };
 
-const notYet = (): never => {
-  throw new Error('The sync does not run on OpenCode yet');
-};
-
 /** OpenCode's adapter. `run` runs opencode's commands that run to an end; tests hand it a fake. */
 export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpencode } = {}): AgentAdapter {
   return {
@@ -182,14 +179,7 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     recordedSession: () => null,
     managerChat: (_dir, saved) => saved ?? null,
     managerLaunch: (o) => opencodeManagerLaunch(o, run),
-    sync: {
-      words: { sessions: 'coding agent sessions', instructions, toolNames: '', noConnector: '' },
-      prepare: notYet,
-      prompt: notYet,
-      readAnswer: notYet,
-      isToolName: () => false,
-      afterRun: () => {},
-    },
+    sync: makeOpencodeSync({ run, instructions }),
   };
 }
 
