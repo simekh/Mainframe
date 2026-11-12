@@ -101,6 +101,7 @@ Set these as environment variables before `npm start`. In bash and zsh, put them
 |---|---|
 | `MAINFRAME_DATA_DIR` | Where Mainframe keeps its state. By default `~/Library/Application Support/mainframe` on a Mac, `%APPDATA%\mainframe` on Windows, and `~/.config/mainframe` on Linux (`$XDG_CONFIG_HOME/mainframe` when that is set) |
 | `MAINFRAME_CLAUDE_BIN` | The `claude` file to run. Checked at every start, wins over the saved path, and is never saved. When it can't run, the setup screen says so and looks nowhere else |
+| `MAINFRAME_OPENCODE_BIN` | The `opencode` file to run. Checked at every start, and when it is set Mainframe looks nowhere else for OpenCode |
 | `MAINFRAME_LOG_OSC=1` | Prints the sessions' status reports to the terminal |
 
 ## Develop
