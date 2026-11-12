@@ -17,7 +17,7 @@
 
 .diff-list button {
   display: flex;
-  flex: 1;
+  width: 100%;
   gap: 10px;
   min-width: 0;
   padding: 0 12px 0 14px;

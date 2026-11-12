@@ -3,11 +3,23 @@ import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { basename, join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  Menu,
+  session,
+  shell,
+  type ContextMenuParams,
+  type MenuItemConstructorOptions,
+  type OpenDialogOptions,
+} from 'electron';
 import { IPC } from '../shared/ipc';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
-import { editMenuItems } from './contextMenu';
+import { copyMenuItems, editMenuItems } from './contextMenu';
+import { DiffWindow } from './diff/diffWindow';
 import { gitQueries } from './git';
 import { registerIpc, registerSetupIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
@@ -25,8 +37,8 @@ import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
 import { isDevToolsKey } from './windowKeys';
+import { APP_BACKGROUND, webPreferences } from './windowOptions';
 
-const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 const onMac = process.platform === 'darwin';
 /** How long a quit waits for the sessions it has hung up on to end. */
 const QUIT_WAIT_MS = 2000;
@@ -65,15 +77,18 @@ function createWindow(e2e: boolean): BrowserWindow {
     // On the Mac the window buttons sit at the left of the page's top row, which is the window's title bar.
     // Windows and Linux keep the system's own title bar, with its buttons.
     titleBarStyle: onMac ? 'hiddenInset' : 'default',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Keep output parsing and terminal replies running while the window is hidden.
-      backgroundThrottling: false,
-    },
+    webPreferences: webPreferences(),
   });
+  prepareWebContents(win, editMenuItems);
+  loadPage(win);
+  return win;
+}
+
+/** What a window's page may do, alike in both windows; `menuItems` is its right-click menu off the Mac. */
+function prepareWebContents(
+  win: BrowserWindow,
+  menuItems: (params: ContextMenuParams) => MenuItemConstructorOptions[] | null,
+): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   // With no menu off the Mac, DevTools are Ctrl+Shift+I there; the Mac keeps its View menu's.
@@ -83,19 +98,22 @@ function createWindow(e2e: boolean): BrowserWindow {
       event.preventDefault();
       win.webContents.toggleDevTools();
     });
-    // A right-click on something editable gets Copy and Paste there; the Mac gets no menu. In a
-    // terminal xterm has already focused its textarea and filled it with the selection, so the roles'
-    // DOM copy and paste reach the terminal's own handlers, as the Mac's Edit menu does.
+    // A right-click gets the window's menu there; the Mac gets none. In Mainframe's, a right-click on
+    // something editable gets Copy and Paste. In a terminal xterm has already focused its textarea and
+    // filled it with the selection, so the roles' DOM copy and paste reach the terminal's own handlers,
+    // as the Mac's Edit menu does.
     win.webContents.on('context-menu', (_e, params) => {
-      const items = editMenuItems(params);
+      const items = menuItems(params);
       if (items) Menu.buildFromTemplate(items).popup({ window: win });
     });
   }
+}
 
+/** The renderer's page; `view` picks the diff window's instead of Mainframe's. */
+function loadPage(win: BrowserWindow, view?: 'diff'): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(__dirname, '../renderer/index.html'));
-  return win;
+  if (devUrl) void win.loadURL(view ? `${devUrl}?view=${view}` : devUrl);
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), view && { query: { view } });
 }
 
 /** One path from a dialog on the window; undefined when the user cancels. Looked up at each call, so an e2e run can answer it. */
@@ -311,6 +329,18 @@ async function start(
   };
   // The menu `launch` set, with Open Project… enabled now.
   if (onMac) Menu.setApplicationMenu(buildMenu(() => void openPicked()));
+  const diffWindow = new DiffWindow({
+    parent: win,
+    dataDir: config.dataDir,
+    hidden: config.e2e && onMac,
+    prepare: (w) => {
+      prepareWebContents(w, copyMenuItems);
+      loadPage(w, 'diff');
+    },
+    warn: console.warn,
+  });
+  // Closed first, so it never keeps the app running: `window-all-closed` ends it once both have gone.
+  win.on('close', () => diffWindow.close());
   // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
     toWindow,
@@ -318,6 +348,7 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
+    diffWindow,
   );
 
   for (const dir of projectDirs) {

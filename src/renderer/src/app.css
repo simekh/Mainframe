@@ -2489,10 +2489,17 @@ kbd {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-.file-list li {
+/* Each row opens the diff window at its file. */
+.file-list .file-row {
   display: flex;
   gap: 10px;
+  width: 100%;
   min-width: 0;
+  text-align: left;
+}
+
+.file-list .file-row:hover .path {
+  color: var(--fg);
 }
 
 .file-list .st {

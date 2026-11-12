@@ -7,7 +7,7 @@ import { useProject } from '../projects/projectContext';
 
 const POLL_MS = 5_000;
 
-// The heading doesn't take focus on click, so typing stays in the terminal.
+// The heading and the rows don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /** What the selected task changed in its worktree, refreshed while it stays selected. */
@@ -101,13 +101,24 @@ export default function ChangedFiles(props: { taskId: string | null; running: bo
         <Index each={files() ?? []}>
           {(file) => (
             <li data-testid="changed-file" data-status={file().status}>
-              <span class="st" data-st={file().status}>
-                {statusLetter(file().status)}
-              </span>
-              <span class="path" title={file().path}>
-                <span>{file().path}</span>
-              </span>
-              <LineCounts added={file().added} removed={file().removed} />
+              <button
+                class="file-row"
+                onMouseDown={keepFocus}
+                onClick={() => {
+                  const { path } = file();
+                  window.mainframe
+                    .openDiff(project.dir, props.taskId!, path)
+                    .catch((err: unknown) => console.warn(`[diff] could not open the changes of ${path}`, err));
+                }}
+              >
+                <span class="st" data-st={file().status}>
+                  {statusLetter(file().status)}
+                </span>
+                <span class="path" title={file().path}>
+                  <span>{file().path}</span>
+                </span>
+                <LineCounts added={file().added} removed={file().removed} />
+              </button>
             </li>
           )}
         </Index>
