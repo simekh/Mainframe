@@ -148,18 +148,15 @@ const RULES = [
   { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
 ];
 
-it("managerConfig is Mainframe's server, its rules in both places, and the role prompt's file", () => {
-  const o = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1', rolesFile: '/data/m/role-prompt.md', agentId: 'build' };
-  expect(JSON.parse(managerConfig({ ...o, setDefault: false }))).toEqual({
+it("managerConfig is Mainframe's server, its rules at the top and under every agent, and the role prompt's file", () => {
+  const o = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1', rolesFile: '/data/m/role-prompt.md', agentIds: ['build', 'plan'] };
+  expect(JSON.parse(managerConfig(o))).toEqual({
     mcp: { servers: { mainframe: { type: 'remote', url: o.url, headers: { Authorization: 'Bearer token-1' }, oauth: false } } },
     permissions: RULES,
-    agents: { build: { permissions: RULES } },
+    agents: { build: { permissions: RULES }, plan: { permissions: RULES } },
     instructions: ['/data/m/role-prompt.md'],
   });
-  expect(JSON.parse(managerConfig({ ...o, agentId: 'plan', setDefault: true }))).toMatchObject({
-    agents: { plan: { permissions: RULES } },
-    default_agent: 'plan',
-  });
+  expect(JSON.parse(managerConfig({ ...o, defaultAgent: 'plan' }))).toMatchObject({ default_agent: 'plan' });
 });
 
 const AGENT_LIST = JSON.stringify({
@@ -239,18 +236,24 @@ describe("the manager's launch on OpenCode", () => {
     expect(args.argv).toEqual(['oc', '--standalone', '-s', id, '--prompt', 'Continue where you left off.']);
   });
 
-  it("the rules sit under OpenCode's default agent when Settings names none, and it is left OpenCode's default", async () => {
+  it('the rules sit under every agent OpenCode lists, and with none named the chat is left on its default', async () => {
     const { config, run } = await launch();
     expect(run).toHaveBeenCalledWith(['oc', '--standalone', 'api', 'agent.list'], { cwd: '/p', env: { HOME: '/h', PWD: '/p' } });
-    expect(Object.keys(config.agents)).toEqual(['build']);
+    expect(Object.keys(config.agents)).toEqual(['build', 'plan', 'general', 'title']);
     expect(config).not.toHaveProperty('default_agent');
   });
 
-  it('the rules sit under the agent Settings names, which the TUI starts on, with no lookup', async () => {
+  it('with an agent named in Settings it still lists them all, and makes the named one the default', async () => {
     const { config, run } = await launch({ managerAgent: 'plan' });
-    expect(run).not.toHaveBeenCalled();
-    expect(Object.keys(config.agents)).toEqual(['plan']);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(Object.keys(config.agents)).toEqual(['build', 'plan', 'general', 'title']);
     expect(config.default_agent).toBe('plan');
+  });
+
+  it("a named agent OpenCode no longer lists is not made up: the chat starts on OpenCode's default", async () => {
+    const { config } = await launch({ managerAgent: 'gone' });
+    expect(Object.keys(config.agents)).toEqual(['build', 'plan', 'general', 'title']);
+    expect(config).not.toHaveProperty('default_agent');
   });
 
   it('a failed lookup fails the launch with its message', async () => {
@@ -279,6 +282,10 @@ describe('runOpencode', () => {
 
   it('resolves with what the program printed', async () => {
     await expect(node('process.stdout.write("out")')).resolves.toBe('out');
+  });
+
+  it('takes far more output than the default 1 MiB', async () => {
+    await expect(node('process.stdout.write("x".repeat(3 * 1024 * 1024))')).resolves.toHaveLength(3 * 1024 * 1024);
   });
 
   it("rejects with stderr's last line, or the exit code when stderr is empty", async () => {

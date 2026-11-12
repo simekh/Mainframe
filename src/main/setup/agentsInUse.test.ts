@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -223,8 +223,6 @@ describe('AgentsInUse', () => {
     );
     const h = onDisk({ defaultAgent: 'claude' }, both, { runOpencode: run });
     const lists = join(h.dataDir, 'opencode-lists');
-    mkdirSync(lists);
-    writeFileSync(join(lists, 'left-over.json'), '{}');
 
     const choices = await h.a.opencodeChoices();
 
@@ -242,9 +240,8 @@ describe('AgentsInUse', () => {
     const json = JSON.stringify(choices);
     expect(json).not.toContain('SECRET-1');
     expect(json).not.toContain('sk-SECRET-2');
-    // Both run OpenCode's binary in the emptied folder, with the same environment but for PWD: the project's config
+    // Both run OpenCode's binary in the lists' own folder, with the same environment but for PWD: the project's config
     // is off for the agents as it is for the models.
-    expect(readdirSync(lists)).not.toContain('left-over.json');
     expect(run).toHaveBeenCalledTimes(2);
     const envs = run.mock.calls.map(([argv, o]) => {
       expect(argv[0]).toBe(O);

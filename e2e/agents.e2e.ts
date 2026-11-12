@@ -91,9 +91,14 @@ test("the manager starts on OpenCode with Mainframe's server, its rules and its 
     headers: { Authorization: expect.stringMatching(/^Bearer [0-9a-f]{64}$/) },
     oauth: false,
   });
-  const askToStart = { action: 'mainframe_start_task', resource: '*', effect: 'ask' };
-  expect(config.permissions).toContainEqual(askToStart);
-  expect(config.agents.build.permissions).toContainEqual(askToStart);
+  const rules = [
+    { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
+    { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+    { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
+  ];
+  // At the top and under every agent `api agent.list` gives, as the chat may run on any of them.
+  expect(config.permissions).toEqual(rules);
+  expect(config.agents).toEqual({ build: { permissions: rules }, plan: { permissions: rules }, general: { permissions: rules } });
   expect(readFileSync(config.instructions[0], 'utf8')).toBe(rolePrompt(ADAPTERS.opencode.instructions));
 
   const listed = await mcpCall(dataDir, 'tools/call', { name: 'list_sessions', arguments: {} }, { server });
