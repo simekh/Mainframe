@@ -4,7 +4,7 @@ import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft
 import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
-import { runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
+import { LONG_SYNC_MS, runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
 import { emptyTodo, loadTodo, NewerTodoError, saveTodo, type TodoRecord } from './todoFile';
 import type { SyncAnswer } from './todoSchema';
 
@@ -27,6 +27,8 @@ export interface TodoServiceDeps {
   newId?: () => string;
   now?: () => number;
   warn?: (msg: string) => void;
+  /** Calls `fn` after `ms`; the function it returns cancels that. */
+  setTimer?: (fn: () => void, ms: number) => () => void;
 }
 
 export type SyncOutcome = { cards: number } | { ask: TodoAsk['kind'] } | { error: string };
@@ -36,6 +38,9 @@ interface Running {
   outcome: Promise<SyncOutcome>;
   settle(outcome: SyncOutcome): void;
   cancel(): void;
+  /** Whether it has gone on past LONG_SYNC_MS and the owner has not said to keep going. */
+  long: boolean;
+  stopTimer(): void;
 }
 
 /** One project's to-do list: the synced cards, the owner's notes, and the sync run that fills the cards. */
@@ -78,6 +83,7 @@ export class TodoService {
       cards,
       notes,
       syncing: this.running !== null,
+      longSync: this.running?.long ?? false,
       error: this.error,
       ask: this.ask,
       setUp: readTools !== undefined || pickedList !== undefined,
@@ -187,6 +193,13 @@ export class TodoService {
     return task;
   }
 
+  /** The owner chose to go on past the long-sync line: it stays hidden for the rest of this run. */
+  keepSyncing(): void {
+    if (!this.running?.long) return;
+    this.running.long = false;
+    this.changed();
+  }
+
   /** Stops a running sync: its callers get the stopped outcome, the view shows no error, and nothing the run answers is kept. */
   cancel(): void {
     const running = this.running;
@@ -210,7 +223,7 @@ export class TodoService {
     const { adapter, bin, setting } = agent;
     let settle!: Running['settle'];
     const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
-    const listing: Running = { outcome, settle, cancel: () => {} };
+    const listing: Running = { outcome, settle, cancel: () => {}, long: false, stopTimer: () => {} };
     this.running = listing;
     this.ask = this.error = null;
     this.changed();
@@ -251,7 +264,21 @@ export class TodoService {
 
     let settle!: Running['settle'];
     const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
-    const running: Running = { outcome, settle, cancel };
+    const setTimer = this.deps.setTimer ?? ((fn, ms) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    });
+    const running: Running = {
+      outcome,
+      settle,
+      cancel,
+      long: false,
+      stopTimer: setTimer(() => {
+        if (this.running !== running) return;
+        running.long = true;
+        this.changed();
+      }, LONG_SYNC_MS),
+    };
     this.running = running;
     this.ask = this.error = null;
     this.changed();
@@ -269,6 +296,7 @@ export class TodoService {
   /** Ends `running` with what `compute` makes of its answer, unless it was stopped or replaced meanwhile. */
   private end(running: Running, compute: () => SyncOutcome): void {
     if (this.running !== running) return;
+    running.stopTimer();
     this.running = null;
     let outcome: SyncOutcome;
     try {

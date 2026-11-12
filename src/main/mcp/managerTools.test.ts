@@ -61,7 +61,7 @@ function setup(
       },
     },
     {
-      view: () => ({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, error: null, ask: overrides.ask ?? null, setUp: false }),
+      view: () => ({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, longSync: false, error: null, ask: overrides.ask ?? null, setUp: false }),
       sync: async () => (calls.push('sync'), overrides.sync ? overrides.sync() : { cards: 0 }),
       startItem: async (item, opts) => {
         calls.push('startItem');

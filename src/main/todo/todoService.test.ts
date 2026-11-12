@@ -9,7 +9,7 @@ import { syncArgv, syncSettings } from '../agents/claudeSync';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
-import { SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
+import { LONG_SYNC_MS, SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
 import { TodoService } from './todoService';
 
 const prompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
@@ -111,6 +111,13 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
   const saves: [AgentName, Partial<AgentSetting>][] = [];
   let current = agent;
   let counter = 0;
+  // The long-sync timers: a test fires one by hand.
+  const timers: { ms: number; cleared: boolean; fire(): void }[] = [];
+  const setTimer = (fn: () => void, ms: number) => {
+    const timer = { ms, cleared: false, fire: fn };
+    timers.push(timer);
+    return () => (timer.cleared = true);
+  };
   const make = () =>
     new TodoService({
       projectDir,
@@ -128,6 +135,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
       newId: () => `id-${++counter}`,
       now: () => NOW,
       warn: (msg) => warnings.push(msg),
+      setTimer,
     });
 
   const service = make();
@@ -142,6 +150,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     saves,
     changes,
     warnings,
+    timers,
     file,
     settingsFile,
     todo: () => JSON.parse(readFileSync(file, 'utf8')),
@@ -187,6 +196,7 @@ it("a first sync runs with no tools allowed, then asks the owner to confirm the 
     cards: [],
     notes: [],
     syncing: false,
+    longSync: false,
     error: null,
     ask: { kind: 'tools', connector: 'Tracker', tools: TOOLS },
     setUp: false,
@@ -236,6 +246,7 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
     cards: CARDS,
     notes: [],
     syncing: false,
+    longSync: false,
     error: null,
     ask: null,
     setUp: true,
@@ -903,7 +914,7 @@ it('a Todo file from a newer Mainframe: the panel says so, and nothing syncs or 
   const message = t.service.view().error!;
 
   expect(message).toContain('newer Mainframe');
-  expect(t.service.view()).toEqual({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, error: message, ask: null, setUp: false });
+  expect(t.service.view()).toEqual({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, longSync: false, error: message, ask: null, setUp: false });
 
   await expect(t.service.sync()).rejects.toThrow(message);
   expect(() => t.service.saveNote({ title: 'A note', text: '' })).toThrow(message);
@@ -916,4 +927,75 @@ it('a Todo file from a newer Mainframe: the panel says so, and nothing syncs or 
   expect(t.service.view().error).toBe(message);
   expect(readFileSync(t.file, 'utf8')).toBe(newer);
   expect(t.warnings).toEqual([]);
+});
+
+// The long-sync line, on both agents.
+const AGENTS: [string, () => AgentInUse][] = [
+  ['Claude', () => CLAUDE],
+  ['OpenCode', () => opencode(async () => MODELS, { syncModel: 'prov/cheap' })],
+];
+
+it.each(AGENTS)('after 2 minutes the view says the sync is still running (%s)', async (_name, agent) => {
+  const t = setup(undefined, agent());
+  void t.service.sync();
+  await flush();
+
+  expect(t.timers).toHaveLength(1);
+  expect(t.timers[0].ms).toBe(120_000);
+  expect(t.timers[0].ms).toBe(LONG_SYNC_MS);
+  expect(t.service.view().longSync).toBe(false);
+  t.timers[0].fire();
+
+  expect(t.service.view()).toMatchObject({ syncing: true, longSync: true });
+  expect(t.changes.at(-1)!.longSync).toBe(true);
+});
+
+it('Keep going hides it for the rest of that run', async () => {
+  const t = setup();
+  void t.service.sync();
+  t.timers[0].fire();
+
+  t.service.keepSyncing();
+
+  expect(t.service.view()).toMatchObject({ syncing: true, longSync: false });
+  expect(t.changes.at(-1)!.longSync).toBe(false);
+});
+
+it('a run that ends first never shows it, and clears its timer', async () => {
+  const t = setup();
+  const pending = t.service.sync();
+  t.last().answer(TOOLS_ANSWER);
+  await pending;
+
+  expect(t.timers[0].cleared).toBe(true);
+  t.timers[0].fire();
+  expect(t.service.view().longSync).toBe(false);
+  expect(t.changes.some((v) => v.longSync)).toBe(false);
+});
+
+it('Stop clears it', () => {
+  const t = setup();
+  void t.service.sync();
+  t.timers[0].fire();
+  expect(t.service.view().longSync).toBe(true);
+
+  t.service.cancel();
+
+  expect(t.timers[0].cleared).toBe(true);
+  expect(t.service.view()).toMatchObject({ syncing: false, longSync: false });
+});
+
+it('the next run starts without it, and an earlier run\'s timer cannot show it', async () => {
+  const t = setup();
+  void t.service.sync();
+  t.timers[0].fire();
+  t.service.cancel();
+
+  void t.service.sync();
+  expect(t.timers).toHaveLength(2);
+  expect(t.service.view()).toMatchObject({ syncing: true, longSync: false });
+  t.timers[0].fire();
+  expect(t.service.view().longSync).toBe(false);
+  t.timers[1].fire();
+  expect(t.service.view().longSync).toBe(true);
 });

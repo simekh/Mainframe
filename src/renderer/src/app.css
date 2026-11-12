@@ -834,6 +834,31 @@ html[data-platform='darwin'] .setup-titlebar {
   margin-left: auto;
 }
 
+/* A sync past two minutes: a warning tint, as the ask's is accent, since the owner's tokens are what it spends. */
+.todo-long-sync {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 8px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--fg-muted);
+}
+
+.todo-long-sync p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.todo-long-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* What Sync needs the owner to say before it goes on. The one place the panel asks for trust, so
    the one place it raises its voice: tinted, with the window's one filled button. */
 .todo-ask {

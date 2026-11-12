@@ -6,6 +6,9 @@ import type { SyncWords } from '../agents/agent';
 /** A sync run is stopped after this long. */
 export const SYNC_TIMEOUT_MS = 5 * 60_000;
 
+/** After this long a running sync says it is still going and may use a lot of tokens. */
+export const LONG_SYNC_MS = 2 * 60_000;
+
 /** The outcome a stopped sync's callers get: what `runSync` rejects with for a run that was cancelled. */
 export const SYNC_STOPPED = 'The sync was stopped';
 

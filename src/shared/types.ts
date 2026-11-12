@@ -202,6 +202,8 @@ export interface TodoView {
   cards: TodoCard[];
   notes: TodoNote[];
   syncing: boolean;
+  /** The running sync has gone on past two minutes and the owner has not said to keep going. */
+  longSync: boolean;
   error: string | null;
   ask: TodoAsk | null;
   /** Whether tools are confirmed or a list picked, so "Set up again" has something to forget. */

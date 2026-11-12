@@ -18,7 +18,7 @@ import {
 } from './todoItems';
 import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
 import {
-  cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, pickTodoModel, resetTodoSource, syncTodo, todoOf,
+  cancelTodoSync, confirmTodoTools, keepNoteDraft, keepTodoSync, pickTodoList, pickTodoModel, resetTodoSource, syncTodo, todoOf,
 } from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
@@ -371,6 +371,31 @@ export default function TodoPanel(props: {
                   </Show>
                 </span>
               </div>
+
+              {/* A run past two minutes: said in words, with the choice, as a sync that may cost the owner real money. */}
+              <Show when={v().longSync}>
+                <div class="todo-long-sync" data-testid="todo-long-sync" role="status">
+                  <p>Still syncing (2 min). Large syncs can use a lot of tokens.</p>
+                  <div class="todo-long-actions">
+                    <button
+                      class="btn"
+                      data-testid="todo-long-stop"
+                      onMouseDown={keepFocus}
+                      onClick={() => cancelTodoSync(project.dir)}
+                    >
+                      Stop
+                    </button>
+                    <button
+                      class="btn"
+                      data-testid="todo-keep-going"
+                      onMouseDown={keepFocus}
+                      onClick={() => keepTodoSync(project.dir)}
+                    >
+                      Keep going
+                    </button>
+                  </div>
+                </div>
+              </Show>
 
               <Switch>
                 <Match when={toolsAsk()}>

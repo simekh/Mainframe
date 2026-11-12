@@ -71,6 +71,10 @@ export function cancelTodoSync(dir: string): void {
   window.mainframe.cancelTodoSync(dir).catch(logged('stop the sync', dir));
 }
 
+export function keepTodoSync(dir: string): void {
+  window.mainframe.keepTodoSync(dir).catch(logged('keep the sync going', dir));
+}
+
 export function confirmTodoTools(dir: string): void {
   window.mainframe.confirmTodoTools(dir).catch(logged('allow the tools', dir));
 }

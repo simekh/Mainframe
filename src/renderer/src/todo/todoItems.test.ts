@@ -22,7 +22,7 @@ const view = (extra: Partial<TodoView> = {}): TodoView => ({
   syncedAt: 0,
   cards: [],
   notes: [],
-  syncing: false,
+  syncing: false, longSync: false,
   error: null,
   ask: null,
   setUp: true,

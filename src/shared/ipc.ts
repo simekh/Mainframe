@@ -46,6 +46,7 @@ export const IPC = {
   todoChanged: 'todo:changed',
   syncTodo: 'todo:sync',
   cancelTodoSync: 'todo:cancel-sync',
+  keepTodoSync: 'todo:keep-sync',
   confirmTodoTools: 'todo:confirm-tools',
   pickTodoList: 'todo:pick-list',
   pickTodoModel: 'todo:pick-model',
@@ -122,6 +123,7 @@ export interface MainframeApi {
   syncTodo(dir: string): Promise<void>;
   /** Stops the project's running sync, which leaves the list and the view's error as they were; a later sync starts afresh. */
   cancelTodoSync(dir: string): Promise<void>;
+  keepTodoSync(dir: string): Promise<void>;
   /** Allows the tools the sync asked about to read the list, and syncs again. */
   confirmTodoTools(dir: string): Promise<void>;
   /** Picks the list the sync asked about, by its index in the ask, and syncs again. */

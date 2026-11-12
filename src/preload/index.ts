@@ -35,6 +35,7 @@ const api: MainframeApi = {
   onTodo: (cb) => listen(IPC.todoChanged, cb),
   syncTodo: (dir) => ipcRenderer.invoke(IPC.syncTodo, dir),
   cancelTodoSync: (dir) => ipcRenderer.invoke(IPC.cancelTodoSync, dir),
+  keepTodoSync: (dir) => ipcRenderer.invoke(IPC.keepTodoSync, dir),
   confirmTodoTools: (dir) => ipcRenderer.invoke(IPC.confirmTodoTools, dir),
   pickTodoList: (dir, index) => ipcRenderer.invoke(IPC.pickTodoList, dir, index),
   pickTodoModel: (dir, id) => ipcRenderer.invoke(IPC.pickTodoModel, dir, id),
