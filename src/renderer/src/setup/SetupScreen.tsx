@@ -3,7 +3,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { AGENT_NAMES, AGENT_ORDER, type AgentChoice, type AgentName, type ProgramCheck, type SetupView } from '../../../shared/types';
 import { openLinkLogged } from '../openLink';
 import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type AgentRow, type SetupButton } from './setupCopy';
-import { agentChoice, chooseProject, findAgent, isLooking, lookAgain, setDefaultAgent, toggleAgent } from './setupStore';
+import { agentChoice, chooseProject, findAgent, isLooking, lookAgain, setDefaultAgent, toggleAgent, useAgent } from './setupStore';
 
 /** How long each line waits for the one before it. */
 const LINE_MS = 60;
@@ -25,6 +25,8 @@ const press: Record<SetupButton, () => void> = {
   'install-git': () => openLinkLogged('https://git-scm.com/downloads', 'setup'),
   'look-again': () => void lookAgain(),
   'choose-project': () => void chooseProject(),
+  'use-claude': () => void useAgent('claude'),
+  'use-opencode': () => void useAgent('opencode'),
 };
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;

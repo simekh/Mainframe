@@ -11,7 +11,7 @@ import {
 import { works } from '../settings/defaultChoice';
 
 /** What the setup screen's buttons do; main and the screen both decide nothing else about them. */
-export type SetupButton = `find-${AgentName}` | `install-${AgentName}` | 'install-git' | 'look-again' | 'choose-project';
+export type SetupButton = `find-${AgentName}` | `install-${AgentName}` | `use-${AgentName}` | 'install-git' | 'look-again' | 'choose-project';
 
 /** The screen's words for what one failing check, or the last question, needs from the person. */
 export interface Explanation {
@@ -91,6 +91,10 @@ export function buttonLabel(button: SetupButton, platform: NodeJS.Platform): str
       return 'Look again';
     case 'choose-project':
       return 'Choose a folder…';
+    case 'use-claude':
+      return 'Use Claude Code';
+    case 'use-opencode':
+      return 'Use OpenCode';
   }
 }
 
@@ -182,14 +186,16 @@ export const someAgentWorks = (view: SetupView) =>
 
 /**
  * A failing agent is a problem only while no agent works: then one block says why for each that isn't found, with
- * its buttons. A found agent that is unticked has nothing to fix.
+ * its buttons. A found agent that is unticked offers Use first, which switches it on and starts.
  */
 function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | null {
   if (someAgentWorks(view)) return null;
   const failing = AGENT_ORDER.filter((name) => view.agents[name].check.state !== 'found');
-  const off = AGENT_ORDER.find((name) => works(view, name));
+  const off = AGENT_ORDER.filter((name) => works(view, name));
   const lines = [
-    off === undefined ? NO_AGENT : `I couldn't use the coding agent that's switched on. ${AGENT_NAMES[off]} is here, but it's switched off.`,
+    off.length === 0
+      ? NO_AGENT
+      : `I couldn't use the coding agent that's switched on. ${AGENT_NAMES[off[0]]} is here, but it's switched off: I can use it instead.`,
     ...AGENT_ORDER.flatMap((name) => {
       const { check, fromEnv } = view.agents[name];
       return check.state === 'found' ? [] : agentReason(name, check, fromEnv, platform);
@@ -200,7 +206,7 @@ function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | 
     ...(view.agents[name].fromEnv ? [] : [`find-${name}` as const]),
     `install-${name}`,
   ]);
-  return { check: 'agents', lines, buttons: [...buttons, 'look-again'] };
+  return { check: 'agents', lines, buttons: [...off.map((name) => `use-${name}` as const), ...buttons, 'look-again'] };
 }
 
 /**

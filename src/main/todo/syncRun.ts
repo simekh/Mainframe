@@ -64,6 +64,7 @@ function taskkillTree(pid: number): void {
  * Runs `argv` (never through a shell) with `input` on stdin. It resolves with stdout whenever there is any, whatever
  * the exit code, since a headless run can print its answer when it fails too. It settles once; `cancel` and the time
  * limit stop the program: with SIGTERM, and on Windows (`platform`) by `killTree`, which ends its whole process tree.
+ * A stopped run that had printed something rejects with an Error that carries it as `stdout`.
  */
 export function runSync(o: {
   argv: string[];
@@ -102,7 +103,7 @@ export function runSync(o: {
     };
     const stop = (message: string) =>
       settle(() => {
-        reject(new Error(message));
+        reject(Object.assign(new Error(message), stdout !== '' && { stdout }));
         endChild();
       });
     const timer = setTimeout(

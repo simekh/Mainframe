@@ -14,6 +14,7 @@ const api: MainframeApi = {
   onSetup: (cb) => listen(IPC.setupChanged, cb),
   setupLookAgain: () => ipcRenderer.invoke(IPC.setupLookAgain),
   setupFindAgent: (name) => ipcRenderer.invoke(IPC.setupFindAgent, name),
+  setupUseAgent: (name) => ipcRenderer.invoke(IPC.setupUseAgent, name),
   setupChooseProject: (choice) => ipcRenderer.invoke(IPC.setupChooseProject, choice),
   listProjects: () => ipcRenderer.invoke(IPC.listProjects),
   openProject: () => ipcRenderer.invoke(IPC.openProject),

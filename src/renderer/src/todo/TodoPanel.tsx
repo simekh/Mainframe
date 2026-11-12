@@ -50,7 +50,11 @@ function ModelAsk(props: { dir: string; models: SyncModel[]; suggested: string |
               onClick={() => setPicked(model.id)}
             >
               <span class="todo-model-dot" aria-hidden="true" />
-              <span class="todo-model-name">{model.name}</span>
+              {/* Two providers can offer one model by one name: the id tells them apart. */}
+              <span class="todo-model-name">
+                <span class="todo-model-title">{model.name}</span>
+                <span class="todo-model-id">{model.id}</span>
+              </span>
               <span class="todo-model-price" classList={{ unknown: !model.price }}>
                 {priceLine(model.price)}
               </span>

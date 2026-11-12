@@ -62,6 +62,7 @@ export function registerSetupIpc(
   };
   ipcMain.handle(IPC.setupLookAgain, () => action(() => flow.lookAgain()));
   ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgentName(name) ? action(() => flow.findAgent(name)) : undefined));
+  ipcMain.handle(IPC.setupUseAgent, (_e, name: unknown) => (isAgentName(name) ? action(() => flow.useAgent(name)) : undefined));
   ipcMain.handle(IPC.setupChooseProject, (_e, choice: unknown) => action(() => flow.chooseProject(agentChoice(choice))));
 }
 
@@ -74,12 +75,16 @@ export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: Agent
   ipcMain.handle(IPC.getSettings, () => agents.view());
   ipcMain.handle(IPC.setAgentTicked, (_e, name: unknown, ticked: unknown) => agents.setTicked(agentOf(name), ticked === true));
   ipcMain.handle(IPC.setDefaultAgent, (_e, name: unknown) => agents.setDefault(agentOf(name)));
-  // Not offered while the agent's env var names it: that path wins.
-  ipcMain.handle(IPC.settingsFindAgent, async (_e, name: unknown) => {
+  // Not offered while the agent's env var names it: that path wins. One picker at a time: a call while one is open joins it.
+  let finding: Promise<void> | null = null;
+  ipcMain.handle(IPC.settingsFindAgent, (_e, name: unknown) => {
     const agent = agentOf(name);
     if (agents.view().agents[agent].fromEnv) return;
-    const path = await pickAgent(agent);
-    if (path !== undefined) await agents.find(agent, path);
+    finding ??= (async () => {
+      const path = await pickAgent(agent);
+      if (path !== undefined) await agents.find(agent, path);
+    })().finally(() => (finding = null));
+    return finding;
   });
   ipcMain.handle(IPC.setAgentOptions, (_e, name: unknown, raw: unknown) => {
     // Only these two, each as its type: anything else the page sends is left out.

@@ -73,6 +73,23 @@ test('a first start with only OpenCode chooses it and opens a project', async ()
   await app.close();
 });
 
+test('a later start whose ticked agent is gone offers Use OpenCode, which switches it on and starts', async () => {
+  const pc = computer();
+  const project = repo();
+  const settings: AppSettings = { welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true }, opencode: { enabled: false } } };
+  const { app, page, dataDir } = await launchApp({ ...pc.env, MAINFRAME_OPENCODE_BIN: fakeOpencode }, project, { settings });
+
+  await expect(page.getByText('Something moved since last time, so I had another look around.')).toBeVisible();
+  await expect(page.getByTestId('setup')).toContainText("OpenCode is here, but it's switched off: I can use it instead.");
+  await expect(page.getByTestId('setup-use-opencode')).toHaveText('Use OpenCode');
+  await page.getByTestId('setup-use-opencode').click();
+
+  await expect(projectPane(page, project)).toHaveAttribute('data-shown', 'true');
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'opencode', agents: { claude: { enabled: true }, opencode: { enabled: true } } });
+  await expect.poll(() => managerLaunches(dataDir)[0]?.args.slice(0, 2)).toEqual(['--standalone', '-s']);
+  await app.close();
+});
+
 test('a first start with both agents asks which is the default, and runs everything on the one picked', async () => {
   const pc = computer();
   const claude = pc.installClaude();
@@ -146,7 +163,8 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
   await page.getByTestId('todo-sync').click();
 
   const models = panel.getByTestId('todo-model');
-  await expect(models).toHaveText([/Cheap model/, /Dear model/, /price unknown/]);
+  // Each row names its model and, quieter, the provider's id that tells two alike apart.
+  await expect(models).toHaveText([/Cheap model.*prov\/cheap/, /Dear model/, /price unknown/]);
   await expect(models.first()).toHaveAttribute('aria-checked', 'true');
   // The rows came from `api model.list`, whose cheap model carries a key.
   expect(helperCalls(dataDir).map((call) => call.args)).toContainEqual(['--standalone', 'api', 'model.list']);
@@ -188,6 +206,7 @@ test('a sync on OpenCode asks for a model, finds the connector, and reads the li
     "A new manager chat starts on this agent. A chat that carries on keeps its agent until you switch it in the manager's terminal.",
   );
   await expect(page.getByTestId('settings-sync-model').locator('option')).toHaveCount(3);
+  await expect(page.getByTestId('settings-sync-model').locator('option').first()).toHaveText(/^Cheap model, prov\/cheap \(/);
   expect(helperCalls(dataDir).slice(calls).map((call) => call.args)).toEqual(
     expect.arrayContaining([['--standalone', 'api', 'agent.list'], ['--standalone', 'api', 'model.list']]),
   );

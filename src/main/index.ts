@@ -20,8 +20,6 @@ import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
-import { ADAPTERS } from './agents/adapters';
-import { NODE_NEEDED } from './agents/claude';
 import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
 import type { AppSettings } from './setup/settings';
@@ -179,7 +177,6 @@ async function start(
   projectDirs: string[],
   win: BrowserWindow,
 ): Promise<void> {
-  if (agents.ticked().some((name) => ADAPTERS[name].needsNode) && programs.nodeBin === null) throw new Error(NODE_NEEDED);
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
@@ -386,6 +383,7 @@ async function launch(config: AppConfig): Promise<void> {
     envBins,
     lookup,
     run,
+    nodeBin: programs.nodeBin,
     pickAgent: (name) => pickAgent(win, name),
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),

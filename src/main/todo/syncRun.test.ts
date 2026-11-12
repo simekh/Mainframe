@@ -155,6 +155,12 @@ describe('runSync', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  it('a stopped run rejects with what it had printed, so its session can still be cleaned up', async () => {
+    const program = stub(`process.stdout.write('{"sessionID":"ses_1"}\\n'); setTimeout(() => {}, 5000);`);
+    const err = await runSync(options(program, { timeoutMs: 500 })).done.catch((e: unknown) => e);
+    expect(err).toMatchObject({ message: expect.stringMatching(/was stopped/), stdout: '{"sessionID":"ses_1"}\n' });
+  });
+
   it('cancel stops the run and rejects', async () => {
     const program = stub('setTimeout(() => {}, 5000);');
     const run = runSync(options(program));

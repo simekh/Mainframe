@@ -974,12 +974,25 @@ html[data-platform='darwin'] .setup-titlebar {
   background: radial-gradient(circle, var(--accent) 0 2.5px, transparent 3px);
 }
 
+/* The name, with the provider's id under it, quieter. */
 .todo-model-name {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-model-title,
+.todo-model-id {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.todo-model-id {
+  color: var(--fg-subtle);
+  font-size: 0.85em;
+  font-weight: 400;
 }
 
 /* Prices line up down the list, so the cheapest is plain to see. */

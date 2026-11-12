@@ -73,7 +73,7 @@ const settings = () => readSettings(dataDir, () => {});
  * prints for `--version`; change it between calls to install or fix one. The platform is passed in, so
  * this runs the same on every system.
  */
-function harness(o: { envClaudeBin?: string; envOpencodeBin?: string; programs?: Record<string, string> } = {}) {
+function harness(o: { envClaudeBin?: string; envOpencodeBin?: string; programs?: Record<string, string>; nodeBin?: string | null } = {}) {
   const programs: Record<string, string> = o.programs ?? { [GIT]: 'git version 2.56.0\n', [NATIVE]: CURRENT };
   const picks: { claude?: string; opencode?: string; folder?: string } = {};
   const ran: string[] = [];
@@ -99,6 +99,7 @@ function harness(o: { envClaudeBin?: string; envOpencodeBin?: string; programs?:
       files: { isExecutableFile: (path) => path in programs },
     },
     run,
+    nodeBin: o.nodeBin === undefined ? '/usr/bin/node' : o.nodeBin,
     pickAgent,
     pickFolder,
     onChange: (view) => {
@@ -665,6 +666,38 @@ describe('the agents', () => {
       expectedView({ intro: 'moved', claude: foundClaude(), opencode: { state: 'missing' }, ticked: { claude: false, opencode: true } }),
     );
     expect(h.start).not.toHaveBeenCalled();
+  });
+
+  it('a later start whose ticked agent is gone: Use OpenCode ticks the found one, makes it the default, and starts', async () => {
+    existingInstall();
+    writeSettings(dataDir, { agents: { claude: { enabled: true }, opencode: { enabled: false, bin: OC } }, defaultAgent: 'claude', welcomeSeen: true });
+    const h = harness({ programs: { [GIT]: 'git version 2.56.0\n', [OC]: OC_CURRENT } });
+    await h.flow.begin();
+    await h.flow.useAgent('opencode');
+    const saved = { agents: { claude: { enabled: true }, opencode: { enabled: true, bin: OC } }, defaultAgent: 'opencode', welcomeSeen: true };
+    expect(settings()).toStrictEqual(saved);
+    expect(h.start).toHaveBeenCalledWith({ settings: saved, checks: { claude: { state: 'missing' }, opencode: foundOpencode() } }, [acme, globex]);
+    expect(h.flow.view()).toBeNull();
+  });
+
+  it('Use does nothing for an agent that is not found', async () => {
+    existingInstall();
+    writeSettings(dataDir, { agents: { claude: { enabled: true }, opencode: { enabled: false } }, defaultAgent: 'claude', welcomeSeen: true });
+    const h = harness({ programs: { [GIT]: 'git version 2.56.0\n' } });
+    await h.flow.begin();
+    await h.flow.useAgent('opencode');
+    expect(settings().defaultAgent).toBe('claude');
+    expect(h.start).not.toHaveBeenCalled();
+  });
+
+  it('a first start without node asks with Claude Code left out while another agent is found', async () => {
+    const h = harness({ programs: both, nodeBin: null });
+    await h.flow.begin();
+    expect(h.flow.view()?.ask).toEqual(OPENCODE_ONLY);
+    // With only Claude Code found it is still asked, and the start says Node is needed.
+    const alone = harness({ nodeBin: null });
+    await alone.flow.begin();
+    expect(alone.flow.view()?.ask).toEqual(CLAUDE_ONLY);
   });
 
   it('MAINFRAME_OPENCODE_BIN is the only opencode looked at, and its path is not saved', async () => {

@@ -22,19 +22,19 @@ export interface AppSettings {
 }
 
 const agentName = z.enum(AGENT_ORDER);
-const agentSetting = z.strictObject({
+const agentSetting = z.object({
   enabled: z.boolean().optional(),
   bin: z.string().optional(),
   managerAgent: z.string().optional(),
   syncModel: z.string().optional(),
 });
-const settingsV2 = z.strictObject({
+const settingsV2 = z.object({
   version: z.literal(2),
   agents: z.partialRecord(agentName, agentSetting).optional(),
   defaultAgent: agentName.optional(),
   welcomeSeen: z.boolean().optional(),
 });
-const settingsV1 = z.strictObject({ version: z.literal(1), claudeBin: z.string().optional(), welcomeSeen: z.boolean().optional() });
+const settingsV1 = z.object({ version: z.literal(1), claudeBin: z.string().optional(), welcomeSeen: z.boolean().optional() });
 
 /**
  * The settings, or none when the file is missing or cannot be used. Throws for one a newer Mainframe

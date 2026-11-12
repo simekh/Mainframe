@@ -4,7 +4,7 @@ import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
 import { opencodeChoices, type runOpencode } from '../agents/opencode';
 import type { ExecutableLookup } from '../pty/findExecutable';
-import { agentStatus, runDefault, tickedAgents } from './agentChoice';
+import { agentStatus, runDefault, tickedAgents, usableChecks } from './agentChoice';
 import type { VersionRunner } from './programChecks';
 import { writeSettings, type AppSettings } from './settings';
 
@@ -42,13 +42,20 @@ export class AgentsInUse {
       runOpencode?: typeof runOpencode;
     },
   ) {
-    // The setup starts the projects only once an agent works.
-    if (this.current() === null) throw new Error('Mainframe found no coding agent it can run');
+    // The setup starts the projects only once a ticked agent is found; one that needs node may still not run.
+    if (this.current() === null) {
+      throw new Error(runDefault(deps.settings, deps.checks) === null ? 'Mainframe found no coding agent it can run' : NODE_NEEDED);
+    }
+  }
+
+  /** The checks this run goes by: an agent that needs node doesn't work without it, though Settings shows it found. */
+  private usable(): Record<AgentName, ProgramCheck> {
+    return usableChecks(this.deps.checks, this.deps.nodeBin);
   }
 
   /** Never null after the constructor: no change leaves no ticked agent that works. */
   private current(): AgentName | null {
-    return runDefault(this.deps.settings, this.deps.checks);
+    return runDefault(this.deps.settings, this.usable());
   }
 
   /** The default this run uses: `runDefault`'s agent. */
@@ -56,9 +63,10 @@ export class AgentsInUse {
     return this.current()!;
   }
 
-  /** Ticked and found, in AGENT_ORDER. */
+  /** Ticked and working, in AGENT_ORDER. */
   ticked(): AgentName[] {
-    return tickedAgents(this.deps.settings, this.deps.checks).filter((name) => this.bin(name) !== null);
+    const usable = this.usable();
+    return tickedAgents(this.deps.settings, usable).filter((name) => usable[name].state === 'found');
   }
 
   /** The path of a found agent, ticked or not; null when it isn't found. */

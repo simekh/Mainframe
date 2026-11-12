@@ -3,7 +3,7 @@ import type { ExecutableLookup } from '../pty/findExecutable';
 import { hasProjectsFile, rememberedProjects } from '../projects';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentSetting } from '../agents/agent';
-import { agentStatus, runDefault } from './agentChoice';
+import { agentStatus, runDefault, usableChecks } from './agentChoice';
 import { checkGit, type VersionRunner } from './programChecks';
 import { readSettings, writeSettings, type AppSettings } from './settings';
 
@@ -13,6 +13,8 @@ export interface SetupDeps {
   envBins: Partial<Record<AgentName, string>>;
   lookup: ExecutableLookup;
   run: VersionRunner;
+  /** Null when no node was found: a first start then doesn't offer an agent that needs it while another works. */
+  nodeBin: string | null;
   /** Asks for the agent's program file; undefined when the user cancels. */
   pickAgent(name: AgentName): Promise<string | undefined>;
   /** Asks for a project folder; undefined when the user cancels. */
@@ -77,6 +79,15 @@ export class SetupFlow {
       if (picked === undefined) return;
       this.agents = { ...this.agents, [name]: await ADAPTERS[name].check(picked, this.deps.run, this.deps.lookup.files) };
       this.rememberBins([name]);
+      await this.proceed();
+    });
+  }
+
+  /** At a later start whose ticked agents don't work: ticks a found agent and makes it the default, then starts as usual. */
+  useAgent(name: AgentName): Promise<void> {
+    return this.once(async () => {
+      if (this.agents[name].state !== 'found') return;
+      this.save({ defaultAgent: name, agents: { [name]: { enabled: true } } });
       await this.proceed();
     });
   }
@@ -150,12 +161,23 @@ export class SetupFlow {
     if (run === null) {
       this.show(null);
     } else if (this.firstStart) {
-      this.show({ ticked: this.foundAgents(), defaultAgent: run });
+      this.show(this.firstAsk(run));
     } else {
       this.rememberBins(AGENT_ORDER);
       await this.startProjects(rememberedProjects(this.deps.dataDir, this.deps.warn));
       if (this.current !== null) this.publish(null);
     }
+  }
+
+  /**
+   * The choice a first start begins from: every found agent ticked, `run` the default. Without node an agent that needs
+   * it is left out, unless no other is found; the start then says node is needed.
+   */
+  private firstAsk(run: AgentName): AgentChoice {
+    const usable = usableChecks(this.agents, this.deps.nodeBin);
+    const ticked = this.foundAgents().filter((name) => usable[name].state === 'found');
+    if (ticked.length === 0) return { ticked: this.foundAgents(), defaultAgent: run };
+    return { ticked, defaultAgent: ticked.includes(run) ? run : ticked[0] };
   }
 
   /** The paths to save of the found agents among `names`: none for an agent its env var names. */

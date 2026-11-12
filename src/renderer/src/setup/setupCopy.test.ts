@@ -137,6 +137,8 @@ describe('buttonLabel', () => {
       'install-git': 'How to install git ↗',
       'look-again': 'Look again',
       'choose-project': 'Choose a folder…',
+      'use-claude': 'Use Claude Code',
+      'use-opencode': 'Use OpenCode',
     };
     for (const [button, label] of Object.entries(labels)) {
       expect(buttonLabel(button as SetupButton, 'win32')).toBe(label);
@@ -293,12 +295,12 @@ describe('explanations', () => {
       expect(someAgentWorks(view({ ...moved, ticked: { claude: true, opencode: true } }))).toBe(true);
     });
 
-    it("gives the agents block for the agent that isn't found, with its buttons and Look again", () => {
+    it("gives the agents block for the agent that isn't found, with Use first for the one switched off, its buttons and Look again", () => {
       expect(blocks(moved)).toEqual([
         {
           check: 'agents',
-          lines: ["I couldn't use the coding agent that's switched on. Claude Code is here, but it's switched off.", OPENCODE_NOWHERE, ASK],
-          buttons: ['find-opencode', 'install-opencode', 'look-again'],
+          lines: ["I couldn't use the coding agent that's switched on. Claude Code is here, but it's switched off: I can use it instead.", OPENCODE_NOWHERE, ASK],
+          buttons: ['use-claude', 'find-opencode', 'install-opencode', 'look-again'],
         },
       ]);
     });

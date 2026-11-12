@@ -182,7 +182,7 @@ describe("OpenCode's sync", () => {
     expect(opencodeAgent.sync.isToolName).toBe(isOpencodeToolName);
   });
 
-  it('afterRun deletes the run\'s session, standalone, and ignores a failure', () => {
+  it('afterRun deletes the run\'s session, standalone, from the run folder with the project config off, and ignores a failure', () => {
     const run = vi.fn(async () => {
       throw new Error('gone');
     });
@@ -195,7 +195,8 @@ describe("OpenCode's sync", () => {
     });
     expect(run).toHaveBeenCalledWith(['oc', '--standalone', 'session', 'delete', SES], {
       cwd: join(dir, 'opencode-run'),
-      env: { HOME: '/h' },
+      // `session delete` takes its folder from PWD, as `run` and `api` do.
+      env: { HOME: '/h', PWD: join(dir, 'opencode-run'), OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
     });
   });
 

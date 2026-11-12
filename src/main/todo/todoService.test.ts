@@ -60,7 +60,8 @@ interface Call {
   cancelled: boolean;
   answer(structured: unknown): void;
   print(stdout: string): void;
-  fail(message: string): void;
+  /** Rejects as runSync does; a run that was stopped carries what it had printed as `stdout`. */
+  fail(message: string, stdout?: string): void;
 }
 
 function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
@@ -91,7 +92,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
       cancelled: false,
       answer: (structured) => resolve(printed(structured)),
       print: resolve,
-      fail: (message) => reject(new Error(message)),
+      fail: (message, stdout) => reject(Object.assign(new Error(message), stdout === undefined ? {} : { stdout })),
     };
     calls.push(call);
     return { done, cancel: () => (call.cancelled = true) };
@@ -536,6 +537,19 @@ it('afterRun gets what each run printed', async () => {
     [{ bin: 'claude', dir, env: ENV, stdout: printed(CARDS_ANSWER) }],
     [{ bin: 'claude', dir, env: ENV, stdout: 'not json' }],
   ]);
+});
+
+it('afterRun gets what a stopped or timed-out run had printed', async () => {
+  const afterRun = vi.fn();
+  const t = setup(undefined, { ...CLAUDE, adapter: { ...ADAPTERS.claude, sync: { ...ADAPTERS.claude.sync, afterRun } } });
+  const dir = dirname(t.settingsFile);
+
+  const pending = t.service.sync();
+  t.service.cancel();
+  t.last().fail(SYNC_STOPPED, 'the first event');
+  await pending;
+
+  expect(afterRun.mock.calls).toEqual([[{ bin: 'claude', dir, env: ENV, stdout: 'the first event' }]]);
 });
 
 it('a discover that finds no connector says where to set it up', async () => {

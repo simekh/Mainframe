@@ -55,6 +55,17 @@ describe('settings.json', () => {
     expect(readSettings(dataDir, warn)).toStrictEqual({});
   });
 
+  it('an unknown key is ignored and the rest kept, at the top and in an agent, for both versions', () => {
+    writeFileSync(
+      file(),
+      JSON.stringify({ version: 2, later: 1, agents: { opencode: { enabled: true, later: 'x' } }, defaultAgent: 'opencode' }),
+    );
+    expect(readSettings(dataDir, warn)).toStrictEqual({ agents: { opencode: { enabled: true } }, defaultAgent: 'opencode' });
+    writeFileSync(file(), JSON.stringify({ version: 1, claudeBin: '/x/claude', later: true }));
+    expect(readSettings(dataDir, warn)).toStrictEqual({ agents: { claude: { enabled: true, bin: '/x/claude' } }, defaultAgent: 'claude' });
+    expect(warnings).toEqual([]);
+  });
+
   it('is empty, and quiet, when there is no file', () => {
     expect(readSettings(dataDir, warn)).toStrictEqual({});
     expect(warnings).toEqual([]);

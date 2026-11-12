@@ -26,6 +26,7 @@ export const IPC = {
   setupChanged: 'setup:changed',
   setupLookAgain: 'setup:look-again',
   setupFindAgent: 'setup:find-agent',
+  setupUseAgent: 'setup:use-agent',
   setupChooseProject: 'setup:choose-project',
   listProjects: 'projects:list',
   openProject: 'projects:open',
@@ -95,6 +96,8 @@ export interface MainframeApi {
   setupLookAgain(): Promise<void>;
   /** Asks for the agent's program file, and uses it if it works. Not offered while the agent's env var names it. */
   setupFindAgent(name: AgentName): Promise<void>;
+  /** At a later start whose ticked agents don't work: ticks this found agent, makes it the default, and starts. */
+  setupUseAgent(name: AgentName): Promise<void>;
   /** Asks for the first project's folder and starts Mainframe on it with this choice of agents; rejects a choice that can't be used. */
   setupChooseProject(choice: AgentChoice): Promise<void>;
   /** The open projects, in the order the owner opened them. */

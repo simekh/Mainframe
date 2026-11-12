@@ -285,7 +285,11 @@ export class TodoService {
         adapter.sync.afterRun({ bin, dir: this.dir, env, stdout });
         this.end(running, () => this.apply(adapter, step, adapter.sync.readAnswer(stdout, tools)));
       },
-      (err: Error) => this.end(running, () => this.refuse(err.message)),
+      (err: Error & { stdout?: string }) => {
+        // A stopped run still had what it printed until then.
+        if (err.stdout !== undefined) adapter.sync.afterRun({ bin, dir: this.dir, env, stdout: err.stdout });
+        this.end(running, () => this.refuse(err.message));
+      },
     );
     return running.outcome;
   }

@@ -61,6 +61,8 @@ export async function lookAgain(): Promise<void> {
 
 export const findAgent = (name: AgentName) => run(`use that ${name}`, () => window.mainframe.setupFindAgent(name));
 
+export const useAgent = (name: AgentName) => run(`use ${name}`, () => window.mainframe.setupUseAgent(name));
+
 export const chooseProject = () => {
   const now = choice();
   return now === null ? Promise.resolve() : run('start the project', () => window.mainframe.setupChooseProject(now));

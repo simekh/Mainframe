@@ -181,7 +181,9 @@ export function makeOpencodeSync({ run, instructions }: { run: typeof runOpencod
     afterRun: ({ bin, dir, env, stdout }) => {
       const id = events(stdout).find((e) => typeof e.sessionID === 'string')?.sessionID;
       if (id === undefined) return;
-      run([bin, '--standalone', 'session', 'delete', id], { cwd: runDirOf(dir), env }).catch(() => {});
+      const runDir = runDirOf(dir);
+      // `session delete` takes its folder from PWD, as `run` does.
+      run([bin, '--standalone', 'session', 'delete', id], { cwd: runDir, env: { ...env, PWD: runDir, OPENCODE_DISABLE_PROJECT_CONFIG: '1' } }).catch(() => {});
     },
     models: (o) => listModels(run, o),
   };

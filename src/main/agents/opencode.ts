@@ -53,13 +53,13 @@ export function opencodePlaces(lookup: ExecutableLookup): string[] {
 
 export const findOpencode = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, opencodePlaces, checkOpencode);
 
+// `api model.list` prints every model whole, which passes execFile's 1 MiB default with a large catalog.
+const MAX_OUTPUT = 64 * 1024 * 1024;
+
 /**
  * Runs opencode with no shell and resolves with what it printed. Its output may hold API keys, so it is never
  * logged, and an error carries only stderr's last line.
  */
-// `api model.list` prints every model whole, which passes execFile's 1 MiB default with a large catalog.
-const MAX_OUTPUT = 64 * 1024 * 1024;
-
 export function runOpencode(argv: string[], o: { cwd: string; env: Record<string, string> }): Promise<string> {
   const [file, ...args] = argv;
   return new Promise((resolve, reject) => {

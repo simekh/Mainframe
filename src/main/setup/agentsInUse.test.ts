@@ -60,6 +60,21 @@ describe('AgentsInUse', () => {
     expect(a.defaultAgent()).toBe('opencode');
   });
 
+  it("without node Claude Code doesn't work this run: it drops out of ticked(), and the default falls back", () => {
+    const ticked = { defaultAgent: 'claude' as const, agents: { claude: { enabled: true }, opencode: { enabled: true } } };
+    const { a } = onDisk(ticked, both, { nodeBin: null });
+    expect(a.ticked()).toEqual(['opencode']);
+    expect(a.defaultAgent()).toBe('opencode');
+    expect(a.inUse().adapter).toBe(ADAPTERS.opencode);
+    // Ticked only by being found, as with nothing saved.
+    expect(onDisk({}, both, { nodeBin: null }).a.ticked()).toEqual(['opencode']);
+  });
+
+  it('without node and no other ticked agent that works, it refuses to start with NODE_NEEDED', () => {
+    expect(() => onDisk({ agents: { claude: { enabled: true }, opencode: { enabled: false } } }, both, { nodeBin: null })).toThrow(NODE_NEEDED);
+    expect(() => onDisk({}, { claude: found(C), opencode: missing }, { nodeBin: null })).toThrow(NODE_NEEDED);
+  });
+
   it('ticked() leaves out an agent that is not found', () => {
     const a = agents({ agents: { claude: { enabled: true }, opencode: { enabled: true } } }, { claude: missing, opencode: found(O) });
     expect(a.ticked()).toEqual(['opencode']);

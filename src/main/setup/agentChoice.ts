@@ -1,4 +1,5 @@
 import { AGENT_ORDER, type AgentName, type AgentStatus, type ProgramCheck } from '../../shared/types';
+import { ADAPTERS } from '../agents/adapters';
 import type { AppSettings } from './settings';
 
 type Checks = Record<AgentName, ProgramCheck>;
@@ -15,6 +16,12 @@ export function runDefault(settings: AppSettings, checks: Checks): AgentName | n
   const wanted = settings.defaultAgent ?? ticked[0];
   if (wanted !== undefined && ticked.includes(wanted) && works(wanted)) return wanted;
   return ticked.find(works) ?? null;
+}
+
+/** The checks as this run can use them: without node an agent that needs it counts as missing. */
+export function usableChecks(checks: Checks, nodeBin: string | null): Checks {
+  const usable = (name: AgentName): ProgramCheck => (nodeBin === null && ADAPTERS[name].needsNode ? { state: 'missing' } : checks[name]);
+  return { claude: usable('claude'), opencode: usable('opencode') };
 }
 
 /** Each agent as the setup screen and Settings show it. */

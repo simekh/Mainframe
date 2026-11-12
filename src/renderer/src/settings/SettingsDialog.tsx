@@ -132,7 +132,7 @@ function OpencodeSection(props: { view: SettingsView }) {
                   <For each={lists().models}>
                     {(m) => (
                       <option value={m.id} selected={setting().syncModel === m.id}>
-                        {m.id} ({price(m)})
+                        {m.name}, {m.id} ({price(m)})
                       </option>
                     )}
                   </For>
