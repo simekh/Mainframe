@@ -55,6 +55,7 @@ export class ManagerService {
   private readonly recordFile: string;
   private session: Session | null = null;
   private starting: Promise<ManagerView> | null = null;
+  private quitting = false;
 
   constructor(private readonly deps: ManagerServiceDeps) {
     this.newId = deps.newId ?? randomUUID;
@@ -108,6 +109,8 @@ export class ManagerService {
       prompt,
       setting,
     });
+    // The app quit or the project closed while the launch was made: nothing would end a session held now.
+    if (this.quitting) return this.view();
     // midTurn is cleared here; a session whose carry-on prompt never takes sets it again as it ends. askAgain
     // is kept for the same agent, so the prompt owed again is the same one.
     const record: ManagerRecord = {
@@ -145,7 +148,9 @@ export class ManagerService {
     this.deps.onChange(this.view());
   }
 
+  /** As the app's quit or the project's close begins; a start still under way then holds no session. */
   beginQuit(): void {
+    this.quitting = true;
     if (!this.session) return;
     // Now rather than at its exit: the app may be gone before that arrives.
     this.markEnding(this.session);

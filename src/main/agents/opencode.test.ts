@@ -1,15 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { rolePrompt } from '../manager/rolePrompt';
 import { fakeRun } from '../testing/fakeRun';
 import { mac, win } from '../testing/lookups';
 import {
   findOpencode,
   isOpencodeSessionId,
+  makeOpencodeAgent,
+  managerConfig,
   newOpencodeSessionId,
   OPENCODE_ENV,
+  opencodeAgent,
+  opencodeAgents,
   opencodeReopenArgv,
   opencodePlaces,
   opencodeStartArgv,
   parseOpencodeVersion,
+  runOpencode,
 } from './opencode';
 
 const id = 'ses_' + 'a'.repeat(28);
@@ -130,5 +139,152 @@ describe('findOpencode', () => {
     const run = fakeRun({ '/saved/opencode': current, [OC]: current });
     expect(await findOpencode({ saved: ['/saved/opencode'], lookup, run })).toEqual({ state: 'found', path: '/saved/opencode', version: '2.2.7' });
     expect(await findOpencode({ saved: ['/gone/opencode'], lookup, run })).toEqual({ state: 'found', path: OC, version: '2.2.7' });
+  });
+});
+
+const RULES = [
+  { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
+  { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+  { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
+];
+
+it("managerConfig is Mainframe's server, its rules in both places, and the role prompt's file", () => {
+  const o = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1', rolesFile: '/data/m/role-prompt.md', agentId: 'build' };
+  expect(JSON.parse(managerConfig({ ...o, setDefault: false }))).toEqual({
+    mcp: { servers: { mainframe: { type: 'remote', url: o.url, headers: { Authorization: 'Bearer token-1' }, oauth: false } } },
+    permissions: RULES,
+    agents: { build: { permissions: RULES } },
+    instructions: ['/data/m/role-prompt.md'],
+  });
+  expect(JSON.parse(managerConfig({ ...o, agentId: 'plan', setDefault: true }))).toMatchObject({
+    agents: { plan: { permissions: RULES } },
+    default_agent: 'plan',
+  });
+});
+
+const AGENT_LIST = JSON.stringify({
+  location: { directory: '/p' },
+  data: [
+    { id: 'build', mode: 'primary', hidden: false, request: { headers: { Authorization: 'Bearer SECRET-1' } } },
+    { id: 'plan', mode: 'all', hidden: false },
+    { id: 'general', mode: 'subagent', hidden: false },
+    { id: 'title', mode: 'primary', hidden: true },
+  ],
+});
+
+describe('opencodeAgents', () => {
+  it('keeps only ids, default first, and no secrets', async () => {
+    const run = vi.fn(async () => AGENT_LIST);
+    const result = await opencodeAgents({ bin: 'oc', cwd: '/p', env: { HOME: '/h', PWD: '/elsewhere' }, run });
+    expect(result).toEqual([
+      { id: 'build', primary: true },
+      { id: 'plan', primary: true },
+      { id: 'general', primary: false },
+      { id: 'title', primary: false },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('SECRET-1');
+    expect(run).toHaveBeenCalledWith(['oc', '--standalone', 'api', 'agent.list'], { cwd: '/p', env: { HOME: '/h', PWD: '/p' } });
+  });
+
+  it('a failed run says OpenCode could not list its agents, and why', async () => {
+    const run = async () => {
+      throw new Error('no provider');
+    };
+    await expect(opencodeAgents({ bin: 'oc', cwd: '/p', env: {}, run })).rejects.toThrow('OpenCode could not list its agents: no provider');
+  });
+});
+
+describe("the manager's launch on OpenCode", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const launch = async (o: { prompt?: string; managerAgent?: string } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'mainframe-oc-manager-'));
+    dirs.push(dir);
+    const run = vi.fn(async () => AGENT_LIST);
+    const args = await makeOpencodeAgent({ run }).managerLaunch({
+      bin: 'oc',
+      nodeBin: null,
+      env: { HOME: '/h' },
+      dir,
+      projectDir: '/p',
+      name: 'acme-manager',
+      mcp: { url: 'http://127.0.0.1:5555/mcp', token: 'token-1' },
+      rolePrompt: rolePrompt(opencodeAgent.instructions),
+      chat: id,
+      resume: o.prompt !== undefined,
+      prompt: o.prompt,
+      setting: o.managerAgent === undefined ? {} : { managerAgent: o.managerAgent },
+    });
+    const config = JSON.parse(args.env!.OPENCODE_CONFIG_CONTENT);
+    return { dir, run, args, config };
+  };
+
+  it('a new chat runs -s with its id, standalone, with OpenCode\'s env and the config', async () => {
+    const { args, dir, config } = await launch();
+    expect(args.argv).toEqual(['oc', '--standalone', '-s', id]);
+    expect(Object.keys(args.env!).sort()).toEqual([...Object.keys(OPENCODE_ENV), 'OPENCODE_CONFIG_CONTENT'].sort());
+    expect(args.env).toMatchObject(OPENCODE_ENV);
+    const role = readFileSync(join(dir, 'role-prompt.md'), 'utf8');
+    expect(role).toContain('AGENTS.md');
+    expect(role).not.toContain("this repo's CLAUDE.md");
+    expect(config.instructions).toEqual([join(dir, 'role-prompt.md')]);
+    expect(config.mcp.servers.mainframe.headers).toEqual({ Authorization: 'Bearer token-1' });
+  });
+
+  it('a carry-on ends with its prompt', async () => {
+    const { args } = await launch({ prompt: 'Continue where you left off.' });
+    expect(args.argv).toEqual(['oc', '--standalone', '-s', id, '--prompt', 'Continue where you left off.']);
+  });
+
+  it("the rules sit under OpenCode's default agent when Settings names none, and it is left OpenCode's default", async () => {
+    const { config, run } = await launch();
+    expect(run).toHaveBeenCalledWith(['oc', '--standalone', 'api', 'agent.list'], { cwd: '/p', env: { HOME: '/h', PWD: '/p' } });
+    expect(Object.keys(config.agents)).toEqual(['build']);
+    expect(config).not.toHaveProperty('default_agent');
+  });
+
+  it('the rules sit under the agent Settings names, which the TUI starts on, with no lookup', async () => {
+    const { config, run } = await launch({ managerAgent: 'plan' });
+    expect(run).not.toHaveBeenCalled();
+    expect(Object.keys(config.agents)).toEqual(['plan']);
+    expect(config.default_agent).toBe('plan');
+  });
+
+  it('a failed lookup fails the launch with its message', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mainframe-oc-manager-'));
+    dirs.push(dir);
+    const run = async (): Promise<string> => {
+      throw new Error('opencode exited with code 1');
+    };
+    const agent = makeOpencodeAgent({ run });
+    await expect(
+      agent.managerLaunch({
+        bin: 'oc', nodeBin: null, env: {}, dir, projectDir: '/p', name: 'm', mcp: { url: 'u', token: 't' },
+        rolePrompt: 'R', chat: id, resume: false, setting: {},
+      }),
+    ).rejects.toThrow('OpenCode could not list its agents: opencode exited with code 1');
+  });
+
+  it('carries on the chat manager.json saved, or starts a new one', () => {
+    expect(opencodeAgent.managerChat('/d', id)).toBe(id);
+    expect(opencodeAgent.managerChat('/d', undefined)).toBeNull();
+  });
+});
+
+describe('runOpencode', () => {
+  const node = (script: string) => runOpencode([process.execPath, '-e', script], { cwd: tmpdir(), env: {} });
+
+  it('resolves with what the program printed', async () => {
+    await expect(node('process.stdout.write("out")')).resolves.toBe('out');
+  });
+
+  it("rejects with stderr's last line, or the exit code when stderr is empty", async () => {
+    await expect(node('process.stdout.write("secret"); process.stderr.write("first\\nlast line\\n"); process.exit(3)')).rejects.toThrow(
+      /^last line$/,
+    );
+    await expect(node('process.exit(2)')).rejects.toThrow(/^opencode exited with code 2$/);
   });
 });

@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { ASK_AGAIN_PROMPT, RESUME_PROMPT } from '../tasks/carryOn';
+import type { AgentInUse, LaunchArgs } from '../agents/agent';
 import { ADAPTERS } from '../agents/adapters';
 import { hookSettings, managerArgv, mcpConfigJson, SESSION_START_FILE } from '../agents/claude';
+import { isOpencodeSessionId, makeOpencodeAgent } from '../agents/opencode';
 import { NODE } from '../testing/lookups';
 import { ManagerService } from './managerService';
 import { rolePrompt } from './rolePrompt';
@@ -19,6 +21,13 @@ afterEach(() => {
 
 const MCP = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1' };
 const U2 = '11111111-1111-4111-8111-111111111111';
+const CLAUDE: AgentInUse = { adapter: ADAPTERS.claude, bin: 'claude', setting: {} };
+/** OpenCode, whose agent list is the fixture's: its lookup runs no program. */
+const OPENCODE: AgentInUse = {
+  adapter: makeOpencodeAgent({ run: async () => JSON.stringify({ data: [{ id: 'build', mode: 'primary', hidden: false }] }) }),
+  bin: 'oc',
+  setting: {},
+};
 
 function setup() {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-manager-'));
@@ -32,6 +41,9 @@ function setup() {
   const warnings: string[] = [];
   let counter = 0;
   const newId = () => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+  /** The agent the next start runs: switched as Settings switches the default. */
+  let inUse: AgentInUse = CLAUDE;
+  const use = (agent: AgentInUse) => (inUse = agent);
 
   const make = (mcp = MCP) =>
     new ManagerService({
@@ -40,7 +52,7 @@ function setup() {
       nodeBin: NODE,
       env: {},
       mcp,
-      agent: () => ({ adapter: ADAPTERS.claude, bin: 'claude', setting: {} }),
+      agent: () => inUse,
       onChange: (view) => changes.push(view),
       newId,
       warn: (msg) => warnings.push(msg),
@@ -82,7 +94,7 @@ function setup() {
     return argv[argv.findIndex((arg) => arg === '--session-id' || arg === '--resume') + 1];
   };
 
-  return { projectDir, dataDir, dir, file, make, service, changes, warnings, readRecord, sessionStarted, argvOf, chatOf };
+  return { projectDir, dataDir, dir, file, make, service, changes, warnings, readRecord, sessionStarted, argvOf, chatOf, use };
 }
 
 type Setup = ReturnType<typeof setup>;
@@ -406,4 +418,59 @@ it('names its one session while it runs, and none once it has ended', async () =
   expect(service.sessionIds()).toEqual([session!.id]);
   service.onSessionExit(session!.id);
   expect(service.sessionIds()).toEqual([]);
+});
+
+it('the manager on OpenCode keeps its chat in manager.json and carries it on', async () => {
+  const t = setup();
+  t.use(OPENCODE);
+  const view = await t.service.start();
+  const { argv } = t.service.launchSpec(view.session!.id);
+  expect(argv.slice(0, 3)).toEqual(['oc', '--standalone', '-s']);
+  expect(argv).toHaveLength(4);
+  const chat = argv[3];
+  expect(isOpencodeSessionId(chat)).toBe(true);
+  expect(t.readRecord()).toMatchObject({ agent: 'opencode', chats: { opencode: chat } });
+
+  t.service.noteStatus(view.session!.id, 'working');
+  t.service.onSessionExit(view.session!.id);
+  const again = await t.service.start();
+  expect(again.session!.startedWithPrompt).toBe(true);
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(['oc', '--standalone', '-s', chat, '--prompt', RESUME_PROMPT]);
+});
+
+it('the manager switches agent only at its next start, and switching back carries on the old chat', async () => {
+  const t = setup();
+  const claudeView = await started(t);
+  const claudeChat = t.chatOf(claudeView);
+  const spec = t.service.launchSpec(claudeView.session!.id);
+
+  t.use(OPENCODE);
+  expect(t.service.launchSpec(claudeView.session!.id)).toEqual(spec);
+  t.service.onSessionExit(claudeView.session!.id);
+
+  const ocView = await t.service.start();
+  const ocArgv = t.service.launchSpec(ocView.session!.id).argv;
+  expect(ocArgv).toEqual(['oc', '--standalone', '-s', expect.stringMatching(/^ses_/)]);
+  t.service.onSessionExit(ocView.session!.id);
+  expect(t.readRecord()).toMatchObject({ agent: 'opencode', chats: { claude: claudeChat, opencode: ocArgv[3] } });
+
+  t.use(CLAUDE);
+  const back = await t.service.start();
+  expect(t.service.launchSpec(back.session!.id).argv).toEqual(t.argvOf(claudeChat, true));
+});
+
+it('a start whose launch resolves after a quit or a close saves nothing and holds no session', async () => {
+  const t = setup();
+  let resolve!: (args: LaunchArgs) => void;
+  t.use({ ...CLAUDE, adapter: { ...ADAPTERS.claude, managerLaunch: () => new Promise((r) => (resolve = r)) } });
+  const starting = t.service.start();
+  await Promise.resolve();
+
+  t.service.beginQuit();
+  resolve({ argv: ['agent'] });
+
+  expect(await starting).toEqual({ session: null });
+  expect(t.service.sessionIds()).toEqual([]);
+  expect(existsSync(t.file('manager.json'))).toBe(false);
+  expect(t.changes).toEqual([]);
 });

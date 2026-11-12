@@ -1,9 +1,11 @@
+import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { posix, win32 } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join, posix, win32 } from 'node:path';
 import { MIN_OPENCODE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter, Instructions } from './agent';
+import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch } from './agent';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
@@ -60,6 +62,94 @@ export async function findOpencode(o: { fromEnv?: string; saved?: string[]; look
   return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
 }
 
+/**
+ * Runs opencode with no shell and resolves with what it printed. Its output may hold API keys, so it is never
+ * logged, and an error carries only stderr's last line.
+ */
+export function runOpencode(argv: string[], o: { cwd: string; env: Record<string, string> }): Promise<string> {
+  const [file, ...args] = argv;
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: 60_000 }, (err, stdout, stderr) => {
+      if (!err) return resolve(stdout);
+      const last = stderr.trim().split(/\r?\n/).at(-1);
+      reject(new Error(last || (typeof err.code === 'number' ? `opencode exited with code ${err.code}` : err.message)));
+    });
+  });
+}
+
+/**
+ * OpenCode's agents in its own order, which puts its default first. Only each id and whether it is a primary agent
+ * leave here: the rest of the list can hold API keys (an agent's request headers).
+ */
+export async function opencodeAgents(o: {
+  bin: string;
+  cwd: string;
+  env: Record<string, string>;
+  run?: typeof runOpencode;
+}): Promise<{ id: string; primary: boolean }[]> {
+  const run = o.run ?? runOpencode;
+  try {
+    // `api` takes its folder from PWD before the process's own.
+    const stdout = await run([o.bin, '--standalone', 'api', 'agent.list'], { cwd: o.cwd, env: { ...o.env, PWD: o.cwd } });
+    let data: unknown;
+    try {
+      data = (JSON.parse(stdout) as { data?: unknown }).data;
+    } catch {
+      // Not JSON.parse's own message, which quotes the output.
+      throw new Error('its answer was not JSON');
+    }
+    if (!Array.isArray(data)) throw new Error('its answer held no list of agents');
+    return data.map((a: { id?: unknown; mode?: unknown; hidden?: unknown }) => ({
+      id: String(a.id),
+      primary: a.mode !== 'subagent' && !a.hidden,
+    }));
+  } catch (err) {
+    throw new Error(`OpenCode could not list its agents: ${(err as Error).message}`);
+  }
+}
+
+/** What the manager may call without asking. Starting a task asks: OpenCode otherwise allows every tool. */
+const MANAGER_RULES = [
+  { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
+  { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+  { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
+];
+
+/**
+ * The manager's OPENCODE_CONFIG_CONTENT. The rules sit under the agent it runs as well, since an agent's own rules
+ * come after the top-level ones. No `model`: the manager runs on the user's own.
+ */
+export function managerConfig(o: { url: string; token: string; rolesFile: string; agentId: string; setDefault: boolean }): string {
+  return JSON.stringify({
+    mcp: { servers: { mainframe: { type: 'remote', url: o.url, headers: { Authorization: `Bearer ${o.token}` }, oauth: false } } },
+    permissions: MANAGER_RULES,
+    agents: { [o.agentId]: { permissions: MANAGER_RULES } },
+    instructions: [o.rolesFile],
+    ...(o.setDefault && { default_agent: o.agentId }),
+  });
+}
+
+/**
+ * The role prompt goes in a file, as `instructions` takes paths only. With no agent named in Settings, the TUI starts
+ * a new chat on OpenCode's default, the first primary agent `agent.list` gives; a named one is made the default.
+ */
+async function opencodeManagerLaunch(o: ManagerLaunch, run: typeof runOpencode): Promise<LaunchArgs> {
+  mkdirSync(o.dir, { recursive: true });
+  const rolesFile = join(o.dir, 'role-prompt.md');
+  writeFileSync(rolesFile, o.rolePrompt);
+  const named = o.setting.managerAgent;
+  const agentId = named ?? (await opencodeAgents({ bin: o.bin, cwd: o.projectDir, env: o.env, run })).find((a) => a.primary)?.id;
+  if (agentId === undefined) throw new Error('OpenCode lists no primary agent for the manager to run');
+  return {
+    // `-s` creates the chat under this id, or continues it.
+    argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.chat, prompt: o.prompt }),
+    env: {
+      ...OPENCODE_ENV,
+      OPENCODE_CONFIG_CONTENT: managerConfig({ ...o.mcp, rolesFile, agentId, setDefault: named !== undefined }),
+    },
+  };
+}
+
 const instructions: Instructions = {
   first: "this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)",
   again: 'those instructions',
@@ -71,33 +161,36 @@ const notYet = (): never => {
   throw new Error('The sync does not run on OpenCode yet');
 };
 
-export const opencodeAgent: AgentAdapter = {
-  name: 'opencode',
-  envVar: 'MAINFRAME_OPENCODE_BIN',
-  find: findOpencode,
-  check: checkOpencode,
-  // OpenCode sets these in the shells it runs.
-  droppedEnv: ['OPENCODE_TERMINAL', 'OPENCODE_PTY_HANDOFF'],
-  instructions,
-  worktreeNote: ({ branch, worktreePath, projectDir }) =>
-    `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
-  makesWorktree: true,
-  newSessionId: () => newOpencodeSessionId(),
-  // No `addDir`: OpenCode reads outside the project by default.
-  taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
-  taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
-  // OpenCode has no SessionStart hook: its task keeps the session Mainframe started.
-  recordedSession: () => null,
-  managerChat: () => {
-    throw new Error('The manager does not run on OpenCode yet');
-  },
-  managerLaunch: () => Promise.reject(new Error('The manager does not run on OpenCode yet')),
-  sync: {
-    words: { sessions: 'coding agent sessions', instructions, toolNames: '', noConnector: '' },
-    prepare: notYet,
-    prompt: notYet,
-    readAnswer: notYet,
-    isToolName: () => false,
-    afterRun: () => {},
-  },
-};
+/** OpenCode's adapter. `run` runs opencode's commands that run to an end; tests hand it a fake. */
+export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpencode } = {}): AgentAdapter {
+  return {
+    name: 'opencode',
+    envVar: 'MAINFRAME_OPENCODE_BIN',
+    find: findOpencode,
+    check: checkOpencode,
+    // OpenCode sets these in the shells it runs.
+    droppedEnv: ['OPENCODE_TERMINAL', 'OPENCODE_PTY_HANDOFF'],
+    instructions,
+    worktreeNote: ({ branch, worktreePath, projectDir }) =>
+      `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
+    makesWorktree: true,
+    newSessionId: () => newOpencodeSessionId(),
+    // No `addDir`: OpenCode reads outside the project by default.
+    taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
+    taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
+    // OpenCode has no SessionStart hook: its task keeps the session Mainframe started, and its manager the chat manager.json saved.
+    recordedSession: () => null,
+    managerChat: (_dir, saved) => saved ?? null,
+    managerLaunch: (o) => opencodeManagerLaunch(o, run),
+    sync: {
+      words: { sessions: 'coding agent sessions', instructions, toolNames: '', noConnector: '' },
+      prepare: notYet,
+      prompt: notYet,
+      readAnswer: notYet,
+      isToolName: () => false,
+      afterRun: () => {},
+    },
+  };
+}
+
+export const opencodeAgent = makeOpencodeAgent();
