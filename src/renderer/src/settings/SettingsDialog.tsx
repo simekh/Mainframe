@@ -2,9 +2,8 @@ import { createEffect, createResource, createSignal, For, Show } from 'solid-js'
 import { AGENT_NAMES, AGENT_ORDER, type AgentName, type SettingsView, type SyncModel } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { checkLine } from '../setup/setupCopy';
+import { defaultChoice, works } from './defaultChoice';
 import { closeSettings, settingsOpen, settingsView } from './settingsStore';
-
-const works = (view: SettingsView, name: AgentName) => view.agents[name].check.state === 'found';
 
 const price = (m: SyncModel) => (m.price ? `$${m.price.input} / $${m.price.output}` : 'price unknown');
 
@@ -166,7 +165,6 @@ export default function SettingsDialog() {
       dialog.showModal();
     }
   });
-  const workingTicked = (view: SettingsView) => AGENT_ORDER.filter((name) => view.agents[name].ticked && works(view, name));
 
   return (
     <dialog ref={dialog} class="nt-dialog settings-dialog" data-testid="settings-dialog" aria-labelledby="settings-heading" onClose={closeSettings}>
@@ -186,24 +184,26 @@ export default function SettingsDialog() {
                 Agents
               </h3>
               <For each={AGENT_ORDER}>{(name) => <AgentRow name={name} view={view()} act={act} />}</For>
-              <Show when={workingTicked(view()).length > 1}>
+              <Show when={defaultChoice(view()).length > 0}>
                 <div class="settings-row settings-default">
                   <span class="settings-key" id="settings-default-label">
                     Default agent
                   </span>
                   <div class="settings-seg" role="radiogroup" aria-labelledby="settings-default-label">
-                    <For each={workingTicked(view())}>
-                      {(name) => (
+                    <For each={defaultChoice(view())}>
+                      {(choice) => (
                         <button
                           type="button"
                           role="radio"
-                          data-testid={`settings-default-${name}`}
-                          aria-checked={view().defaultAgent === name ? 'true' : 'false'}
+                          data-testid={`settings-default-${choice.name}`}
+                          aria-checked={view().defaultAgent === choice.name ? 'true' : 'false'}
+                          disabled={!choice.works}
+                          title={choice.works ? undefined : checkLine(choice.name, view().agents[choice.name].check, true)}
                           onClick={() => {
-                            if (view().defaultAgent !== name) act(() => window.mainframe.setDefaultAgent(name));
+                            if (view().defaultAgent !== choice.name) act(() => window.mainframe.setDefaultAgent(choice.name));
                           }}
                         >
-                          {AGENT_NAMES[name]}
+                          {AGENT_NAMES[choice.name]}
                         </button>
                       )}
                     </For>

@@ -3200,7 +3200,13 @@ kbd {
   border-left: 1px solid var(--border);
 }
 
-.settings-seg button:hover:not([aria-checked='true']) {
+/* The saved default that doesn't work: listed, so the stand-in can replace it, but not choosable. */
+.settings-seg button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-seg button:hover:not([aria-checked='true'], :disabled) {
   background: var(--hover);
   color: var(--fg);
 }
