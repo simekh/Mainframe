@@ -295,7 +295,11 @@ describe('explanations', () => {
 
     it("gives the agents block for the agent that isn't found, with its buttons and Look again", () => {
       expect(blocks(moved)).toEqual([
-        { check: 'agents', lines: [NONE, OPENCODE_NOWHERE, ASK], buttons: ['find-opencode', 'install-opencode', 'look-again'] },
+        {
+          check: 'agents',
+          lines: ["I couldn't use the coding agent that's switched on. Claude Code is here, but it's switched off.", OPENCODE_NOWHERE, ASK],
+          buttons: ['find-opencode', 'install-opencode', 'look-again'],
+        },
       ]);
     });
   });

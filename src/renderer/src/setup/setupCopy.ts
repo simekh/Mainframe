@@ -187,8 +187,9 @@ export const someAgentWorks = (view: SetupView) =>
 function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | null {
   if (someAgentWorks(view)) return null;
   const failing = AGENT_ORDER.filter((name) => view.agents[name].check.state !== 'found');
+  const off = AGENT_ORDER.find((name) => works(view, name));
   const lines = [
-    NO_AGENT,
+    off === undefined ? NO_AGENT : `I couldn't use the coding agent that's switched on. ${AGENT_NAMES[off]} is here, but it's switched off.`,
     ...AGENT_ORDER.flatMap((name) => {
       const { check, fromEnv } = view.agents[name];
       return check.state === 'found' ? [] : agentReason(name, check, fromEnv, platform);
