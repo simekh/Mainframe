@@ -12,6 +12,28 @@ export interface TaskStart { bin: string; nodeBin: string; taskDir: string; slug
 
 export interface TaskReopen { bin: string; nodeBin: string; taskDir: string; slug: string; sessionId: string; branchExists: boolean; prompt?: string }
 
+/** What settings.json keeps of one agent (Task 4 saves it). */
+export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }
+
+/** The agent a service runs now, where it is, and its settings. */
+export interface AgentInUse { adapter: AgentAdapter; bin: string; setting: AgentSetting }
+
+export interface ManagerLaunch {
+  bin: string;
+  nodeBin: string;
+  env: Record<string, string>;
+  /** The manager's folder in the data folder: the adapter writes what the launch reads there. */
+  dir: string;
+  projectDir: string;
+  name: string;
+  mcp: { url: string; token: string };
+  rolePrompt: string;
+  chat: string;
+  resume: boolean;
+  prompt?: string;
+  setting: AgentSetting;
+}
+
 /** Everything Mainframe knows about one agent CLI. */
 export interface AgentAdapter {
   readonly name: AgentName;
@@ -32,4 +54,7 @@ export interface AgentAdapter {
   taskReopen(o: TaskReopen): LaunchArgs;
   /** The conversation the agent last recorded in the task's folder (Claude Code's SessionStart hook); null when there is none, and always for OpenCode. */
   recordedSession(taskDir: string): string | null;
+  /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
+  managerChat(dir: string, saved: string | undefined): string | null;
+  managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;
 }

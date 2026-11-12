@@ -12,6 +12,7 @@ import {
   findClaude,
   hookSettings,
   managerArgv,
+  mcpConfigJson,
   parseClaudeVersion,
   readRecordedSession,
   readSessionStart,
@@ -19,6 +20,8 @@ import {
   SESSION_START_FILE,
   startArgv,
 } from './claude';
+import { rolePrompt } from '../manager/rolePrompt';
+import { ADAPTERS } from './adapters';
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
 const S = '/data/tasks/t1/settings.json';
@@ -74,6 +77,22 @@ it.each([false, true])('the manager carry-on prompt comes last, and --mcp-config
 
 it('refuses to resume the manager on an id that is not a UUID', () => {
   expect(() => managerArgv({ ...M, resume: true, claudeSessionId: 'not-a-uuid' })).toThrow('not-a-uuid');
+});
+
+it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', () => {
+  expect(mcpConfigJson('http://127.0.0.1:5000/mcp', 'abc123')).toBe(
+    '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer abc123"},"timeout":360000}}}',
+  );
+});
+
+it("rolePrompt with Claude's words is today's role prompt", () => {
+  expect(rolePrompt(ADAPTERS.claude.instructions)).toBe(
+    [
+      "You are the manager in Mainframe, the app the owner uses to run several agent sessions, each running Claude Code or OpenCode, on this project at once, one per task. You run in the project's main checkout; each task runs in a worktree of its own and shows on Mainframe's board.",
+      "The owner talks to you about their to-do list, about the work in progress, and about work that has no task yet. Mainframe's tools (mainframe) let you list the task sessions, start new ones, and sync the Todo panel's list. Start a session only when the owner asks you to.",
+      "You may make small changes yourself, following this repo's CLAUDE.md. Work that needs a branch of its own should become a task, so that it shows on the board.",
+    ].join('\n\n'),
+  );
 });
 
 it("a task's SessionStart hook runs node with no shell", () => {

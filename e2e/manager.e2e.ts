@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
-import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
+import { ADAPTERS } from '../src/main/agents/adapters';
+import { rolePrompt } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
   appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, ids, isOnTop, launches, managerDir,
@@ -25,7 +26,7 @@ const filesOf = (dataDir: string) => ({
 /** The manager's launch that resumes the conversation `id`, with `prompt` after the role prompt. */
 const resumeArgs = (dataDir: string, id: string, ...prompt: string[]) => [
   '--resume', id, '--mcp-config', filesOf(dataDir).mcp, '--settings', filesOf(dataDir).settings,
-  '--append-system-prompt', ROLE_PROMPT, ...prompt,
+  '--append-system-prompt', rolePrompt(ADAPTERS.claude.instructions), ...prompt,
 ];
 
 const focusInManager = (page: Page) =>
@@ -66,7 +67,7 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
   expect(realpathSync(cwd)).toBe(realpathSync(main));
   expect(args).toEqual([
     '-n', 'main-manager', '--session-id', expect.stringMatching(UUID), '--mcp-config', mcp, '--settings', settings,
-    '--append-system-prompt', ROLE_PROMPT,
+    '--append-system-prompt', rolePrompt(ADAPTERS.claude.instructions),
   ]);
 
   const { hooks, permissions } = JSON.parse(readFileSync(settings, 'utf8'));

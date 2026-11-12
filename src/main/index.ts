@@ -12,13 +12,14 @@ import { gitQueries } from './git';
 import { registerIpc, registerSetupIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
-import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
+import { startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
 import { ProjectRegistry } from './projectRegistry';
 import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
+import { ADAPTERS } from './agents/adapters';
 import { findOpencode } from './agents/opencode';
 import { runVersion } from './setup/programChecks';
 import { SetupFlow } from './setup/setupFlow';
@@ -269,14 +270,15 @@ async function start(
       startTask: (req) => service.start(req),
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
-    // The manager's tools, on this project's tasks and to-do list. Its mcp.json carries this run's port and token to it.
+    // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.
     const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo));
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: programs.claudeBin,
       nodeBin: programs.nodeBin,
-      mcpConfig: mcpConfigJson(mcp.url, mcp.token),
+      env: programs.env,
+      mcp: { url: mcp.url, token: mcp.token },
+      agent: () => ({ adapter: ADAPTERS.claude, bin: programs.claudeBin, setting: {} }),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });
     const project: Project = {
@@ -287,11 +289,7 @@ async function start(
         // A list asked for before this finishes gets the tasks as they are; the changes follow.
         service.restore().catch((err: unknown) => console.error(`[tasks] could not restore the tasks of ${dir}`, err));
         // Logged, never thrown: the tasks run on without the manager.
-        try {
-          manager.start();
-        } catch (err) {
-          console.error(`[manager] could not start the manager of ${dir}`, err);
-        }
+        manager.start().catch((err: unknown) => console.error(`[manager] could not start the manager of ${dir}`, err));
       },
       cancelSync: () => todo.close(),
       release: () => mcp.close(),

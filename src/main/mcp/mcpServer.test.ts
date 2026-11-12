@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import { afterEach, expect, it } from 'vitest';
 import * as z from 'zod/v4';
-import { mcpConfigJson, startMcpServer } from './mcpServer';
+import { startMcpServer } from './mcpServer';
 
 type Started = Awaited<ReturnType<typeof startMcpServer>>;
 const running: Started[] = [];
@@ -75,12 +75,6 @@ it('refuses a request whose Host or Origin is not the machine itself, even with 
 it('answers 404 under any other path', async () => {
   const { url, token } = await start();
   expect((await post(url.replace('/mcp', '/other'), bearer(token))).status).toBe(404);
-});
-
-it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', () => {
-  expect(mcpConfigJson('http://127.0.0.1:5000/mcp', 'abc123')).toBe(
-    '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer abc123"},"timeout":360000}}}',
-  );
 });
 
 it('close frees the port', async () => {

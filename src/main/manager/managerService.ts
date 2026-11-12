@@ -1,23 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ManagerView, ProgramState } from '../../shared/types';
+import { AGENT_NAMES, type AgentName, type ManagerView, type ProgramState } from '../../shared/types';
+import type { AgentInUse, LaunchArgs } from '../agents/agent';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
-import { managerArgv, writeHookSettings } from '../agents/claude';
 import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
 import { writeJsonAtomic } from '../tasks/taskStore';
-import { readResumableSession } from './resumableChat';
-import { ROLE_PROMPT } from './rolePrompt';
+import { rolePrompt } from './rolePrompt';
 
 const MANAGER_FILE = 'manager.json';
-const MCP_FILE = 'mcp.json';
-
-/**
- * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, and a sync, whose
- * background run may use only the tools the owner confirmed. Starting a task goes through the owner's permission mode,
- * so the role prompt is not all that stands between the manager and a session.
- */
-const ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'];
 
 /** The version of `manager.json` this build writes and reads. */
 const VERSION = 1;
@@ -25,27 +16,32 @@ const VERSION = 1;
 export interface ManagerServiceDeps {
   projectDir: string;
   dataDir: string;
-  claudeBin: string;
-  /** What the SessionStart hook runs: a real program path, as claudeBin is. */
+  /** A real program path, for what the agent runs beside it (Claude Code's SessionStart hook). */
   nodeBin: string;
-  /** The contents of `mcp.json`: the MCP server's port and token change with each run of the app. */
-  mcpConfig: string;
+  env: Record<string, string>;
+  /** Where Mainframe's MCP server is: its port and token change with each run of the app. */
+  mcp: { url: string; token: string };
+  /** Asked at each start, so the manager switches agent only then. */
+  agent(): AgentInUse;
   onChange(view: ManagerView): void;
   newId?: () => string;
   warn?: (msg: string) => void;
 }
 
-/** What `manager.json` holds: where the manager's last turn was. The chat it carries on is the one SessionStart recorded. */
+/** What `manager.json` holds: where the manager's last turn was, the agent it last ran, and each agent's chat. */
 interface ManagerRecord {
   version: number;
   midTurn?: boolean;
   askAgain?: boolean;
+  /** Absent in a record from before agents could be picked: Claude Code. */
+  agent?: AgentName;
+  chats?: Partial<Record<AgentName, string>>;
 }
 
-/** The one `claude` process of the manager, held with its launch spec until it exits. */
+/** The one agent process of the manager, held with its launch until it exits. */
 interface Session {
   id: string;
-  argv: string[];
+  launch: LaunchArgs;
   startedWithPrompt: boolean;
   /** The record of its chat, as this session leaves it. */
   record: ManagerRecord;
@@ -58,6 +54,7 @@ export class ManagerService {
   private readonly dir: string;
   private readonly recordFile: string;
   private session: Session | null = null;
+  private starting: Promise<ManagerView> | null = null;
 
   constructor(private readonly deps: ManagerServiceDeps) {
     this.newId = deps.newId ?? randomUUID;
@@ -75,47 +72,63 @@ export class ManagerService {
     return this.session ? [this.session.id] : [];
   }
 
-  /** Launches the manager unless it runs. Throws for a `manager.json` from a newer Mainframe. */
-  start(): ManagerView {
-    if (this.session) return this.view();
+  /**
+   * Launches the manager unless it runs; a call while one is under way gets that one's view. Rejects for a
+   * `manager.json` from a newer Mainframe.
+   */
+  start(): Promise<ManagerView> {
+    if (this.session) return Promise.resolve(this.view());
+    this.starting ??= this.launch().finally(() => (this.starting = null));
+    return this.starting;
+  }
+
+  private async launch(): Promise<ManagerView> {
     const prior = loadRecord(this.recordFile, this.warn);
+    const { adapter, bin, setting } = this.deps.agent();
+    const name = adapter.name;
+    const sameAgent = (prior.agent ?? 'claude') === name;
 
-    // Every launch: the port and the token change with each run of the app.
-    const settingsPath = writeHookSettings(this.dir, this.deps.nodeBin, ALLOWED_TOOLS);
-    const mcpConfigPath = join(this.dir, MCP_FILE);
-    // Made anew, as the mode is only for a file that is made here; one that was there would keep its own.
-    rmSync(mcpConfigPath, { force: true });
-    writeFileSync(mcpConfigPath, this.deps.mcpConfig, { mode: 0o600 });
-
-    const recorded = readResumableSession(this.dir);
-    const prompt = recorded === null ? undefined : resumePromptFor(prior);
+    const chat = adapter.managerChat(this.dir, prior.chats?.[name]);
+    // A carry-on prompt is owed only to the chat of the agent that left it.
+    const prompt = chat !== null && sameAgent ? resumePromptFor(prior) : undefined;
     const carryOn = prompt !== undefined;
-    // Without a conversation to resume none was saved, whether SessionStart fired or not: this starts it as the first launch would.
-    const claudeSessionId = recorded ?? this.newId();
-    const argv = managerArgv({
-      claudeBin: this.deps.claudeBin,
+    // Without a chat to carry on, this starts one as the first launch would.
+    const id = chat ?? adapter.newSessionId(this.newId);
+    const launch = await adapter.managerLaunch({
+      bin,
+      nodeBin: this.deps.nodeBin,
+      env: this.deps.env,
+      dir: this.dir,
+      projectDir: this.deps.projectDir,
       name: sessionName(this.deps.projectDir, MANAGER_SLUG),
-      claudeSessionId,
-      resume: recorded !== null,
-      mcpConfigPath,
-      settingsPath,
-      rolePrompt: ROLE_PROMPT,
+      mcp: this.deps.mcp,
+      rolePrompt: rolePrompt(adapter.instructions),
+      chat: id,
+      resume: chat !== null,
       prompt,
+      setting,
     });
     // midTurn is cleared here; a session whose carry-on prompt never takes sets it again as it ends. askAgain
-    // is kept, so the prompt owed again is the same one.
-    const record: ManagerRecord = { version: VERSION, midTurn: false, askAgain: prior.askAgain };
+    // is kept for the same agent, so the prompt owed again is the same one.
+    const record: ManagerRecord = {
+      version: VERSION,
+      midTurn: false,
+      askAgain: sameAgent ? prior.askAgain : undefined,
+      agent: name,
+      chats: { ...prior.chats, [name]: id },
+    };
     // Saved first: a start that cannot save it holds no session, so the next one tries again.
     writeJsonAtomic(this.recordFile, record);
-    this.session = { id: this.newId(), argv, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn) };
+    this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn) };
     const view = this.view();
     this.deps.onChange(view);
     return view;
   }
 
-  launchSpec(sessionId: string): { argv: string[]; cwd: string } {
+  launchSpec(sessionId: string): { argv: string[]; cwd: string; env?: Record<string, string> } {
     if (this.session?.id !== sessionId) throw new Error(`Unknown session ${sessionId}`);
-    return { argv: this.session.argv, cwd: this.deps.projectDir };
+    const { argv, env } = this.session.launch;
+    return { argv, cwd: this.deps.projectDir, env };
   }
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
@@ -168,7 +181,14 @@ function loadRecord(file: string, warn: (msg: string) => void): Partial<ManagerR
     );
   }
   const flag = (value: unknown) => value === undefined || typeof value === 'boolean';
-  if (record.version !== VERSION || !flag(record.midTurn) || !flag(record.askAgain)) {
+  const isAgent = (value: unknown) => typeof value === 'string' && Object.hasOwn(AGENT_NAMES, value);
+  const chats = (value: unknown) =>
+    value === undefined ||
+    (typeof value === 'object' && value !== null && Object.entries(value).every(([k, v]) => isAgent(k) && typeof v === 'string'));
+  if (
+    record.version !== VERSION || !flag(record.midTurn) || !flag(record.askAgain) ||
+    !(record.agent === undefined || isAgent(record.agent)) || !chats(record.chats)
+  ) {
     warn(`Could not use ${file} (it does not hold a version ${VERSION} record); treating it as missing`);
     return {};
   }

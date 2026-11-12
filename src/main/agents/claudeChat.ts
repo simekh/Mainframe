@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readRecordedStart } from '../agents/claude';
+import { readRecordedStart } from './claude';
 
 /**
  * The conversation SessionStart recorded in `dir`, when `claude --resume` can open it. The manager may never

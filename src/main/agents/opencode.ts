@@ -82,4 +82,8 @@ export const opencodeAgent: AgentAdapter = {
   taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
   // OpenCode has no SessionStart hook: its task keeps the session Mainframe started.
   recordedSession: () => null,
+  managerChat: () => {
+    throw new Error('The manager does not run on OpenCode yet');
+  },
+  managerLaunch: () => Promise.reject(new Error('The manager does not run on OpenCode yet')),
 };

@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { ManagerView, ProgramState } from '../../shared/types';
 import { ASK_AGAIN_PROMPT, RESUME_PROMPT } from '../tasks/carryOn';
-import { hookSettings, managerArgv, SESSION_START_FILE } from '../agents/claude';
+import { ADAPTERS } from '../agents/adapters';
+import { hookSettings, managerArgv, mcpConfigJson, SESSION_START_FILE } from '../agents/claude';
 import { NODE } from '../testing/lookups';
 import { ManagerService } from './managerService';
-import { ROLE_PROMPT } from './rolePrompt';
+import { rolePrompt } from './rolePrompt';
 
 const cleanup: string[] = [];
 
@@ -16,7 +17,7 @@ afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const MCP_CONFIG = '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5555/mcp"}}}';
+const MCP = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1' };
 const U2 = '11111111-1111-4111-8111-111111111111';
 
 function setup() {
@@ -32,13 +33,14 @@ function setup() {
   let counter = 0;
   const newId = () => `00000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
 
-  const make = (mcpConfig = MCP_CONFIG) =>
+  const make = (mcp = MCP) =>
     new ManagerService({
       projectDir,
       dataDir,
-      claudeBin: 'claude',
       nodeBin: NODE,
-      mcpConfig,
+      env: {},
+      mcp,
+      agent: () => ({ adapter: ADAPTERS.claude, bin: 'claude', setting: {} }),
       onChange: (view) => changes.push(view),
       newId,
       warn: (msg) => warnings.push(msg),
@@ -69,7 +71,7 @@ function setup() {
       resume,
       mcpConfigPath: file('mcp.json'),
       settingsPath: file('settings.json'),
-      rolePrompt: ROLE_PROMPT,
+      rolePrompt: rolePrompt(ADAPTERS.claude.instructions),
       prompt,
     });
 
@@ -86,23 +88,23 @@ function setup() {
 type Setup = ReturnType<typeof setup>;
 
 /** Starts the manager, has its conversation begin and its session report `states` in order. */
-function started(t: Setup, ...states: (ProgramState | null)[]): ManagerView {
-  const view = t.service.start();
+async function started(t: Setup, ...states: (ProgramState | null)[]): Promise<ManagerView> {
+  const view = await t.service.start();
   t.sessionStarted(t.chatOf(view));
   for (const state of states) t.service.noteStatus(view.session!.id, state);
   return view;
 }
 
-it('has no session before it is started', () => {
+it('has no session before it is started', async () => {
   const { service, changes, dataDir } = setup();
   expect(service.view()).toEqual({ session: null });
   expect(changes).toEqual([]);
   expect(existsSync(join(dataDir, 'managers'))).toBe(false);
 });
 
-it('the first start launches claude in the main checkout, under a fresh id and without a prompt', () => {
+it('the first start launches claude in the main checkout, under a fresh id and without a prompt', async () => {
   const { service, projectDir, changes, argvOf, chatOf } = setup();
-  const view = service.start();
+  const view = await service.start();
 
   expect(view).toEqual({ session: { id: expect.any(String), startedWithPrompt: false } });
   const chat = chatOf(view);
@@ -112,89 +114,136 @@ it('the first start launches claude in the main checkout, under a fresh id and w
   expect(changes).toEqual([view]);
 });
 
-it('start writes manager.json, the hooks and permissions in settings.json, and mcp.json, which only the owner can read', () => {
-  const { service, file, readRecord, dir } = setup();
-  service.start();
+it('start writes manager.json, the hooks and permissions in settings.json, and mcp.json, which only the owner can read', async () => {
+  const { service, file, readRecord, dir, chatOf } = setup();
+  const view = await service.start();
 
-  expect(readRecord()).toEqual({ version: 1, midTurn: false });
+  expect(readRecord()).toEqual({ version: 1, midTurn: false, agent: 'claude', chats: { claude: chatOf(view) } });
   expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, NODE, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo']));
-  expect(readFileSync(file('mcp.json'), 'utf8')).toBe(MCP_CONFIG);
+  expect(readFileSync(file('mcp.json'), 'utf8')).toBe(mcpConfigJson(MCP.url, MCP.token));
   // Windows has no owner-only mode bits (spec §10.2).
   if (process.platform !== 'win32') expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });
 
-it('a later run writes mcp.json again, with its own port and token, and keeps it to the owner', () => {
+it('a later run writes mcp.json again, with its own port and token, and keeps it to the owner', async () => {
   const { service, make, file } = setup();
-  service.start();
+  await service.start();
   // Loosened, as by an editor or a restore from backup: the new token must not land in a readable file.
   chmodSync(file('mcp.json'), 0o644);
 
-  const next = '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:6666/mcp"}}}';
-  make(next).start();
+  const next = { url: 'http://127.0.0.1:6666/mcp', token: 'token-2' };
+  await make(next).start();
 
-  expect(readFileSync(file('mcp.json'), 'utf8')).toBe(next);
+  expect(readFileSync(file('mcp.json'), 'utf8')).toBe(mcpConfigJson(next.url, next.token));
   // Windows has no owner-only mode bits (spec §10.2).
   if (process.platform !== 'win32') expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);
 });
 
-it('start while a session runs returns the same view and launches nothing', () => {
+it('start while a session runs returns the same view and launches nothing', async () => {
   const { service, changes, file } = setup();
-  const first = service.start();
+  const first = await service.start();
   const argv = service.launchSpec(first.session!.id).argv;
   rmSync(file('mcp.json'));
 
-  expect(service.start()).toEqual(first);
+  expect(await service.start()).toEqual(first);
 
   expect(service.launchSpec(first.session!.id).argv).toBe(argv);
   expect(changes).toEqual([first]);
   expect(existsSync(file('mcp.json'))).toBe(false);
 });
 
-it('start resumes the conversation SessionStart last recorded', () => {
+it('two starts at once launch one session', async () => {
+  const { service, changes } = setup();
+  const [a, b] = await Promise.all([service.start(), service.start()]);
+
+  expect(a.session!.id).toBe(b.session!.id);
+  expect(changes).toHaveLength(1);
+});
+
+it('a manager.json from before this branch resumes its Claude chat', async () => {
+  const t = setup();
+  mkdirSync(t.dir, { recursive: true });
+  writeFileSync(t.file('manager.json'), JSON.stringify({ version: 1, midTurn: true }));
+  t.sessionStarted(U2, { source: 'resume' });
+
+  const view = await t.service.start();
+  expect(t.service.launchSpec(view.session!.id).argv).toEqual(
+    managerArgv({
+      claudeBin: 'claude',
+      name: 'acme-manager',
+      claudeSessionId: U2,
+      resume: true,
+      mcpConfigPath: t.file('mcp.json'),
+      settingsPath: t.file('settings.json'),
+      rolePrompt: rolePrompt(ADAPTERS.claude.instructions),
+      prompt: 'Continue where you left off.',
+    }),
+  );
+});
+
+it('manager.json keeps the chat of the agent it ran', async () => {
+  const t = setup();
+  const view = await t.service.start();
+
+  expect(t.readRecord()).toMatchObject({ agent: 'claude', chats: { claude: t.chatOf(view) } });
+});
+
+it('a carry-on prompt is the same agent\'s only', async () => {
+  const t = setup();
+  mkdirSync(t.dir, { recursive: true });
+  writeFileSync(t.file('manager.json'), JSON.stringify({ version: 1, midTurn: true, agent: 'opencode' }));
+  t.sessionStarted(U2);
+
+  const view = await t.service.start();
+  expect(view.session!.startedWithPrompt).toBe(false);
+  expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
+});
+
+it('start resumes the conversation SessionStart last recorded', async () => {
   const t = setup();
   t.sessionStarted(U2);
 
-  const view = t.service.start();
+  const view = await t.service.start();
   expect(view.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
   expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
 });
 
-it('a /clear or a compaction moves the conversation the next start resumes', () => {
+it('a /clear or a compaction moves the conversation the next start resumes', async () => {
   const t = setup();
-  const view = started(t);
+  const view = await started(t);
   const first = t.chatOf(view);
   t.sessionStarted(U2, { source: 'clear' });
   t.service.onSessionExit(view.session!.id);
 
-  const again = t.service.start();
+  const again = await t.service.start();
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(U2, true));
   expect(first).not.toBe(U2);
 });
 
-it('a launch whose conversation never began starts one again, under a fresh id', () => {
+it('a launch whose conversation never began starts one again, under a fresh id', async () => {
   const t = setup();
-  const first = t.service.start();
+  const first = await t.service.start();
   const firstChat = t.chatOf(first);
   // claude was missing or quit at once: SessionStart never fired.
   t.service.noteStatus(first.session!.id, 'working');
   t.service.onSessionExit(first.session!.id);
 
-  const again = t.service.start();
+  const again = await t.service.start();
   const chat = t.chatOf(again);
   expect(chat).not.toBe(firstChat);
   expect(again.session!.startedWithPrompt).toBe(false);
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, false));
 });
 
-it('a startup record whose chat Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', () => {
+it('a startup record whose chat Claude Code never saved is not resumed: the next start begins a new one, under a fresh id', async () => {
   const t = setup();
   // Launched, SessionStart fired, and nobody typed: the transcript was never written.
-  const first = t.service.start();
+  const first = await t.service.start();
   const firstChat = t.chatOf(first);
   t.sessionStarted(firstChat, { source: 'startup', saved: false });
   t.service.onSessionExit(first.session!.id);
 
-  const again = t.service.start();
+  const again = await t.service.start();
   const chat = t.chatOf(again);
   expect(chat).not.toBe(firstChat);
   expect(again.session!.startedWithPrompt).toBe(false);
@@ -202,11 +251,11 @@ it('a startup record whose chat Claude Code never saved is not resumed: the next
 });
 
 // A resumed chat exists, wherever Claude Code keeps it: Mainframe does not look for its file.
-it('a resume record is resumed although no transcript of it can be found', () => {
+it('a resume record is resumed although no transcript of it can be found', async () => {
   const t = setup();
   t.sessionStarted(U2, { source: 'resume', saved: false });
 
-  const view = t.service.start();
+  const view = await t.service.start();
   expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
 });
 
@@ -216,13 +265,13 @@ it.each([
   ['working', RESUME_PROMPT],
   ['blocked', ASK_AGAIN_PROMPT],
   ['idle', undefined],
-] as const)('a session that exits while %s is resumed with %j', (state, prompt) => {
+] as const)('a session that exits while %s is resumed with %j', async (state, prompt) => {
   const t = setup();
-  const view = started(t, state);
+  const view = await started(t, state);
   const chat = t.chatOf(view);
 
   t.service.onSessionExit(view.session!.id);
-  const again = t.service.start();
+  const again = await t.service.start();
 
   expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
@@ -231,9 +280,9 @@ it.each([
 it.each([
   [['working'], RESUME_PROMPT],
   [['working', 'idle'], undefined],
-] as const)('a quit while the session reported %j resumes it at the next start with %j', (states, prompt) => {
+] as const)('a quit while the session reported %j resumes it at the next start with %j', async (states, prompt) => {
   const t = setup();
-  const view = started(t, ...states);
+  const view = await started(t, ...states);
   const chat = t.chatOf(view);
 
   t.service.beginQuit();
@@ -242,7 +291,7 @@ it.each([
   t.service.onSessionExit(view.session!.id);
 
   const second = t.make();
-  const again = second.start();
+  const again = await second.start();
   expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
   expect(second.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
 });
@@ -250,12 +299,12 @@ it.each([
 it.each([
   ['working', RESUME_PROMPT],
   ['blocked', ASK_AGAIN_PROMPT],
-] as const)('a carry-on prompt that never took is owed again, the same one: ended while %s', (state, prompt) => {
+] as const)('a carry-on prompt that never took is owed again, the same one: ended while %s', async (state, prompt) => {
   const t = setup();
-  const view = started(t, state);
+  const view = await started(t, state);
   t.service.onSessionExit(view.session!.id);
 
-  const resumed = t.service.start();
+  const resumed = await t.service.start();
   expect(t.readRecord().midTurn).toBe(false);
   expect(t.service.launchSpec(resumed.session!.id).argv.at(-1)).toBe(prompt);
 
@@ -263,14 +312,14 @@ it.each([
   t.service.onSessionExit(resumed.session!.id);
   expect(t.readRecord().midTurn).toBe(true);
 
-  const again = t.service.start();
+  const again = await t.service.start();
   expect(t.service.launchSpec(again.session!.id).argv.at(-1)).toBe(prompt);
   expect(again.session!.startedWithPrompt).toBe(true);
 });
 
-it('an exit sends the view with no session and lets that go too', () => {
+it('an exit sends the view with no session and lets that go too', async () => {
   const { service, changes, sessionStarted, chatOf } = setup();
-  const view = service.start();
+  const view = await service.start();
   sessionStarted(chatOf(view));
 
   service.onSessionExit(view.session!.id);
@@ -282,9 +331,9 @@ it('an exit sends the view with no session and lets that go too', () => {
   expect(() => service.launchSpec(view.session!.id)).toThrow(view.session!.id);
 });
 
-it('a status or an exit for another session, or after the end, changes nothing', () => {
+it('a status or an exit for another session, or after the end, changes nothing', async () => {
   const t = setup();
-  const view = started(t, 'idle');
+  const view = await started(t, 'idle');
   t.service.noteStatus('nobody', 'working');
   t.service.onSessionExit('nobody');
   expect(t.service.view()).toEqual(view);
@@ -297,21 +346,21 @@ it('a status or an exit for another session, or after the end, changes nothing',
   expect(t.changes).toHaveLength(2);
 });
 
-it('a start whose manager.json cannot be written holds no session, so the next start tries again', () => {
+it('a start whose manager.json cannot be written holds no session, so the next start tries again', async () => {
   const t = setup();
   // A folder where the write's temporary file goes makes the write fail.
   mkdirSync(t.file('manager.json.tmp'), { recursive: true });
 
-  expect(() => t.service.start()).toThrow();
+  await expect(t.service.start()).rejects.toThrow();
   expect(t.service.view()).toEqual({ session: null });
 
   rmSync(t.file('manager.json.tmp'), { recursive: true });
-  const view = t.service.start();
+  const view = await t.service.start();
   expect(view.session).not.toBeNull();
   expect(t.changes).toEqual([view]);
 });
 
-it('a quit with no session records nothing', () => {
+it('a quit with no session records nothing', async () => {
   const { service, dataDir } = setup();
   service.beginQuit();
   expect(existsSync(join(dataDir, 'managers'))).toBe(false);
@@ -321,12 +370,12 @@ it.each([
   ['is not JSON', '{'],
   ['is not a record of this version', JSON.stringify({ version: 1, midTurn: 'yes' })],
   ['is an older version', JSON.stringify({ version: 0, midTurn: true })],
-])('a manager.json that %s is reported and treated as missing, so a new chat starts', (_why, text) => {
+])('a manager.json that %s is reported and treated as missing, so a new chat starts', async (_why, text) => {
   const t = setup();
   mkdirSync(t.dir, { recursive: true });
   writeFileSync(t.file('manager.json'), text);
 
-  const view = t.service.start();
+  const view = await t.service.start();
 
   expect(t.warnings).toHaveLength(1);
   expect(t.warnings[0]).toContain(t.file('manager.json'));
@@ -334,13 +383,13 @@ it.each([
   expect(t.readRecord()).toMatchObject({ version: 1, midTurn: false });
 });
 
-it('a manager.json from a newer Mainframe is left as it is: start throws, and neither it nor a quit touches it', () => {
+it('a manager.json from a newer Mainframe is left as it is: start throws, and neither it nor a quit touches it', async () => {
   const t = setup();
   mkdirSync(t.dir, { recursive: true });
   const text = JSON.stringify({ version: 2, claudeSessionId: U2, somethingNew: true });
   writeFileSync(t.file('manager.json'), text);
 
-  expect(() => t.service.start()).toThrow(/newer Mainframe/);
+  await expect(t.service.start()).rejects.toThrow(/newer Mainframe/);
   t.service.beginQuit();
 
   expect(readFileSync(t.file('manager.json'), 'utf8')).toBe(text);
@@ -350,10 +399,10 @@ it('a manager.json from a newer Mainframe is left as it is: start throws, and ne
   expect(t.warnings).toEqual([]);
 });
 
-it('names its one session while it runs, and none once it has ended', () => {
+it('names its one session while it runs, and none once it has ended', async () => {
   const { service } = setup();
   expect(service.sessionIds()).toEqual([]);
-  const { session } = service.start();
+  const { session } = await service.start();
   expect(service.sessionIds()).toEqual([session!.id]);
   service.onSessionExit(session!.id);
   expect(service.sessionIds()).toEqual([]);

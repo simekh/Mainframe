@@ -1,9 +1,11 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter } from './agent';
+import { SYNC_TIMEOUT_MS } from '../todo/syncRun';
+import type { AgentAdapter, LaunchArgs, ManagerLaunch } from './agent';
+import { readResumableSession } from './claudeChat';
 
 // Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
 export function parseClaudeVersion(stdout: string): string | null {
@@ -181,6 +183,41 @@ export function readRecordedSession(dir: string): string | null {
   return readRecordedStart(dir)?.id ?? null;
 }
 
+/** How long `claude` waits on one of Mainframe's MCP tools, in ms: a minute past the sync run's time limit, which `sync_todo` waits out. */
+const TOOL_TIMEOUT_MS = SYNC_TIMEOUT_MS + 60_000;
+
+/** The `--mcp-config` entry that has `claude` call Mainframe's MCP server, as `mainframe`. */
+export const mcpConfigJson = (url: string, token: string): string =>
+  JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } });
+
+/**
+ * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, and a sync, whose
+ * background run may use only the tools the owner confirmed. Starting a task goes through the owner's permission mode,
+ * so the role prompt is not all that stands between the manager and a session.
+ */
+const MANAGER_ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'];
+
+/** Writes the manager's settings.json and mcp.json into its folder, on every launch: the port and the token change with each run of the app. */
+async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
+  const settingsPath = writeHookSettings(o.dir, o.nodeBin, MANAGER_ALLOWED_TOOLS);
+  const mcpConfigPath = join(o.dir, 'mcp.json');
+  // Made anew, as the mode is only for a file that is made here; one that was there would keep its own.
+  rmSync(mcpConfigPath, { force: true });
+  writeFileSync(mcpConfigPath, mcpConfigJson(o.mcp.url, o.mcp.token), { mode: 0o600 });
+  return {
+    argv: managerArgv({
+      claudeBin: o.bin,
+      name: o.name,
+      claudeSessionId: o.chat,
+      resume: o.resume,
+      mcpConfigPath,
+      settingsPath,
+      rolePrompt: o.rolePrompt,
+      prompt: o.prompt,
+    }),
+  };
+}
+
 export const claudeAgent: AgentAdapter = {
   name: 'claude',
   envVar: 'MAINFRAME_CLAUDE_BIN',
@@ -228,4 +265,7 @@ export const claudeAgent: AgentAdapter = {
     }),
   }),
   recordedSession: readRecordedSession,
+  // Claude Code's own record says which chat it was in; manager.json's saved id is not needed.
+  managerChat: (dir) => readResumableSession(dir),
+  managerLaunch: claudeManagerLaunch,
 };
