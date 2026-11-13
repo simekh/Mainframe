@@ -4,7 +4,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { ADAPTERS } from '../src/main/agents/adapters';
 import { rolePrompt } from '../src/main/manager/rolePrompt';
 import type { AppSettings } from '../src/main/setup/settings';
-import { cleanUp, fakeOpencode, launchApp, launchWithOpencode } from './launch';
+import { cleanUp, fakeOpencode, launchApp, launchWithOpencode, pressWindowKey } from './launch';
 import {
   answerDialogs, card, computer, envOf, fakeLogDir, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
   rowButton, savedSettings, screen, SESSION_ID, startTask, syncLaunches,
@@ -309,7 +309,7 @@ test('Ctrl+, opens Settings over a focused terminal', async () => {
   await page.keyboard.type('ech');
   await expect.poll(() => screen(page, id)).toMatch(/\$ ech *$/m);
 
-  await page.keyboard.press('Control+,');
+  await pressWindowKey(app, ',');
   await expect(page.getByTestId('settings-dialog')).toBeVisible();
   await page.getByTestId('settings-close').click();
 
