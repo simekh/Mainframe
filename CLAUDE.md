@@ -47,6 +47,7 @@ A branch without a plan (a fix, a config tweak) gets both once its work is done 
 
 - It reads the command text before the shell runs it. Write literal absolute paths (no `$VAR`, no `~`), run `git commit` and `git push` as separate commands, and run git directly (not through `bash -c`, `eval`, `xargs` or `sudo`).
 - A merge commit with changes of its own (a conflict resolution) needs a review. For a merge, commits already on `origin/main` pass.
+- It covers a `diag-*` branch's push too: its commits need both runs, or the owner's waiver for that branch.
 - The registration has `"onFailure": "block"`: a gate that crashes or times out blocks the command.
 - This file and `.claude/hooks` are in git (re-included in `.gitignore` past the owner's global ignore). `.claude/settings.local.json` stays local: it registers the gate, which needs this machine's `.git/claude-*` records. Another machine registers it the same way, as a PreToolUse hook on `Bash` that runs the script with `"onFailure": "block"`.
 - When this folder is on a branch without the script, the registration blocks the Bash commands that mention push, merge or pull. A merge that brings the script in runs as one command from a branch that has it: `git -C <repo> checkout main && git -C <repo> merge <branch>`.
@@ -54,11 +55,8 @@ A branch without a plan (a fix, a config tweak) gets both once its work is done 
 
 ## Troubleshooting Windows or Linux: a narrowed CI run (since 2026-11-13)
 
-This Mac can't run Windows, so a Windows-only failure is checked on CI. Don't wait on a full run of all three systems (10-12 minutes) to see one test: run only that system and those tests by hand, which takes a few minutes.
+This Mac can't run Windows, so a Windows-only failure is checked on CI. Don't wait on a full run of all three systems to see one test: run only that system and those tests by hand (how: the comment at the top of `.github/workflows/test.yml`), then `gh run list --workflow test.yml --event workflow_dispatch -L 1` for its id and `gh run watch <id>`.
 
-- `gh workflow run test.yml --ref <branch> -f os=windows-latest -f e2e=e2e/diff.e2e.ts` (add `-f grep='<title part>'` for one test), then `gh run list --workflow test.yml --event workflow_dispatch -L 1` for its id and `gh run watch <id>`. A narrowed run skips the typecheck, the unit tests and the Linux start checks.
 - Put throwaway diagnostics (logging, probe tests) on a branch named `diag-*`: pushing it runs nothing, so only the narrowed run you start goes. Delete it once CI has answered; it is never merged.
-- The gate still covers a `diag-*` push. Its commits need both runs, or the owner's waiver for that branch.
-- Keys Playwright presses never pass the window's `before-input-event`; e2e tests press the window's own keys with `pressWindowKey`. On Windows, Git Bash's `cat -v` gets no kitty keys through ConPTY; `e2e/raw-reader.cjs` reads raw, as Claude Code does.
 
-**Why:** on 2026-11-13 three Windows-only failures took a full CI run per attempt to diagnose. The owner asked for quicker loops; a Windows VM on this Mac was weighed and left for later.
+**Why:** on 2026-11-13 three Windows-only failures took a full CI run (10-12 minutes) per attempt to diagnose. The owner asked for quicker loops; a Windows VM on this Mac was weighed and left for later.
