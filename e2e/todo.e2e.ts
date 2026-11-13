@@ -568,6 +568,20 @@ test('floating together, the Todo panel and the manager sit right of both strips
   await page.mouse.click(t.x + t.width + 20, middle(m));
   expect(await isOnTop(manager)).toBe(true);
   await expect(todo).toHaveAttribute('data-open', 'true');
+
+  // Pinned, the Todo panel lies over no manager: the manager opened last (Cmd+1), right of it, leaves its ticket on top.
+  await todoStrip.click();
+  await page.getByTestId('todo-pin').click();
+  await expect(todo).toHaveAttribute('data-pinned', 'true');
+  await managerStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'false');
+  await page.getByTestId('todo-add-note').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  await slidIn(manager);
+  expect(await isOnTop(ticket)).toBe(true);
   await app.close();
 });
 

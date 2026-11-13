@@ -2350,8 +2350,8 @@ kbd {
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
 }
 
-/* The manager used last is on top of the Todo panel, its ticket with it; the session panel's float, after both in the
-   page, still covers it. */
+/* Where the floating Todo panel lies over the manager and the owner used the manager last, the pane says so, and the
+   manager is on top, over the panel's ticket too; the session panel's float, after both in the page, still covers it. */
 .pane-body[data-front='manager'] > .manager-column {
   z-index: 5;
 }
@@ -2385,8 +2385,9 @@ kbd {
   clip-path: inset(-100px -100px -100px 0);
 }
 
+/* Folded, nothing of it is left, its shadow neither. */
 .manager-column[data-open='false'] {
-  clip-path: inset(-100px -100px -100px calc(100% + 16px + var(--strip-w)));
+  clip-path: inset(-100px 0 -100px calc(100% + 16px + var(--strip-w)));
 }
 
 /* On the Mac the top row is a window drag region, and macOS hit-tests it natively whatever lies above it: the pane
