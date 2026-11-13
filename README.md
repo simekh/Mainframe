@@ -72,6 +72,7 @@ The Mac has Cmd keys. Windows and Linux have Ctrl keys, as Windows Terminal and 
 | Take the focused pane off screen | Cmd+W | Ctrl+Shift+W (plain Ctrl+W deletes a word in a terminal) |
 | Open Project… | Cmd+O | Ctrl+Shift+O (plain Ctrl+O is Claude Code's) |
 | Settings | Cmd+, | Ctrl+, |
+| Zoom in / out / back to normal (both windows; remembered) | Cmd++ / Cmd+− / Cmd+0 | Ctrl++ / Ctrl+− / Ctrl+0 (in a terminal, undo is Ctrl+Shift+−) |
 | Next / previous session that needs you | Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Start a task from the New task box | Cmd+Enter | Ctrl+Enter |
 | Open a link in a terminal | Cmd+click | Ctrl+click |

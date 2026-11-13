@@ -58,6 +58,6 @@ A branch without a plan (a fix, a config tweak) gets both once its work is done 
 This Mac can't run Windows, so a Windows-only failure is checked on CI. Don't wait on a full run of all three systems to see one test: run only that system and those tests by hand (how: the comment at the top of `.github/workflows/test.yml`).
 
 - Find your run with `gh run list --workflow test.yml --event workflow_dispatch --branch <branch> -L 1`, a few seconds after starting it: the run appears a moment later, and other sessions start runs too. Check its start time, then `gh run watch <id> --exit-status`.
-- Put throwaway diagnostics (logging, probe tests) on a branch named `diag-*`: pushing it runs nothing, so only the narrowed run you start goes, and it needs no reviews (the gate's standing waiver below). Never open a pull request from it (that runs everything); delete it once CI has answered.
+- Put throwaway diagnostics (logging, probe tests) on a branch named `diag-*`: pushing it runs nothing, so only the narrowed run you start goes, and it needs no reviews (the gate's standing waiver above). Never open a pull request from it (that runs everything); delete it once CI has answered.
 
 **Why:** on 2026-11-13 three Windows-only failures took a full CI run (10-12 minutes) per attempt to diagnose. The owner asked for quicker loops; a Windows VM on this Mac was weighed and left for later.
