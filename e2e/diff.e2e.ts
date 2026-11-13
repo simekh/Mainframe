@@ -35,16 +35,14 @@ async function openFrom(app: ElectronApplication, row: Locator): Promise<Page> {
 }
 
 /**
- * Presses the keys down in the diff window, in order, and resolves once the window has gone. Only their
- * downs: the page closes on the last one, so no key's up has a page to reach. The last down's own reply
- * can be lost with the page (Linux rejects it, Windows never answers), so the close is what is awaited:
- * the window's, not only the page's, which closes first. On Windows a quit while the window is still
- * closing never ends.
+ * Presses the keys down in the diff window, in order, and resolves once the window itself has gone, not
+ * only its page, which closes first (on Windows a quit in between never ends). Only their downs: the page
+ * closes on the last one, whose reply can be lost with it (Linux rejects it, Windows never answers).
  */
 async function closeWith(app: ElectronApplication, diff: Page, ...keys: string[]): Promise<void> {
   for (const key of keys.slice(0, -1)) await diff.keyboard.down(key);
   void diff.keyboard.down(keys.at(-1)!).catch(() => {});
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  await expect.poll(() => windowsOf(app)).toEqual([]);
 }
 
 /** Every window's title, and whether its parent is Mainframe's window, the one without a parent. */
