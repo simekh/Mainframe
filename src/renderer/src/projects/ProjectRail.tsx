@@ -15,19 +15,81 @@ import {
   setRailState,
   toggleBesideProject,
 } from './projectsStore';
+import { dropIndex, shiftOf } from './railOrder';
 
 // The buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
+/** How far a press on a row moves before it is a drag and no longer a click. */
+const DRAG_THRESHOLD = 4;
+
+/** A row being dragged: where it was and where it would land, how far it has moved, and how far the others slide. */
+interface Drag {
+  dir: string;
+  from: number;
+  to: number;
+  dy: number;
+  slot: number;
+}
+
+/** Swallows the click that ends a drag, wherever the pointer was let go, so it focuses nothing. */
+function swallowClick(): void {
+  const swallow = (e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  window.addEventListener('click', swallow, { capture: true, once: true });
+  // A drag let go off any element gets no click, and the next real one must not be lost.
+  setTimeout(() => window.removeEventListener('click', swallow, { capture: true }));
+}
+
 /**
  * The open projects, an island at the window's left under the top row, there while Projects has it on. A click
  * focuses a project, on screen in the focused one's place if it was off it; Show beside adds it to the ones on screen.
- * Each says how many of its sessions need the owner, so one off screen still shows when it waits on them. Folded, the
+ * Each says how many of its sessions need the owner, so one off screen still shows when it waits on them. A row dragged
+ * up or down, or moved with Alt+Up and Alt+Down, puts its project in a new place in the list. Folded, the
  * list is a strip in its place that counts the sessions waiting in the projects off screen, and opens it again.
  */
 export default function ProjectRail() {
   /** The project whose close waits for the owner to confirm it. */
   const [confirming, setConfirming] = createSignal<string | null>(null);
+  const [drag, setDrag] = createSignal<Drag | null>(null);
+
+  /**
+   * A press on a row, past the threshold, drags it along the list, kept within it; the others slide to make room, and
+   * letting go moves the project there. Not from the row's own buttons, nor from its close question.
+   */
+  const pressRow = (e: PointerEvent & { currentTarget: HTMLLIElement }, dir: string, from: number) => {
+    if (e.button !== 0 || (e.target as Element).closest('.rail-act, .rail-confirm')) return;
+    const list = e.currentTarget.parentElement!;
+    const rows = [...list.children].map((el) => el.getBoundingClientRect());
+    const mids = rows.map((r) => r.top + r.height / 2);
+    const own = rows[from];
+    const slot = own.height + (parseFloat(getComputedStyle(list).rowGap) || 0);
+    const [min, max] = [rows[0].top - own.top, rows[rows.length - 1].bottom - own.bottom];
+    const startY = e.clientY;
+    // On the window, not captured: a capture would take the click of a short press away from the row's button.
+    const move = (ev: PointerEvent) => {
+      if (drag() === null && Math.abs(ev.clientY - startY) < DRAG_THRESHOLD) return;
+      const dy = Math.min(Math.max(ev.clientY - startY, min), max);
+      setDrag({ dir, from, to: dropIndex(mids, from, mids[from] + dy), dy, slot });
+    };
+    const end = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      const done = drag();
+      if (done === null) return;
+      setDrag(null);
+      if (ev.type === 'pointerup') {
+        swallowClick();
+        moveProjectTo(done.dir, done.to);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
   const several = () => projectsStore.layout.shown.length > 1;
   // Only the strip shows it.
   const waiting = createMemo(() => (railState() === 'folded' ? offScreenNeedsYou() : 0));
@@ -86,12 +148,18 @@ export default function ProjectRail() {
             <FoldButton points="left" testId="rail-fold" handOff={handOff} />
           </header>
 
-          <ul class="rail-list">
+          <ul class="rail-list" data-dragging={String(drag() !== null)}>
             <For each={projectsStore.projects}>
               {(project, index) => {
                 const count = createMemo(() => needsYouCount(project.dir));
                 // On screen beside others, so its button takes it off; the last one on screen stays.
                 const beside = () => isShown(project.dir) && several();
+                const dragged = () => drag()?.dir === project.dir;
+                const offset = () => {
+                  const d = drag();
+                  if (d === null) return 0;
+                  return dragged() ? d.dy : shiftOf(index(), d.from, d.to) * d.slot;
+                };
                 return (
                   <li
                     class="rail-item"
@@ -99,6 +167,9 @@ export default function ProjectRail() {
                     data-project={project.dir}
                     data-shown={String(isShown(project.dir))}
                     data-focused={String(isFocused(project.dir))}
+                    data-dragging={String(dragged())}
+                    style={{ transform: offset() === 0 ? undefined : `translateY(${offset()}px)` }}
+                    onPointerDown={(e) => pressRow(e, project.dir, index())}
                   >
                     <Show
                       when={confirming() === project.dir}

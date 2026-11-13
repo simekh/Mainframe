@@ -243,6 +243,27 @@ html[data-platform='darwin'] .top-row {
   background: var(--island);
 }
 
+/* A row being dragged lifts over the others, which give it room; the whole list shows the grip. */
+.rail-list[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.rail-list[data-dragging='true'] .rail-item:not([data-dragging='true']) {
+  background: transparent;
+}
+
+.rail-list[data-dragging='true'] .rail-item[data-focused='true']:not([data-dragging='true']) {
+  background: var(--island);
+}
+
+.rail-item[data-dragging='true'] {
+  position: relative;
+  z-index: 1;
+  border-color: var(--island-border);
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
 .rail-name {
   flex: 1;
   min-width: 0;
@@ -3387,6 +3408,11 @@ kbd {
   }
 
   .pane-heading svg {
+    transition: transform 140ms var(--ease-out);
+  }
+
+  /* Only during a drag: as it ends, each row takes its new place in the list at once, with nothing to slide back. */
+  .rail-list[data-dragging='true'] .rail-item:not([data-dragging='true']) {
     transition: transform 140ms var(--ease-out);
   }
 }

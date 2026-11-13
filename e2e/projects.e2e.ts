@@ -212,6 +212,38 @@ test('Alt+Up and Alt+Down on a row move its project in the list, Cmd+1 follows, 
   await again.app.close();
 });
 
+test('dragging a row moves its project in the list; a short press is still a click, and a drag focuses nothing', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  const drag = async (dir: string, dy: number) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    const [x, y] = [r.x + 20, r.y + r.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
+
+  // c to the top: the focus stays on a.
+  const rowStep = (await boxOf(row(page, b))).y - (await boxOf(row(page, a))).y;
+  await drag(c, -2 * rowStep);
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => openProjects(dataDir)).toEqual([c, a, b]);
+
+  // A 2 px wobble is a click: it focuses b and moves nothing.
+  await drag(b, 2);
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+
+  // The row's own buttons still work, and don't start a drag.
+  await (await rowButton(page, c, 'rail-beside')).click();
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'true');
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+  await app.close();
+});
+
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);
