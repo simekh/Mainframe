@@ -5,9 +5,9 @@ import { ADAPTERS } from '../src/main/agents/adapters';
 import { rolePrompt } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, ids, isOnTop, launches, managerDir,
-  managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine,
-  sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
+  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, framesWhile, ids, isOnTop, launches,
+  managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, middle, report, repo, ROW_HEIGHT, run, screen,
+  sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -302,6 +302,17 @@ test('beside a pinned Todo panel that gives way to it, the pinned manager folds 
   expect(await widthNow()).toBe(open.width);
   await settled(page);
   expect(await managerTermSize(page)).toEqual(size);
+
+  // It slides out of sight at its own left edge: on no frame, folding or opening, does it show in the gap left of the
+  // Todo panel or in the one between them, as it would sliding under that panel to the pane's edge.
+  const todo = await box(page, 'todo-panel');
+  const gaps = [(await box(page, 'project-pane')).x + 4, todo.x + todo.width + 4].map((x) => ({ x, y: middle(todo) }));
+  const shownIn = async (act: () => Promise<void>) =>
+    (await framesWhile(page, 'manager-column', act, gaps)).some((frame) => frame.shownAt);
+  expect(await shownIn(() => page.getByTestId('manager-fold').click())).toBe(false);
+  await expect(column).toBeHidden();
+  expect(await shownIn(() => page.getByTestId('manager-strip').click())).toBe(false);
+  await expect(column).toBeVisible();
 
   // Off is nothing at all: its room goes to the Todo panel, and it goes at once, on no frame right of where it stood.
   const going = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-toggle').click());
