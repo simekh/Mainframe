@@ -35,15 +35,16 @@ async function openFrom(app: ElectronApplication, row: Locator): Promise<Page> {
 }
 
 /**
- * Presses the keys down in the diff window, in order, and resolves once it has closed. Only their downs:
- * the page closes on the last one, so no key's up has a page to reach. The last down's own reply can be
- * lost with the page (Linux rejects it, Windows never answers), so the close is what is awaited.
+ * Presses the keys down in the diff window, in order, and resolves once the window has gone. Only their
+ * downs: the page closes on the last one, so no key's up has a page to reach. The last down's own reply
+ * can be lost with the page (Linux rejects it, Windows never answers), so the close is what is awaited:
+ * the window's, not only the page's, which closes first. On Windows a quit while the window is still
+ * closing never ends.
  */
-async function closeWith(diff: Page, ...keys: string[]): Promise<void> {
-  const closed = diff.waitForEvent('close');
+async function closeWith(app: ElectronApplication, diff: Page, ...keys: string[]): Promise<void> {
   for (const key of keys.slice(0, -1)) await diff.keyboard.down(key);
   void diff.keyboard.down(keys.at(-1)!).catch(() => {});
-  await closed;
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
 }
 
 /** Every window's title, and whether its parent is Mainframe's window, the one without a parent. */
@@ -126,15 +127,13 @@ test('Esc and Cmd+W (Ctrl+W off the Mac) close the diff window, and a click open
   const diff = await openFrom(app, rows.nth(1));
   await expect(diff.getByTestId('diff-file')).toHaveCount(2);
 
-  await closeWith(diff, 'Escape');
-  expect(app.windows()).toHaveLength(1);
+  await closeWith(app, diff, 'Escape');
 
   const again = await openFrom(app, rows.nth(0));
   await expect(again.getByTestId('diff-file')).toHaveCount(2);
   expect(app.windows()).toHaveLength(2);
 
-  await closeWith(again, process.platform === 'darwin' ? 'Meta' : 'Control', 'w');
-  expect(app.windows()).toHaveLength(1);
+  await closeWith(app, again, process.platform === 'darwin' ? 'Meta' : 'Control', 'w');
   await app.close();
 });
 
@@ -146,7 +145,7 @@ test('the diff window opens at the size it was left', async () => {
     app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getParentWindow() !== null)!.getSize());
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getParentWindow() !== null)!.setSize(900, 600));
 
-  await closeWith(diff, 'Escape');
+  await closeWith(app, diff, 'Escape');
   expect(existsSync(join(dataDir, 'diff-window.json'))).toBe(true);
 
   const again = await openFrom(app, rows.nth(1));
