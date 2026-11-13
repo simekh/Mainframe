@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { cleanUp, launchAgain, launchApp, removeAfterTest } from './launch';
+import { cleanUp, launchAgain, launchApp, pressWindowKey, removeAfterTest } from './launch';
 import { answerDialogs, launches, projectPane, screen, sendLine, sessionLaunches, startTask } from './tasks';
 
 test.afterEach(cleanUp);
@@ -40,6 +40,27 @@ test('the window follows its system: the Mac keeps its menu and the room for its
   // Windows still drags a framed window by a page's drag region, so the page has them on the Mac only.
   await expect(page.locator('.top-row')).toHaveCSS('-webkit-app-region', onMac ? 'drag' : 'none');
   await app.close();
+});
+
+test('Cmd (Ctrl off the Mac) with +, = and - zoom the window, 0 sets it back, and the zoom holds at the next launch', async () => {
+  const { app, dataDir } = await launchApp();
+  const zoomLevel = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel());
+
+  await pressWindowKey(app, '=');
+  await pressWindowKey(app, '=');
+  await pressWindowKey(app, '-');
+  await expect.poll(zoomLevel).toBe(0.5);
+  await pressWindowKey(app, '0');
+  await expect.poll(zoomLevel).toBe(0);
+  await pressWindowKey(app, 'Plus', { shift: true });
+  await expect.poll(zoomLevel).toBe(0.5);
+  await app.close();
+
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir });
+  // Opened at it, not set once loaded: a factor taken as made reads back a hair off the level.
+  const level = await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomLevel());
+  expect(level).toBeCloseTo(0.5);
+  await again.app.close();
 });
 
 test('opened again on the same data folder, Mainframe quits and its tasks keep running once', async () => {

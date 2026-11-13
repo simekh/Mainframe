@@ -39,8 +39,9 @@ import { SetupFlow } from './setup/setupFlow';
 import { TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
-import { isDevToolsKey, isSettingsKey } from './windowKeys';
+import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 import { APP_BACKGROUND, webPreferences } from './windowOptions';
+import { nextZoomLevel, readZoomLevel, writeZoomLevel, zoomFactorOf, type ZoomStep } from './zoom';
 
 const onMac = process.platform === 'darwin';
 /** How long a quit waits for the sessions it has hung up on to end. */
@@ -65,7 +66,26 @@ function readConfig(): AppConfig | Error {
   }
 }
 
-function createWindow(e2e: boolean): BrowserWindow {
+/** The windows' zoom: one level for them all, kept in the data folder for the next launch. */
+function windowZoom(dataDir: string) {
+  let level = readZoomLevel(dataDir, console.warn);
+  return {
+    factor: () => zoomFactorOf(level),
+    step: (step: ZoomStep) => {
+      level = nextZoomLevel(level, step);
+      // Each window is set: the built app's pages are files, and a file page's zoom stays its own window's.
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.setZoomLevel(level);
+      try {
+        writeZoomLevel(dataDir, level);
+      } catch (err) {
+        console.warn(`Could not save the zoom level (${String(err)})`);
+      }
+    },
+  };
+}
+type WindowZoom = ReturnType<typeof windowZoom>;
+
+function createWindow(e2e: boolean, zoom: WindowZoom): BrowserWindow {
   const win = new BrowserWindow({
     title: 'Mainframe',
     width: 1400,
@@ -80,9 +100,9 @@ function createWindow(e2e: boolean): BrowserWindow {
     // On the Mac the window buttons sit at the left of the page's top row, which is the window's title bar.
     // Windows and Linux keep the system's own title bar, with its buttons.
     titleBarStyle: onMac ? 'hiddenInset' : 'default',
-    webPreferences: webPreferences(),
+    webPreferences: webPreferences(zoom.factor()),
   });
-  prepareWebContents(win, editMenuItems);
+  prepareWebContents(win, editMenuItems, zoom.step);
   loadPage(win);
   return win;
 }
@@ -91,22 +111,29 @@ function createWindow(e2e: boolean): BrowserWindow {
 function prepareWebContents(
   win: BrowserWindow,
   menuItems: (params: ContextMenuParams) => MenuItemConstructorOptions[] | null,
+  zoom: (step: ZoomStep) => void,
 ): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
-  // With no menu off the Mac, DevTools are Ctrl+Shift+I there and Settings Ctrl+, (caught here, before a focused
-  // terminal gets the key); the Mac keeps its menus' View ▸ DevTools and Mainframe ▸ Settings… (Cmd+,).
+  // Caught here, before a focused terminal gets the key. Zoom on every platform: + is Shift+= on many layouts,
+  // which a menu's Cmd+Plus misses, and the catch keeps the Mac's View menu from zooming a second time.
+  // With no menu off the Mac, DevTools are Ctrl+Shift+I there and Settings Ctrl+,; the Mac keeps its menus'
+  // View ▸ DevTools and Mainframe ▸ Settings… (Cmd+,).
+  win.webContents.on('before-input-event', (event, input) => {
+    const step = zoomKey(input, onMac);
+    if (step) {
+      event.preventDefault();
+      zoom(step);
+    } else if (!onMac && isDevToolsKey(input)) {
+      event.preventDefault();
+      win.webContents.toggleDevTools();
+    } else if (!onMac && isSettingsKey(input)) {
+      event.preventDefault();
+      // Settings show in Mainframe's window, also when the key comes from the diff window above it.
+      sendTo(win.getParentWindow() ?? win, IPC.showSettings, null);
+    }
+  });
   if (!onMac) {
-    win.webContents.on('before-input-event', (event, input) => {
-      if (isDevToolsKey(input)) {
-        event.preventDefault();
-        win.webContents.toggleDevTools();
-      } else if (isSettingsKey(input)) {
-        event.preventDefault();
-        // Settings show in Mainframe's window, also when the key comes from the diff window above it.
-        sendTo(win.getParentWindow() ?? win, IPC.showSettings, null);
-      }
-    });
     // A right-click gets the window's menu there; the Mac gets none. In Mainframe's, a right-click on
     // something editable gets Copy and Paste. In a terminal xterm has already focused its textarea and
     // filled it with the selection, so the roles' DOM copy and paste reach the terminal's own handlers,
@@ -195,6 +222,7 @@ async function start(
   agents: AgentsInUse,
   projectDirs: string[],
   win: BrowserWindow,
+  zoom: WindowZoom,
 ): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
@@ -329,16 +357,21 @@ async function start(
     }
   };
   // The menu `launch` set, with Open Project… and Settings… enabled now.
-  if (onMac) Menu.setApplicationMenu(buildMenu({ openProject: () => void openPicked(), openSettings: () => toWindow(IPC.showSettings, null) }));
+  if (onMac) {
+    Menu.setApplicationMenu(
+      buildMenu({ zoom: zoom.step, openProject: () => void openPicked(), openSettings: () => toWindow(IPC.showSettings, null) }),
+    );
+  }
   registerSettingsIpc(agents, (name) => pickAgent(win, name));
   const diffWindow = new DiffWindow({
     parent: win,
     dataDir: config.dataDir,
     hidden: config.e2e && onMac,
     prepare: (w) => {
-      prepareWebContents(w, copyMenuItems);
+      prepareWebContents(w, copyMenuItems, zoom.step);
       loadPage(w, 'diff');
     },
+    zoomFactor: zoom.factor,
     warn: console.warn,
   });
   // Closed first, so it never keeps the app running: `window-all-closed` ends it once both have gone.
@@ -375,12 +408,13 @@ function failStart(err: unknown): void {
 async function launch(config: AppConfig): Promise<void> {
   const programs = findPrograms();
   // Set before the window, which would get Electron's default menu: its Ctrl+W (Cmd+W on the Mac) would
-  // close the window, which quits Mainframe and ends every session, and it would bring reload and zoom.
-  // The Mac's own menu is there from the first moment, with Open Project… disabled until `start` sets it
-  // again with the projects to open into. Windows and Linux get no menu, so no menu bar: Open Project… is
-  // the project list's button there.
-  Menu.setApplicationMenu(onMac ? buildMenu() : null);
-  const win = createWindow(config.e2e);
+  // close the window, which quits Mainframe and ends every session, and it would bring reload and its own
+  // zoom, which forgets its level at quit. The Mac's own menu is there from the first moment, with Open
+  // Project… disabled until `start` sets it again with the projects to open into. Windows and Linux get no
+  // menu, so no menu bar: Open Project… is the project list's button there.
+  const zoom = windowZoom(config.dataDir);
+  Menu.setApplicationMenu(onMac ? buildMenu({ zoom: zoom.step }) : null);
+  const win = createWindow(config.e2e, zoom);
   // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {
     if (win.isDestroyed()) return;
@@ -420,7 +454,7 @@ async function launch(config: AppConfig): Promise<void> {
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),
     start: async (found, dirs) => {
-      if (!quitting) await start(config, programs, agentsFrom(found), dirs, win);
+      if (!quitting) await start(config, programs, agentsFrom(found), dirs, win, zoom);
     },
     warn: console.warn,
   });

@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { cleanUp, launchApp } from './launch';
+import { cleanUp, launchApp, pressWindowKey } from './launch';
 import { card, git, ids, repo, startTask } from './tasks';
 
 test.afterEach(cleanUp);
@@ -152,6 +152,25 @@ test('the diff window opens at the size it was left', async () => {
   const again = await openFrom(app, rows.nth(1));
   await expect(again.getByTestId('diff-file')).toHaveCount(2);
   expect(await diffWindow()).toEqual([900, 600]);
+  await app.close();
+});
+
+test("the diff window opens at Mainframe's zoom, and a zoom key in it zooms both windows", async () => {
+  const { app, rows } = await withTask();
+  await pressWindowKey(app, '=');
+  const diff = await openFrom(app, rows.nth(1));
+  await expect(diff.getByTestId('diff-file')).toHaveCount(2);
+  const levels = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      const all = BrowserWindow.getAllWindows();
+      const mainframe = all.find((w) => w.getParentWindow() === null)!;
+      // Mainframe's first; rounded, as a window opened at a zoom reads it back a hair off.
+      return [mainframe, all.find((w) => w !== mainframe)!].map((w) => Math.round(w.webContents.getZoomLevel() * 100) / 100);
+    });
+  expect(await levels()).toEqual([0.5, 0.5]);
+
+  await pressWindowKey(app, '=', { inDiff: true });
+  await expect.poll(levels).toEqual([1, 1]);
   await app.close();
 });
 

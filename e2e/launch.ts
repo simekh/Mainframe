@@ -113,6 +113,22 @@ export async function setWindowWidth(app: ElectronApplication, page: Page, width
   await page.waitForFunction((w) => window.innerWidth === w, width);
 }
 
+/**
+ * Presses Cmd (Ctrl off the Mac) and `keyCode` down in Mainframe's window, or with `inDiff` the diff window.
+ * Sent through Electron, not Playwright: on the Mac, Cmd keys Playwright presses never reach the window's
+ * `before-input-event`.
+ */
+export async function pressWindowKey(app: ElectronApplication, keyCode: string, o: { inDiff?: boolean; shift?: boolean } = {}): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, { keyCode, inDiff, shift }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => (w.getParentWindow() === null) !== inDiff)!;
+      const mod = process.platform === 'darwin' ? 'meta' : 'control';
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: shift ? [mod, 'shift'] : [mod] });
+    },
+    { keyCode, inDiff: o.inDiff ?? false, shift: o.shift ?? false },
+  );
+}
+
 // What `require('electron')` gives Node: the path of the Electron binary.
 const electronBin: string = require('electron');
 
