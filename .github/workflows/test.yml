@@ -3,11 +3,14 @@ name: Tests
 # A run by hand can be narrowed to one system and some e2e tests, for a quicker answer while
 # troubleshooting, e.g.:
 #   gh workflow run test.yml --ref <branch> -f os=windows-latest -f e2e=e2e/diff.e2e.ts
-# A narrowed run skips the typecheck, the unit tests and the Linux start checks. Branches named
-# diag-* run nothing on push, so a diagnostic branch runs only what is asked for by hand.
+# Given e2e files or a title, it runs only those tests, without the typecheck, the unit tests and
+# the Linux start checks. Branches named diag-* run nothing on push, so a diagnostic branch runs
+# only what is asked for by hand.
 on:
   push:
     branches-ignore: ['diag-*']
+    # With only a branch filter, a tag push would run nothing.
+    tags: ['**']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -101,11 +104,11 @@ jobs:
           # With the helper set up, Mainframe keeps the sandbox and says nothing.
           ! grep -q "without Chromium's sandbox" start.log
 
+      # The files split at spaces; the title filter stays one argument, as given.
       - name: E2E tests
-        if: ${{ !cancelled() }}
-        shell: bash
+        if: ${{ !cancelled() && runner.os != 'Windows' }}
         run: |
-          # The files split at spaces; the title filter stays one argument.
+          set -f
           args=($E2E_FILES)
           if [ -n "$E2E_GREP" ]; then args+=(-g "$E2E_GREP"); fi
           if [ "$RUNNER_OS" = Linux ]; then
@@ -114,6 +117,18 @@ jobs:
           else
             npm run test:e2e -- "${args[@]}"
           fi
+
+      # PowerShell, the runner's own shell there, as Git Bash would change the PATH Mainframe inherits.
+      # test:e2e's two halves, Playwright through node: PowerShell may eat the `--` npm needs.
+      - name: E2E tests (Windows)
+        if: ${{ !cancelled() && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $files = @(-split $env:E2E_FILES | Where-Object { $_ })
+          $grep = if ($env:E2E_GREP) { @('-g', $env:E2E_GREP) } else { @() }
+          npm run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node node_modules/@playwright/test/cli.js test @files @grep
 
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
