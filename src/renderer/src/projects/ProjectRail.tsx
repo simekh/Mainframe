@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch } from 'solid-js';
 import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import { needsYouCount } from '../tasksStore';
 import {
@@ -54,41 +54,61 @@ export default function ProjectRail() {
   /** The project whose close waits for the owner to confirm it. */
   const [confirming, setConfirming] = createSignal<string | null>(null);
   const [drag, setDrag] = createSignal<Drag | null>(null);
+  /** Ends the press under way, if any, without moving its project. */
+  let letGo: (() => void) | undefined;
+  // The list going, or a project opening or closing, leaves nothing the drag measured true.
+  createEffect(on([railState, () => projectsStore.projects.map((p) => p.dir).join('\n')], () => letGo?.(), { defer: true }));
 
   /**
    * A press on a row, past the threshold, drags it along the list, kept within it; the others slide to make room, and
    * letting go moves the project there. Not from the row's own buttons, nor from its close question.
    */
-  const pressRow = (e: PointerEvent & { currentTarget: HTMLLIElement }, dir: string, from: number) => {
+  const pressRow = (e: PointerEvent & { currentTarget: HTMLLIElement }, dir: string) => {
     if (e.button !== 0 || (e.target as Element).closest('.rail-act, .rail-confirm')) return;
     const list = e.currentTarget.parentElement!;
-    const rows = [...list.children].map((el) => el.getBoundingClientRect());
-    const mids = rows.map((r) => r.top + r.height / 2);
-    const own = rows[from];
-    const slot = own.height + (parseFloat(getComputedStyle(list).rowGap) || 0);
-    const [min, max] = [rows[0].top - own.top, rows[rows.length - 1].bottom - own.bottom];
     const startY = e.clientY;
+    // Only once the press is a drag: a plain click needs none of it.
+    const measure = () => {
+      const from = projectsStore.projects.findIndex((p) => p.dir === dir);
+      const rows = [...list.children].map((el) => el.getBoundingClientRect());
+      const own = rows[from];
+      return {
+        from,
+        mids: rows.map((r) => r.top + r.height / 2),
+        slot: own.height + (parseFloat(getComputedStyle(list).rowGap) || 0),
+        min: rows[0].top - own.top,
+        max: rows[rows.length - 1].bottom - own.bottom,
+      };
+    };
+    let measured: ReturnType<typeof measure> | undefined;
     // On the window, not captured: a capture would take the click of a short press away from the row's button.
     const move = (ev: PointerEvent) => {
-      if (drag() === null && Math.abs(ev.clientY - startY) < DRAG_THRESHOLD) return;
+      // Its pointerup went astray.
+      if ((ev.buttons & 1) === 0) return stop();
+      if (measured === undefined && Math.abs(ev.clientY - startY) < DRAG_THRESHOLD) return;
+      measured ??= measure();
+      const { from, mids, slot, min, max } = measured;
       const dy = Math.min(Math.max(ev.clientY - startY, min), max);
       setDrag({ dir, from, to: dropIndex(mids, from, mids[from] + dy), dy, slot });
     };
-    const end = (ev: PointerEvent) => {
+    const stop = () => {
       window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-      const done = drag();
-      if (done === null) return;
+      window.removeEventListener('pointerup', drop);
+      window.removeEventListener('pointercancel', stop);
+      letGo = undefined;
       setDrag(null);
-      if (ev.type === 'pointerup') {
-        swallowClick();
-        moveProjectTo(done.dir, done.to);
-      }
+    };
+    const drop = () => {
+      const done = drag();
+      stop();
+      if (done === null) return;
+      swallowClick();
+      moveProjectTo(done.dir, done.to);
     };
     window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
+    window.addEventListener('pointerup', drop);
+    window.addEventListener('pointercancel', stop);
+    letGo = stop;
   };
   const several = () => projectsStore.layout.shown.length > 1;
   // Only the strip shows it.
@@ -169,7 +189,7 @@ export default function ProjectRail() {
                     data-focused={String(isFocused(project.dir))}
                     data-dragging={String(dragged())}
                     style={{ transform: offset() === 0 ? undefined : `translateY(${offset()}px)` }}
-                    onPointerDown={(e) => pressRow(e, project.dir, index())}
+                    onPointerDown={(e) => pressRow(e, project.dir)}
                   >
                     <Show
                       when={confirming() === project.dir}

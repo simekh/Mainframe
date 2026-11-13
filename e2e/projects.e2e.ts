@@ -245,6 +245,58 @@ test('dragging a row moves its project in the list; a short press is still a cli
   await app.close();
 });
 
+test('a drag lets go of the row, moving nothing, when the list goes, a project closes, or the button is up', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  const dragging = page.locator('[data-testid=rail-project][data-dragging=true]');
+  const press = async (dir: string, dy: number) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    const [x, y] = [r.x + 20, r.y + r.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy, { steps: 4 });
+    return { x, y };
+  };
+  const rowStep = (await boxOf(row(page, b))).y - (await boxOf(row(page, a))).y;
+
+  // Turned off mid-drag, from the keyboard: letting go afterwards moves nothing.
+  await press(a, 2 * rowStep);
+  await expect(dragging).toHaveCount(1);
+  await page.getByTestId('projects-toggle').focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('project-rail')).toHaveCount(0);
+  await page.mouse.up();
+  await page.getByTestId('projects-toggle').click();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+
+  // A move reported with no button held (its pointerup went astray) ends the drag.
+  const at = await press(b, 2);
+  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, buttons: 0 })), {
+    x: at.x,
+    y: at.y + rowStep,
+  });
+  await expect(dragging).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+
+  // A project that closes mid-drag lets go of the row: c, on its way to the top, stays where it is.
+  await press(c, -2 * rowStep);
+  await expect(dragging).toHaveCount(1);
+  await row(page, a).getByTestId('rail-show').focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(row(page, a).getByTestId('rail-close')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('rail-close-confirm').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('rail-project')).toHaveCount(2);
+  await expect(dragging).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => openProjects(dataDir)).toEqual([b, c]);
+  await expect.poll(() => listOrder(page)).toEqual([b, c]);
+  await app.close();
+});
+
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);
