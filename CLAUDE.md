@@ -51,3 +51,14 @@ A branch without a plan (a fix, a config tweak) gets both once its work is done 
 - This file and `.claude/hooks` are in git (re-included in `.gitignore` past the owner's global ignore). `.claude/settings.local.json` stays local: it registers the gate, which needs this machine's `.git/claude-*` records. Another machine registers it the same way, as a PreToolUse hook on `Bash` that runs the script with `"onFailure": "block"`.
 - When this folder is on a branch without the script, the registration blocks the Bash commands that mention push, merge or pull. A merge that brings the script in runs as one command from a branch that has it: `git -C <repo> checkout main && git -C <repo> merge <branch>`.
 - The script is an identical copy of Damela's, Word²'s and SmasHit's: change all four together. Tests: `bash .claude/hooks/code-review-gate.test.sh` (throwaway repo); run them after any change.
+
+## Troubleshooting Windows or Linux: a narrowed CI run (since 2026-11-13)
+
+This Mac can't run Windows, so a Windows-only failure is checked on CI. Don't wait on a full run of all three systems (10-12 minutes) to see one test: run only that system and those tests by hand, which takes a few minutes.
+
+- `gh workflow run test.yml --ref <branch> -f os=windows-latest -f e2e=e2e/diff.e2e.ts` (add `-f grep='<title part>'` for one test), then `gh run list --workflow test.yml --event workflow_dispatch -L 1` for its id and `gh run watch <id>`. A narrowed run skips the typecheck, the unit tests and the Linux start checks.
+- Put throwaway diagnostics (logging, probe tests) on a branch named `diag-*`: pushing it runs nothing, so only the narrowed run you start goes. Delete it once CI has answered; it is never merged.
+- The gate still covers a `diag-*` push. Its commits need both runs, or the owner's waiver for that branch.
+- Keys Playwright presses never pass the window's `before-input-event`; e2e tests press the window's own keys with `pressWindowKey`. On Windows, Git Bash's `cat -v` gets no kitty keys through ConPTY; `e2e/raw-reader.cjs` reads raw, as Claude Code does.
+
+**Why:** on 2026-11-13 three Windows-only failures took a full CI run per attempt to diagnose. The owner asked for quicker loops; a Windows VM on this Mac was weighed and left for later.
