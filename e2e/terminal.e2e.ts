@@ -260,8 +260,9 @@ test('a copy with nothing selected sends a program that keeps its own selection 
 
   // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. The copy
   // waits for the reader to be reading: before, the terminal has nothing to hand the copy to.
-  const reader = join(__dirname, 'raw-reader.cjs').replace(/\\/g, '/');
-  await run(page, `printf '\\e[?1000h\\e[?u'; node '${reader}'`);
+  // The tests' own Node, not the session's PATH's; forward slashes, as Git Bash takes them on Windows.
+  const [node, reader] = [process.execPath, join(__dirname, 'raw-reader.cjs')].map((p) => p.replace(/\\/g, '/'));
+  await run(page, `printf '\\e[?1000h\\e[?u'; '${node}' '${reader}'`);
   await expect.poll(() => screen(page, a)).toMatch(/^raw-reader-ready$/m);
   // On the Mac, Playwright's Cmd+C runs Chromium's Copy, as the Edit menu does (its DOM copy event);
   // Windows and Linux copy with the terminal's own Ctrl+Shift+C.
