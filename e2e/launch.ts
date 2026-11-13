@@ -114,9 +114,9 @@ export async function setWindowWidth(app: ElectronApplication, page: Page, width
 }
 
 /**
- * Presses Cmd (Ctrl off the Mac) and `keyCode` in Mainframe's window, or with `inDiff` the diff window: down,
- * its character and up, as a keyboard does. For the window's own keys: sent through Electron, as keys Playwright
- * presses reach the page without passing the window's `before-input-event`, which catches them.
+ * Presses Cmd (Ctrl off the Mac) and `keyCode` in Mainframe's window, or with `inDiff` the diff window. Sent
+ * through Electron, not Playwright: keys Playwright presses never pass the window's `before-input-event`. Down,
+ * character and up, so a character that got past the catch would show in the page.
  */
 export async function pressWindowKey(app: ElectronApplication, keyCode: string, inDiff = false): Promise<void> {
   await app.evaluate(
