@@ -258,9 +258,8 @@ test('a copy with nothing selected sends a program that keeps its own selection 
   const a = await startTask(page);
   const keys = async () => (await screen(page, a)).split('^[[99;6u').length - 1;
 
-  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. The reader
-  // shows whatever arrives, an ESC as ^[. The copy waits for it to be reading: before, the terminal
-  // has nothing to hand the copy to.
+  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. The copy
+  // waits for the reader to be reading: before, the terminal has nothing to hand the copy to.
   const reader = join(__dirname, 'raw-reader.cjs').replace(/\\/g, '/');
   await run(page, `printf '\\e[?1000h\\e[?u'; node '${reader}'`);
   await expect.poll(() => screen(page, a)).toMatch(/^raw-reader-ready$/m);
