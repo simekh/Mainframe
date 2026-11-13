@@ -120,6 +120,7 @@ export function registerIpc(
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
   ipcMain.handle(IPC.closeProject, (_e, dir: string) => projects.close(dir));
+  ipcMain.handle(IPC.moveProject, (_e, dir: string, to: number) => projects.move(dir, to));
 
   const projectOf = (dir: string): Project => {
     const project = projects.get(dir);

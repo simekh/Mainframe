@@ -19,6 +19,7 @@ const api: MainframeApi = {
   listProjects: () => ipcRenderer.invoke(IPC.listProjects),
   openProject: () => ipcRenderer.invoke(IPC.openProject),
   closeProject: (dir) => ipcRenderer.invoke(IPC.closeProject, dir),
+  moveProject: (dir, to) => ipcRenderer.invoke(IPC.moveProject, dir, to),
   onProjects: (cb) => listen(IPC.projectsChanged, cb),
   onShowProject: (cb) => listen(IPC.showProject, cb),
   listTasks: (dir) => ipcRenderer.invoke(IPC.listTasks, dir),

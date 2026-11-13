@@ -32,6 +32,7 @@ export const IPC = {
   listProjects: 'projects:list',
   openProject: 'projects:open',
   closeProject: 'projects:close',
+  moveProject: 'projects:move',
   projectsChanged: 'projects:changed',
   showProject: 'projects:show',
   listTasks: 'tasks:list',
@@ -105,12 +106,14 @@ export interface MainframeApi {
   setupUseAgent(name: AgentName): Promise<void>;
   /** Asks for the first project's folder and starts Mainframe on it with this choice of agents; rejects a choice that can't be used. */
   setupChooseProject(choice: AgentChoice): Promise<void>;
-  /** The open projects, in the order the owner opened them. */
+  /** The open projects, in the order the list shows them. */
   listProjects(): Promise<ProjectView[]>;
   /** Asks for a folder and opens it as a project; main says why when it can't. */
   openProject(): Promise<void>;
   /** Ends the project's sessions as Quit does, so they come back when it opens again. */
   closeProject(dir: string): Promise<void>;
+  /** Puts the open project at `to` in the list; the new list comes back through `onProjects`. */
+  moveProject(dir: string, to: number): Promise<void>;
   /** Every change to the open projects, with the whole list. */
   onProjects(cb: (projects: ProjectView[]) => void): () => void;
   /** A project the owner just opened, or picked again while it was open, to bring on screen. */

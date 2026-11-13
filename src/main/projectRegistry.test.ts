@@ -13,6 +13,7 @@ afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const ACME = '/work/acme';
 const GLOBEX = '/work/globex';
+const INITECH = '/work/initech';
 
 function fakeSessions(ids: string[]) {
   const running = new Set(ids);
@@ -72,6 +73,37 @@ it('lists the projects in the order they were opened', async () => {
   await registry.open(ACME);
   expect(registry.list().map((p) => p.dir)).toEqual([GLOBEX, ACME]);
   expect(remembered()).toEqual([GLOBEX, ACME]);
+});
+
+it('moves a project to a new place in the list, remembers it, and says so', async () => {
+  const { registry, changes, remembered } = setup();
+  for (const dir of [ACME, GLOBEX, INITECH]) await registry.open(dir);
+  changes.length = 0;
+  registry.move(INITECH, 0);
+  expect(registry.list().map((p) => p.dir)).toEqual([INITECH, ACME, GLOBEX]);
+  expect(remembered()).toEqual([INITECH, ACME, GLOBEX]);
+  expect(changes.map((list) => list.map((p) => p.dir))).toEqual([[INITECH, ACME, GLOBEX]]);
+  registry.move(INITECH, 2);
+  expect(registry.list().map((p) => p.dir)).toEqual([ACME, GLOBEX, INITECH]);
+});
+
+it('clamps a move past either end of the list', async () => {
+  const { registry } = setup();
+  for (const dir of [ACME, GLOBEX, INITECH]) await registry.open(dir);
+  registry.move(ACME, 99);
+  expect(registry.list().map((p) => p.dir)).toEqual([GLOBEX, INITECH, ACME]);
+  registry.move(ACME, -5);
+  expect(registry.list().map((p) => p.dir)).toEqual([ACME, GLOBEX, INITECH]);
+});
+
+it('does nothing for a folder that is not open, or a move to the place it has', async () => {
+  const { registry, changes } = setup();
+  for (const dir of [ACME, GLOBEX]) await registry.open(dir);
+  changes.length = 0;
+  registry.move('/work/gone', 0);
+  registry.move(GLOBEX, 1);
+  expect(changes).toEqual([]);
+  expect(registry.list().map((p) => p.dir)).toEqual([ACME, GLOBEX]);
 });
 
 it('opens a project that is open already, or being opened, only once', async () => {
