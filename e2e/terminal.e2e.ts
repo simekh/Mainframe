@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
@@ -257,11 +258,12 @@ test('a copy with nothing selected sends a program that keeps its own selection 
   const a = await startTask(page);
   const keys = async () => (await screen(page, a)).split('^[[99;6u').length - 1;
 
-  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. cat -v
-  // shows whatever arrives, an ESC as ^[. The copy waits for the line to have run: before, the
-  // terminal has nothing to hand the copy to.
-  await run(page, "printf '\\e[?1000h\\e[?u'; echo ready-$((6*7)); cat -v");
-  await expect.poll(() => screen(page, a)).toMatch(/^ready-42$/m);
+  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. The reader
+  // shows whatever arrives, an ESC as ^[. The copy waits for it to be reading: before, the terminal
+  // has nothing to hand the copy to.
+  const reader = join(__dirname, 'raw-reader.cjs').replace(/\\/g, '/');
+  await run(page, `printf '\\e[?1000h\\e[?u'; node '${reader}'`);
+  await expect.poll(() => screen(page, a)).toMatch(/^raw-reader-ready$/m);
   // On the Mac, Playwright's Cmd+C runs Chromium's Copy, as the Edit menu does (its DOM copy event);
   // Windows and Linux copy with the terminal's own Ctrl+Shift+C.
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+Shift+C');
