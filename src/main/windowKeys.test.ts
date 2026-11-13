@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 
-const ctrlShiftI = { type: 'keyDown', key: 'I', control: true, shift: true, alt: false, meta: false };
+const ctrlShiftI = { type: 'keyDown', key: 'I', code: 'KeyI', control: true, shift: true, alt: false, meta: false };
 
 describe('isDevToolsKey', () => {
   it.each(['I', 'i'])('is Ctrl+Shift+I pressed down, with key %j', (key) => {
@@ -20,7 +20,7 @@ describe('isDevToolsKey', () => {
 });
 
 describe('isSettingsKey', () => {
-  const ctrlComma = { type: 'keyDown', key: ',', control: true, shift: false, alt: false, meta: false };
+  const ctrlComma = { type: 'keyDown', key: ',', code: 'Comma', control: true, shift: false, alt: false, meta: false };
 
   it('is Ctrl+, pressed down', () => {
     expect(isSettingsKey(ctrlComma)).toBe(true);
@@ -38,9 +38,10 @@ describe('isSettingsKey', () => {
 });
 
 describe('zoomKey', () => {
-  const key = (k: string, mods: { control?: boolean; meta?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
+  const key = (k: string, mods: { control?: boolean; meta?: boolean; shift?: boolean; alt?: boolean; code?: string } = {}) => ({
     type: 'keyDown',
     key: k,
+    code: 'Equal',
     control: false,
     shift: false,
     alt: false,
@@ -68,7 +69,8 @@ describe('zoomKey', () => {
     ['Cmd+Ctrl+= on the Mac', key('=', { meta: true, control: true }), true],
     ['Ctrl+Alt+=, which AltGr+= arrives as on Windows', key('=', { control: true, alt: true }), false],
     ['its keyUp', { ...key('=', { control: true }), type: 'keyUp' }, false],
-    ['Ctrl+1', key('1', { control: true }), false],
+    ['Ctrl+1', key('1', { control: true, code: 'Digit1' }), false],
+    ["Ctrl+6 on AZERTY, whose 6 types - (a project's key on the board)", key('-', { control: true, code: 'Digit6' }), false],
     ['= alone', key('='), false],
   ])('is nothing for %s', (_name, input, onMac) => {
     expect(zoomKey(input, onMac)).toBeNull();

@@ -70,6 +70,7 @@ function readConfig(): AppConfig | Error {
 function windowZoom(dataDir: string) {
   let level = readZoomLevel(dataDir, console.warn);
   return {
+    level: () => level,
     factor: () => zoomFactorOf(level),
     step: (step: ZoomStep) => {
       // A held key repeats: at a limit, or 0 on a reset, there is nothing to set or save.
@@ -105,7 +106,7 @@ function createWindow(e2e: boolean, zoom: WindowZoom): BrowserWindow {
     titleBarStyle: onMac ? 'hiddenInset' : 'default',
     webPreferences: webPreferences(zoom.factor()),
   });
-  prepareWebContents(win, editMenuItems, zoom.step);
+  prepareWebContents(win, editMenuItems, zoom);
   loadPage(win);
   return win;
 }
@@ -114,10 +115,12 @@ function createWindow(e2e: boolean, zoom: WindowZoom): BrowserWindow {
 function prepareWebContents(
   win: BrowserWindow,
   menuItems: (params: ContextMenuParams) => MenuItemConstructorOptions[] | null,
-  zoom: (step: ZoomStep) => void,
+  zoom: WindowZoom,
 ): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+  // The window opened at the zoom of its making; a zoom key pressed while its page loaded did not hold.
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomLevel(zoom.level()));
   // Caught here, before a focused terminal gets the key. Zoom on every platform: + is Shift+= on many layouts,
   // which a menu's Cmd+Plus misses, and the catch keeps the Mac's View menu from zooming a second time.
   // With no menu off the Mac, DevTools are Ctrl+Shift+I there and Settings Ctrl+,; the Mac keeps its menus'
@@ -126,7 +129,7 @@ function prepareWebContents(
     const step = zoomKey(input, onMac);
     if (step) {
       event.preventDefault();
-      zoom(step);
+      zoom.step(step);
     } else if (!onMac && isDevToolsKey(input)) {
       event.preventDefault();
       win.webContents.toggleDevTools();
@@ -371,7 +374,7 @@ async function start(
     dataDir: config.dataDir,
     hidden: config.e2e && onMac,
     prepare: (w) => {
-      prepareWebContents(w, copyMenuItems, zoom.step);
+      prepareWebContents(w, copyMenuItems, zoom);
       loadPage(w, 'diff');
     },
     warn: console.warn,

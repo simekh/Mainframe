@@ -1,7 +1,7 @@
 // The window's own keys, read from Electron's `before-input-event` input. No `electron` import here,
 // so a unit test never loads it.
 
-type Input = { type: string; key: string; control: boolean; shift: boolean; alt: boolean; meta: boolean };
+type Input = { type: string; key: string; code: string; control: boolean; shift: boolean; alt: boolean; meta: boolean };
 
 /**
  * Ctrl+Shift+I pressed down: DevTools on Windows and Linux, as in Chrome and VS Code. Never with Alt,
@@ -21,11 +21,12 @@ export function isSettingsKey(input: Input): boolean {
  * browsers. + and = both zoom in, as + is Shift+= on many layouts and a key of its own on others. Never with
  * Alt (AltGr on Windows), nor with the other of Cmd and Ctrl. Off the Mac this takes Ctrl+- from the terminals,
  * which read it as Ctrl+_ (undo in shells and agents' prompts), as VS Code and browsers do; Ctrl+Shift+- still
- * reaches them, as its key is _.
+ * reaches them, as its key is _. Never the 1 to 9 keys, which the board's projects take by place (AZERTY's 6
+ * types -).
  */
 export function zoomKey(input: Input, onMac: boolean): 'in' | 'out' | 'reset' | null {
   const mod = onMac ? input.meta && !input.control : input.control && !input.meta;
-  if (input.type !== 'keyDown' || !mod || input.alt) return null;
+  if (input.type !== 'keyDown' || !mod || input.alt || /^Digit[1-9]$/.test(input.code)) return null;
   if (input.key === '+' || input.key === '=') return 'in';
   if (input.key === '-') return 'out';
   if (input.key === '0') return 'reset';
