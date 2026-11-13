@@ -316,6 +316,27 @@ test('a drag lets go of the row, moving nothing, when the list goes, a project c
   await app.close();
 });
 
+test('a new press on a row lets go of an earlier one whose pointerup went astray', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b, c]);
+  const centre = async (dir: string) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    return { x: r.x + 20, y: r.y + r.height / 2 };
+  };
+  const [onA, onB] = [await centre(a), await centre(b)];
+  await page.mouse.move(onA.x, onA.y);
+  await page.mouse.down();
+  // The next press the window hears of is on b: a's pointerup never came.
+  await row(page, b).getByTestId('rail-show').dispatchEvent('pointerdown', { button: 0, buttons: 1, clientX: onB.x, clientY: onB.y });
+  // Back in the window, the pointer is on b at once.
+  await page.mouse.move(onB.x, onB.y);
+  // Only b's press is left, and it hasn't moved: a stays put.
+  await expect(page.locator('[data-testid=rail-project][data-dragging=true]')).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+  await app.close();
+});
+
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);

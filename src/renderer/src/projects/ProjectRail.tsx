@@ -65,6 +65,8 @@ export default function ProjectRail() {
    */
   const pressRow = (e: PointerEvent & { currentTarget: HTMLLIElement }, dir: string) => {
     if (e.button !== 0 || (e.target as Element).closest('.rail-act, .rail-confirm')) return;
+    // One whose pointerup went astray.
+    letGo?.();
     const list = e.currentTarget.parentElement!;
     const startY = e.clientY;
     // Only once the press is a drag: a plain click needs none of it.
