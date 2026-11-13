@@ -5,9 +5,9 @@ import { ADAPTERS } from '../src/main/agents/adapters';
 import { rolePrompt } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, ids, isOnTop, launches, managerDir,
-  managerLaunches, managerScreen, managerTermSize, mcpCall, middle, report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine,
-  sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
+  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, framesWhile, ids, isOnTop, launches,
+  managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, middle, report, repo, ROW_HEIGHT, run, screen,
+  sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -28,28 +28,6 @@ const resumeArgs = (dataDir: string, id: string, ...prompt: string[]) => [
   '--resume', id, '--mcp-config', filesOf(dataDir).mcp, '--settings', filesOf(dataDir).settings,
   '--append-system-prompt', rolePrompt(ADAPTERS.claude.instructions), ...prompt,
 ];
-
-/**
- * Whether the island shows at any of `points` on any frame from now, while `act` folds or opens it, until it has
- * stopped moving: what a click there would land on, read inside the page, so no frame is missed.
- */
-async function shownAtWhile(page: Page, testId: string, points: { x: number; y: number }[], act: () => Promise<void>) {
-  type Probe = { shownAt: { hit: boolean; done: boolean } };
-  await page.getByTestId(testId).evaluate((el, points) => {
-    const probe: Probe['shownAt'] = { hit: false, done: false };
-    (window as unknown as Probe).shownAt = probe;
-    const from = el.getAttribute('data-open');
-    const sample = () => {
-      probe.hit ||= points.some(({ x, y }) => el.contains(document.elementFromPoint(x, y)));
-      if (el.getAttribute('data-open') === from || el.getAnimations().length > 0) requestAnimationFrame(sample);
-      else probe.done = true;
-    };
-    requestAnimationFrame(sample);
-  }, points);
-  await act();
-  await page.waitForFunction(() => (window as unknown as Probe).shownAt.done);
-  return page.evaluate(() => (window as unknown as Probe).shownAt.hit);
-}
 
 const focusInManager = (page: Page) =>
   page.evaluate(() => document.activeElement?.closest('[data-testid=manager-column]') != null);
@@ -329,9 +307,11 @@ test('beside a pinned Todo panel that gives way to it, the pinned manager folds 
   // Todo panel or in the one between them, as it would sliding under that panel to the pane's edge.
   const todo = await box(page, 'todo-panel');
   const gaps = [(await box(page, 'project-pane')).x + 4, todo.x + todo.width + 4].map((x) => ({ x, y: middle(todo) }));
-  expect(await shownAtWhile(page, 'manager-column', gaps, () => page.getByTestId('manager-fold').click())).toBe(false);
+  const shownIn = async (act: () => Promise<void>) =>
+    (await framesWhile(page, 'manager-column', act, gaps)).some((frame) => frame.shownAt);
+  expect(await shownIn(() => page.getByTestId('manager-fold').click())).toBe(false);
   await expect(column).toBeHidden();
-  expect(await shownAtWhile(page, 'manager-column', gaps, () => page.getByTestId('manager-strip').click())).toBe(false);
+  expect(await shownIn(() => page.getByTestId('manager-strip').click())).toBe(false);
   await expect(column).toBeVisible();
 
   // Off is nothing at all: its room goes to the Todo panel, and it goes at once, on no frame right of where it stood.

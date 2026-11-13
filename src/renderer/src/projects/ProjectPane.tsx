@@ -124,7 +124,8 @@ export default function ProjectPane(props: {
   };
   // The floating Todo panel lies over the open manager, pinned or floating: the one not in front is under the other,
   // and its strip brings it up rather than folding it.
-  const overlap = () => todo() === 'open' && !todoPrefs().pinned && managerState() === 'open';
+  const behind = (panel: 'todo' | 'manager') =>
+    front() !== panel && todo() === 'open' && !todoPrefs().pinned && managerState() === 'open';
   // The manager's strip, while it shows, is left of the floating Todo panel, so that panel never covers it.
   const managerStrip = () => stripShows(managerState(), managerPinned());
   // A press or the focus in either panel puts it in front; their strips do it as they open them.
@@ -270,7 +271,7 @@ export default function ProjectPane(props: {
             onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
             state={todo()}
             onOpenChange={(open) => showTodo(open ? 'open' : 'folded')}
-            behind={overlap() && front() === 'manager'}
+            behind={behind('todo')}
             floatLeft={16 + STRIP_WIDTH + (managerStrip() ? STRIP_WIDTH + 8 : 0)}
             ticket={ticket()}
             onTicketChange={setTicket}
@@ -286,7 +287,7 @@ export default function ProjectPane(props: {
             onPinnedChange={keepManagerPinned}
             state={managerState()}
             onOpenChange={openManager}
-            behind={overlap() && front() === 'todo'}
+            behind={behind('manager')}
           />
 
           <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>

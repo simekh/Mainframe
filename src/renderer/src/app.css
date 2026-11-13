@@ -739,8 +739,8 @@ html[data-platform='darwin'] .setup-titlebar {
 /* --- The Todo panel: the project's to-do list, at its pane's far left ------------------------ */
 
 /* An island like the manager's column, at the owner's width. Pinned or floating, it is on the session panel's floating
-   layer, above the floating manager's: the manager slides away under it, and the session panel's float, after it,
-   still covers it, unless it holds a ticket (the raised rule below). Its header is measured against its own width. */
+   layer, above the floating manager's unless the owner used the manager last, and the session panel's float, after
+   it, still covers it, unless it holds a ticket (the raised rule below). Its header is measured against its own width. */
 .todo-panel {
   container-type: inline-size;
   margin: 0 0 8px 8px;

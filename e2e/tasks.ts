@@ -162,21 +162,32 @@ export const isOnTop = (locator: Locator) =>
  * Each is read inside the page, so no frame is missed.
  */
 export async function edgesWhile(page: Page, testId: string, edge: 'left' | 'right', act: () => Promise<void>): Promise<number[]> {
-  type Probe = { slide: { edges: number[]; done: boolean } };
-  await page.getByTestId(testId).evaluate((el, side) => {
-    const slide: Probe['slide'] = { edges: [], done: false };
+  return (await framesWhile(page, testId, act)).map((frame) => frame[edge]);
+}
+
+/**
+ * The island on every frame from now, while `act` folds or opens it, until it has stopped moving: its edges, and
+ * whether it shows at any of `points`, as what a click there would land on. Each is read inside the page, so no frame
+ * is missed.
+ */
+export async function framesWhile(page: Page, testId: string, act: () => Promise<void>, points: { x: number; y: number }[] = []) {
+  type Frame = { left: number; right: number; shownAt: boolean };
+  type Probe = { slide: { frames: Frame[]; done: boolean } };
+  await page.getByTestId(testId).evaluate((el, points) => {
+    const slide: Probe['slide'] = { frames: [], done: false };
     (window as unknown as Probe).slide = slide;
     const from = el.getAttribute('data-open');
     const sample = () => {
-      slide.edges.push(el.getBoundingClientRect()[side]);
+      const { left, right } = el.getBoundingClientRect();
+      slide.frames.push({ left, right, shownAt: points.some(({ x, y }) => el.contains(document.elementFromPoint(x, y))) });
       if (el.getAttribute('data-open') === from || el.getAnimations().length > 0) requestAnimationFrame(sample);
       else slide.done = true;
     };
     requestAnimationFrame(sample);
-  }, edge);
+  }, points);
   await act();
   await page.waitForFunction(() => (window as unknown as Probe).slide.done);
-  return page.evaluate(() => (window as unknown as Probe).slide.edges);
+  return page.evaluate(() => (window as unknown as Probe).slide.frames);
 }
 
 /**

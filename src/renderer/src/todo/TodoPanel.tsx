@@ -99,8 +99,8 @@ function StopIcon() {
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
  * asks of the owner, and the ticket of the item open. Pinned and open, it takes the pane's left edge and the manager
  * sits right of it; unpinned, it floats over the manager right of the strips, as that floats over the board, and under
- * it while the manager is the one used last. Folded,
- * pinned or not, it slides away and leaves its strip at the pane's edge.
+ * it while the manager is the one used last. Folded, pinned or not, it slides away and leaves its strip at the pane's
+ * edge.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
