@@ -204,7 +204,8 @@ test('Alt+Up and Alt+Down on a row move its project in the list, Cmd+1 follows, 
   await expect.poll(() => listOrder(page)).toEqual([b, a, c]);
   await expect.poll(() => openProjects(dataDir)).toEqual([b, a, c]);
   await page.keyboard.press('ControlOrMeta+1');
-  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
   await app.close();
 
   const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, openProjects(dataDir));
