@@ -332,7 +332,13 @@ html[data-platform='darwin'] .top-row {
   color: var(--fg);
 }
 
+/* On: blue, under the pointer too, with hover's tint in blue as the top row's open toggles have it. */
 .rail-act[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.rail-act[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
 

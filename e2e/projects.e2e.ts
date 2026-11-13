@@ -245,6 +245,25 @@ test('dragging a row moves its project in the list; a short press is still a cli
   await app.close();
 });
 
+test("a row's Show beside button, on, stays blue under the pointer", async () => {
+  const [a, b] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b]);
+  const beside = await rowButton(page, b, 'rail-beside');
+  await beside.click();
+  await expect(beside).toHaveAttribute('aria-pressed', 'true');
+  await beside.hover();
+  const [color, accent] = await beside.evaluate((button) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const colors = [getComputedStyle(button).color, getComputedStyle(probe).color];
+    probe.remove();
+    return colors;
+  });
+  expect(color).toBe(accent);
+  await app.close();
+});
+
 test('a drag lets go of the row, moving nothing, when the list goes, a project closes, or the button is up', async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);
