@@ -185,6 +185,33 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await app.close();
 });
 
+/** The open projects, top to bottom, as the list shows them. */
+const listOrder = (page: Page) =>
+  page.getByTestId('rail-project').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-project')));
+
+test('Alt+Up and Alt+Down on a row move its project in the list, Cmd+1 follows, and a restart keeps the order', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  await row(page, a).getByTestId('rail-show').focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect.poll(() => listOrder(page)).toEqual([b, a, c]);
+  await expect(row(page, a).getByTestId('rail-show')).toBeFocused();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect.poll(() => listOrder(page)).toEqual([b, c, a]);
+  // Already last: nothing moves.
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect.poll(() => listOrder(page)).toEqual([b, a, c]);
+  await expect.poll(() => openProjects(dataDir)).toEqual([b, a, c]);
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(pane(page, b)).toHaveAttribute('data-focused', 'true');
+  await app.close();
+
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, openProjects(dataDir));
+  await expect.poll(() => listOrder(again.page)).toEqual([b, a, c]);
+  await again.app.close();
+});
+
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);

@@ -6,6 +6,7 @@ import {
   focusProject,
   isFocused,
   isShown,
+  moveProjectTo,
   offScreenNeedsYou,
   openProject,
   projectsStore,
@@ -87,7 +88,7 @@ export default function ProjectRail() {
 
           <ul class="rail-list">
             <For each={projectsStore.projects}>
-              {(project) => {
+              {(project, index) => {
                 const count = createMemo(() => needsYouCount(project.dir));
                 // On screen beside others, so its button takes it off; the last one on screen stays.
                 const beside = () => isShown(project.dir) && several();
@@ -110,6 +111,15 @@ export default function ProjectRail() {
                             aria-current={isFocused(project.dir) ? 'true' : undefined}
                             onMouseDown={keepFocus}
                             onClick={() => focusProject(project.dir)}
+                            onKeyDown={(e) => {
+                              const step = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+                              if (step === undefined || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                              e.preventDefault();
+                              const button = e.currentTarget;
+                              moveProjectTo(project.dir, index() + step);
+                              // Moving its row drops the focus from it.
+                              queueMicrotask(() => button.focus());
+                            }}
                           >
                             <i aria-hidden="true" />
                             <span class="rail-label">{project.name}</span>
