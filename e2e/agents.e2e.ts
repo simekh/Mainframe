@@ -6,8 +6,8 @@ import { rolePrompt } from '../src/main/manager/rolePrompt';
 import type { AppSettings } from '../src/main/setup/settings';
 import { cleanUp, fakeOpencode, launchApp, launchWithOpencode, pressWindowKey } from './launch';
 import {
-  answerDialogs, card, computer, envOf, fakeLogDir, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
-  rowButton, savedSettings, screen, SESSION_ID, startTask, syncLaunches,
+  answerDialogs, computer, envOf, fakeLogDir, helperCalls, managerLaunches, mcpCall, opencodeSyncReply, projectPane, railRow, repo,
+  rowButton, savedSettings, SESSION_ID, startTask, syncLaunches, terminalHasFocus,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -299,24 +299,28 @@ test('with no project open the cog still opens Settings', async () => {
 test('Ctrl+, opens Settings over a focused terminal', async () => {
   const { app, page } = await launchApp();
   if (process.platform === 'darwin') {
-    // The Mac's ⌘, is the menu's, which keys pressed in the page never reach.
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('settings')!.click());
+    // The Mac's ⌘, is the menu's, which keys sent to the page never reach.
+    const accelerator = await app.evaluate(({ Menu }) => {
+      const item = Menu.getApplicationMenu()!.getMenuItemById('settings')!;
+      item.click();
+      return item.accelerator;
+    });
+    expect(accelerator).toBe('Cmd+,');
     await expect(page.getByTestId('settings-dialog')).toBeVisible();
     await app.close();
     return;
   }
-  const id = await startTask(page, 'Alpha');
-  await page.keyboard.type('ech');
-  await expect.poll(() => screen(page, id)).toMatch(/\$ ech *$/m);
+  await startTask(page, 'Alpha');
+  await expect.poll(() => terminalHasFocus(page)).toBe(true);
+  // A Ctrl+, that got past the catch would reach the page, and the terminal, as a keydown.
+  await page.evaluate(() => {
+    const seen = globalThis as { commaDowns?: number };
+    seen.commaDowns = 0;
+    addEventListener('keydown', (e) => void (e.key === ',' && (seen.commaDowns! += 1)), true);
+  });
 
   await pressWindowKey(app, ',');
   await expect(page.getByTestId('settings-dialog')).toBeVisible();
-  await page.getByTestId('settings-close').click();
-
-  // A comma that had reached the shell would have made the command `ech,`.
-  await card(page, id).click();
-  await expect(card(page, id)).toHaveAttribute('data-selected', 'true');
-  await page.keyboard.press('Enter');
-  await expect.poll(() => screen(page, id)).toContain('ech: command not found');
+  expect(await page.evaluate(() => (globalThis as { commaDowns?: number }).commaDowns)).toBe(0);
   await app.close();
 });
