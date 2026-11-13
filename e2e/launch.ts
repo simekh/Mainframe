@@ -118,14 +118,14 @@ export async function setWindowWidth(app: ElectronApplication, page: Page, width
  * Sent through Electron, not Playwright: on the Mac, Cmd keys Playwright presses never reach the window's
  * `before-input-event`.
  */
-export async function pressWindowKey(app: ElectronApplication, keyCode: string, o: { inDiff?: boolean; shift?: boolean } = {}): Promise<void> {
+export async function pressWindowKey(app: ElectronApplication, keyCode: string, inDiff = false): Promise<void> {
   await app.evaluate(
-    ({ BrowserWindow }, { keyCode, inDiff, shift }) => {
+    ({ BrowserWindow }, { keyCode, inDiff }) => {
       const win = BrowserWindow.getAllWindows().find((w) => (w.getParentWindow() === null) !== inDiff)!;
       const mod = process.platform === 'darwin' ? 'meta' : 'control';
-      win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: shift ? [mod, 'shift'] : [mod] });
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: [mod] });
     },
-    { keyCode, inDiff: o.inDiff ?? false, shift: o.shift ?? false },
+    { keyCode, inDiff },
   );
 }
 

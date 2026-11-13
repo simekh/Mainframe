@@ -24,8 +24,6 @@ export class DiffWindow implements DiffWindowControl {
       hidden: boolean;
       /** Sets up its page as Mainframe's is, and loads it. */
       prepare: (win: BrowserWindow) => void;
-      /** The windows' zoom at the moment, which a new window opens at. */
-      zoomFactor: () => number;
       warn: (msg: string) => void;
     },
   ) {}
@@ -67,7 +65,8 @@ export class DiffWindow implements DiffWindowControl {
       backgroundColor: APP_BACKGROUND,
       minWidth: 480,
       minHeight: 320,
-      webPreferences: webPreferences(this.o.zoomFactor()),
+      // At Mainframe's zoom, which every zoom key sets on both windows.
+      webPreferences: webPreferences(parent.webContents.getZoomFactor()),
     });
     // The page sets no title of its own, and index.html's would replace the task's.
     win.on('page-title-updated', (event) => event.preventDefault());

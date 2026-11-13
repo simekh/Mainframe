@@ -72,7 +72,10 @@ function windowZoom(dataDir: string) {
   return {
     factor: () => zoomFactorOf(level),
     step: (step: ZoomStep) => {
-      level = nextZoomLevel(level, step);
+      // A held key repeats: at a limit, or 0 on a reset, there is nothing to set or save.
+      const next = nextZoomLevel(level, step);
+      if (next === level) return;
+      level = next;
       // Each window is set: the built app's pages are files, and a file page's zoom stays its own window's.
       for (const w of BrowserWindow.getAllWindows()) w.webContents.setZoomLevel(level);
       try {
@@ -371,7 +374,6 @@ async function start(
       prepareWebContents(w, copyMenuItems, zoom.step);
       loadPage(w, 'diff');
     },
-    zoomFactor: zoom.factor,
     warn: console.warn,
   });
   // Closed first, so it never keeps the app running: `window-all-closed` ends it once both have gone.

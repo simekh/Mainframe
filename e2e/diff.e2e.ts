@@ -169,7 +169,7 @@ test("the diff window opens at Mainframe's zoom, and a zoom key in it zooms both
     });
   expect(await levels()).toEqual([0.5, 0.5]);
 
-  await pressWindowKey(app, '=', { inDiff: true });
+  await pressWindowKey(app, '=', true);
   await expect.poll(levels).toEqual([1, 1]);
   await app.close();
 });

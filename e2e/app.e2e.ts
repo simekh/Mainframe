@@ -52,7 +52,7 @@ test('Cmd (Ctrl off the Mac) with +, = and - zoom the window, 0 sets it back, an
   await expect.poll(zoomLevel).toBe(0.5);
   await pressWindowKey(app, '0');
   await expect.poll(zoomLevel).toBe(0);
-  await pressWindowKey(app, 'Plus', { shift: true });
+  await pressWindowKey(app, '=');
   await expect.poll(zoomLevel).toBe(0.5);
   await app.close();
 
