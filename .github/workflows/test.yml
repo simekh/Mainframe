@@ -1,18 +1,43 @@
 name: Tests
 
+# A run by hand can be narrowed to one system and some e2e tests, for a quicker answer while
+# troubleshooting, e.g.:
+#   gh workflow run test.yml --ref <branch> -f os=windows-latest -f e2e=e2e/diff.e2e.ts
+# A narrowed run skips the typecheck, the unit tests and the Linux start checks. Branches named
+# diag-* run nothing on push, so a diagnostic branch runs only what is asked for by hand.
 on:
   push:
+    branches-ignore: ['diag-*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      os:
+        description: Which system to run on
+        type: choice
+        options: [all, windows-latest, ubuntu-latest, macos-latest]
+        default: all
+      e2e:
+        description: Only these e2e files, space-separated (e.g. e2e/diff.e2e.ts); empty for all
+        type: string
+        default: ''
+      grep:
+        description: Only the e2e tests whose title matches this
+        type: string
+        default: ''
 
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        # On a push the inputs are empty: every system.
+        os: ${{ fromJSON((inputs.os == '' || inputs.os == 'all') && '["macos-latest","windows-latest","ubuntu-latest"]' || format('["{0}"]', inputs.os)) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    env:
+      NARROWED: ${{ inputs.e2e != '' || inputs.grep != '' }}
+      E2E_FILES: ${{ inputs.e2e }}
+      E2E_GREP: ${{ inputs.grep }}
     steps:
       - uses: actions/checkout@v7
 
@@ -37,11 +62,11 @@ jobs:
 
       # Each step below runs even when one before it failed, so every result shows.
       - name: Typecheck
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.NARROWED != 'true' }}
         run: npm run typecheck
 
       - name: Unit tests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.NARROWED != 'true' }}
         run: npm test
 
       # The next two steps run `npm start` the way a friend does, on an Ubuntu that blocks Chromium's
@@ -50,7 +75,7 @@ jobs:
       # at its setup screen until `timeout` ends it (exit 124), and that is the pass. Any other exit
       # fails the step, such as Chromium's "No usable sandbox" abort.
       - name: Start as a friend does (Linux)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        if: ${{ !cancelled() && runner.os == 'Linux' && env.NARROWED != 'true' }}
         timeout-minutes: 5
         run: |
           set +e
@@ -62,7 +87,7 @@ jobs:
           grep -q "without Chromium's sandbox" start.log
 
       - name: Start with the setuid sandbox (Linux)
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        if: ${{ !cancelled() && runner.os == 'Linux' && env.NARROWED != 'true' }}
         timeout-minutes: 5
         run: |
           # The README's way to keep the sandbox.
@@ -77,13 +102,18 @@ jobs:
           ! grep -q "without Chromium's sandbox" start.log
 
       - name: E2E tests
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        # xvfb-run's own default screen is far smaller than the window Mainframe opens.
-        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e
-
-      - name: E2E tests
-        if: ${{ !cancelled() && runner.os != 'Linux' }}
-        run: npm run test:e2e
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          # The files split at spaces; the title filter stays one argument.
+          args=($E2E_FILES)
+          if [ -n "$E2E_GREP" ]; then args+=(-g "$E2E_GREP"); fi
+          if [ "$RUNNER_OS" = Linux ]; then
+            # xvfb-run's own default screen is far smaller than the window Mainframe opens.
+            xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e -- "${args[@]}"
+          else
+            npm run test:e2e -- "${args[@]}"
+          fi
 
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
