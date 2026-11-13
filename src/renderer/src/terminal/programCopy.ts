@@ -2,7 +2,9 @@ import type { IDisposable, IModes, IParser } from '@xterm/xterm';
 
 /**
  * Ctrl+Shift+C in the kitty keyboard protocol: the copy key of a program that keeps its own
- * selection, as Claude Code does in fullscreen. Claude Code takes it without the protocol turned on.
+ * selection, as Claude Code does in fullscreen. Claude Code takes it without the protocol turned on:
+ * seen in v2.1.323, not documented (its docs promise Cmd+C only on terminals with the protocol). If a
+ * later Claude Code stops, a copy with nothing selected in xterm copies nothing again, as before.
  */
 export const KITTY_COPY_KEY = '\x1b[99;6u';
 
