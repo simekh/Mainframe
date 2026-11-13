@@ -251,24 +251,22 @@ test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C w
   await app.close();
 });
 
-test("a copy with nothing selected sends a program that keeps its own selection its copy key, and nothing to one that hasn't asked about the kitty protocol", async () => {
+// Which programs get the key is programCopy's unit tests'; this is the way from a copy to the session.
+test('a copy with nothing selected sends a program that keeps its own selection its copy key', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
-  // The window's Copy, as the Mac's Edit menu (Cmd+C) and the right-click menu give it.
-  const copy = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.getParentWindow())?.webContents.copy());
+  const keys = async () => (await screen(page, a)).split('^[[99;6u').length - 1;
 
-  // The mouse captured, as Claude Code's fullscreen mode has it, but no kitty question. cat -v shows
-  // whatever arrives, an ESC as ^[.
-  await run(page, "printf '\\e[?1000h'; cat -v");
-  await copy();
-  await sendLine(page, a, 'no-key');
-  await expect.poll(() => screen(page, a)).toMatch(/^no-key$/m);
-  expect(await screen(page, a)).not.toContain('[99;6u');
-
-  await page.keyboard.press('Control+C');
-  await run(page, "printf '\\e[?u'; cat -v");
-  await copy();
-  await expect.poll(() => screen(page, a)).toContain('^[[99;6u');
+  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. cat -v
+  // shows whatever arrives, an ESC as ^[.
+  await run(page, "printf '\\e[?1000h\\e[?u'; cat -v");
+  // The window's Copy, as the Mac's Edit menu (Cmd+C) gives it.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.getParentWindow())?.webContents.copy());
+  await expect.poll(keys).toBe(1);
+  if (process.platform !== 'darwin') {
+    await page.keyboard.press('Control+Shift+C');
+    await expect.poll(keys).toBe(2);
+  }
   await app.close();
 });
 
