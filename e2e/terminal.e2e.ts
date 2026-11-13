@@ -260,13 +260,10 @@ test('a copy with nothing selected sends a program that keeps its own selection 
   // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. cat -v
   // shows whatever arrives, an ESC as ^[.
   await run(page, "printf '\\e[?1000h\\e[?u'; cat -v");
-  // The window's Copy, as the Mac's Edit menu (Cmd+C) gives it.
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.getParentWindow())?.webContents.copy());
+  // On the Mac, Playwright's Cmd+C runs Chromium's Copy, as the Edit menu does (its DOM copy event);
+  // Windows and Linux copy with the terminal's own Ctrl+Shift+C.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+Shift+C');
   await expect.poll(keys).toBe(1);
-  if (process.platform !== 'darwin') {
-    await page.keyboard.press('Control+Shift+C');
-    await expect.poll(keys).toBe(2);
-  }
   await app.close();
 });
 
