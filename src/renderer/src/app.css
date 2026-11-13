@@ -248,14 +248,6 @@ html[data-platform='darwin'] .top-row {
   cursor: grabbing;
 }
 
-.rail-list[data-dragging='true'] .rail-item:not([data-dragging='true']) {
-  background: transparent;
-}
-
-.rail-list[data-dragging='true'] .rail-item[data-focused='true']:not([data-dragging='true']) {
-  background: var(--island);
-}
-
 .rail-item[data-dragging='true'] {
   position: relative;
   z-index: 1;
