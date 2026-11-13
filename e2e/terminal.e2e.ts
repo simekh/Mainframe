@@ -251,6 +251,24 @@ test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C w
   await app.close();
 });
 
+// Which programs get the key is programCopy's unit tests'; this is the way from a copy to the session.
+test('a copy with nothing selected sends a program that keeps its own selection its copy key', async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  const keys = async () => (await screen(page, a)).split('^[[99;6u').length - 1;
+
+  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. cat -v
+  // shows whatever arrives, an ESC as ^[. The copy waits for the line to have run: before, the
+  // terminal has nothing to hand the copy to.
+  await run(page, "printf '\\e[?1000h\\e[?u'; echo ready-$((6*7)); cat -v");
+  await expect.poll(() => screen(page, a)).toMatch(/^ready-42$/m);
+  // On the Mac, Playwright's Cmd+C runs Chromium's Copy, as the Edit menu does (its DOM copy event);
+  // Windows and Linux copy with the terminal's own Ctrl+Shift+C.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+Shift+C');
+  await expect.poll(keys).toBe(1);
+  await app.close();
+});
+
 test('quitting leaves no session process behind', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);

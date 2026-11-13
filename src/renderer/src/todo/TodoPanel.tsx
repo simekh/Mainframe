@@ -5,7 +5,7 @@ import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
 import { openLinkLogged } from '../openLink';
-import { stripShows, STRIP_WIDTH, type PanelState } from '../panel/panelPrefs';
+import { stripShows, type PanelState } from '../panel/panelPrefs';
 import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
@@ -98,8 +98,9 @@ function StopIcon() {
 /**
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
  * asks of the owner, and the ticket of the item open. Pinned and open, it takes the pane's left edge and the manager
- * sits right of it; unpinned, it floats over the manager beside its strip, as that floats over the board. Folded,
- * pinned or not, it slides away and leaves its strip at the pane's edge.
+ * sits right of it; unpinned, it floats over the manager right of the strips, as that floats over the board, and under
+ * it while the manager is the one used last. Folded, pinned or not, it slides away and leaves its strip at the pane's
+ * edge.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
@@ -113,6 +114,10 @@ export default function TodoPanel(props: {
   /** Folded, its strip is all that shows; off, nothing does. */
   state: PanelState;
   onOpenChange(open: boolean): void;
+  /** Open under the manager: its strip brings it up rather than folding it. */
+  behind: boolean;
+  /** How far from the pane's left edge it floats: right of its strip, and of the manager's while that shows. */
+  floatLeft: number;
   /** The open ticket: an item's key, or `'new-note'`. The pane closes it too. */
   ticket: string | null;
   onTicketChange(ticket: string | null): void;
@@ -262,7 +267,7 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'model' ? ask : undefined;
   };
-  const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open', (open) =>
+  const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open' && !props.behind, (open) =>
     props.onOpenChange(open),
   );
 
@@ -289,10 +294,11 @@ export default function TodoPanel(props: {
         data-open={String(props.state === 'open')}
         data-state={props.state}
         // What the pane leaves right of the panel, its margin kept: the ticket is no wider. Floating, the panel sits
-        // beside its strip.
+        // beside the strips.
         style={{
           width: `${props.width}px`,
-          '--ticket-room': `${project.width() - props.width - 16 - (props.pinned ? 0 : STRIP_WIDTH + 8)}px`,
+          '--float-left': `${props.floatLeft}px`,
+          '--ticket-room': `${project.width() - props.width - 8 - (props.pinned ? 8 : props.floatLeft)}px`,
         }}
       >
         <FoldButton points="left" testId="todo-fold" handOff={handOff} />
