@@ -515,7 +515,7 @@ test("a strip whose panel is off leaves no gap, and the pinned session panel's w
   expectStripAt(todoStrip, 'left', pane.x + 8);
   expect((await box(page, 'manager-strip')).x).toBeGreaterThanOrEqual(todoStrip.x + todoStrip.width);
   await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - 2 * STRIP_WIDTH - BOARD_ROOM.pinned));
-  // Out over the manager's strip, the floating panel starts under the top row as the strip does: none of it shows above.
+  // Out right of the strips, the floating panel starts under the top row as they do: none of it shows above.
   expect((await box(page, 'todo-panel')).y).toBe((await box(page, 'manager-strip')).y);
 
   // Off, the Todo panel's strip goes, and the manager's moves into its place.
@@ -523,6 +523,51 @@ test("a strip whose panel is off leaves no gap, and the pinned session panel's w
   await expect(page.getByTestId('todo-strip')).toHaveCount(0);
   expectStripAt(await box(page, 'manager-strip'), 'left', pane.x + 8);
   await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - STRIP_WIDTH - BOARD_ROOM.pinned));
+  await app.close();
+});
+
+test('floating together, the Todo panel and the manager sit right of both strips, the one used last on top; the strip of the one under brings it up, and a press in it does too', async () => {
+  const { app, page } = await launchApp({}, folder());
+  await setWindowWidth(app, page, 1600);
+  const todo = page.getByTestId('todo-panel');
+  const manager = page.getByTestId('manager-column');
+  const todoStrip = page.getByTestId('todo-strip');
+  const managerStrip = page.getByTestId('manager-strip');
+  await page.getByTestId('manager-pin').click();
+  await expect(manager).toHaveAttribute('data-pinned', 'false');
+  await page.getByTestId('todo-toggle').click();
+  await expect(todo).toHaveAttribute('data-pinned', 'false');
+  await slidIn(todo);
+  await slidIn(manager);
+
+  // Both strips stay in reach, and both panels float right of them, one over the other.
+  expect(await isOnTop(todoStrip)).toBe(true);
+  expect(await isOnTop(managerStrip)).toBe(true);
+  const [t, m, s] = [await box(page, 'todo-panel'), await box(page, 'manager-column'), await box(page, 'manager-strip')];
+  expect(t.x).toBeGreaterThanOrEqual(s.x + s.width);
+  expect(Math.abs(t.x - m.x)).toBeLessThanOrEqual(1);
+  // The Todo panel, opened last, is on top; the manager's strip says it shows the manager, not that it folds it.
+  expect(await isOnTop(todo)).toBe(true);
+  await expect(managerStrip).toHaveAccessibleName(/^Show manager/);
+
+  // Its strip brings the manager up, still open, and the Todo panel stays open under it.
+  await managerStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  await expect(todo).toHaveAttribute('data-open', 'true');
+  expect(await isOnTop(manager)).toBe(true);
+  await expect(page.getByTestId('manager-fold')).toBeFocused();
+  await expect(managerStrip).toHaveAccessibleName('Fold the manager');
+  await expect(todoStrip).toHaveAccessibleName('Show Todo');
+
+  // And the Todo panel's strip brings it back up.
+  await todoStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  expect(await isOnTop(todo)).toBe(true);
+
+  // A press on the part of the manager the Todo panel leaves uncovered brings the manager up too.
+  await page.mouse.click(t.x + t.width + 20, middle(m));
+  expect(await isOnTop(manager)).toBe(true);
+  await expect(todo).toHaveAttribute('data-open', 'true');
   await app.close();
 });
 

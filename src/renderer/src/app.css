@@ -2327,7 +2327,7 @@ kbd {
   right: 8px;
 }
 
-/* A layer under the Todo panel, so it slides away and back under that panel: on one layer, the Todo panel, first in
+/* A layer under the Todo panel, unless the owner used the manager last (below): on one layer, the Todo panel, first in
    the page, would paint under the manager. Its place is right of the Todo panel's while that is on (the pinned panel,
    or its strip). */
 .manager-column:is([data-pinned='false'], [data-open='false']) {
@@ -2343,10 +2343,21 @@ kbd {
   left: calc(8px + var(--left-room, 0px));
 }
 
-/* Over the floating manager (a layer above it). */
+/* Floating, right of its strip and of the manager's while that shows, so it never covers a strip: the pane sets how
+   far. Over the manager, a layer above it. */
 .todo-panel[data-pinned='false'] {
-  left: calc(16px + var(--strip-w));
+  left: var(--float-left);
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+/* The manager used last is on top of the Todo panel, its ticket with it; the session panel's float, after both in the
+   page, still covers it. */
+.pane-body[data-front='manager'] > .manager-column {
+  z-index: 5;
+}
+
+.pane-body[data-front='manager'] > .todo-panel {
+  z-index: 4;
 }
 
 .todo-panel[data-pinned='true'][data-open='false'] {
@@ -2363,6 +2374,19 @@ kbd {
 .todo-panel[data-open='false'] {
   transform: translateX(calc(-100% - 16px - var(--strip-w)));
   visibility: hidden;
+}
+
+/* The manager slides out of sight at its own left edge, into its strip, never under the Todo panel and out past it:
+   cut there as it moves, by as much as it has moved. Its shadow and resize edge reach past its other sides. Cut, it is
+   a layer of its own, so pinned it is a layer above the board: the half of its resize edge over the board stays in
+   reach. */
+.manager-column {
+  z-index: 1;
+  clip-path: inset(-100px -100px -100px 0);
+}
+
+.manager-column[data-open='false'] {
+  clip-path: inset(-100px -100px -100px calc(100% + 16px + var(--strip-w)));
 }
 
 /* On the Mac the top row is a window drag region, and macOS hit-tests it natively whatever lies above it: the pane
@@ -3344,6 +3368,7 @@ kbd {
   .todo-panel {
     transition:
       transform 220ms var(--ease-out),
+      clip-path 220ms var(--ease-out),
       visibility 0s linear 0s;
   }
 
@@ -3352,6 +3377,7 @@ kbd {
   .todo-panel[data-open='false'] {
     transition:
       transform 220ms var(--ease-out),
+      clip-path 220ms var(--ease-out),
       visibility 0s linear 220ms;
   }
 

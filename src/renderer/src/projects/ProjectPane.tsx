@@ -10,7 +10,7 @@ import {
 } from '../manager/managerPrefs';
 import { managerStateOf } from '../manager/managerStore';
 import {
-  loadPanelPrefs, panelState, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, type PanelPrefs, type PanelState,
+  loadPanelPrefs, panelState, roomTaken, roomToPin, savePanelPrefs, STRIP_WIDTH, stripShows, type PanelPrefs, type PanelState,
 } from '../panel/panelPrefs';
 import { turnOffHandingFocus } from '../panel/PanelStrip';
 import SessionPanel from '../panel/SessionPanel';
@@ -74,9 +74,19 @@ export default function ProjectPane(props: {
     saveManagerPinned(localStorage, dir, pinned);
   };
   const managerState = () => panelState(showManager(), managerOpenOf(dir), managerPinned());
+  // Which of the Todo panel and the manager the owner used last, opened or pressed in: it is the one on top where the
+  // floating Todo panel and the manager overlap.
+  const [front, setFront] = createSignal<'todo' | 'manager'>('todo');
+  const openManager = (open: boolean) => {
+    setManagerOpen(dir, open);
+    if (open) setFront('manager');
+  };
   let managerToggle!: HTMLButtonElement;
   const toggleManager = () => {
-    if (!showManager()) return toggleManagerOf(dir);
+    if (!showManager()) {
+      setFront('manager');
+      return toggleManagerOf(dir);
+    }
     turnOffHandingFocus(root, '.manager-column, .manager-strip', managerToggle, () => toggleManagerOf(dir));
   };
 
@@ -109,7 +119,18 @@ export default function ProjectPane(props: {
   const [ticket, setTicket] = createSignal<string | null>(null);
   const showTodo = (state: PanelState) => {
     setTodo(state);
-    if (state !== 'open') setTicket(null);
+    if (state === 'open') setFront('todo');
+    else setTicket(null);
+  };
+  // The floating Todo panel lies over the open manager, pinned or floating: the one not in front is under the other,
+  // and its strip brings it up rather than folding it.
+  const overlap = () => todo() === 'open' && !todoPrefs().pinned && managerState() === 'open';
+  // The manager's strip, while it shows, is left of the floating Todo panel, so that panel never covers it.
+  const managerStrip = () => stripShows(managerState(), managerPinned());
+  // A press or the focus in either panel puts it in front; their strips do it as they open them.
+  const frontFrom = (e: Event) => {
+    const used = (e.target as Element).closest('.todo-panel, .manager-column');
+    if (used) setFront(used.classList.contains('todo-panel') ? 'todo' : 'manager');
   };
   let todoToggle!: HTMLButtonElement;
   // Turned on, the Todo panel opens fully.
@@ -236,6 +257,9 @@ export default function ProjectPane(props: {
           // What the Todo panel takes at the pane's left, pinned and open or as its strip, its margin with it: the manager,
           // floating or folded, sits right of it.
           style={{ '--left-room': `${todoBeside() ? todoBeside() + 8 : 0}px` }}
+          data-front={front()}
+          onPointerDown={frontFrom}
+          onFocusIn={frontFrom}
         >
           <TodoPanel
             width={shownTodoWidth()}
@@ -246,6 +270,8 @@ export default function ProjectPane(props: {
             onPinnedChange={(pinned) => keepTodoPrefs({ ...todoPrefs(), pinned })}
             state={todo()}
             onOpenChange={(open) => showTodo(open ? 'open' : 'folded')}
+            behind={overlap() && front() === 'manager'}
+            floatLeft={16 + STRIP_WIDTH + (managerStrip() ? STRIP_WIDTH + 8 : 0)}
             ticket={ticket()}
             onTicketChange={setTicket}
           />
@@ -259,7 +285,8 @@ export default function ProjectPane(props: {
             pinned={managerPinned()}
             onPinnedChange={keepManagerPinned}
             state={managerState()}
-            onOpenChange={(open) => setManagerOpen(dir, open)}
+            onOpenChange={openManager}
+            behind={overlap() && front() === 'todo'}
           />
 
           <section class="board-column" aria-label={`Tasks of ${props.project.name}`}>
