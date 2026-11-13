@@ -83,6 +83,8 @@ The Mac has Cmd keys. Windows and Linux have Ctrl keys, as Windows Terminal and 
 | Scroll a line | Cmd+Shift+↑ / ↓ | Ctrl+Shift+↑ / ↓ |
 | Scroll a page | Cmd+Shift+PgUp / PgDn | Shift+PgUp / PgDn |
 
+Copy also works on text selected inside Claude Code's fullscreen mode, which selects with the mouse itself: with nothing selected in the terminal, Mainframe sends Claude Code its own copy key.
+
 On Windows and Linux no key shortcut takes AltGr, which Windows reports as Ctrl+Alt, so it types `@`, `{`, `[` and the rest as usual.
 
 ## Set up the Todo panel

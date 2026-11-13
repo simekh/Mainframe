@@ -16,6 +16,7 @@ import { escapePath } from './escapePath';
 import { InputBatcher } from './inputBatcher';
 import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
+import { KITTY_COPY_KEY, watchProgramCopy } from './programCopy';
 import { OutputFlow } from './outputFlow';
 import { redrawAllTerminals, registerTerminal, unregisterTerminal } from './registry';
 import { hasSuggestion } from './suggestion';
@@ -313,10 +314,17 @@ export default function TerminalView(props: {
       e.stopPropagation();
       pasteClipboard();
     };
+    // With nothing selected in xterm, a program that keeps its own selection (Claude Code in
+    // fullscreen) is sent its copy key, and copies that selection itself.
+    const programCopy = watchProgramCopy(term);
+    const handOffCopy = () => {
+      if (programCopy.canCopy()) term.input(KITTY_COPY_KEY, true);
+    };
     // The selection is copied without TUI padding and with wrapped lines rejoined.
     const onCopy = (e: ClipboardEvent) => {
       const selection = term.getSelection();
-      if (!selection || !e.clipboardData) return;
+      if (!selection) return handOffCopy();
+      if (!e.clipboardData) return;
       e.preventDefault();
       e.stopPropagation();
       e.clipboardData.setData('text/plain', cleanCopiedTerminalText(selection));
@@ -326,6 +334,7 @@ export default function TerminalView(props: {
     const copySelection = (clear: boolean) => {
       const selection = term.getSelection();
       if (selection) api.copyText(cleanCopiedTerminalText(selection));
+      else handOffCopy();
       if (clear) term.clearSelection();
     };
     // Files dropped on the terminal become their paths, escaped or quoted for this system, one word each.
@@ -403,6 +412,7 @@ export default function TerminalView(props: {
       container.removeEventListener('drop', onDrop, true);
       gesture.dispose();
       osc52.dispose();
+      programCopy.dispose();
       input.dispose();
       detachWebgl();
       unregisterTerminal(id);

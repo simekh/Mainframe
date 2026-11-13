@@ -251,6 +251,27 @@ test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C w
   await app.close();
 });
 
+test("a copy with nothing selected sends a program that keeps its own selection its copy key, and nothing to one that hasn't asked about the kitty protocol", async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  // The window's Copy, as the Mac's Edit menu (Cmd+C) and the right-click menu give it.
+  const copy = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.getParentWindow())?.webContents.copy());
+
+  // The mouse captured, as Claude Code's fullscreen mode has it, but no kitty question. cat -v shows
+  // whatever arrives, an ESC as ^[.
+  await run(page, "printf '\\e[?1000h'; cat -v");
+  await copy();
+  await sendLine(page, a, 'no-key');
+  await expect.poll(() => screen(page, a)).toMatch(/^no-key$/m);
+  expect(await screen(page, a)).not.toContain('[99;6u');
+
+  await page.keyboard.press('Control+C');
+  await run(page, "printf '\\e[?u'; cat -v");
+  await copy();
+  await expect.poll(() => screen(page, a)).toContain('^[[99;6u');
+  await app.close();
+});
+
 test('quitting leaves no session process behind', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
