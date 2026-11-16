@@ -3,17 +3,23 @@ import { execFile } from 'node:child_process';
 import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { ChangedFile, FileDiff, StartCheck } from '../shared/types';
+import type { ChangedFile, FileDiff, StartCheck, TaskGitState } from '../shared/types';
 import { assembleDiff, DIFF_LIMITS, focusFirst, type UntrackedContent } from './diff/assembleDiff';
 import { parsePatch } from './diff/parsePatch';
 
 const execFileAsync = promisify(execFile);
 
 // --no-optional-locks keeps the app from taking the index lock while a session runs git.
-async function git(dir: string, args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
+async function git(
+  dir: string,
+  args: string[],
+  opts: { maxBuffer?: number; env?: Record<string, string>; timeoutMs?: number } = {},
+): Promise<string> {
   const { stdout } = await execFileAsync('git', ['--no-optional-locks', '-C', dir, ...args], {
     encoding: 'utf8',
     maxBuffer: opts.maxBuffer ?? 16 * 1024 * 1024,
+    env: opts.env && { ...process.env, ...opts.env },
+    timeout: opts.timeoutMs,
     // No console window flashes on Windows for each git call.
     windowsHide: true,
   });
@@ -234,5 +240,111 @@ export async function addWorktree(projectDir: string, path: string, branch: stri
   await git(projectDir, ['worktree', 'add', '--no-track', '-b', branch, path, base]);
 }
 
-export const gitQueries = { startCheck, branchExists, worktreeBranchNames, changedFiles, taskDiff, addWorktree };
+/** What a task's branch is compared with: origin/HEAD, or the main checkout's HEAD without one. */
+async function base(projectDir: string): Promise<string> {
+  return git(projectDir, ['rev-parse', '--verify', '--quiet', 'origin/HEAD']).then(
+    () => 'origin/HEAD',
+    () => 'HEAD',
+  );
+}
+
+/** Brings the remote's default branch up to date, so a merge made elsewhere shows. Never rejects: no remote, no network or a slow one is not an error. */
+export async function fetchBase(projectDir: string): Promise<void> {
+  try {
+    const head = (await git(projectDir, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim();
+    await git(projectDir, ['fetch', '--quiet', 'origin', head.replace(/^origin\//, '')], {
+      env: { GIT_TERMINAL_PROMPT: '0' },
+      timeoutMs: 30_000,
+    });
+  } catch {
+    // Nothing to fetch, or the fetch failed: the check goes on with what is there.
+  }
+}
+
+async function branchState(projectDir: string, branch: string, from: string): Promise<TaskGitState['branch']> {
+  const ref = `refs/heads/${branch}`;
+  if (!(await branchExists(projectDir, branch))) return 'gone';
+  const tip = (await git(projectDir, ['rev-parse', ref])).trim();
+  const reflog = (await git(projectDir, ['reflog', 'show', '--format=%H', ref]).catch(() => '')).split('\n').filter(Boolean);
+  const untouched = reflog.length
+    ? reflog[reflog.length - 1] === tip
+    : (await git(projectDir, ['rev-list', '--count', `${from}..${ref}`])).trim() === '0';
+  if (untouched) return 'no-commits';
+  try {
+    // Merging it into the base changes nothing when the result has the base's own tree.
+    const merged = (await git(projectDir, ['merge-tree', '--write-tree', from, ref])).split('\n')[0];
+    const tree = (await git(projectDir, ['rev-parse', `${from}^{tree}`])).trim();
+    return merged === tree ? 'merged' : 'unmerged';
+  } catch {
+    // A conflict, or a git without --write-tree (before 2.38).
+    return 'unmerged';
+  }
+}
+
+/** Paths git status lists: changed, staged or untracked, not ignored. */
+async function uncommittedPaths(worktreePath: string): Promise<string[]> {
+  const out = await git(worktreePath, [...NO_INDEX_REFRESH, 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
+  const records = out.split('\0').filter(Boolean);
+  const paths: string[] = [];
+  for (let i = 0; i < records.length; i++) {
+    paths.push(records[i].slice(3));
+    // A rename or copy is followed by a record for its source.
+    if (/[RC]/.test(records[i].slice(0, 2))) i++;
+  }
+  return paths.sort();
+}
+
+/** What removing a task's worktree and branch would lose. A folder that is gone, or a plain one inside the main checkout, has nothing. */
+export async function taskGitState(projectDir: string, branch: string, worktreePath: string): Promise<TaskGitState> {
+  const from = await base(projectDir);
+  const state = await branchState(projectDir, branch, from);
+  let uncommitted: string[] = [];
+  let elsewhere = false;
+  let head: string | null = null;
+  if (await isWorktreeTop(worktreePath).catch(() => false)) {
+    uncommitted = await uncommittedPaths(worktreePath);
+    const checkedOut = await git(worktreePath, ['symbolic-ref', '-q', 'HEAD']).then(
+      (out) => out.trim(),
+      () => null,
+    );
+    elsewhere = checkedOut !== `refs/heads/${branch}`;
+    if (elsewhere) head = (await git(worktreePath, ['rev-parse', 'HEAD'])).trim();
+  }
+  const tips = [...(state === 'gone' ? [] : [`refs/heads/${branch}`]), ...(head ? [head] : [])];
+  const unsaved = tips.length
+    ? (await git(projectDir, ['log', '--format=%s', ...tips, '--not', from, '--remotes'])).split('\n').filter(Boolean)
+    : [];
+  return { branch: state, uncommitted, elsewhere, unsaved };
+}
+
+/** Resolves at once when the folder is gone. Rejects with git's message: a locked worktree, or changes without `force`. */
+export async function removeWorktree(projectDir: string, worktreePath: string, o: { force: boolean }): Promise<void> {
+  try {
+    await stat(worktreePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    await git(projectDir, ['worktree', 'prune']);
+    return;
+  }
+  await git(projectDir, ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath]).catch(withGitMessage);
+  await git(projectDir, ['worktree', 'prune']);
+}
+
+/** `git branch -D`: the caller has proved the branch's commits are safe. Resolves when it is gone already. */
+export async function deleteBranch(projectDir: string, branch: string): Promise<void> {
+  if (await branchExists(projectDir, branch)) await git(projectDir, ['branch', '-D', branch]).catch(withGitMessage);
+}
+
+export const gitQueries = {
+  startCheck,
+  branchExists,
+  worktreeBranchNames,
+  changedFiles,
+  taskDiff,
+  addWorktree,
+  fetchBase,
+  taskGitState,
+  removeWorktree,
+  deleteBranch,
+};
 export type GitQueries = typeof gitQueries;

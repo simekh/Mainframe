@@ -119,6 +119,17 @@ export interface SettingsView {
 /** OpenCode's lists for Settings: only each agent's id, the first primary one marked as OpenCode's default. */
 export interface OpencodeChoices { agents: { id: string; isDefault: boolean }[]; models: SyncModel[] }
 
+export interface TaskGitState {
+  /** gone: no local branch. no-commits: the branch still points where it was created. merged: merging it into the base changes nothing. */
+  branch: 'gone' | 'no-commits' | 'merged' | 'unmerged';
+  /** Paths with uncommitted changes or untracked (not ignored) files in the worktree; [] when the folder is gone or is not a worktree's top. */
+  uncommitted: string[];
+  /** The worktree has something other than the task's branch checked out: another branch, or a detached HEAD. False when the folder is gone or is not a worktree's top. */
+  elsewhere: boolean;
+  /** Subjects of the commits on the branch, or on the worktree's HEAD, that are on neither the base nor any remote branch, newest first. */
+  unsaved: string[];
+}
+
 export interface StartCheck {
   /** Commits on the main checkout's branch that origin/HEAD does not have. */
   ahead: number;

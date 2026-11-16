@@ -4,7 +4,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { DiffLine } from '../shared/types';
-import { addWorktree, branchExists, changedFiles, startCheck, taskDiff, worktreeBranchNames } from './git';
+import {
+  addWorktree,
+  branchExists,
+  changedFiles,
+  deleteBranch,
+  fetchBase,
+  removeWorktree,
+  startCheck,
+  taskDiff,
+  taskGitState,
+  worktreeBranchNames,
+} from './git';
 import { makeRepo } from './testing/makeRepo';
 
 const cleanup: string[] = [];
@@ -342,4 +353,152 @@ it("a folder holding a .gitignore of * stays out of git status, in a repo's root
     writeFileSync(join(folder, 'x', 'a.txt'), 'a\n');
   }
   expect(out(main, 'status', '--porcelain')).toBe('');
+});
+
+/** A task branch and its worktree, made as Mainframe makes them: from origin/HEAD, tracking nothing. */
+function taskBranch(main: string, name = 't'): { branch: string; wt: string } {
+  const branch = `worktree-${name}`;
+  const wt = join(dirname(main), `wt-${name}`);
+  git(main, 'worktree', 'add', '--no-track', '-b', branch, wt, 'origin/HEAD');
+  return { branch, wt };
+}
+
+const GONE = { branch: 'gone', uncommitted: [], elsewhere: false, unsaved: [] };
+
+it('taskGitState is gone for a missing branch and a missing folder', async () => {
+  const { main } = repo();
+  expect(await taskGitState(main, 'worktree-nope', join(dirname(main), 'nowhere'))).toEqual(GONE);
+});
+
+it('taskGitState marks a worktree on another branch or a detached HEAD as elsewhere, and lists its unsaved commits', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  git(main, 'branch', '-m', branch, 'renamed');
+  expect(await taskGitState(main, branch, wt)).toEqual({ ...GONE, elsewhere: true });
+
+  git(wt, 'checkout', '--detach');
+  commitFile(wt, 'd.txt', 'd\n');
+  expect(await taskGitState(main, branch, wt)).toEqual({ ...GONE, elsewhere: true, unsaved: ['add d.txt'] });
+});
+
+it('removeWorktree rejects a locked worktree', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  git(main, 'worktree', 'lock', wt);
+  await expect(removeWorktree(main, wt, { force: false })).rejects.toThrow(/locked/);
+  await expect(removeWorktree(main, wt, { force: true })).rejects.toThrow(/locked/);
+  expect(existsSync(wt)).toBe(true);
+});
+
+it('taskGitState is no-commits for a branch still where it was created, even once the base moves on', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  expect((await taskGitState(main, branch, wt)).branch).toBe('no-commits');
+  commitFile(main, 'm.txt', 'm\n');
+  git(main, 'push', 'origin', 'stage');
+  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'no-commits', uncommitted: [], elsewhere: false, unsaved: [] });
+});
+
+it('taskGitState is merged after a fast-forward merge, a merge commit and a squash merge', async () => {
+  const { main } = repo();
+  const ff = taskBranch(main, 'ff');
+  commitFile(ff.wt, 'ff.txt', 'ff\n');
+  const mc = taskBranch(main, 'mc');
+  commitFile(mc.wt, 'mc.txt', 'mc\n');
+  const sq = taskBranch(main, 'sq');
+  commitFile(sq.wt, 'sq.txt', 'sq\n');
+
+  git(main, 'merge', '--ff-only', ff.branch);
+  git(main, 'push', 'origin', 'stage');
+  expect(await taskGitState(main, ff.branch, ff.wt)).toEqual({ branch: 'merged', uncommitted: [], elsewhere: false, unsaved: [] });
+
+  git(main, 'merge', '--no-ff', '-m', 'merge mc', mc.branch);
+  git(main, 'push', 'origin', 'stage');
+  expect(await taskGitState(main, mc.branch, mc.wt)).toEqual({ branch: 'merged', uncommitted: [], elsewhere: false, unsaved: [] });
+
+  git(main, 'merge', '--squash', sq.branch);
+  git(main, 'commit', '-m', 'squash sq');
+  git(main, 'push', 'origin', 'stage');
+  // The squash commit is not the branch's commit: only the tree comparison sees it as merged. Its own commit is on no remote.
+  expect((await taskGitState(main, sq.branch, sq.wt)).branch).toBe('merged');
+  expect((await taskGitState(main, sq.branch, sq.wt)).unsaved).toEqual(['add sq.txt']);
+});
+
+it('taskGitState is unmerged for a branch with commits not on the base, and lists those not on any remote', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  commitFile(wt, 'b.txt', 'b\n');
+  expect(await taskGitState(main, branch, wt)).toEqual({
+    branch: 'unmerged',
+    uncommitted: [],
+    elsewhere: false,
+    unsaved: ['add b.txt', 'add a.txt'],
+  });
+  git(main, 'push', 'origin', branch);
+  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [] });
+});
+
+it('taskGitState lists uncommitted and untracked files, not ignored ones', async () => {
+  const { main } = repo();
+  commitFile(main, '.gitignore', 'ignored.txt\n');
+  git(main, 'push', 'origin', 'stage');
+  const { branch, wt } = taskBranch(main);
+  writeFileSync(join(wt, 'README.md'), 'changed\n');
+  writeFileSync(join(wt, 'new.txt'), 'n\n');
+  writeFileSync(join(wt, 'ignored.txt'), 'i\n');
+  expect((await taskGitState(main, branch, wt)).uncommitted).toEqual(['README.md', 'new.txt']);
+});
+
+it('taskGitState uses HEAD as the base when there is no origin/HEAD', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  git(main, 'remote', 'set-head', 'origin', '--delete');
+  expect((await taskGitState(main, branch, wt)).branch).toBe('unmerged');
+  git(main, 'merge', '--ff-only', branch);
+  expect((await taskGitState(main, branch, wt)).branch).toBe('merged');
+});
+
+it('fetchBase brings in a merge pushed from another clone, and resolves without a remote', async () => {
+  const { origin, main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  git(main, 'push', 'origin', branch);
+  const other = join(dirname(main), 'other');
+  git(dirname(main), 'clone', origin, other);
+  git(other, 'config', 'user.name', 'Test');
+  git(other, 'config', 'user.email', 'test@example.com');
+  git(other, 'config', 'commit.gpgsign', 'false');
+  git(other, 'merge', '--no-ff', '-m', 'merge a', `origin/${branch}`);
+  git(other, 'push', 'origin', 'stage');
+  expect((await taskGitState(main, branch, wt)).branch).toBe('unmerged');
+  await fetchBase(main);
+  expect((await taskGitState(main, branch, wt)).branch).toBe('merged');
+
+  git(main, 'remote', 'remove', 'origin');
+  await expect(fetchBase(main)).resolves.toBeUndefined();
+});
+
+it('removeWorktree and deleteBranch remove a merged task\'s worktree and branch, and resolve when they are gone already', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  git(main, 'merge', '--ff-only', branch);
+  await removeWorktree(main, wt, { force: false });
+  await deleteBranch(main, branch);
+  expect(existsSync(wt)).toBe(false);
+  expect(await branchExists(main, branch)).toBe(false);
+  await expect(removeWorktree(main, wt, { force: false })).resolves.toBeUndefined();
+  await expect(deleteBranch(main, branch)).resolves.toBeUndefined();
+});
+
+it('removeWorktree refuses a worktree with untracked files unless forced', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  writeFileSync(join(wt, 'u.txt'), 'u\n');
+  await expect(removeWorktree(main, wt, { force: false })).rejects.toThrow();
+  expect(existsSync(wt)).toBe(true);
+  await removeWorktree(main, wt, { force: true });
+  expect(existsSync(wt)).toBe(false);
 });
