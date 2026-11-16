@@ -161,7 +161,10 @@ Mainframe uses the task's own agent, which has the connector and knows the card:
    couldn't, or the sync failed), the task stays Paused and its card says why, for example "Put back: the card is not
    on the to-do list". The owner can try again or move the card by hand.
 
-If the turn ends in a question or an error, the task stays on the board in Needs you, like any task.
+If the session asks a question or for permission (moving the card may need the tracker tool's permission), Put back
+waits: the card shows in Needs you with Answer, and once the owner answers and the turn ends, steps 2 and 3 follow. If
+it errs, Put back is given up and the task stays on the board in Needs you, like any task. Close session ends it at
+any time. (Ruling R10, 2026-11-16.)
 
 **Continuing put-back work.** A to-do item whose task was put back offers **Continue** where it would offer Start (in
 the list and in its ticket). Continue reopens that task on its own branch and worktree, with its conversation, and it

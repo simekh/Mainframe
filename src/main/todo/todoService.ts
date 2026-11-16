@@ -174,8 +174,8 @@ export class TodoService {
   /**
    * Takes a Paused task off the board and back onto the to-do list, keeping its branch. A note's task comes back as a
    * note linked to it. A card's task has its own agent move the card back, then the list is synced: the task is put
-   * back once the card is on it, and stays Paused with Put back's failure line when it is not. A session that asks a
-   * question or errs gives Put back up. A Put back that fails says why on the task's card while it is still Paused.
+   * back once the card is on it, and stays Paused with Put back's failure line when it is not. A session that errs
+   * gives Put back up. A Put back that fails says why on the task's card while it is still Paused.
    */
   async putBack(taskId: string): Promise<void> {
     const task = this.viewOf(taskId);
@@ -211,7 +211,7 @@ export class TodoService {
       return;
     }
 
-    // A question or an error leaves an ordinary task on the board, which the owner deals with: no sync, no move.
+    // An error leaves an ordinary task on the board, which the owner deals with: no sync, no move.
     if (!(await this.deps.tasks.putBackCard(taskId))) return;
     let listed = false;
     try {

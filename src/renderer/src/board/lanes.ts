@@ -69,14 +69,21 @@ export function cardActivity(
 /** What a card offers on its last row: Answer, Finish on a running task the round found merged, or a Paused card's three. */
 export type CardAct = 'answer' | 'finish' | 'paused';
 
-/** The card's last row, its label and what it offers; none in Working, where the session is busy, nor while a Put back runs. */
+/**
+ * The card's last row, its label and what it offers; none in Working, where the session is busy, nor on a Paused card
+ * while a Put back runs. Finish takes Answer's place only once the session's turn is over: a question, a permission
+ * prompt or an error still needs the owner. A Put back's session never offers Finish: it closes itself.
+ */
 export function cardAsk(
   task: TaskView,
   s: SessionState | undefined,
   lane: Lane,
 ): { text: string; tone: Tone; act: CardAct } | null {
-  if (lane === 'working' || task.puttingBack) return null;
-  if (lane === 'needs-you' && task.merged) return { text: 'Merged', tone: 'success', act: 'finish' };
+  if (lane === 'working' || (lane === 'paused' && task.puttingBack)) return null;
+  const standing = standingOf(task, s);
+  if (lane === 'needs-you' && task.merged && !task.puttingBack && (standing === 'done' || standing === 'waiting')) {
+    return { text: 'Merged', tone: 'success', act: 'finish' };
+  }
   return { ...stateLabel(task, s), act: lane === 'paused' ? 'paused' : 'answer' };
 }
 

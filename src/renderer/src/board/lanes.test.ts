@@ -154,9 +154,23 @@ describe('cardAsk', () => {
     expect(cardAsk(task({ merged: true }), state('working'), 'working')).toBeNull();
   });
 
-  it('a card being put back offers nothing: no Reopen, no Put back or Discard, no Answer', () => {
+  it('a merged card offers Finish only once its session is done or waiting; asking or stopped, it offers Answer', () => {
+    const merged = task({ merged: true });
+    const finish = { text: 'Merged', tone: 'success', act: 'finish' };
+    expect(cardAsk(merged, state('done'), 'needs-you')).toEqual(finish);
+    expect(cardAsk(merged, state('idle'), 'needs-you')).toEqual(finish);
+    const asking = { text: 'Needs input', tone: 'warn', act: 'answer' };
+    expect(cardAsk(merged, state('blocked', { kind: 'question' }), 'needs-you')).toEqual(asking);
+    expect(cardAsk(merged, state('blocked', { kind: 'permission' }), 'needs-you')).toEqual(asking);
+    expect(cardAsk(merged, state('error'), 'needs-you')).toEqual({ text: 'Stopped', tone: 'error', act: 'answer' });
+  });
+
+  it('a card being put back offers no Reopen, Put back or Discard, and no Finish, but Answer while it asks', () => {
     expect(cardAsk(closedTask({ puttingBack: true }), undefined, 'paused')).toBeNull();
-    expect(cardAsk(task({ puttingBack: true }), state('done'), 'needs-you')).toBeNull();
+    const asking = { text: 'Needs input', tone: 'warn', act: 'answer' };
+    expect(cardAsk(task({ puttingBack: true }), state('blocked', { kind: 'permission' }), 'needs-you')).toEqual(asking);
+    expect(cardAsk(task({ puttingBack: true, merged: true }), state('blocked'), 'needs-you')).toEqual(asking);
+    expect(cardAsk(task({ puttingBack: true, merged: true }), state('done'), 'needs-you')?.act).toBe('answer');
   });
 });
 

@@ -2525,21 +2525,42 @@ describe('put back', () => {
     expect(ended).toBe(true);
   });
 
-  it('a put-back session that asks a question stays open as an ordinary task, and the put-back settles as given up', async () => {
+  it('a put-back session that asks for permission goes on putting back: once the owner answers and the turn ends, it closes', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     t.killed.length = 0;
-    const putting = t.service.putBackCard(view.id);
+    let ended: boolean | null = null;
+    const putting = t.service.putBackCard(view.id).then((done) => (ended = done));
     const [sessionId] = t.service.sessionIds();
 
     t.service.noteStatus(sessionId, 'working');
     t.service.noteStatus(sessionId, 'blocked');
-    await expect(putting).resolves.toBe(false);
-    // The owner answers, and the agent works on and finishes: the session is the owner's now.
-    t.service.noteStatus(sessionId, 'working');
-    t.service.noteStatus(sessionId, 'done');
+    await Promise.resolve();
+    expect(ended).toBeNull();
     expect(t.killed).toEqual([]);
-    expect(t.service.list()[0].session).not.toBeNull();
+    // The owner answers; the agent moves the card and its turn ends, idle this time.
+    t.service.noteStatus(sessionId, 'working');
+    t.service.noteStatus(sessionId, 'blocked');
+    t.service.noteStatus(sessionId, 'idle');
+    expect(t.killed).toEqual([sessionId]);
+    t.service.onSessionExit(sessionId);
+    await putting;
+    expect(ended).toBe(true);
+  });
+
+  it("a put-back session closes on done though no 'working' came before it, and not on an idle before its turn", async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.killed.length = 0;
+    void t.service.putBackCard(view.id);
+    const [sessionId] = t.service.sessionIds();
+
+    t.service.noteStatus(sessionId, 'idle');
+    t.service.noteStatus(sessionId, 'blocked');
+    t.service.noteStatus(sessionId, 'idle');
+    expect(t.killed).toEqual([]);
+    t.service.noteStatus(sessionId, 'done');
+    expect(t.killed).toEqual([sessionId]);
   });
 
   it('a put-back session that errs stays open, and settles as given up', async () => {

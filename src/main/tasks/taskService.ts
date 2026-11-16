@@ -79,13 +79,13 @@ interface Session {
   startedWithPrompt: boolean;
   turn: TurnTracker;
   /**
-   * Put back's session: closed once it works and then reports done or idle. A question or an error gives that up,
-   * and it goes on as any task's session.
+   * Put back's session: closed once its turn ends, on done, or on idle once it has worked. A question or a permission
+   * prompt waits for the owner's answer; an error gives Put back up, and it goes on as any task's session.
    */
   putBack?: {
-    /** What it last reported. */
-    lastState: ProgramState | null;
-    /** Settles Put back's wait: true once the session exits, false when a question or an error gave it up. */
+    /** It has reported working: an idle from before its turn began does not end it. */
+    worked: boolean;
+    /** Settles Put back's wait: true once the session exits, false when an error gave it up. */
     settle(done: boolean): void;
   };
 }
@@ -287,9 +287,10 @@ export class TaskService {
 
   /**
    * Has a paused task's own agent move its card back to the to-do list: its chat is resumed with the put-back prompt,
-   * and closed once that turn is over. Resolves true when the session exits, and at once when no session starts, as
-   * for a task whose conversation never began, which never took its card. Resolves false when the session asks a
-   * question or errs: it then stays on the board as any task does, and Put back is given up.
+   * and closed once that turn is over; a question or a permission prompt on the way waits for the owner's answer.
+   * Resolves true when the session exits, and at once when no session starts, as for a task whose conversation never
+   * began, which never took its card. Resolves false when the session errs: it then stays on the board as any task
+   * does, and Put back is given up.
    */
   async putBackCard(taskId: string): Promise<boolean> {
     const task = this.find(taskId);
@@ -311,7 +312,7 @@ export class TaskService {
     }
     const session = view.session && this.sessions.get(view.session.id);
     if (!session) return true;
-    return new Promise((resolve) => (session.putBack = { lastState: null, settle: resolve }));
+    return new Promise((resolve) => (session.putBack = { worked: false, settle: resolve }));
   }
 
   /**
@@ -531,12 +532,11 @@ export class TaskService {
       this.deps.records.save();
     }
     if (session.putBack && !session.turn.ending) {
-      const before = session.putBack.lastState;
-      session.putBack.lastState = state;
-      if (state === 'blocked' || state === 'error') {
+      if (state === 'working') session.putBack.worked = true;
+      if (state === 'error') {
         session.putBack.settle(false);
         delete session.putBack;
-      } else if (before === 'working' && (state === 'done' || state === 'idle')) {
+      } else if (state === 'done' || (state === 'idle' && session.putBack.worked)) {
         this.close(task.id);
       }
     }

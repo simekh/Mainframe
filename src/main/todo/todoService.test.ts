@@ -106,7 +106,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
   const taskViews: TaskView[] = [];
   /** Settles the put-back session `putBackCard` waits on; a test may hold it. */
   const putBackHooks = {
-    /** What `putBackCard` settles with: false when its session ended in a question or an error. */
+    /** What `putBackCard` settles with: false when its session ended in an error. */
     card: async (_taskId: string): Promise<boolean> => true,
     /** What `continueTask` does to the task's view: by default it is back on the board. */
     continued: (view: TaskView): TaskView => ({ ...view, place: null }),
@@ -1222,7 +1222,7 @@ it("a sync that drops a put-back task's card returns the task to the board", asy
   expect(t.taskCalls).toEqual([['returnToBoard', 'task-7']]);
 });
 
-it('a put-back whose session ended in a question or an error neither syncs nor touches the task', async () => {
+it('a put-back whose session ended in an error neither syncs nor touches the task', async () => {
   const t = setup();
   await synced(t);
   t.taskViews.push(paused({ card: cardRef('c1') }));
