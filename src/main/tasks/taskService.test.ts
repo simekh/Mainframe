@@ -54,7 +54,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     taskDiff: async () => [],
     addWorktree: async () => {},
     fetchBase: async () => {},
-    taskGitState: async () => ({ branch: 'gone', uncommitted: [], elsewhere: false, unsaved: [] }),
+    taskGitState: async () => ({ branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [] }),
     removeWorktree: async () => {},
     deleteBranch: async () => {},
     ...gitOverrides,

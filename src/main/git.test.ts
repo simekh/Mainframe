@@ -502,3 +502,17 @@ it('removeWorktree refuses a worktree with untracked files unless forced', async
   await removeWorktree(main, wt, { force: true });
   expect(existsSync(wt)).toBe(false);
 });
+
+it('taskGitState keeps a commit with an empty subject among the unsaved ones', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  git(wt, 'commit', '--allow-empty', '--allow-empty-message', '-m', '');
+  expect((await taskGitState(main, branch, wt)).unsaved).toEqual(['']);
+});
+
+it('taskGitState rejects when it cannot read the worktree, rather than reporting nothing to lose', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  writeFileSync(join(wt, '.git'), 'garbage\n');
+  await expect(taskGitState(main, branch, wt)).rejects.toThrow();
+});

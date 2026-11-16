@@ -233,11 +233,7 @@ export async function addWorktree(projectDir: string, path: string, branch: stri
     await git(projectDir, ['worktree', 'add', path, branch]);
     return;
   }
-  const base = await git(projectDir, ['rev-parse', '--verify', '--quiet', 'origin/HEAD']).then(
-    () => 'origin/HEAD',
-    () => 'HEAD',
-  );
-  await git(projectDir, ['worktree', 'add', '--no-track', '-b', branch, path, base]);
+  await git(projectDir, ['worktree', 'add', '--no-track', '-b', branch, path, await base(projectDir)]);
 }
 
 /** What a task's branch is compared with: origin/HEAD, or the main checkout's HEAD without one. */
@@ -301,7 +297,15 @@ export async function taskGitState(projectDir: string, branch: string, worktreeP
   let uncommitted: string[] = [];
   let elsewhere = false;
   let head: string | null = null;
-  if (await isWorktreeTop(worktreePath).catch(() => false)) {
+  // A missing folder has nothing to lose; any other failure rejects, so the caller leaves the task alone.
+  const exists = await stat(worktreePath).then(
+    () => true,
+    (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return false;
+      throw err;
+    },
+  );
+  if (exists && (await isWorktreeTop(worktreePath))) {
     uncommitted = await uncommittedPaths(worktreePath);
     const checkedOut = await git(worktreePath, ['symbolic-ref', '-q', 'HEAD']).then(
       (out) => out.trim(),
@@ -312,7 +316,10 @@ export async function taskGitState(projectDir: string, branch: string, worktreeP
   }
   const tips = [...(state === 'gone' ? [] : [`refs/heads/${branch}`]), ...(head ? [head] : [])];
   const unsaved = tips.length
-    ? (await git(projectDir, ['log', '--format=%s', ...tips, '--not', from, '--remotes'])).split('\n').filter(Boolean)
+    ? (await git(projectDir, ['log', '--format=x%s', ...tips, '--not', from, '--remotes']))
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => line.slice(1))
     : [];
   return { branch: state, uncommitted, elsewhere, unsaved };
 }
