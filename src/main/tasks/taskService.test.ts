@@ -7,7 +7,8 @@ import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, Tas
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
-import { continuePrompt } from './carryOn';
+import { ADAPTERS } from '../agents/adapters';
+import { continuePrompt, putBackPrompt } from './carryOn';
 import { openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
@@ -2355,5 +2356,114 @@ describe('discard', () => {
     await expect(t.service.discard(view.id)).rejects.toThrow(`Close ${view.title} before discarding it`);
     expect(rec).toBeDefined();
     expect(t.removals.filter((r) => r[0] === 'removeWorktree')).toEqual([]);
+  });
+});
+
+describe('put back', () => {
+  const PUT_BACK_PROMPT =
+    "I'm putting this task back on the to-do list for later. Move its card back to the to-do list the way this repo's CLAUDE.md says, or else to its board's to-do list or status. Then stop.";
+
+  it('putBackCard resumes the task with the put-back prompt and closes it once its turn is over', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.killed.length = 0;
+    const { claudeSessionId } = t.readState()[0];
+    expect(putBackPrompt(ADAPTERS.claude.instructions)).toBe(PUT_BACK_PROMPT);
+
+    let ended = false;
+    const putting = t.service.putBackCard(view.id).then(() => (ended = true));
+    const [sessionId] = t.service.sessionIds();
+    expect(t.service.launchSpec(sessionId)).toEqual({
+      cwd: t.projectDir,
+      argv: reopenArgv({
+        claudeBin: 'claude',
+        slug: 'fix-login',
+        claudeSessionId,
+        settingsPath: join(t.taskDir(view.id), 'settings.json'),
+        prompt: PUT_BACK_PROMPT,
+      }),
+    });
+    // Reports from before the turn begins do not end it.
+    t.service.noteStatus(sessionId, 'idle');
+    expect(t.killed).toEqual([]);
+    t.service.noteStatus(sessionId, 'working');
+    t.service.noteStatus(sessionId, 'done');
+    expect(t.killed).toEqual([sessionId]);
+    expect(t.readState()[0]).toMatchObject({ open: false, midTurn: false });
+
+    await Promise.resolve();
+    expect(ended).toBe(false);
+    t.service.onSessionExit(sessionId);
+    await putting;
+    expect(ended).toBe(true);
+  });
+
+  it('a put-back session that asks a question stays open', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.killed.length = 0;
+    void t.service.putBackCard(view.id);
+    const [sessionId] = t.service.sessionIds();
+
+    t.service.noteStatus(sessionId, 'working');
+    t.service.noteStatus(sessionId, 'blocked');
+    expect(t.killed).toEqual([]);
+    expect(t.service.list()[0].session).not.toBeNull();
+  });
+
+  it('putBackCard of a task whose conversation never began starts no session', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t, { begin: false });
+    await t.service.putBackCard(view.id);
+    expect(t.service.sessionIds()).toEqual([]);
+  });
+
+  it('putBackCard refuses a running task', async () => {
+    const t = roundSetup();
+    const running = await t.service.start(NEW_TASK);
+    await expect(t.service.putBackCard(running.id)).rejects.toThrow('Close Fix login before putting it back');
+    expect(t.service.sessionIds()).toHaveLength(1);
+  });
+
+  it('markPutBack and returnToBoard move the task and set the problem', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+
+    t.service.returnToBoard(view.id, 'Put back: the card is not on the to-do list');
+    expect(t.service.list()[0]).toMatchObject({ place: null, problem: 'Put back: the card is not on the to-do list' });
+    expect(t.changes.at(-1)).toEqual(t.service.list());
+
+    t.service.markPutBack(view.id);
+    expect(t.service.list()[0]).toMatchObject({ place: 'putBack', problem: null });
+    expect(t.readState()[0].place).toBe('putBack');
+
+    t.service.returnToBoard(view.id);
+    expect(t.service.list()[0]).toMatchObject({ place: null, problem: null });
+    expect(t.readState()[0]).not.toHaveProperty('place');
+  });
+
+  it('a reopen clears the problem', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.service.returnToBoard(view.id, 'Put back: the card is not on the to-do list');
+    await t.service.reopen(view.id);
+    expect(t.service.list()[0].problem).toBeNull();
+  });
+
+  it('markPutBack and returnToBoard leave a finished task, and markPutBack a running one, where they are', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.states.set(view.branch, MERGED);
+    await t.service.checkRound();
+    expect(t.service.list()[0].place).toBe('finished');
+
+    t.service.markPutBack(view.id);
+    expect(t.service.list()[0].place).toBe('finished');
+    t.service.returnToBoard(view.id, 'Put back: the card is not on the to-do list');
+    expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
+
+    const running = await t.service.start({ ...NEW_TASK, title: 'Other' });
+    t.service.markPutBack(running.id);
+    expect(t.service.list().find((v) => v.id === running.id)!.place).toBeNull();
   });
 });

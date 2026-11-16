@@ -316,7 +316,7 @@ async function start(
       env: programs.env,
       agent: () => agents.inUse(),
       saveAgentSetting: (name, patch) => agents.saveAgentSetting(name, patch),
-      startTask: (req) => service.start(req),
+      tasks: service,
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
     // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.

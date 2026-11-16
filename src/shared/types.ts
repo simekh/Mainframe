@@ -254,10 +254,12 @@ export interface TodoNote {
   id: string;
   title: string;
   text: string;
+  /** The task Put back took off the board: starting the note continues it. */
+  taskId?: string;
 }
 
 /** A note as the owner saves it: without an `id` it is new. */
-export type TodoNoteDraft = { id?: string; title: string; text: string };
+export type TodoNoteDraft = { id?: string; title: string; text: string; taskId?: string };
 
 /** A card or a note on the list, by its id. */
 export type TodoItemRef = { kind: 'card' | 'note'; id: string };

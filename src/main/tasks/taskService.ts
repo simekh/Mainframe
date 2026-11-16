@@ -8,7 +8,7 @@ import { SESSION_START_FILE } from '../agents/claude';
 import type { GitQueries } from '../git';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
-import { continuePrompt, inTurn, resumePromptFor, TurnTracker } from './carryOn';
+import { continuePrompt, inTurn, putBackPrompt, resumePromptFor, TurnTracker } from './carryOn';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
@@ -76,6 +76,11 @@ interface Session {
   launch: LaunchSpec;
   startedWithPrompt: boolean;
   turn: TurnTracker;
+  /** Put back's session: closed once a turn has begun and then ended in done or idle. */
+  closeWhenTurnEnds?: boolean;
+  turnBegan?: boolean;
+  /** Called as it exits: Put back waits for that. */
+  exited?: () => void;
 }
 
 export class TaskService {
@@ -267,6 +272,58 @@ export class TaskService {
   }
 
   /**
+   * Has a paused task's own agent move its card back to the to-do list: its chat is resumed with the put-back prompt,
+   * and closed once that turn is over. Resolves when the session exits, however it ended; at once when no session
+   * starts, as for a task whose conversation never began, which never took its card.
+   */
+  async putBackCard(taskId: string): Promise<void> {
+    const task = this.find(taskId);
+    if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
+    // An open task with no session is one restore has yet to bring back: still running, as far as the owner is concerned.
+    if (task.open || this.busy(task)) throw new Error(`Close ${task.title} before putting it back`);
+    const agent = agentOf(task);
+    const adapter = ADAPTERS[agent];
+    const prompt = putBackPrompt(adapter.instructions);
+    let view: TaskView;
+    if (adapter.mainframeAddsWorktree) {
+      if (!task.began) return;
+      view = await this.reopenInWorktree(task, prompt);
+    } else {
+      const recorded = adapter.recordedSession(this.taskDir(task.id));
+      if (recorded === null) return;
+      task.claudeSessionId = recorded;
+      const launch = this.reopenLaunch(task, this.binOf(agent), prompt);
+      view = this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
+    }
+    const session = view.session && this.sessions.get(view.session.id);
+    if (!session) return;
+    session.closeWhenTurnEnds = true;
+    return new Promise((resolve) => (session.exited = resolve));
+  }
+
+  /** Takes a paused task off the board, onto the to-do list. One that moved meanwhile, or runs again, stays where it is. */
+  markPutBack(taskId: string): void {
+    const task = this.find(taskId);
+    if (task.place !== undefined || task.open || this.busy(task)) return;
+    task.place = 'putBack';
+    this.problems.delete(task.id);
+    this.commit();
+  }
+
+  /**
+   * Brings a put-back task back to Paused on the board, or keeps one there, with Put back's failure line or none. A
+   * finished or discarded task, or one a round is removing (it is about to finish), stays where it is.
+   */
+  returnToBoard(taskId: string, problem?: string): void {
+    const task = this.mine().find((t) => t.id === taskId);
+    if (!task || task.place === 'finished' || task.place === 'discarded' || this.removing.has(task.id)) return;
+    delete task.place;
+    if (problem === undefined) this.problems.delete(task.id);
+    else this.problems.set(task.id, problem);
+    this.commit();
+  }
+
+  /**
    * A session runs, or is on its way, for the task, or a round is removing its worktree, or the project is closing or
    * the app quitting: a reopen then leaves the task as recorded, to carry on when the project next opens.
    */
@@ -345,6 +402,7 @@ export class TaskService {
   private relaunch(task: TaskRecord, launch: LaunchSpec, o: { startedWithPrompt: boolean; resumePending: boolean }): TaskView {
     delete task.place;
     delete task.endedAt;
+    this.problems.delete(task.id);
     task.open = true;
     task.closedAt = null;
     // Cleared here; a session whose resume prompt never takes sets it again as it ends. askAgain is
@@ -405,6 +463,10 @@ export class TaskService {
       // Saved, not sent: nothing the window shows has changed.
       this.deps.records.save();
     }
+    if (session.closeWhenTurnEnds && !session.turn.ending) {
+      if (inTurn(state)) session.turnBegan = true;
+      else if (session.turnBegan && (state === 'done' || state === 'idle')) this.close(task.id);
+    }
   }
 
   onSessionExit(sessionId: string): void {
@@ -424,6 +486,7 @@ export class TaskService {
     // The mark is for a running task; once closed, the round decides.
     this.merged.delete(task.id);
     this.commit();
+    session.exited?.();
     // A task's exit is when it may have finished: Finish is Close.
     void this.checkRound();
   }
@@ -501,6 +564,7 @@ export class TaskService {
     if (task.place !== place) return;
     task.place = 'finished';
     task.endedAt = this.now();
+    this.problems.delete(task.id);
     this.commit();
   }
 
@@ -537,6 +601,7 @@ export class TaskService {
     }
     task.place = 'discarded';
     task.endedAt = this.now();
+    this.problems.delete(task.id);
     this.commit();
   }
 

@@ -41,6 +41,7 @@ export const TODO_NOTE = z.object({
   id: z.string(),
   title: z.string(),
   text: z.string(),
+  taskId: z.string().optional(),
 }) satisfies z.ZodType<TodoNote>;
 
 export const TASK_CARD_REF = z.object({

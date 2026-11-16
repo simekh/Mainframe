@@ -10,6 +10,7 @@ import type { SyncAnswer } from './todoSchema';
 
 const TODO_FILE = 'todo.json';
 const UNASKED = "The sync run answered something Mainframe didn't ask for";
+const PUT_BACK_FAILED = 'Put back: the card is not on the to-do list';
 
 export interface TodoServiceDeps {
   projectDir: string;
@@ -21,7 +22,7 @@ export interface TodoServiceDeps {
   agent(): AgentInUse;
   /** Saves an agent's setting for every project, so the next `agent()` has it. */
   saveAgentSetting(name: AgentName, patch: Partial<AgentSetting>): void;
-  startTask: TaskService['start'];
+  tasks: Pick<TaskService, 'start' | 'list' | 'continueTask' | 'putBackCard' | 'markPutBack' | 'returnToBoard'>;
   onChange(view: TodoView): void;
   run?: typeof runSync;
   newId?: () => string;
@@ -142,8 +143,10 @@ export class TodoService {
     this.writable();
     const title = note.title.trim();
     if (!title) throw new Error('A todo needs a title');
-    const saved = { id: note.id ?? this.newId(), title, text: note.text };
     const { notes } = this.record;
+    // An edit from the panel names no task: the note keeps the one it has.
+    const taskId = note.taskId ?? notes.find((n) => n.id === note.id)?.taskId;
+    const saved: TodoNote = { id: note.id ?? this.newId(), title, text: note.text, ...(taskId !== undefined && { taskId }) };
     if (note.id === undefined) {
       this.save({ ...this.record, notes: [...notes, saved] });
     } else {
@@ -154,18 +157,61 @@ export class TodoService {
     return saved;
   }
 
+  /** Deletes a note; a put-back task's note sends its task back to Paused on the board, so it never goes missing. */
   deleteNote(id: string): void {
     this.writable();
-    if (!this.record.notes.some((n) => n.id === id)) return;
+    const note = this.record.notes.find((n) => n.id === id);
+    if (!note) return;
+    if (note.taskId !== undefined) this.deps.tasks.returnToBoard(note.taskId);
+    this.removeNote(id);
+  }
+
+  private removeNote(id: string): void {
     this.save({ ...this.record, notes: this.record.notes.filter((n) => n.id !== id) });
     this.changed();
+  }
+
+  /**
+   * Takes a Paused task off the board and back onto the to-do list, keeping its branch. A note's task comes back as a
+   * note linked to it. A card's task has its own agent move the card back, then the list is synced: the task is put
+   * back once the card is on it, and stays Paused with Put back's failure line when it is not.
+   */
+  async putBack(taskId: string): Promise<void> {
+    const task = this.deps.tasks.list().find((t) => t.id === taskId);
+    if (!task) throw new Error(`Unknown task ${taskId}`);
+    if (task.place !== null) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
+    if (task.session !== null || task.closedAt === null) throw new Error(`Close ${task.title} before putting it back`);
+
+    const { card } = task;
+    if (!card) {
+      this.writable();
+      // Marked first: a task the service won't move (a reopen or a round got to it) gets no note.
+      this.deps.tasks.markPutBack(taskId);
+      if (this.deps.tasks.list().find((t) => t.id === taskId)?.place !== 'putBack') throw new Error(`Close ${task.title} before putting it back`);
+      this.saveNote({ title: task.title, text: task.description, taskId });
+      return;
+    }
+
+    await this.deps.tasks.putBackCard(taskId);
+    let listed = false;
+    try {
+      // A run already under way read the list before the card moved.
+      if (this.running) await this.running.outcome;
+      const outcome = await this.sync();
+      listed = 'cards' in outcome && this.record.cards.some((c) => c.id === card.id);
+    } catch {
+      // Not listed: the project is closing, or the file is a newer Mainframe's.
+    }
+    if (listed) this.deps.tasks.markPutBack(taskId);
+    else this.deps.tasks.returnToBoard(taskId, PUT_BACK_FAILED);
   }
 
   /**
    * Starts a task from a card or a note. A card is found by its id, or when none has that id, by its number as the
    * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A card
    * marked for the owner starts only with `ownersCard`, which only the ticket's Start anyway sets: the manager's tools
-   * never do. A note leaves the list once its task has started.
+   * never do. A note leaves the list once its task has started. A card whose task was put back or finished, and a
+   * put-back task's note, continue that task instead.
    */
   async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string; ownersCard?: boolean }): Promise<TaskView> {
     if (item.kind === 'card') {
@@ -178,7 +224,10 @@ export class TodoService {
       if (card.forOwner && !opts.ownersCard) {
         throw new Error(`${card.number ?? card.title} is marked as the owner's; the owner starts it from its ticket with Start anyway`);
       }
-      return this.deps.startTask({
+      // A card has one task for good, discarded ones aside.
+      const own = this.deps.tasks.list().find((t) => t.card?.id === card.id && t.place !== 'discarded');
+      if (own?.place === 'putBack' || own?.place === 'finished') return this.deps.tasks.continueTask(own.id);
+      return this.deps.tasks.start({
         title: card.title,
         description: opts.brief ?? '',
         noQuestions: opts.noQuestions,
@@ -189,8 +238,14 @@ export class TodoService {
     this.writable();
     const note = this.record.notes.find((n) => n.id === item.id);
     if (!note) throw new Error(`No todo ${item.id}`);
-    const task = await this.deps.startTask({ title: note.title, description: note.text, noQuestions: opts.noQuestions });
-    this.deleteNote(note.id);
+    if (note.taskId !== undefined) {
+      const task = await this.deps.tasks.continueTask(note.taskId);
+      // A Continue that started nothing (the task is busy) keeps the note, the task's only way back.
+      if (task.place === null) this.removeNote(note.id);
+      return task;
+    }
+    const task = await this.deps.tasks.start({ title: note.title, description: note.text, noQuestions: opts.noQuestions });
+    this.removeNote(note.id);
     return task;
   }
 
@@ -341,6 +396,10 @@ export class TodoService {
       seen.add(id);
     }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
+    // A put-back task is seen only through its card: once the card is off the list, the task goes back to the board.
+    for (const task of this.deps.tasks.list()) {
+      if (task.place === 'putBack' && task.card && !seen.has(task.card.id)) this.deps.tasks.returnToBoard(task.id);
+    }
     return { cards: cards.length };
   }
 

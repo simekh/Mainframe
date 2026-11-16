@@ -280,3 +280,13 @@ it('sync_todo takes no input and returns the card count, what the owner must do 
   expect(refused.isError).toBe(true);
   expect(refused.content).toEqual([{ type: 'text', text: 'A newer Mainframe wrote the list' }]);
 });
+
+it('start_task on a put-back card continues its task', async () => {
+  const continued = { id: 'task-7', title: 'Fix the gate', branch: 'worktree-fix-the-gate' } as TaskView;
+  const { tools, call, startedItems } = setup({ startItem: async () => continued });
+  expect(tools.get('start_task')!.config.description).toContain('A card whose task was put back or finished continues that task.');
+
+  const result = await call('start_task', { cardId: '#7' });
+  expect(startedItems).toEqual([{ item: { kind: 'card', id: '#7' }, opts: { noQuestions: false, brief: '' } }]);
+  expect(json(result)).toStrictEqual({ taskId: 'task-7', title: 'Fix the gate', branch: 'worktree-fix-the-gate' });
+});

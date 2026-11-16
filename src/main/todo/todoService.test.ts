@@ -10,7 +10,7 @@ import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
 import { LONG_SYNC_MS, SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
-import { TodoService } from './todoService';
+import { TodoService, type TodoServiceDeps } from './todoService';
 
 const prompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
 const CLAUDE: AgentInUse = { adapter: ADAPTERS.claude, bin: 'claude', setting: {} };
@@ -100,10 +100,37 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
 
   const starts: Parameters<TaskService['start']>[0][] = [];
   const control = { startFails: null as Error | null };
-  const startTask: TaskService['start'] = async (req) => {
-    starts.push(req);
-    if (control.startFails) throw control.startFails;
-    return TASK;
+  /** What the fake task service was asked, other than start, in order. */
+  const taskCalls: unknown[][] = [];
+  /** The tasks `list` returns; a test sets them. */
+  const taskViews: TaskView[] = [];
+  /** Settles the put-back session `putBackCard` waits on; a test may hold it. */
+  const putBackHooks = { card: async (_taskId: string) => {} };
+  const tasks: TodoServiceDeps['tasks'] = {
+    start: async (req) => {
+      starts.push(req);
+      if (control.startFails) throw control.startFails;
+      return TASK;
+    },
+    list: () => taskViews,
+    continueTask: async (taskId) => {
+      taskCalls.push(['continueTask', taskId]);
+      const view = taskViews.find((v) => v.id === taskId)!;
+      view.place = null;
+      return view;
+    },
+    putBackCard: async (taskId) => {
+      taskCalls.push(['putBackCard', taskId]);
+      await putBackHooks.card(taskId);
+    },
+    markPutBack: (taskId) => {
+      taskCalls.push(['markPutBack', taskId]);
+      const view = taskViews.find((v) => v.id === taskId)!;
+      if (view.place === null) view.place = 'putBack';
+    },
+    returnToBoard: (taskId, problem) => {
+      taskCalls.push(problem === undefined ? ['returnToBoard', taskId] : ['returnToBoard', taskId, problem]);
+    },
   };
 
   const changes: ReturnType<TodoService['view']>[] = [];
@@ -130,7 +157,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
         saves.push([name, patch]);
         current = { ...current, setting: { ...current.setting, ...patch } };
       },
-      startTask,
+      tasks,
       onChange: (view) => changes.push(view),
       run,
       newId: () => `id-${++counter}`,
@@ -148,6 +175,9 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     last: () => calls[calls.length - 1],
     starts,
     control,
+    taskCalls,
+    taskViews,
+    putBackHooks,
     saves,
     changes,
     warnings,
@@ -1012,4 +1042,166 @@ it('the next run starts without it, and an earlier run\'s timer cannot show it',
   expect(t.service.view().longSync).toBe(false);
   t.timers[1].fire();
   expect(t.service.view().longSync).toBe(true);
+});
+
+const cardRef = (id: string): TaskCardRef => ({
+  sourceKind: 'Tracker', id, number: `#${id}`, url: `https://tracker.example/c/${id}`, labels: [], position: 0, urgent: false,
+});
+/** A Paused task on the board, as the task service lists it. */
+const paused = (over: Partial<TaskView> = {}): TaskView =>
+  ({ id: 'task-7', title: 'Fix the gate', description: 'It sticks', place: null, session: null, closedAt: 900, card: null, ...over }) as TaskView;
+const PUT_BACK_FAILED = 'Put back: the card is not on the to-do list';
+
+it("putBack of a note's task adds the note back with the task's id and marks it put back", async () => {
+  const t = setup();
+  t.taskViews.push(paused());
+
+  await t.service.putBack('task-7');
+
+  const note = { id: 'id-1', title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' };
+  expect(t.service.view().notes).toEqual([note]);
+  expect(t.make().view().notes).toEqual([note]);
+  expect(t.taskCalls).toEqual([['markPutBack', 'task-7']]);
+  // An edit from the panel, which knows nothing of the task, keeps the link.
+  t.service.saveNote({ id: 'id-1', title: 'Fix the gate today', text: 'It sticks' });
+  expect(t.todo().notes).toEqual([{ ...note, title: 'Fix the gate today' }]);
+});
+
+it('putBack refuses a task that is not Paused on the board, and adds no note', async () => {
+  const t = setup();
+  t.taskViews.push(paused({ session: { id: 's1', startedWithPrompt: false } }), paused({ id: 'task-8', place: 'finished' }));
+
+  await expect(t.service.putBack('task-7')).rejects.toThrow('Close Fix the gate before putting it back');
+  await expect(t.service.putBack('task-8')).rejects.toThrow('Task Fix the gate is not paused on the board, so it cannot be put back');
+  expect(t.service.view().notes).toEqual([]);
+  expect(t.taskCalls).toEqual([]);
+});
+
+it("putBack of a card's task marks it put back when the next sync lists the card", async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+  const runs = t.calls.length;
+
+  const putting = t.service.putBack('task-7');
+  await flush();
+  expect(t.calls).toHaveLength(runs + 1);
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
+  t.last().answer(CARDS_ANSWER);
+  await putting;
+
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7'], ['markPutBack', 'task-7']]);
+});
+
+it("putBack of a card's task returns it to the board with the problem when the sync doesn't list the card", async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+
+  const missing = t.service.putBack('task-7');
+  await flush();
+  t.last().answer({ ...CARDS_ANSWER, cards: [card('c2')] });
+  await missing;
+  expect(t.taskCalls.at(-1)).toEqual(['returnToBoard', 'task-7', PUT_BACK_FAILED]);
+
+  // A sync that fails says the same.
+  const failed = t.service.putBack('task-7');
+  await flush();
+  t.last().fail('The run timed out');
+  await failed;
+  expect(t.taskCalls.at(-1)).toEqual(['returnToBoard', 'task-7', PUT_BACK_FAILED]);
+  expect(t.taskCalls.filter((c) => c[0] === 'markPutBack')).toEqual([]);
+});
+
+it('a put-back sync waits for a sync already running, and syncs again', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+  const held = { release: () => {} };
+  t.putBackHooks.card = () => new Promise<void>((resolve) => (held.release = resolve));
+
+  const putting = t.service.putBack('task-7');
+  // The owner pressed Sync while the agent was moving the card.
+  void t.service.sync();
+  const before = t.last();
+  held.release();
+  await flush();
+  before.answer({ ...CARDS_ANSWER, cards: [card('c2')] });
+  await flush();
+  expect(t.last()).not.toBe(before);
+  t.last().answer(CARDS_ANSWER);
+  await putting;
+  expect(t.taskCalls.at(-1)).toEqual(['markPutBack', 'task-7']);
+});
+
+it('starting a put-back note continues its task and removes the note', async () => {
+  const t = setup();
+  t.taskViews.push(paused({ place: 'putBack' }));
+  const note = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' });
+
+  const continued = await t.service.startItem({ kind: 'note', id: note.id }, { noQuestions: false });
+
+  expect(continued.id).toBe('task-7');
+  expect(t.taskCalls).toEqual([['continueTask', 'task-7']]);
+  expect(t.starts).toEqual([]);
+  expect(t.service.view().notes).toEqual([]);
+});
+
+it('a put-back note stays when its Continue starts nothing', async () => {
+  const t = setup();
+  const view = paused({ place: 'putBack' });
+  t.taskViews.push(view);
+  const note = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' });
+  // As a reopen does for a task a round is removing.
+  (t.service as unknown as { deps: TodoServiceDeps }).deps.tasks.continueTask = async () => view;
+
+  await t.service.startItem({ kind: 'note', id: note.id }, { noQuestions: false });
+  expect(t.service.view().notes).toEqual([note]);
+});
+
+it('starting a card whose task is finished continues it; one whose task was discarded starts a new task', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(
+    paused({ id: 'task-f', place: 'finished', card: cardRef('c1') }),
+    paused({ id: 'task-d', place: 'discarded', card: cardRef('c2') }),
+  );
+
+  const continued = await t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false });
+  expect(continued.id).toBe('task-f');
+  expect(t.taskCalls).toEqual([['continueTask', 'task-f']]);
+  expect(t.starts).toEqual([]);
+
+  await t.service.startItem({ kind: 'card', id: '#c2' }, { noQuestions: false });
+  expect(t.starts.map((s) => s.card?.id)).toEqual(['c2']);
+  expect(t.taskCalls).toHaveLength(1);
+});
+
+it('starting a card whose task was put back continues it', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ place: 'putBack', card: cardRef('c1') }));
+
+  await t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false });
+  expect(t.taskCalls).toEqual([['continueTask', 'task-7']]);
+  expect(t.starts).toEqual([]);
+});
+
+it('deleting a put-back note returns its task to the board', () => {
+  const t = setup();
+  const note = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' });
+
+  t.service.deleteNote(note.id);
+
+  expect(t.taskCalls).toEqual([['returnToBoard', 'task-7']]);
+  expect(t.service.view().notes).toEqual([]);
+});
+
+it("a sync that drops a put-back task's card returns the task to the board", async () => {
+  const t = setup();
+  t.taskViews.push(paused({ place: 'putBack', card: cardRef('c1') }), paused({ id: 'task-8', place: 'putBack', card: cardRef('c2') }));
+
+  await synced(t, { ...CARDS_ANSWER, cards: [card('c2')] });
+
+  expect(t.taskCalls).toEqual([['returnToBoard', 'task-7']]);
 });

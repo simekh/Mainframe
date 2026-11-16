@@ -41,7 +41,7 @@ export function registerManagerTools(
     'start_task',
     {
       description:
-        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task (not needed with cardId); the brief, if any, is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added, if anything. A card marked as the owner's never starts from here: the owner starts it from its ticket.",
+        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task (not needed with cardId); the brief, if any, is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added, if anything. A card marked as the owner's never starts from here: the owner starts it from its ticket. A card whose task was put back or finished continues that task.",
       inputSchema: z.object({
         title: z.string().min(1).max(200).optional(),
         brief: z.string().max(20000).optional(),

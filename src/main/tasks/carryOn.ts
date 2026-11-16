@@ -1,4 +1,5 @@
 import type { ProgramState } from '../../shared/types';
+import type { Instructions } from '../agents/agent';
 
 /** What a resume says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
 export const RESUME_PROMPT = 'Continue where you left off.';
@@ -8,6 +9,10 @@ export const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for 
 /** What Continue says to a finished task's resumed chat, so it knows where it now runs. */
 export const continuePrompt = (branch: string): string =>
   `Mainframe has continued this task in a fresh worktree on branch ${branch}, made from the default branch, which has any of your earlier work that was merged. Wait for my next message.`;
+
+/** What Put back says to a card's task, whose own agent knows the card and has the connector to move it. */
+export const putBackPrompt = (i: Instructions): string =>
+  `I'm putting this task back on the to-do list for later. Move its card back to the to-do list the way ${i.again} says, or else to its board's to-do list or status. Then stop.`;
 
 /** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
 export const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
