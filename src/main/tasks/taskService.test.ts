@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
 import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
@@ -2216,4 +2216,109 @@ it('a failed removal after a cut-short reopen only warns', async () => {
   gate.release();
   await expect(reopening).resolves.toMatchObject({ session: null });
   expect(t.warnings.some((w) => w.includes('fatal: busy'))).toBe(true);
+});
+
+describe('discard', () => {
+  it('discardPreview lists the uncommitted files and the unsaved commits', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.states.set(view.branch, { uncommitted: ['a.ts', 'b.ts'], unsaved: ['abc1234 wip'] });
+
+    await expect(t.service.discardPreview(view.id)).resolves.toEqual({ uncommitted: ['a.ts', 'b.ts'], unsaved: ['abc1234 wip'] });
+  });
+
+  it('discard force-removes the worktree, deletes the branch and moves the task to Discarded', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.removals.length = 0;
+
+    await t.service.discard(view.id);
+
+    expect(t.removals).toEqual([
+      ['removeWorktree', t.projectDir, view.worktreePath, { force: true }],
+      ['deleteBranch', t.projectDir, view.branch],
+    ]);
+    expect(t.service.list()[0]).toMatchObject({ place: 'discarded', endedAt: 1000 });
+    expect(t.readState()[0]).toMatchObject({ place: 'discarded', endedAt: 1000 });
+    expect(t.changes.at(-1)).toEqual(t.service.list());
+  });
+
+  it('a rejected removal throws git\'s message and leaves the task on the board', async () => {
+    const t = roundSetup({ removeWorktree: async () => { throw new Error('fatal: locked'); } });
+    const view = await pausedTask(t);
+
+    await expect(t.service.discard(view.id)).rejects.toThrow('fatal: locked');
+    expect(t.service.list()[0].place).toBeNull();
+    // The task is free again: a second try is not blocked.
+    await expect(t.service.discard(view.id)).rejects.toThrow('fatal: locked');
+  });
+
+  it('discard refuses a running task', async () => {
+    const t = roundSetup();
+    const view = await t.service.start(NEW_TASK);
+
+    await expect(t.service.discard(view.id)).rejects.toThrow(`Close ${view.title} before discarding it`);
+    expect(t.removals).toEqual([]);
+    expect(t.service.list()[0].place).toBeNull();
+  });
+
+  it('discard refuses a task a round is removing, and a reopen is refused while a discard removes', async () => {
+    const gate = held();
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.states.set(view.branch, MERGED);
+    t.removals.length = 0;
+    // The round's removal holds.
+    (t.service as unknown as { deps: { git: GitQueries } }).deps.git.removeWorktree = (async (dir: string, path: string, o: unknown) => {
+      t.removals.push(['removeWorktree', dir, path, o]);
+      await gate.promise;
+    }) as GitQueries['removeWorktree'];
+    const round = t.service.checkRound();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expect(t.service.discard(view.id)).rejects.toThrow(`Close ${view.title} before discarding it`);
+    gate.release(undefined);
+    await round;
+    expect(t.removals.filter((r) => r[0] === 'removeWorktree')).toHaveLength(1);
+  });
+
+  it('a reopen while a discard removes starts no session', async () => {
+    const gate = held();
+    const t = roundSetup({ removeWorktree: () => gate.promise });
+    const view = await pausedTask(t);
+
+    const discarding = t.service.discard(view.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await t.service.reopen(view.id);
+    expect(t.service.sessionIds()).toEqual([]);
+    gate.release(undefined);
+    await discarding;
+    expect(t.service.list()[0].place).toBe('discarded');
+  });
+
+  it('a card whose task was discarded starts a fresh task', async () => {
+    const t = roundSetup();
+    const first = await t.service.start({ ...NEW_TASK, card: CARD });
+    t.service.close(first.id);
+    t.service.onSessionExit(first.session!.id);
+    await t.service.discard(first.id);
+
+    const second = await t.service.start({ ...NEW_TASK, title: 'Again', card: CARD });
+
+    expect(second.id).not.toBe(first.id);
+    expect(t.service.list()).toHaveLength(2);
+  });
+
+  it('a card whose task is finished still refuses Start', async () => {
+    const t = roundSetup();
+    const first = await t.service.start({ ...NEW_TASK, card: CARD });
+    t.sessionStarted(first.id, t.readState()[0].claudeSessionId);
+    t.service.close(first.id);
+    t.service.onSessionExit(first.session!.id);
+    t.states.set(first.branch, MERGED);
+    await t.service.checkRound();
+    expect(t.service.list()[0].place).toBe('finished');
+
+    await expect(t.service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow('already has the task');
+  });
 });

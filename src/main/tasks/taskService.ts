@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { SESSION_START_FILE } from '../agents/claude';
@@ -149,8 +149,8 @@ export class TaskService {
     const branchSlugs = await this.deps.git.worktreeBranchNames(this.deps.projectDir);
     if (req.card) {
       const { id } = req.card;
-      // A card has one task for good: a closed one is reopened, never started again.
-      const other = this.mine().find((t) => t.card?.id === id);
+      // A card has one task for good, a discarded one aside: a closed one is reopened, never started again.
+      const other = this.mine().find((t) => t.card?.id === id && t.place !== 'discarded');
       const name = req.card.number ?? title;
       if (other?.open) throw new Error(`${name} is already open as the task "${other.title}"`);
       if (other) throw new Error(`${name} already has the task "${other.title}"; reopen it instead`);
@@ -510,6 +510,32 @@ export class TaskService {
     if (!began) return false;
     const state = await this.deps.git.taskGitState(this.deps.projectDir, task.branch, task.worktreePath);
     return state.uncommitted.length === 0 && !state.elsewhere && (state.branch === 'gone' || state.branch === 'merged');
+  }
+
+  /** What a Discard would lose: the uncommitted and untracked files, and the commits on neither the base nor a remote branch. */
+  async discardPreview(taskId: string): Promise<DiscardPreview> {
+    const task = this.find(taskId);
+    const { uncommitted, unsaved } = await this.deps.git.taskGitState(this.deps.projectDir, task.branch, task.worktreePath);
+    return { uncommitted, unsaved };
+  }
+
+  /**
+   * Throws away a paused task's worktree and branch, forced: the owner has seen the preview. A task a round is removing
+   * is refused rather than waited for. Marked as removing meanwhile, so a reopen starts no session in what goes.
+   */
+  async discard(taskId: string): Promise<void> {
+    const task = this.find(taskId);
+    if (this.busy(task)) throw new Error(`Close ${task.title} before discarding it`);
+    this.removing.add(task.id);
+    try {
+      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: true });
+      await this.deps.git.deleteBranch(this.deps.projectDir, task.branch);
+    } finally {
+      this.removing.delete(task.id);
+    }
+    task.place = 'discarded';
+    task.endedAt = this.now();
+    this.commit();
   }
 
   beginQuit(): void {

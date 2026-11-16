@@ -142,6 +142,12 @@ export interface StartCheck {
 /** Where a task is off the board: put back on the to-do list, finished, or discarded. */
 export type TaskPlace = 'putBack' | 'finished' | 'discarded';
 
+/** What a Discard would lose: files in the worktree and commits that exist nowhere else. */
+export interface DiscardPreview {
+  uncommitted: string[];
+  unsaved: string[];
+}
+
 export interface TaskView {
   id: string;
   title: string;
