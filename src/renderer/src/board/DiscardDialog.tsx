@@ -80,7 +80,7 @@ export default function DiscardDialog(props: {
                   </ul>
                 </Show>
                 <Show when={preview().unsaved.length > 0}>
-                  <h3>Commits on no other branch</h3>
+                  <h3>Commits not pushed or merged</h3>
                   <ul>
                     <For each={preview().unsaved}>{(subject) => <li data-testid="discard-commit">{subject}</li>}</For>
                   </ul>

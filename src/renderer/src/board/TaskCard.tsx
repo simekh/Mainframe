@@ -50,6 +50,18 @@ export default function TaskCard(props: {
   let menu!: HTMLDivElement;
   const menuId = () => `card-menu-${props.task.id}`;
   const anchor = () => `--card-more-${props.task.id}`;
+  // Open, it takes the focus, so Esc closes it rather than reaching the terminal's agent; closed, the browser hands the
+  // focus back to where it was. Up and Down move between its items.
+  const focusFirstItem = (e: ToggleEvent) => {
+    if (e.newState === 'open') menu.querySelector<HTMLElement>('[role=menuitem]')?.focus();
+  };
+  const moveInMenu = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = [...menu.querySelectorAll<HTMLElement>('[role=menuitem]')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+  };
 
   let cardEl!: HTMLLIElement;
   // A card that changes lanes is rebuilt in its new one, and the focus on the old card falls to
@@ -174,6 +186,8 @@ export default function TaskCard(props: {
           class="card-menu"
           aria-label={`More for ${props.task.title}`}
           style={{ 'position-anchor': anchor() }}
+          on:toggle={focusFirstItem}
+          onKeyDown={moveInMenu}
         >
           <button role="menuitem" class="card-menu-item" data-testid="put-back" onMouseDown={keepFocus} onClick={putBack}>
             Put back

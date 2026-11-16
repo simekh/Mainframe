@@ -614,7 +614,7 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
   await ticket.getByTestId('ticket-close').click();
 
-  // Closed, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
+  // Paused, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
   await closeTask(page, id);
   await expect(items).toHaveCount(2);
   await expect(search.getByTestId('todo-start')).toHaveCount(0);
@@ -1072,7 +1072,7 @@ test("a card for the owner has no Start in the list; its ticket says it is marke
   await expect(ticket).toHaveCount(0);
   await expect(owner).toHaveCount(0);
 
-  // Closed, it comes back greyed with Reopen, in the list and in its ticket, and still no Start.
+  // Paused, it comes back greyed with Reopen, in the list and in its ticket, and still no Start.
   await closeTask(page, id);
   await expect(owner.getByTestId('todo-reopen')).toHaveAccessibleName('Reopen Decide on the refund window');
   await expect(owner.getByTestId('todo-start')).toHaveCount(0);

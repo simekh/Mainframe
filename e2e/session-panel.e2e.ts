@@ -8,7 +8,7 @@ import {
 
 test.afterEach(cleanUp);
 
-const CLOSED_NOTE = 'Paused. Reopen continues this chat.';
+const PAUSED_NOTE = 'Paused. Reopen continues this chat.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
 
@@ -56,16 +56,16 @@ test('a task closed during this run keeps its terminal; one closed before it sho
   await expect(cardIn(first.page, 'paused', id)).toBeVisible();
   await expect.poll(() => screen(first.page, id)).toContain('[Process exited]');
   await expect(first.page.locator('.well > .terminal:not(.terminal--hidden)')).toBeVisible();
-  await expect(first.page.getByText(CLOSED_NOTE)).toHaveCount(0);
+  await expect(first.page.getByText(PAUSED_NOTE)).toHaveCount(0);
   await first.app.close();
 
   const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
   await card(page, id).click();
   await expect(page.getByTestId('panel-title')).toHaveText('Fix login');
-  await expect(page.getByText(CLOSED_NOTE)).toBeVisible();
+  await expect(page.getByText(PAUSED_NOTE)).toBeVisible();
 
   await page.getByTestId('panel-reopen').click();
-  await expect(page.getByText(CLOSED_NOTE)).toHaveCount(0);
+  await expect(page.getByText(PAUSED_NOTE)).toHaveCount(0);
   await expect.poll(() => screen(page, id)).toContain('$');
   await app.close();
 });

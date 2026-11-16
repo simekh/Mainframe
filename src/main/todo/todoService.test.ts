@@ -1230,5 +1230,25 @@ it("a note's put-back whose note can't be written returns the task to the board"
   });
 
   await expect(t.service.putBack('task-7')).rejects.toThrow('EACCES');
-  expect(t.taskCalls).toEqual([['markPutBack', 'task-7'], ['returnToBoard', 'task-7']]);
+  expect(t.taskCalls).toEqual([['markPutBack', 'task-7'], ['returnToBoard', 'task-7', 'Put back: EACCES: permission denied']]);
+});
+
+it("a put-back that fails says why on the paused task's card, and says nothing on a task that runs again", async () => {
+  const t = setup();
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+  t.putBackHooks.card = async () => {
+    throw new Error('git refused');
+  };
+  await expect(t.service.putBack('task-7')).rejects.toThrow('git refused');
+  expect(t.taskCalls.at(-1)).toEqual(['returnToBoard', 'task-7', 'Put back: git refused']);
+
+  // Reopened meanwhile: its running session must not carry the line on.
+  t.taskCalls.length = 0;
+  t.putBackHooks.card = async () => {
+    t.taskViews[0].session = { id: 's2', startedWithPrompt: false };
+    t.taskViews[0].closedAt = null;
+    throw new Error('Close Fix the gate before putting it back');
+  };
+  await expect(t.service.putBack('task-7')).rejects.toThrow('Close Fix the gate');
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
 });

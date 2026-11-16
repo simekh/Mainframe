@@ -3005,7 +3005,7 @@ kbd {
   box-shadow: 0 0 0 1px var(--border-focus);
 }
 
-.closed-note {
+.paused-note {
   position: absolute;
   inset: 0;
   display: grid;

@@ -248,13 +248,23 @@ test('Discard asks first, lists what would be lost, and removes the worktree and
   await app.close();
 });
 
-test('a paused task with nothing to lose says so before it is discarded', async () => {
+test("the Paused card's menu takes the focus, moves by arrow keys and closes with Esc; with nothing to lose, Discard says so", async () => {
   const main = repo();
   const { app, page } = await launchApp({}, main);
   const id = await startTask(page, 'Fix login');
   await closeTask(page, id);
   const paused = cardIn(page, 'paused', id);
   await expect(paused).toHaveCount(1);
+  await paused.getByTestId('card-more').click();
+  await expect(page.getByTestId('put-back')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('discard')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('put-back')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('put-back')).toBeHidden();
+  await expect(paused).toHaveCount(1);
+
   await paused.getByTestId('card-more').click();
   await page.getByTestId('discard').click();
   await expect(page.getByTestId('discard-dialog')).toContainText('Nothing would be lost.');

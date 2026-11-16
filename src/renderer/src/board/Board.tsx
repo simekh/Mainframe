@@ -22,8 +22,6 @@ export default function Board() {
   const project = useProject();
   let root!: HTMLDivElement;
   const order = createMemo(() => laneOrder(tasksOf(project.dir).tasks, tasksStore.sessions, todoOf(project.dir)?.cards));
-  // Each lane's ids, joined: it changes only when a card enters, leaves or changes place, so the
-  // frequent msg updates measure nothing.
   // The paused task whose Discard waits for the owner's confirm, with what it would lose once that is read. Kept here, not
   // on its card, which goes once the task does.
   const [discarding, setDiscarding] = createSignal<{
@@ -44,6 +42,8 @@ export default function Board() {
     const id = tasksOf(project.dir).selectedId;
     if (id) focusTerminalOf(project.dir, id);
   };
+  // Each lane's ids, joined: it changes only when a card enters, leaves or changes place, so the
+  // frequent msg updates measure nothing.
   const orderKey = createMemo(() => LANES.map(({ lane }) => order()[lane].map((t) => t.id).join(',')).join('|'));
 
   // Solid runs computations before it updates the DOM and effects after: the cards are measured
