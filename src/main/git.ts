@@ -248,6 +248,19 @@ async function base(projectDir: string): Promise<string> {
   );
 }
 
+/**
+ * What keeps a background fetch from asking anyone anything: it fails instead. Each only turns prompting off, so the
+ * user's own credentials, helpers and ssh command still sign in as they would. With `credential.interactive=false`
+ * (git, and helpers that read it), these say: no prompt on a terminal; an empty askpass program, so git runs none,
+ * not core.askPass's nor SSH_ASKPASS's; no Git Credential Manager window; no askpass program from ssh.
+ */
+const NO_PROMPTS: Record<string, string> = {
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_ASKPASS: '',
+  GCM_INTERACTIVE: 'false',
+  SSH_ASKPASS_REQUIRE: 'never',
+};
+
 /** Brings the remote's default branch up to date, so a merge made elsewhere shows. Never rejects: no remote, no network or a slow one is not an error. */
 export async function fetchBase(projectDir: string): Promise<void> {
   try {
@@ -256,8 +269,8 @@ export async function fetchBase(projectDir: string): Promise<void> {
     const prefix = 'refs/remotes/origin/';
     if (!head.startsWith(prefix)) return;
     // FETCH_HEAD is the main checkout's: a session's `git pull` there reads it.
-    await git(projectDir, ['fetch', '--quiet', '--no-write-fetch-head', 'origin', head.slice(prefix.length)], {
-      env: { GIT_TERMINAL_PROMPT: '0' },
+    await git(projectDir, ['-c', 'credential.interactive=false', 'fetch', '--quiet', '--no-write-fetch-head', 'origin', head.slice(prefix.length)], {
+      env: NO_PROMPTS,
       timeoutMs: 30_000,
     });
   } catch {
@@ -351,8 +364,8 @@ export class FolderLeftError extends Error {}
 
 /**
  * Resolves when the folder is gone, clearing git's entry for it if it has one; other worktrees' entries are left
- * alone. Rejects with git's message: a locked worktree, or changes without `force`; as a `FolderLeftError` when the
- * folder is left behind no longer a worktree.
+ * alone. Rejects with git's message: a locked worktree, changes without `force`, or a folder that is not a worktree; as
+ * a `FolderLeftError` when a worktree is left behind no longer one.
  */
 export async function removeWorktree(projectDir: string, worktreePath: string, o: { force: boolean }): Promise<void> {
   const remove = ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath];
@@ -361,12 +374,14 @@ export async function removeWorktree(projectDir: string, worktreePath: string, o
     await git(projectDir, remove).catch(() => {});
     return;
   }
+  const wasWorktree = await isWorktreeTop(worktreePath).catch(() => false);
   try {
     await git(projectDir, remove);
   } catch (err) {
     const { message } = gitError(err);
-    if ((await pathExists(worktreePath)) && !(await isWorktreeTop(worktreePath).catch(() => false))) throw new FolderLeftError(message);
-    throw new Error(message);
+    // Only git's own removal leaves a worktree half gone: a folder that never was one is just git's reason.
+    const left = wasWorktree && (await pathExists(worktreePath)) && !(await isWorktreeTop(worktreePath).catch(() => false));
+    throw left ? new FolderLeftError(message) : new Error(message);
   }
 }
 
@@ -382,18 +397,17 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 /**
- * Deletes the branch, as `git branch -D` does: the caller has proved its commits are safe. Given the `tip` that proof
- * was made on, only while the branch still points there; it rejects otherwise. Resolves when it is gone already.
+ * Deletes the branch with `git branch -D`: the caller has proved its commits are safe. Git refuses a branch checked out
+ * in the main checkout or a worktree. Given the `tip` that proof was made on, only while the branch still points there;
+ * it rejects otherwise. Resolves when it is gone already.
  */
 export async function deleteBranch(projectDir: string, branch: string, tip?: string): Promise<void> {
-  if (!(await branchExists(projectDir, branch))) return;
-  if (tip === undefined) {
-    await git(projectDir, ['branch', '-D', branch]).catch(withGitMessage);
-    return;
-  }
-  await git(projectDir, ['update-ref', '-d', `refs/heads/${branch}`, tip]).catch(withGitMessage);
-  // Its settings, which `branch -D` would have removed; a branch with none has no section to remove.
-  await git(projectDir, ['config', '--remove-section', `branch.${branch}`]).catch(() => {});
+  const now = await branchTip(projectDir, branch);
+  if (now === null) return;
+  // A commit made between this look and the delete is lost with the branch: a moment's window, where update-ref's own
+  // check would skip git's guard for a branch checked out elsewhere.
+  if (tip !== undefined && now !== tip) throw new Error(`The branch ${branch} has moved since it was checked, so it stays`);
+  await git(projectDir, ['branch', '-D', branch]).catch(withGitMessage);
 }
 
 export const gitQueries = {

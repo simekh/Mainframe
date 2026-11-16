@@ -12,6 +12,9 @@ import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES 
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
 
+/** How a card's problem line starts when git left a worktree's folder half removed. */
+const FOLDER_LEFT = 'Delete the folder git left behind, then Discard:';
+
 /** How often each open project checks its tasks for ones with nothing to lose, besides at each session's end. */
 export const FINISH_CHECK_MS = 3 * 60_000;
 
@@ -646,17 +649,19 @@ export class TaskService {
     return passed ? state : null;
   }
 
-  /** Removes the task's worktree; a failure says why on its card, where a folder left behind says what to do. */
+  /**
+   * Removes the task's worktree; a failure says why on its card, where a folder left behind says what to do. Git's later
+   * tries at that folder only find it is no worktree, so the advice stays until the folder is gone.
+   */
   private async removeWorktreeOf(task: TaskRecord, o: { force: boolean }): Promise<void> {
     try {
       await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, o);
     } catch (err) {
-      this.problems.set(
-        task.id,
-        err instanceof FolderLeftError
-          ? `Delete the folder git left behind, then Discard: ${task.worktreePath} (${message(err)})`
-          : `Could not remove the worktree: ${message(err)}`,
-      );
+      if (err instanceof FolderLeftError) {
+        this.problems.set(task.id, `${FOLDER_LEFT} ${task.worktreePath} (${message(err)})`);
+      } else if (!this.problems.get(task.id)?.startsWith(FOLDER_LEFT)) {
+        this.problems.set(task.id, `Could not remove the worktree: ${message(err)}`);
+      }
       this.commit();
       throw err;
     }

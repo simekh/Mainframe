@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -606,6 +608,18 @@ it('a removal git refuses with the worktree intact rejects with an ordinary erro
   await expect(failed).rejects.not.toBeInstanceOf(FolderLeftError);
 });
 
+it('a plain folder git never owned, at the worktree\'s path, rejects with git\'s reason, not as a folder left behind', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  await removeWorktree(main, wt, { force: false });
+  mkdirSync(wt);
+  writeFileSync(join(wt, 'mine.txt'), 'mine\n');
+  const failed = removeWorktree(main, wt, { force: false });
+  await expect(failed).rejects.toThrow(/not a working tree/);
+  await expect(failed).rejects.not.toBeInstanceOf(FolderLeftError);
+  expect(existsSync(join(wt, 'mine.txt'))).toBe(true);
+});
+
 it('deleteBranch given the tip judged deletes the branch only while it still points there', async () => {
   const { main } = repo();
   const { branch, wt } = taskBranch(main);
@@ -622,6 +636,19 @@ it('deleteBranch given the tip judged deletes the branch only while it still poi
   expect(await branchExists(main, branch)).toBe(false);
   // As `git branch -D` does, the branch's settings go too: Continue makes a branch of the same name.
   expect(() => out(main, 'config', '--get-regexp', `^branch\\.${branch}\\.`)).toThrow();
+});
+
+it('deleteBranch given the tip judged leaves a branch checked out in the main checkout, as git branch -D does', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  // The task's folder is gone, and its branch is checked out in the main checkout.
+  await removeWorktree(main, wt, { force: false });
+  git(main, 'checkout', branch);
+  const tip = out(main, 'rev-parse', branch);
+
+  await expect(deleteBranch(main, branch, tip)).rejects.toThrow(branch);
+  expect(await branchExists(main, branch)).toBe(true);
+  expect(out(main, 'rev-parse', 'HEAD')).toBe(tip);
 });
 
 it("fetchBase leaves the main checkout's FETCH_HEAD alone, and fetches the remote's branch though a local branch is named origin/<it>", async () => {
@@ -643,6 +670,42 @@ it("fetchBase leaves the main checkout's FETCH_HEAD alone, and fetches the remot
   expect(out(main, 'rev-parse', 'refs/remotes/origin/stage')).toBe(out(other, 'rev-parse', 'HEAD'));
   expect(existsSync(fetchHead)).toBe(false);
 });
+
+it.skipIf(process.platform === 'win32')(
+  'fetchBase never runs an askpass program, whether GIT_ASKPASS, core.askPass or SSH_ASKPASS names it',
+  async () => {
+    const { main } = repo();
+    // A remote that asks for a password.
+    const server = createServer((_req, res) => {
+      res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="test"' });
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      git(main, 'remote', 'set-url', 'origin', `http://127.0.0.1:${(server.address() as AddressInfo).port}/repo.git`);
+      const asked = join(dirname(main), 'asked');
+      const askpass = join(dirname(main), 'askpass.sh');
+      writeFileSync(askpass, `#!/bin/sh\necho "$1" >> '${asked}'\necho secret\n`, { mode: 0o755 });
+      // No credential helper of this machine's own answers or prompts.
+      const noConfig = join(dirname(main), 'no-config');
+      writeFileSync(noConfig, '');
+      vi.stubEnv('GIT_CONFIG_GLOBAL', noConfig);
+      vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+      git(main, 'config', 'core.askPass', askpass);
+      vi.stubEnv('SSH_ASKPASS', askpass);
+
+      vi.stubEnv('GIT_ASKPASS', askpass);
+      await fetchBase(main);
+      // Without GIT_ASKPASS, git would turn to core.askPass, then SSH_ASKPASS.
+      vi.stubEnv('GIT_ASKPASS', undefined);
+      await fetchBase(main);
+
+      expect(existsSync(asked) ? readFileSync(asked, 'utf8') : '').toBe('');
+    } finally {
+      server.close();
+    }
+  },
+);
 
 it('taskGitState rejects for a project folder that is not a repository, rather than finding its branch gone', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));

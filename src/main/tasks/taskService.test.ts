@@ -1,8 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FolderLeftError, type GitQueries } from '../git';
+import { FolderLeftError, gitQueries, type GitQueries } from '../git';
+import { makeRepo } from '../testing/makeRepo';
 import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
@@ -1635,6 +1637,25 @@ it('a round moves a closed task with a merged branch and nothing uncommitted to 
   expect(t.changes.at(-1)).toEqual(t.service.list());
 });
 
+it("a round leaves a task whose folder is gone and whose merged branch is checked out in the main checkout: git's guard keeps the branch, and the task stays", async () => {
+  const repo = makeRepo();
+  cleanup.push(dirname(repo.origin));
+  execFileSync('git', ['-C', repo.main, 'checkout', '-q', '-b', 'worktree-fix-login'], { stdio: 'pipe' });
+  const tip = execFileSync('git', ['-C', repo.main, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const t = roundSetup({
+    taskGitState: async () => ({ branch: 'merged', tip, uncommitted: [], elsewhere: false, unsaved: [] }),
+    deleteBranch: gitQueries.deleteBranch,
+  });
+  const service = t.make(undefined, repo.main);
+
+  const view = await pausedTask(t, { service });
+
+  expect(service.list()[0]).toMatchObject({ id: view.id, place: null });
+  expect(await gitQueries.branchExists(repo.main, 'worktree-fix-login')).toBe(true);
+  expect(execFileSync('git', ['-C', repo.main, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()).toBe(tip);
+  expect(t.warnings.some((w) => w.includes('worktree-fix-login'))).toBe(true);
+});
+
 it('a round moves a closed task whose branch and worktree are gone to Finished', async () => {
   const t = roundSetup();
   const view = await pausedTask(t);
@@ -2014,6 +2035,25 @@ it('a removal git leaves half done says on the card to delete the folder, and on
   left = false;
   await t.service.checkRound();
   expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
+});
+
+it('a later removal of the folder git left behind keeps the card telling the owner to delete it', async () => {
+  let failure: Error = new FolderLeftError('Permission denied');
+  const t = roundSetup({
+    removeWorktree: async () => {
+      throw failure;
+    },
+  });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+  const advice = `Delete the folder git left behind, then Discard: ${view.worktreePath} (Permission denied)`;
+  await t.service.checkRound();
+  expect(t.service.list()[0].problem).toBe(advice);
+
+  // What is left is no longer a worktree, so git's next try only says so.
+  failure = new Error(`fatal: '${view.worktreePath}' is not a working tree`);
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({ place: null, problem: advice });
 });
 
 it('a round deletes the branch only at the tip its second check judged, and none for a branch that check found gone', async () => {
