@@ -80,6 +80,8 @@ interface Session {
   turn: TurnTracker;
   /** A Continue's, whose agent makes the fresh worktree as it starts. */
   continued?: boolean;
+  /** Its task's worktree folder was there at one of its reports or at its end: the session got as far as making it. */
+  worktreeSeen?: boolean;
   /**
    * Put back's session: closed once its turn ends, on done, or on idle once it has worked. A question or a permission
    * prompt waits for the owner's answer; an error gives Put back up, and it goes on as any task's session.
@@ -534,6 +536,7 @@ export class TaskService {
     if (!session) return;
     session.turn.note(state);
     const task = this.find(session.taskId);
+    this.lookForWorktree(session, task);
     if (agentOf(task) === 'opencode' && !task.began && inTurn(state)) {
       task.began = true;
       // Saved, not sent: nothing the window shows has changed.
@@ -566,13 +569,12 @@ export class TaskService {
     }
     // The mark is for a running task; once closed, the round decides.
     this.merged.delete(task.id);
-    if (session.continued || this.unmade.has(task.id)) {
-      if (existsSync(task.worktreePath)) {
-        this.unmade.delete(task.id);
-      } else {
-        this.unmade.add(task.id);
-        this.problems.set(task.id, 'The session ended before its worktree was made');
-      }
+    this.lookForWorktree(session, task);
+    if (session.worktreeSeen) {
+      this.unmade.delete(task.id);
+    } else if (session.continued || this.unmade.has(task.id)) {
+      this.unmade.add(task.id);
+      this.problems.set(task.id, 'The session ended before its worktree was made');
     }
     this.commit();
     session.putBack?.settle(true);
@@ -752,6 +754,16 @@ export class TaskService {
   private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'launch' | 'startedWithPrompt' | 'continued'> & { resumePending: boolean }): void {
     const id = this.newId();
     this.sessions.set(id, { id, ...session, turn: new TurnTracker(resumePending) });
+  }
+
+  /**
+   * Notes that a Continue's session, or one of a task whose earlier session ended before its worktree was made, has
+   * seen the worktree folder. The agent makes it before the session's first report, so a worktree removed later (merged
+   * and tidied away) still counts as made.
+   */
+  private lookForWorktree(session: Session, task: TaskRecord): void {
+    if (session.worktreeSeen || !(session.continued || this.unmade.has(task.id))) return;
+    if (existsSync(task.worktreePath)) session.worktreeSeen = true;
   }
 
   /** Records on the task where the session's turn was as its end was decided (`turnAtEnd` says how). */

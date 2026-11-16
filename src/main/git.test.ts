@@ -693,6 +693,12 @@ it.skipIf(process.platform === 'win32')(
       vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
       git(main, 'config', 'core.askPass', askpass);
       vi.stubEnv('SSH_ASKPASS', askpass);
+      // A credential helper, as Git Credential Manager is one: it is told not to prompt.
+      const helped = join(dirname(main), 'helped');
+      git(
+        main, 'config', 'credential.helper',
+        `!f() { echo "$GCM_INTERACTIVE $SSH_ASKPASS_REQUIRE $(git config credential.interactive)" >> '${helped}'; }; f`,
+      );
 
       vi.stubEnv('GIT_ASKPASS', askpass);
       await fetchBase(main);
@@ -701,6 +707,7 @@ it.skipIf(process.platform === 'win32')(
       await fetchBase(main);
 
       expect(existsSync(asked) ? readFileSync(asked, 'utf8') : '').toBe('');
+      expect(new Set(readFileSync(helped, 'utf8').trim().split('\n'))).toEqual(new Set(['false never false']));
     } finally {
       server.close();
     }

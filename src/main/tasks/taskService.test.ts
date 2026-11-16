@@ -2275,6 +2275,23 @@ it('a Continue whose session ends before its worktree is made stays Paused on th
   expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
 });
 
+it('a Continue whose session made its worktree, which was gone again by its end, is finished by the round as any task is', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { branch: 'gone' });
+  await t.service.checkRound();
+
+  const continued = await t.service.continueTask(view.id);
+  mkdirSync(view.worktreePath, { recursive: true });
+  t.service.noteStatus(continued.session!.id, 'idle');
+  // Merged, and its worktree and branch removed, as the repo's instructions may say.
+  rmSync(view.worktreePath, { recursive: true });
+  t.service.onSessionExit(continued.session!.id);
+  await t.service.checkRound();
+
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
+});
+
 it('a Continue cut short while git adds the worktree removes the worktree and the branch it made', async () => {
   let adding: Promise<void> | null = null;
   const t = roundSetup({ addWorktree: () => adding ?? Promise.resolve() });
