@@ -2246,6 +2246,35 @@ it('a chat-gone Continue drops the old session record, so an exit before the new
   expect(claudeSessionId).not.toBe(first);
 });
 
+it('a Continue whose session ends before its worktree is made stays Paused on the board, saying so, until a session makes it', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { branch: 'gone' });
+  await t.service.checkRound();
+  expect(t.service.list()[0].place).toBe('finished');
+
+  // claude fails at once: no worktree, no branch, and the old conversation's record.
+  const continued = await t.service.continueTask(view.id);
+  t.service.onSessionExit(continued.session!.id);
+  await t.service.checkRound();
+  const unmade = { place: null, session: null, problem: 'The session ended before its worktree was made' };
+  expect(t.service.list()[0]).toMatchObject(unmade);
+
+  // A Reopen that fails the same way leaves it there too.
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.list()[0].problem).toBeNull();
+  t.service.onSessionExit(reopened.session!.id);
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject(unmade);
+
+  // A session that makes the worktree: the round judges the task again.
+  const again = await t.service.reopen(view.id);
+  mkdirSync(view.worktreePath, { recursive: true });
+  t.service.onSessionExit(again.session!.id);
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
+});
+
 it('a Continue cut short while git adds the worktree removes the worktree and the branch it made', async () => {
   let adding: Promise<void> | null = null;
   const t = roundSetup({ addWorktree: () => adding ?? Promise.resolve() });

@@ -78,6 +78,8 @@ interface Session {
   launch: LaunchSpec;
   startedWithPrompt: boolean;
   turn: TurnTracker;
+  /** A Continue's, whose agent makes the fresh worktree as it starts. */
+  continued?: boolean;
   /**
    * Put back's session: closed once its turn ends, on done, or on idle once it has worked. A question or a permission
    * prompt waits for the owner's answer; an error gives Put back up, and it goes on as any task's session.
@@ -107,6 +109,12 @@ export class TaskService {
   private readonly removing = new Set<string>();
   /** Tasks a Put back is under way for, from its session to the sync after it. */
   private readonly puttingBack = new Set<string>();
+  /**
+   * Continued tasks whose session ended before their worktree was made: the old record says the conversation began and
+   * branch and folder are missing, which is not finished work. The round leaves them until a session's end finds the
+   * worktree.
+   */
+  private readonly unmade = new Set<string>();
   /** The check round running, and the one queued after it. */
   private round: Promise<void> | null = null;
   private nextRound: Promise<void> | null = null;
@@ -275,14 +283,14 @@ export class TaskService {
     if (adapter.chatKept(dir)) {
       // A kept chat is a recorded one.
       task.claudeSessionId = adapter.recordedSession(dir)!;
-      return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
+      return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true, continued: true });
     }
     // The agent deleted the chat: a new one, which the agent's own flag starts in the fresh worktree. The old record
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
     adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
     const launch = this.startLaunch(task, bin, { continuing: true });
-    return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
+    return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false, continued: true });
   }
 
   /**
@@ -467,7 +475,7 @@ export class TaskService {
   }
 
   /** Runs the task's session, which puts it on the board. */
-  private relaunch(task: TaskRecord, launch: LaunchSpec, o: { startedWithPrompt: boolean; resumePending: boolean }): TaskView {
+  private relaunch(task: TaskRecord, launch: LaunchSpec, o: { startedWithPrompt: boolean; resumePending: boolean; continued?: boolean }): TaskView {
     delete task.place;
     delete task.endedAt;
     this.problems.delete(task.id);
@@ -558,6 +566,14 @@ export class TaskService {
     }
     // The mark is for a running task; once closed, the round decides.
     this.merged.delete(task.id);
+    if (session.continued || this.unmade.has(task.id)) {
+      if (existsSync(task.worktreePath)) {
+        this.unmade.delete(task.id);
+      } else {
+        this.unmade.add(task.id);
+        this.problems.set(task.id, 'The session ended before its worktree was made');
+      }
+    }
     this.commit();
     session.putBack?.settle(true);
     // A task's exit is when it may have finished: Finish is Close.
@@ -596,7 +612,7 @@ export class TaskService {
     await this.deps.git.fetchBase(this.deps.projectDir);
     for (const task of this.mine().filter((t) => t.place === undefined || t.place === 'putBack')) {
       if (this.quitting) return;
-      if (this.worktreeChanging(task) || this.puttingBack.has(task.id)) continue;
+      if (this.worktreeChanging(task) || this.puttingBack.has(task.id) || this.unmade.has(task.id)) continue;
       try {
         await this.checkTask(task);
       } catch (err) {
@@ -733,7 +749,7 @@ export class TaskService {
     return task;
   }
 
-  private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'launch' | 'startedWithPrompt'> & { resumePending: boolean }): void {
+  private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'launch' | 'startedWithPrompt' | 'continued'> & { resumePending: boolean }): void {
     const id = this.newId();
     this.sessions.set(id, { id, ...session, turn: new TurnTracker(resumePending) });
   }
