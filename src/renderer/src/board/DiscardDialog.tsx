@@ -5,7 +5,7 @@ import { errorMessage } from '../bridgeError';
 /**
  * Mounted to show it, as a modal: what a Discard of a paused task would lose, and the owner's confirm. `preview` is null
  * until it is read, and `previewError` says why it couldn't be; Discard waits for the list. It calls `onClose` once it
- * has closed (Cancel, Esc or a Discard done).
+ * has closed (Cancel, Esc or a Discard done); it stays open while the discard runs, and shows why one failed.
  */
 export default function DiscardDialog(props: {
   title: string;
@@ -28,8 +28,10 @@ export default function DiscardDialog(props: {
     setError(null);
     try {
       await props.onDiscard();
+      setDiscarding(false);
       dialog.close();
     } catch (err) {
+      console.error(`[tasks] could not discard ${props.title}: ${errorMessage(err)}`);
       setError(errorMessage(err));
       setDiscarding(false);
     }
@@ -44,7 +46,8 @@ export default function DiscardDialog(props: {
       // A press here is not one on the board, which would fold the panels over it.
       onMouseDown={(e) => e.stopPropagation()}
       onCancel={(e) => discarding() && e.preventDefault()}
-      onClose={() => props.onClose()}
+      // Closed while the discard runs (a second Esc skips the cancel event): shown again, so its outcome is seen.
+      onClose={() => (discarding() ? dialog.showModal() : props.onClose())}
     >
       <form
         class="nt"

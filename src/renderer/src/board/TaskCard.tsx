@@ -51,11 +51,13 @@ export default function TaskCard(props: {
   const menuId = () => `card-menu-${props.task.id}`;
   const anchor = () => `--card-more-${props.task.id}`;
   // Open, it takes the focus, so Esc closes it rather than reaching the terminal's agent; closed, the browser hands the
-  // focus back to where it was. Up and Down move between its items.
+  // focus back to where it was. Up and Down move between its items. Its Esc goes no further, so it doesn't also close
+  // an open ticket: a native listener, as Solid's own wait at the document, where the ticket's listener is too.
   const focusFirstItem = (e: ToggleEvent) => {
     if (e.newState === 'open') menu.querySelector<HTMLElement>('[role=menuitem]')?.focus();
   };
   const moveInMenu = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') e.stopPropagation();
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     const items = [...menu.querySelectorAll<HTMLElement>('[role=menuitem]')];
@@ -115,7 +117,12 @@ export default function TaskCard(props: {
           {cardAge(props.task, props.session, props.now)}
         </span>
       </p>
-      <p class={`card-activity ${activity().kind}`} data-testid="task-activity">
+      {/* A problem is cut to one line: the whole of it shows on hover. */}
+      <p
+        class={`card-activity ${activity().kind}`}
+        data-testid="task-activity"
+        title={activity().kind === 'problem' ? activity().text : undefined}
+      >
         {activity().text}
       </p>
       <Show when={ask()}>
@@ -177,7 +184,8 @@ export default function TaskCard(props: {
           </div>
         )}
       </Show>
-      <Show when={props.lane === 'paused'}>
+      {/* No menu while a Put back runs: its card offers nothing until that is over. */}
+      <Show when={props.lane === 'paused' && !props.task.puttingBack}>
         <div
           ref={menu}
           id={menuId()}
@@ -187,7 +195,7 @@ export default function TaskCard(props: {
           aria-label={`More for ${props.task.title}`}
           style={{ 'position-anchor': anchor() }}
           on:toggle={focusFirstItem}
-          onKeyDown={moveInMenu}
+          on:keydown={moveInMenu}
         >
           <button role="menuitem" class="card-menu-item" data-testid="put-back" onMouseDown={keepFocus} onClick={putBack}>
             Put back

@@ -108,10 +108,19 @@ export async function reopenTask(dir: string, id: string): Promise<void> {
   await window.mainframe.reopenTask(dir, id);
 }
 
-/** Brings a put-back, finished or discarded task back to the board; selected first, as a reopen is. */
+/**
+ * Brings a put-back, finished or discarded task back to the board; selected first, as a reopen is. One that is refused
+ * stays off the board, so the task selected before it is selected again, unless the owner has picked another meanwhile.
+ */
 export async function continueTask(dir: string, id: string): Promise<void> {
+  const before = store.projects[dir]?.selectedId ?? null;
   select(dir, id);
-  await window.mainframe.continueTask(dir, id);
+  try {
+    await window.mainframe.continueTask(dir, id);
+  } catch (err) {
+    if (store.projects[dir]?.selectedId === id) select(dir, before);
+    throw err;
+  }
 }
 
 /** Resolves once the task is put back, which for a card's task takes its agent a turn. */

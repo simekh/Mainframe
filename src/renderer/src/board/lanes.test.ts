@@ -130,6 +130,12 @@ describe('the lane table', () => {
     const problem = 'Put back: the card is not on the to-do list';
     expect(cardActivity(closedTask({ problem }), undefined)).toEqual({ text: problem, kind: 'problem' });
   });
+
+  it('a task being put back says so, while its session runs and in the sync after it', () => {
+    const putting = { text: 'Putting back…', kind: 'busy' };
+    expect(cardActivity(task({ puttingBack: true }), state('working', { msg: 'Moving the card' }))).toEqual(putting);
+    expect(cardActivity(closedTask({ puttingBack: true }), undefined)).toEqual(putting);
+  });
 });
 
 describe('cardAsk', () => {
@@ -146,6 +152,11 @@ describe('cardAsk', () => {
   it('a Working card offers nothing, merged or not', () => {
     expect(cardAsk(task(), state('working'), 'working')).toBeNull();
     expect(cardAsk(task({ merged: true }), state('working'), 'working')).toBeNull();
+  });
+
+  it('a card being put back offers nothing: no Reopen, no Put back or Discard, no Answer', () => {
+    expect(cardAsk(closedTask({ puttingBack: true }), undefined, 'paused')).toBeNull();
+    expect(cardAsk(task({ puttingBack: true }), state('done'), 'needs-you')).toBeNull();
   });
 });
 

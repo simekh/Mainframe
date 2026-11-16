@@ -270,3 +270,29 @@ test("the Paused card's menu takes the focus, moves by arrow keys and closes wit
   await expect(page.getByTestId('discard-dialog')).toContainText('Nothing would be lost.');
   await app.close();
 });
+
+test("Esc that closes the Paused card's menu leaves an open ticket open", async () => {
+  const main = repo();
+  const { app, page } = await launchApp({}, main);
+  const id = await startTask(page, 'Fix login');
+  await closeTask(page, id);
+  const paused = cardIn(page, 'paused', id);
+  await expect(paused).toHaveCount(1);
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-add-note').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket).toBeVisible();
+
+  // By the keyboard: a press on the board would close the ticket itself.
+  await paused.getByTestId('card-more').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('put-back')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('put-back')).toBeHidden();
+  await expect(ticket).toBeVisible();
+
+  // The next Esc is the ticket's.
+  await page.keyboard.press('Escape');
+  await expect(ticket).toHaveCount(0);
+  await app.close();
+});

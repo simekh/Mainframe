@@ -875,22 +875,31 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await first.page.getByTestId('todo-toggle').click();
 
   // Quick Add sits in the panel's top bar, between its name and Sync, and the fold button and the pin after them, apart
-  // and on one line even at the panel's narrowest, where Sync drops its word (spec §7). Its hover says that what it
-  // adds stays in Mainframe.
-  await expect(first.page.getByTestId('todo-add-note')).toHaveText('Quick Add');
-  await expect(first.page.getByTestId('todo-add-note')).toHaveAttribute(
+  // and on one line at any width (spec §7). Only a panel over 420 px wide has room for Quick Add's and Sync's words;
+  // narrower, from the 320 px it opens at down to its narrowest, each is a square that keeps its name. Its hover says
+  // that what it adds stays in Mainframe.
+  const addNote = first.page.getByTestId('todo-add-note');
+  const syncWord = first.page.getByTestId('todo-sync').locator('span');
+  await expect(addNote).toHaveAccessibleName('Quick Add');
+  await expect(addNote.locator('span')).toBeHidden();
+  await expect(syncWord).toBeHidden();
+  await expect(addNote).toHaveAttribute(
     'title',
     "Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it.",
   );
   const edge = first.page.getByTestId('todo-resize');
   await edge.focus();
-  // One step narrower than its 320 px, Sync's word doesn't run into the fold button.
-  await first.page.keyboard.press('ArrowLeft');
-  await expect(edge).toHaveAttribute('aria-valuenow', '304');
+  for (let i = 0; i < 8; i++) await first.page.keyboard.press('ArrowRight');
+  await expect(edge).toHaveAttribute('aria-valuenow', '448');
+  await expect(addNote.locator('span')).toBeVisible();
+  await expect(addNote.locator('span')).toHaveText('Quick Add');
+  await expect(syncWord).toBeVisible();
+  // Worded, Sync doesn't run into the fold button.
   const worded = await box(first.page, 'todo-sync');
   expect(worded.x + worded.width).toBeLessThan((await box(first.page, 'todo-fold')).x);
-  for (let i = 0; i < 2; i++) await first.page.keyboard.press('ArrowLeft');
+  for (let i = 0; i < 11; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
+  await expect(syncWord).toBeHidden();
   // The two tabs fit whole, with room to spare for a system that rounds glyphs wider, even with a three-digit count:
   // it is written in for the measure, and Solid's own text node is put back after it. The room is from the tabs' end
   // to Quick Add, past the header's 4 px gap.
@@ -1308,6 +1317,29 @@ test('the Finished tab lists a finished task, and Continue brings it back to the
   await expect(cardIn(page, 'working', finished.id)).toHaveAttribute('data-selected', 'true');
   await expect(rows).toHaveCount(1);
   await expect(finishedTab).toHaveText('Finished 1');
+  await app.close();
+});
+
+test('a Continue from the Finished tab that is refused keeps the task selected before it, and says why on its row', async () => {
+  const main = repo();
+  const dataDir = removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-e2e-')));
+  const endedAt = Date.UTC(2026, 10, 9, 12);
+  // The card's first task was discarded, and a task started afresh from it since keeps the card.
+  const discarded = endedRecord(main, { id: 't-dis', chat: '0d4b7e21-5a3c-4f8e-b6d2-9c1e3a5f7b80', slug: 'stripe-webhooks', title: 'Stripe webhooks', place: 'discarded', endedAt, number: '112' });
+  const again = { ...endedRecord(main, { id: 't-again', chat: '6f1c2a4e-0b8d-4c3e-9a51-2d7e8f90ab12', slug: 'stripe-webhooks-2', title: 'Stripe webhooks again', place: '', endedAt, number: '112' }), place: undefined, endedAt: undefined };
+  writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ version: 1, tasks: [discarded, again] }));
+
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, main);
+  const paused = cardIn(page, 'paused', again.id);
+  await paused.locator('.card-title').click();
+  await expect(paused).toHaveAttribute('data-selected', 'true');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-tab-finished').click();
+  const row = page.getByTestId('finished-row');
+  await row.getByRole('button', { name: 'Continue Stripe webhooks' }).click();
+
+  await expect(row.locator('.finished-error')).toContainText('already has the task "Stripe webhooks again"');
+  await expect(paused).toHaveAttribute('data-selected', 'true');
   await app.close();
 });
 

@@ -47,11 +47,15 @@ export function stateLabel(task: HasSession, s: SessionState | undefined): { tex
   return { text: row.label, tone: row.tone };
 }
 
-/** Claude's own line while it has one; the branch otherwise, or the reason it needs the owner, or why Put back failed. */
+/**
+ * Claude's own line while it has one; the branch otherwise, or the reason it needs the owner, or why Put back or a
+ * removal of its worktree failed. A Put back under way says so over all of these.
+ */
 export function cardActivity(
   task: TaskView,
   s: SessionState | undefined,
 ): { text: string; kind: 'msg' | 'busy' | 'branch' | 'problem' } {
+  if (task.puttingBack) return { text: 'Putting back…', kind: 'busy' };
   const standing = standingOf(task, s);
   if (standing === 'starting') return { text: 'Starting…', kind: 'busy' };
   if (standing === 'closed' && task.problem) return { text: task.problem, kind: 'problem' };
@@ -65,13 +69,13 @@ export function cardActivity(
 /** What a card offers on its last row: Answer, Finish on a running task the round found merged, or a Paused card's three. */
 export type CardAct = 'answer' | 'finish' | 'paused';
 
-/** The card's last row, its label and what it offers; none in Working, where the session is busy. */
+/** The card's last row, its label and what it offers; none in Working, where the session is busy, nor while a Put back runs. */
 export function cardAsk(
   task: TaskView,
   s: SessionState | undefined,
   lane: Lane,
 ): { text: string; tone: Tone; act: CardAct } | null {
-  if (lane === 'working') return null;
+  if (lane === 'working' || task.puttingBack) return null;
   if (lane === 'needs-you' && task.merged) return { text: 'Merged', tone: 'success', act: 'finish' };
   return { ...stateLabel(task, s), act: lane === 'paused' ? 'paused' : 'answer' };
 }
