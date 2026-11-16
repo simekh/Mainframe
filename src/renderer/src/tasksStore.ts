@@ -3,7 +3,7 @@ import { createStore, produce, reconcile, unwrap } from 'solid-js/store';
 import type { MainframeApi } from '../../shared/ipc';
 import type { TaskView } from '../../shared/types';
 import { laneOrder, nextNeedsYou } from './board/lanes';
-import { addedTask, nextSessionState, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
+import { addedTask, nextSessionState, onBoard, updateTerminals, type SessionState, type TerminalEntry } from './taskModel';
 import { getTerminal } from './terminal/registry';
 import { todoOf } from './todo/todoStore';
 
@@ -109,18 +109,24 @@ export async function reopenTask(dir: string, id: string): Promise<void> {
 }
 
 /**
- * Brings a put-back, finished or discarded task back to the board; selected first, as a reopen is. One that is refused
- * stays off the board, so the task selected before it is selected again, unless the owner has picked another meanwhile.
+ * Brings a put-back, finished or discarded task back to the board; selected first, as a reopen is. One that is refused,
+ * or that main leaves where it is (busy, or the app quitting), stays off the board, so the task selected before it is
+ * selected again, unless the owner has picked another meanwhile.
  */
 export async function continueTask(dir: string, id: string): Promise<void> {
   const before = store.projects[dir]?.selectedId ?? null;
-  select(dir, id);
-  try {
-    await window.mainframe.continueTask(dir, id);
-  } catch (err) {
+  const giveBack = () => {
     if (store.projects[dir]?.selectedId === id) select(dir, before);
+  };
+  select(dir, id);
+  let task: TaskView;
+  try {
+    task = await window.mainframe.continueTask(dir, id);
+  } catch (err) {
+    giveBack();
     throw err;
   }
+  if (!onBoard(task)) giveBack();
 }
 
 /** Resolves once the task is put back, which for a card's task takes its agent a turn. */
