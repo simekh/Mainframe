@@ -20,6 +20,7 @@
 - The fetch runs with `GIT_TERMINAL_PROMPT=0` and a 30 s timeout. A failed or timed-out fetch is not an error.
 - Prompts defer to the repo's instructions through the adapter's `Instructions`, never to a named file or skill.
 - Copy, exactly: lane **Paused**, empty text "No paused tasks", panel note "Paused. Reopen continues this chat.", buttons **Reopen**, **Put back**, **Discard**, **Finish**, **Continue**, card label **Merged**, tabs **To do** and **Finished**, rows "Finished 11 Nov" / "Discarded 11 Nov" (day and short month in the system's locale), "· no card", the put-back failure "Put back: the card is not on the to-do list".
+- Before any e2e run, ask the owner to quit their own Mainframe (Cmd+Q): it once quit during an e2e run. Tasks 3, 7 and 8 run e2e.
 - UI tasks (Tasks 7 and 8) invoke `frontend-design:frontend-design` during implementation (the owner's global rule).
 - Commit subjects carry no AI attribution.
 
@@ -47,7 +48,9 @@
     branch: 'gone' | 'no-commits' | 'merged' | 'unmerged';
     /** Paths with uncommitted changes or untracked (not ignored) files in the worktree; [] when the folder is gone or is not a worktree's top. */
     uncommitted: string[];
-    /** Subjects of the branch's commits that are on neither the base nor any remote branch, newest first; [] when the branch is gone. */
+    /** The worktree has something other than the task's branch checked out: another branch, or a detached HEAD. False when the folder is gone or is not a worktree's top. */
+    elsewhere: boolean;
+    /** Subjects of the commits on the branch, or on the worktree's HEAD, that are on neither the base nor any remote branch, newest first. */
     unsaved: string[];
   }
   ```
@@ -58,7 +61,11 @@
   - `deleteBranch(projectDir: string, branch: string): Promise<void>`: `git branch -D`; resolves when the branch is gone already.
 
 - [ ] **Step 1: Write the failing tests** in `src/main/git.test.ts`, using `repo()` and `commitFile`. Make a task branch with `git(main, 'worktree', 'add', '--no-track', '-b', 'worktree-t', wt, 'origin/HEAD')`, which also writes the reflog entry that marks where the branch was created:
-  - `taskGitState is gone for a missing branch and a missing folder`: `{ branch: 'gone', uncommitted: [], unsaved: [] }`.
+  - `taskGitState is gone for a missing branch and a missing folder`: `{ branch: 'gone', uncommitted: [], elsewhere: false, unsaved: [] }`.
+  - `taskGitState marks a worktree on another branch or a detached HEAD as elsewhere, and lists its unsaved commits`:
+    - Rename the task branch with `git branch -m` while the worktree is on it. The result: `branch: 'gone'`, `elsewhere: true`.
+    - Commit on a detached HEAD in the worktree. The result: `elsewhere: true`, and `unsaved` has that commit's subject.
+  - `removeWorktree rejects a locked worktree`, after `git worktree lock`. Mainframe never unlocks one: Claude Code locks the worktrees it runs in.
   - `taskGitState is no-commits for a branch still where it was created, even once the base moves on`: after a commit on `stage` pushed to origin, still `no-commits`.
   - `taskGitState is merged after a fast-forward merge, a merge commit and a squash merge`: three branches, each merged into `stage` and pushed in its own way, each `merged`, with `unsaved: []`.
   - `taskGitState is unmerged for a branch with commits not on the base, and lists those not on any remote`: `unsaved` equals the subjects. Once the branch is pushed to `origin`, `unsaved` is `[]` and the branch is still `unmerged`.
@@ -86,8 +93,9 @@
       - `no-commits` when the tip equals the oldest entry of `reflog show --format=%H refs/heads/<branch>`. With no reflog: when `rev-list --count <base>..<branch>` is 0.
       - `merged` when the first line of `merge-tree --write-tree <base> <branch>` (exit 0) equals `rev-parse <base>^{tree}`. A non-zero exit (a conflict, or an old git) is `unmerged`.
       - Otherwise `unmerged`.
-    - `unsaved` is `log --format=%s <branch> --not <base> --remotes`.
     - `uncommitted` uses the existing `isWorktreeTop`, then `status --porcelain=v1 -z --untracked-files=all` with `NO_INDEX_REFRESH`.
+    - `elsewhere`: in a worktree's top, `symbolic-ref -q HEAD` fails (detached) or names anything but `refs/heads/<branch>`.
+    - `unsaved` is `log --format=%s <tips> --not <base> --remotes`. The tips are the branch when it exists, plus the worktree's `HEAD` commit when `elsewhere`. With no tips, it is `[]`.
   - `removeWorktree`: `worktree remove [--force] <path>`, then `worktree prune`.
   - `deleteBranch`: `branch -D <branch>` when `branchExists`.
 
@@ -121,7 +129,7 @@
   - `problem: string | null`: Put back's failure line. Kept in memory, cleared by any reopen or move.
 - `SessionReport` gains `place: TaskPlace | null` and `endedAt: number | null`. The `list_sessions` description says so: "…and where it is: null on the board, putBack, finished or discarded, with endedAt."
 - `TaskService` gains private `merged = new Set<string>()` and `problems = new Map<string, string>()`, read by `view()`.
-- In the test file's `setup()`, the fake `GitQueries` gains `fetchBase: async () => {}`, `taskGitState: async () => ({ branch: 'unmerged', uncommitted: [], unsaved: [] })`, `removeWorktree: async () => {}` and `deleteBranch: async () => {}`.
+- In the test file's `setup()`, the fake `GitQueries` gains `fetchBase: async () => {}`, `taskGitState: async () => ({ branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [] })`, `removeWorktree: async () => {}` and `deleteBranch: async () => {}`.
 
 - [ ] **Step 1: Write the failing tests**
   - `taskStore.test.ts`: `loadTasks keeps place and endedAt, and loads records without them`. A record with `place: 'finished', endedAt: 5` round-trips. One with `place: 'gone'` is set aside, as other bad files are.
@@ -152,13 +160,19 @@
 ### Task 3: The check round moves finished tasks off the board
 
 **Files:**
-- Modify: `src/main/tasks/taskService.ts`, `src/main/index.ts`
-- Test: `src/main/tasks/taskService.test.ts`
+- Modify: `src/main/tasks/taskService.ts`, `src/main/index.ts`, `e2e/fake-claude.cjs`
+- Test: `src/main/tasks/taskService.test.ts`, the whole e2e suite
+
+**The fake claude must make worktrees, as real `claude -w` does.** Today it writes `session-start.json` but no worktree, so every closed fake task would count as begun with its branch gone, and would move to Finished on exit. That breaks every e2e test that expects a closed card with Reopen. So:
+- With `-w <slug>`, or `--worktree <slug>`, the fake runs `git worktree add --no-track -b worktree-<slug> .claude/worktrees/<slug> <base>` from its working directory before anything else. The base is `origin/HEAD`, else `HEAD`.
+- When that branch exists but the folder doesn't, it runs `git worktree add .claude/worktrees/<slug> worktree-<slug>`.
+- When the folder exists, it does nothing.
+- What it records in `<pid>.argv` is unchanged. A fresh worktree has no commits of its own, so its task stays Paused.
 
 **Interfaces:**
 - Consumes: Task 1's `fetchBase`, `taskGitState`, `removeWorktree`, `deleteBranch`. Task 2's fields.
 - Produces:
-  - `TaskService.checkRound(): Promise<void>`. A call while a round runs returns that round's promise.
+  - `TaskService.checkRound(): Promise<void>`. A call while a round runs queues one more round after it, at most one, and returns a promise that settles when that round ends. Otherwise a session that exits after the running round has passed its task would wait for the next tick.
   - `export const FINISH_CHECK_MS = 3 * 60_000;` in `taskService.ts`.
 
 **Behaviour** (spec, "The check"):
@@ -167,7 +181,7 @@
 - Its conversation began when:
   - Claude: `ADAPTERS.claude.recordedSession(taskDir) !== null`.
   - OpenCode: `task.began === true`.
-- Nothing to lose: it began, `uncommitted` is empty, and `branch` is `'gone'` or `'merged'`.
+- Nothing to lose: it began, `uncommitted` is empty, `elsewhere` is false, and `branch` is `'gone'` or `'merged'`.
 - **Running task:** adds to or removes from `merged`, then sends the list when the set changed.
 - **No running task, nothing to lose:**
   - Calls `taskGitState` again. If that still passes and no session or launch began meanwhile, it runs `removeWorktree(…, { force: false })`, then `deleteBranch`.
@@ -190,6 +204,8 @@
   - `a task reopened while the round checks it is not removed` (Review Focus 4): make `taskGitState` wait on a promise, call `reopen`, then release it. No removal, and `place` stays undefined.
   - `no round removes anything after beginQuit` (Review Focus 5).
   - `a round touches only its own project's tasks`: two services on one `TaskRecords`.
+  - `an exit during a round is checked by a round after it`: hold the first round's `taskGitState`, then close a merged task and run its `onSessionExit`. Release, and await. The task is finished, and `taskGitState` ran for it in a second round.
+  - `a worktree on another branch keeps its task Paused`: `elsewhere: true` with the branch gone.
   - `a removal git refuses leaves the task where it was and warns`.
 
 - [ ] **Step 2: Run them to see them fail**
@@ -197,17 +213,17 @@
   Run: `npx vitest run src/main/tasks/taskService.test.ts`
   Expected: FAIL, as `checkRound` is not a function.
 
-- [ ] **Step 3: Implement `checkRound`** and its triggers in `taskService.ts`, and the interval in `index.ts`.
+- [ ] **Step 3: Implement `checkRound`** and its triggers in `taskService.ts`, the interval in `index.ts`, and the fake claude's worktrees.
 
-- [ ] **Step 4: Run the unit tests and the typecheck**
+- [ ] **Step 4: Run all three suites**
 
-  Run: `npx vitest run && npx tsc --noEmit`
-  Expected: PASS.
+  Run: `npx vitest run && npx tsc --noEmit && npm run test:e2e`
+  Expected: PASS. An e2e test that fails because the fake now makes a worktree gets its expectation updated, with the reason in the commit.
 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/main/tasks/taskService.ts src/main/tasks/taskService.test.ts src/main/index.ts
+  git add src/main/tasks/taskService.ts src/main/tasks/taskService.test.ts src/main/index.ts e2e
   git commit -m "feat: a round every few minutes and at each session's end moves tasks with nothing to lose to Finished"
   ```
 
@@ -221,7 +237,12 @@
 
 **Interfaces:**
 - `TaskReopen` loses `branchExists`. `reopenArgv` always passes `--worktree <slug>`.
-- **Before coding:** read <https://code.claude.com/docs/en/worktrees>. Confirm that `--worktree <name> --resume <id>` makes the branch from `origin/<default>` when it is missing. Confirm when it resets an existing worktree with commits. If a reset can happen to a worktree whose branch has commits, stop and report it, as Reopen depends on it.
+- **What Claude Code's worktree docs say** (<https://code.claude.com/docs/en/worktrees>, read 2026-11-16):
+  - `claude --worktree <name> --resume` is the command it prints for returning to a kept worktree.
+  - A missing worktree is created on a new `worktree-<name>` branch from the remote's default branch, or from local `HEAD` with no remote.
+  - A worktree that exists is opened, and reset to the default branch only when all of these hold: it is clean, still on its own branch, and either has no commits of its own or its pull request was merged and its remote branch deleted.
+
+  So passing `--worktree` on every reopen never resets unmerged work.
 - `AgentAdapter` gains `chatKept(taskDir: string): boolean`:
   - Claude: true when `readRecordedStart(taskDir)` has an id and either no `transcriptPath`, or a file `<id>.jsonl` in any folder of the projects folder, as `readResumableSession` looks.
   - OpenCode: `() => true`.
@@ -421,7 +442,7 @@ Invoke `frontend-design:frontend-design` before writing the UI.
 - [ ] **Step 2: Run them to see them fail**
 
   Run: `npx vitest run src/renderer && npm run test:e2e -- e2e/board.e2e.ts`
-  Expected: FAIL. (First ask the owner to quit their Mainframe with Cmd+Q: see the memory note on e2e runs.)
+  Expected: FAIL.
 
 - [ ] **Step 3: Implement** the IPC, the store calls, the lanes, the card, the dialog and the panel note, with the copy from Global Constraints.
 

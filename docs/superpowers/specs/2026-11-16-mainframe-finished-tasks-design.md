@@ -103,8 +103,11 @@ A task has nothing to lose when all of these hold:
 1. **Its conversation began.** Claude: its SessionStart hook recorded a session (`recordedSession` is not null).
    OpenCode: `began`. Without this, a task closed before its agent made the worktree would look finished, as its
    branch is missing too.
-2. **Its worktree has nothing uncommitted.** The folder is gone, or `git status` there shows no changed or untracked
-   files (ignored files don't count).
+2. **Its worktree has nothing uncommitted, and is on the task's branch.** The folder is gone, or `git status` there
+   shows no changed or untracked files (ignored files don't count) and its HEAD is the task's branch. A worktree on
+   another branch, or on a detached HEAD, is never safe, whatever the task's branch says (builder's call, from the
+   plan review: otherwise a renamed branch or a commit on a detached HEAD would look finished). Discard's loss list
+   includes that HEAD's commits too.
 3. **Its branch has nothing unmerged.** Either:
    - the branch is gone, or
    - the branch has at least one commit of its own, and merging it into the base now would change nothing (the merged
@@ -212,8 +215,9 @@ On a finished or discarded task (Finished tab), or a put-back one (its to-do ite
 
 - **Finished and discarded tasks** have no branch any more. Continue makes a fresh worktree on the task's branch name,
   from today's base, which has the merged work in it. Claude Code: always pass `--worktree <slug>` on the resume. Claude
-  Code's docs say it then creates the branch from `origin/<default>` when it is missing (to verify in the plan, along
-  with when it resets an existing worktree). OpenCode: `addWorktree` with `create: true`. This fixes today's Reopen
+  Code's docs (read 2026-11-16) say it then creates the branch from the remote's default branch when it is missing, and
+  resets an existing worktree only when it is clean and has no commits of its own or its merged remote branch is
+  deleted, so unmerged work is never reset. OpenCode: `addWorktree` with `create: true`. This fixes today's Reopen
   for a task whose branch is gone, which runs the session in the main checkout.
 - **The conversation** is resumed when the agent still has it. Mainframe sends one short prompt with the resume, so
   the agent knows where it is: it now runs in a fresh worktree on that branch, from the default branch, which has its
