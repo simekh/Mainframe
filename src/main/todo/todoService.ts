@@ -178,7 +178,7 @@ export class TodoService {
    * question or errs gives Put back up. A Put back that fails says why on the task's card while it is still Paused.
    */
   async putBack(taskId: string): Promise<void> {
-    const task = this.deps.tasks.list().find((t) => t.id === taskId);
+    const task = this.viewOf(taskId);
     if (!task) throw new Error(`Unknown task ${taskId}`);
     if (task.place !== null) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
     if (task.session !== null || task.closedAt === null) throw new Error(`Close ${task.title} before putting it back`);
@@ -186,7 +186,7 @@ export class TodoService {
       await this.putBackPaused(task);
     } catch (err) {
       // Paused, or marked put back without its note: back on the board with the reason. One that runs again has none.
-      const now = this.deps.tasks.list().find((t) => t.id === taskId);
+      const now = this.viewOf(taskId);
       if (now && now.session === null && now.closedAt !== null) this.deps.tasks.returnToBoard(taskId, `Put back: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     }
@@ -197,8 +197,7 @@ export class TodoService {
     if (!card) {
       this.writable();
       // Marked first: a task the service won't move (a reopen or a round got to it) gets no note.
-      this.deps.tasks.markPutBack(taskId);
-      if (this.deps.tasks.list().find((t) => t.id === taskId)?.place !== 'putBack') throw new Error(`Close ${task.title} before putting it back`);
+      if (!this.deps.tasks.markPutBack(taskId)) throw new Error(`Close ${task.title} before putting it back`);
       // Without its note the task could be found nowhere: a failed write returns it to the board, in `putBack`.
       this.saveNote({ title: task.title, text: task.description, taskId });
       return;
@@ -414,6 +413,10 @@ export class TodoService {
       if (task.place === 'putBack' && task.card && !seen.has(task.card.id)) this.deps.tasks.returnToBoard(task.id);
     }
     return { cards: cards.length };
+  }
+
+  private viewOf(taskId: string): TaskView | undefined {
+    return this.deps.tasks.list().find((t) => t.id === taskId);
   }
 
   private refuse(error: string): { error: string } {

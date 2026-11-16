@@ -1,4 +1,4 @@
-import type { TaskView, TodoCard, TodoItemRef, TodoNote, TodoSource, TodoView } from '../../../shared/types';
+import { isEnded, type TaskView, type TodoCard, type TodoItemRef, type TodoNote, type TodoSource, type TodoView } from '../../../shared/types';
 
 /** One row of the Todo panel's list: a synced card or one of the owner's notes. */
 export interface TodoItem {
@@ -85,15 +85,20 @@ export function finishedTasks(tasks: TaskView[], query: string): TaskView[] {
   const bare = (s: string) => s.toLowerCase().replace(/^#/, '');
   const q = bare(query.trim());
   return tasks
-    .filter((t) => t.place === 'finished' || t.place === 'discarded')
+    .filter((t) => isEnded(t.place))
     .filter((t) => t.title.toLowerCase().includes(q) || (t.card?.number != null && bare(t.card.number).includes(q)))
     .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
 }
 
+/** Each locale's day-and-short-month format, made once: the Finished tab formats a date for every row. */
+const dayMonth = new Map<string | undefined, Intl.DateTimeFormat>();
+
 /** A Finished row's line: where the task went and when, day and short month in `locale` (the system's by default). */
 export function endedLine(task: TaskView, locale?: string): string {
   const what = task.place === 'discarded' ? 'Discarded' : 'Finished';
-  const when = task.endedAt === null ? '' : ` ${new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(task.endedAt)}`;
+  let format = dayMonth.get(locale);
+  if (!format) dayMonth.set(locale, (format = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })));
+  const when = task.endedAt === null ? '' : ` ${format.format(task.endedAt)}`;
   return `${what}${when}${task.card === null ? ' · no card' : ''}`;
 }
 

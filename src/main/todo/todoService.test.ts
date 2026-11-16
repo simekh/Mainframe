@@ -129,7 +129,9 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     markPutBack: (taskId) => {
       taskCalls.push(['markPutBack', taskId]);
       const view = taskViews.find((v) => v.id === taskId)!;
-      if (view.place === null) view.place = 'putBack';
+      if (view.place !== null) return false;
+      view.place = 'putBack';
+      return true;
     },
     returnToBoard: (taskId, problem) => {
       taskCalls.push(problem === undefined ? ['returnToBoard', taskId] : ['returnToBoard', taskId, problem]);

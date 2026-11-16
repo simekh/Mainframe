@@ -142,6 +142,9 @@ export interface StartCheck {
 /** Where a task is off the board: put back on the to-do list, finished, or discarded. */
 export type TaskPlace = 'putBack' | 'finished' | 'discarded';
 
+/** Finished or discarded: its worktree and branch are gone, and only Continue brings it back. */
+export const isEnded = (place: TaskPlace | null | undefined): boolean => place === 'finished' || place === 'discarded';
+
 /** What a Discard would lose: files in the worktree and commits that exist nowhere else. */
 export interface DiscardPreview {
   uncommitted: string[];

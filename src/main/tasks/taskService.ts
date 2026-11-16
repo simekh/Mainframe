@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { SESSION_START_FILE } from '../agents/claude';
@@ -80,11 +80,12 @@ interface Session {
    * Put back's session: closed once it works and then reports done or idle. A question or an error gives that up,
    * and it goes on as any task's session.
    */
-  closeWhenTurnEnds?: boolean;
-  /** What it last reported, while it closes when its turn ends. */
-  lastState?: ProgramState | null;
-  /** Settles Put back's wait: true once the session exits, false when a question or an error gave it up. */
-  putBackSettled?: (done: boolean) => void;
+  putBack?: {
+    /** What it last reported. */
+    lastState: ProgramState | null;
+    /** Settles Put back's wait: true once the session exits, false when a question or an error gave it up. */
+    settle(done: boolean): void;
+  };
 }
 
 export class TaskService {
@@ -159,7 +160,7 @@ export class TaskService {
     if (req.card) {
       const { id } = req.card;
       // A card has one task for good, a discarded one aside: a closed one is reopened, never started again.
-      const other = this.mine().find((t) => t.card?.id === id && t.place !== 'discarded');
+      const other = this.taskOfCard(id);
       const name = req.card.number ?? title;
       if (other?.open) throw new Error(`${name} is already open as the task "${other.title}"`);
       if (other) throw new Error(`${name} already has the task "${other.title}"; reopen it instead`);
@@ -222,7 +223,7 @@ export class TaskService {
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
     // A finished or discarded task has no worktree or branch: Continue brings it back.
-    if (task.place === 'finished' || task.place === 'discarded' || this.busy(task)) return this.view(task);
+    if (isEnded(task.place) || this.busy(task)) return this.view(task);
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task);
@@ -255,7 +256,7 @@ export class TaskService {
     if (task.place === 'putBack') return this.reopen(taskId);
     // A card has at most one task that isn't discarded: one started afresh since keeps the card.
     const card = task.card;
-    const other = task.place === 'discarded' && card ? this.mine().find((t) => t.card?.id === card.id && t.place !== 'discarded') : undefined;
+    const other = task.place === 'discarded' && card ? this.taskOfCard(card.id) : undefined;
     if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
     // It stays finished until its session starts, so no round checks it while git adds its worktree.
     if (this.busy(task)) return this.view(task);
@@ -288,36 +289,37 @@ export class TaskService {
   async putBackCard(taskId: string): Promise<boolean> {
     const task = this.find(taskId);
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
-    // An open task with no session is one restore has yet to bring back: still running, as far as the owner is concerned.
-    if (task.open || this.busy(task)) throw new Error(`Close ${task.title} before putting it back`);
+    if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before putting it back`);
+    if (!this.began(task)) return true;
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     const prompt = putBackPrompt(adapter.instructions);
     let view: TaskView;
     if (adapter.mainframeAddsWorktree) {
-      if (!task.began) return true;
       view = await this.reopenInWorktree(task, prompt, { owed: false });
     } else {
-      const recorded = adapter.recordedSession(this.taskDir(task.id));
-      if (recorded === null) return true;
-      task.claudeSessionId = recorded;
+      // A conversation that began is a recorded one.
+      task.claudeSessionId = adapter.recordedSession(this.taskDir(task.id))!;
       const launch = this.reopenLaunch(task, this.binOf(agent), prompt);
       // The put-back prompt is not owed: a launch that dies before it works leaves no carry-on prompt for a Reopen.
       view = this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
     }
     const session = view.session && this.sessions.get(view.session.id);
     if (!session) return true;
-    session.closeWhenTurnEnds = true;
-    return new Promise((resolve) => (session.putBackSettled = resolve));
+    return new Promise((resolve) => (session.putBack = { lastState: null, settle: resolve }));
   }
 
-  /** Takes a paused task off the board, onto the to-do list. One that moved meanwhile, or runs again, stays where it is. */
-  markPutBack(taskId: string): void {
+  /**
+   * Takes a paused task off the board, onto the to-do list; true when it moved. One that moved meanwhile, or runs again,
+   * stays where it is.
+   */
+  markPutBack(taskId: string): boolean {
     const task = this.find(taskId);
-    if (task.place !== undefined || task.open || this.busy(task)) return;
+    if (!this.pausedOnBoard(task)) return false;
     task.place = 'putBack';
     this.problems.delete(task.id);
     this.commit();
+    return true;
   }
 
   /**
@@ -326,7 +328,7 @@ export class TaskService {
    */
   returnToBoard(taskId: string, problem?: string): void {
     const task = this.mine().find((t) => t.id === taskId);
-    if (!task || task.place === 'finished' || task.place === 'discarded' || this.removing.has(task.id)) return;
+    if (!task || isEnded(task.place) || this.removing.has(task.id)) return;
     delete task.place;
     if (problem === undefined) this.problems.delete(task.id);
     else this.problems.set(task.id, problem);
@@ -338,9 +340,38 @@ export class TaskService {
    * the app quitting: a reopen then leaves the task as recorded, to carry on when the project next opens.
    */
   private busy(task: TaskRecord): boolean {
-    return (
-      this.sessionOf(task.id) !== undefined || this.starting.has(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || this.quitting
-    );
+    return this.sessionOf(task.id) !== undefined || this.worktreeChanging(task) || this.quitting;
+  }
+
+  /** Git is adding the task's worktree for a start, a reopen or a Continue, or a round or a Discard is removing it. */
+  private worktreeChanging(task: TaskRecord): boolean {
+    return this.starting.has(task.id) || this.launching.has(task.id) || this.removing.has(task.id);
+  }
+
+  /**
+   * On the board and closed, with nothing under way for it. An open task with no session is one restore has yet to bring
+   * back: still running, as far as the owner is concerned.
+   */
+  private pausedOnBoard(task: TaskRecord): boolean {
+    return task.place === undefined && !task.open && !this.busy(task);
+  }
+
+  /** The project's task for the card: a card has at most one that isn't discarded. */
+  private taskOfCard(cardId: string): TaskRecord | undefined {
+    return this.mine().find((t) => t.card?.id === cardId && t.place !== 'discarded');
+  }
+
+  /** Its conversation began: Claude Code recorded it, or OpenCode took the brief. */
+  private began(task: TaskRecord): boolean {
+    return agentOf(task) === 'opencode' ? task.began === true : ADAPTERS.claude.recordedSession(this.taskDir(task.id)) !== null;
+  }
+
+  /** Moves a task that ended off the board, to `place`. */
+  private moveOff(task: TaskRecord, place: 'finished' | 'discarded'): void {
+    task.place = place;
+    task.endedAt = this.now();
+    this.problems.delete(task.id);
+    this.commit();
   }
 
   private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
@@ -473,13 +504,12 @@ export class TaskService {
       // Saved, not sent: nothing the window shows has changed.
       this.deps.records.save();
     }
-    if (session.closeWhenTurnEnds && !session.turn.ending) {
-      const before = session.lastState;
-      session.lastState = state;
+    if (session.putBack && !session.turn.ending) {
+      const before = session.putBack.lastState;
+      session.putBack.lastState = state;
       if (state === 'blocked' || state === 'error') {
-        session.closeWhenTurnEnds = false;
-        session.putBackSettled?.(false);
-        delete session.putBackSettled;
+        session.putBack.settle(false);
+        delete session.putBack;
       } else if (before === 'working' && (state === 'done' || state === 'idle')) {
         this.close(task.id);
       }
@@ -503,7 +533,7 @@ export class TaskService {
     // The mark is for a running task; once closed, the round decides.
     this.merged.delete(task.id);
     this.commit();
-    session.putBackSettled?.(true);
+    session.putBack?.settle(true);
     // A task's exit is when it may have finished: Finish is Close.
     void this.checkRound();
   }
@@ -540,7 +570,7 @@ export class TaskService {
     await this.deps.git.fetchBase(this.deps.projectDir);
     for (const task of this.mine().filter((t) => t.place === undefined || t.place === 'putBack')) {
       if (this.quitting) return;
-      if (this.starting.has(task.id) || this.launching.has(task.id) || this.removing.has(task.id)) continue;
+      if (this.worktreeChanging(task)) continue;
       try {
         await this.checkTask(task);
       } catch (err) {
@@ -564,9 +594,7 @@ export class TaskService {
     // The proof, again, just before anything is deleted.
     if (!(await this.nothingToLose(task))) return;
     // An open task with no session is one restore, or a quit, has yet to bring back.
-    if (this.quitting || task.open || task.place !== place || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id) || this.removing.has(task.id)) {
-      return;
-    }
+    if (this.busy(task) || task.open || task.place !== place) return;
     this.removing.add(task.id);
     try {
       await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: false });
@@ -579,16 +607,12 @@ export class TaskService {
       this.removing.delete(task.id);
     }
     if (task.place !== place) return;
-    task.place = 'finished';
-    task.endedAt = this.now();
-    this.problems.delete(task.id);
-    this.commit();
+    this.moveOff(task, 'finished');
   }
 
   /** Its conversation began, its worktree holds nothing uncommitted and is on its branch, and its branch is merged or gone. */
   private async nothingToLose(task: TaskRecord): Promise<boolean> {
-    const began = agentOf(task) === 'opencode' ? task.began === true : ADAPTERS.claude.recordedSession(this.taskDir(task.id)) !== null;
-    if (!began) return false;
+    if (!this.began(task)) return false;
     const state = await this.deps.git.taskGitState(this.deps.projectDir, task.branch, task.worktreePath);
     return state.uncommitted.length === 0 && !state.elsewhere && (state.branch === 'gone' || state.branch === 'merged');
   }
@@ -607,8 +631,7 @@ export class TaskService {
   async discard(taskId: string): Promise<void> {
     const task = this.find(taskId);
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be discarded`);
-    // An open task with no session is one restore has yet to bring back: still running, as far as the owner is concerned.
-    if (task.open || this.busy(task)) throw new Error(`Close ${task.title} before discarding it`);
+    if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before discarding it`);
     this.removing.add(task.id);
     try {
       await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: true });
@@ -616,10 +639,7 @@ export class TaskService {
     } finally {
       this.removing.delete(task.id);
     }
-    task.place = 'discarded';
-    task.endedAt = this.now();
-    this.problems.delete(task.id);
-    this.commit();
+    this.moveOff(task, 'discarded');
   }
 
   beginQuit(): void {

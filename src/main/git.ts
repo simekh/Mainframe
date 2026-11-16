@@ -259,8 +259,15 @@ export async function fetchBase(projectDir: string): Promise<void> {
 
 async function branchState(projectDir: string, branch: string, from: string): Promise<TaskGitState['branch']> {
   const ref = `refs/heads/${branch}`;
-  if (!(await branchExists(projectDir, branch))) return 'gone';
-  const tip = (await git(projectDir, ['rev-parse', ref])).trim();
+  const tip = await git(projectDir, ['rev-parse', '--verify', '--quiet', ref]).then(
+    (out) => out.trim(),
+    (err: unknown) => {
+      // As in branchExists: a git that ran and found no branch exits non-zero; one that never ran has a code such as ENOENT.
+      if (typeof (err as { code?: unknown }).code !== 'number') throw err;
+      return null;
+    },
+  );
+  if (tip === null) return 'gone';
   const reflog = (await git(projectDir, ['reflog', 'show', '--format=%H', ref]).catch(() => '')).split('\n').filter(Boolean);
   const untouched = reflog.length
     ? reflog[reflog.length - 1] === tip
@@ -298,14 +305,7 @@ export async function taskGitState(projectDir: string, branch: string, worktreeP
   let elsewhere = false;
   let head: string | null = null;
   // A missing folder has nothing to lose; any other failure rejects, so the caller leaves the task alone.
-  const exists = await stat(worktreePath).then(
-    () => true,
-    (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') return false;
-      throw err;
-    },
-  );
-  if (exists && (await isWorktreeTop(worktreePath))) {
+  if ((await pathExists(worktreePath)) && (await isWorktreeTop(worktreePath))) {
     uncommitted = await uncommittedPaths(worktreePath);
     const checkedOut = await git(worktreePath, ['symbolic-ref', '-q', 'HEAD']).then(
       (out) => out.trim(),
@@ -326,15 +326,23 @@ export async function taskGitState(projectDir: string, branch: string, worktreeP
 
 /** Resolves at once when the folder is gone. Rejects with git's message: a locked worktree, or changes without `force`. */
 export async function removeWorktree(projectDir: string, worktreePath: string, o: { force: boolean }): Promise<void> {
-  try {
-    await stat(worktreePath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  if (!(await pathExists(worktreePath))) {
     await git(projectDir, ['worktree', 'prune']);
     return;
   }
   await git(projectDir, ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath]).catch(withGitMessage);
   await git(projectDir, ['worktree', 'prune']);
+}
+
+/** False when nothing is at `path`; any other failure to look rejects. */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
 }
 
 /** `git branch -D`: the caller has proved the branch's commits are safe. Resolves when it is gone already. */
