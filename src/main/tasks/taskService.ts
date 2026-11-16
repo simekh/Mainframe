@@ -76,11 +76,15 @@ interface Session {
   launch: LaunchSpec;
   startedWithPrompt: boolean;
   turn: TurnTracker;
-  /** Put back's session: closed once a turn has begun and then ended in done or idle. */
+  /**
+   * Put back's session: closed once it works and then reports done or idle. A question or an error gives that up,
+   * and it goes on as any task's session.
+   */
   closeWhenTurnEnds?: boolean;
-  turnBegan?: boolean;
-  /** Called as it exits: Put back waits for that. */
-  exited?: () => void;
+  /** What it last reported, while it closes when its turn ends. */
+  lastState?: ProgramState | null;
+  /** Settles Put back's wait: true once the session exits, false when a question or an error gave it up. */
+  putBackSettled?: (done: boolean) => void;
 }
 
 export class TaskService {
@@ -273,10 +277,11 @@ export class TaskService {
 
   /**
    * Has a paused task's own agent move its card back to the to-do list: its chat is resumed with the put-back prompt,
-   * and closed once that turn is over. Resolves when the session exits, however it ended; at once when no session
-   * starts, as for a task whose conversation never began, which never took its card.
+   * and closed once that turn is over. Resolves true when the session exits, and at once when no session starts, as
+   * for a task whose conversation never began, which never took its card. Resolves false when the session asks a
+   * question or errs: it then stays on the board as any task does, and Put back is given up.
    */
-  async putBackCard(taskId: string): Promise<void> {
+  async putBackCard(taskId: string): Promise<boolean> {
     const task = this.find(taskId);
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
     // An open task with no session is one restore has yet to bring back: still running, as far as the owner is concerned.
@@ -286,19 +291,20 @@ export class TaskService {
     const prompt = putBackPrompt(adapter.instructions);
     let view: TaskView;
     if (adapter.mainframeAddsWorktree) {
-      if (!task.began) return;
-      view = await this.reopenInWorktree(task, prompt);
+      if (!task.began) return true;
+      view = await this.reopenInWorktree(task, prompt, { owed: false });
     } else {
       const recorded = adapter.recordedSession(this.taskDir(task.id));
-      if (recorded === null) return;
+      if (recorded === null) return true;
       task.claudeSessionId = recorded;
       const launch = this.reopenLaunch(task, this.binOf(agent), prompt);
-      view = this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
+      // The put-back prompt is not owed: a launch that dies before it works leaves no carry-on prompt for a Reopen.
+      view = this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
     }
     const session = view.session && this.sessions.get(view.session.id);
-    if (!session) return;
+    if (!session) return true;
     session.closeWhenTurnEnds = true;
-    return new Promise((resolve) => (session.exited = resolve));
+    return new Promise((resolve) => (session.putBackSettled = resolve));
   }
 
   /** Takes a paused task off the board, onto the to-do list. One that moved meanwhile, or runs again, stays where it is. */
@@ -369,7 +375,7 @@ export class TaskService {
    * branch from the base when the branch is gone too. Marked as launching while git runs, so no round removes the task
    * and no second reopen starts it meanwhile.
    */
-  private async reopenInWorktree(task: TaskRecord, prompt = resumePromptFor(task)): Promise<TaskView> {
+  private async reopenInWorktree(task: TaskRecord, prompt = resumePromptFor(task), { owed = true } = {}): Promise<TaskView> {
     const bin = this.binOf(agentOf(task));
     if (!existsSync(task.worktreePath)) {
       const place = task.place;
@@ -395,7 +401,7 @@ export class TaskService {
     }
     const carryOn = prompt !== undefined;
     const launch = this.reopenLaunch(task, bin, prompt);
-    return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn });
+    return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn && owed });
   }
 
   /** Runs the task's session, which puts it on the board. */
@@ -464,8 +470,15 @@ export class TaskService {
       this.deps.records.save();
     }
     if (session.closeWhenTurnEnds && !session.turn.ending) {
-      if (inTurn(state)) session.turnBegan = true;
-      else if (session.turnBegan && (state === 'done' || state === 'idle')) this.close(task.id);
+      const before = session.lastState;
+      session.lastState = state;
+      if (state === 'blocked' || state === 'error') {
+        session.closeWhenTurnEnds = false;
+        session.putBackSettled?.(false);
+        delete session.putBackSettled;
+      } else if (before === 'working' && (state === 'done' || state === 'idle')) {
+        this.close(task.id);
+      }
     }
   }
 
@@ -486,7 +499,7 @@ export class TaskService {
     // The mark is for a running task; once closed, the round decides.
     this.merged.delete(task.id);
     this.commit();
-    session.exited?.();
+    session.putBackSettled?.(true);
     // A task's exit is when it may have finished: Finish is Close.
     void this.checkRound();
   }

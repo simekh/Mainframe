@@ -174,7 +174,8 @@ export class TodoService {
   /**
    * Takes a Paused task off the board and back onto the to-do list, keeping its branch. A note's task comes back as a
    * note linked to it. A card's task has its own agent move the card back, then the list is synced: the task is put
-   * back once the card is on it, and stays Paused with Put back's failure line when it is not.
+   * back once the card is on it, and stays Paused with Put back's failure line when it is not. A session that asks a
+   * question or errs gives Put back up.
    */
   async putBack(taskId: string): Promise<void> {
     const task = this.deps.tasks.list().find((t) => t.id === taskId);
@@ -188,11 +189,18 @@ export class TodoService {
       // Marked first: a task the service won't move (a reopen or a round got to it) gets no note.
       this.deps.tasks.markPutBack(taskId);
       if (this.deps.tasks.list().find((t) => t.id === taskId)?.place !== 'putBack') throw new Error(`Close ${task.title} before putting it back`);
-      this.saveNote({ title: task.title, text: task.description, taskId });
+      try {
+        this.saveNote({ title: task.title, text: task.description, taskId });
+      } catch (err) {
+        // Without its note the task could be found nowhere.
+        this.deps.tasks.returnToBoard(taskId);
+        throw err;
+      }
       return;
     }
 
-    await this.deps.tasks.putBackCard(taskId);
+    // A question or an error leaves an ordinary task on the board, which the owner deals with: no sync, no move.
+    if (!(await this.deps.tasks.putBackCard(taskId))) return;
     let listed = false;
     try {
       // A run already under way read the list before the card moved.

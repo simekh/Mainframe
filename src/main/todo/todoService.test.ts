@@ -105,7 +105,12 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
   /** The tasks `list` returns; a test sets them. */
   const taskViews: TaskView[] = [];
   /** Settles the put-back session `putBackCard` waits on; a test may hold it. */
-  const putBackHooks = { card: async (_taskId: string) => {} };
+  const putBackHooks = {
+    /** What `putBackCard` settles with: false when its session ended in a question or an error. */
+    card: async (_taskId: string): Promise<boolean> => true,
+    /** What `continueTask` does to the task's view: by default it is back on the board. */
+    continued: (view: TaskView): TaskView => ({ ...view, place: null }),
+  };
   const tasks: TodoServiceDeps['tasks'] = {
     start: async (req) => {
       starts.push(req);
@@ -115,13 +120,11 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     list: () => taskViews,
     continueTask: async (taskId) => {
       taskCalls.push(['continueTask', taskId]);
-      const view = taskViews.find((v) => v.id === taskId)!;
-      view.place = null;
-      return view;
+      return putBackHooks.continued(taskViews.find((v) => v.id === taskId)!);
     },
     putBackCard: async (taskId) => {
       taskCalls.push(['putBackCard', taskId]);
-      await putBackHooks.card(taskId);
+      return putBackHooks.card(taskId);
     },
     markPutBack: (taskId) => {
       taskCalls.push(['markPutBack', taskId]);
@@ -1118,7 +1121,7 @@ it('a put-back sync waits for a sync already running, and syncs again', async ()
   await synced(t);
   t.taskViews.push(paused({ card: cardRef('c1') }));
   const held = { release: () => {} };
-  t.putBackHooks.card = () => new Promise<void>((resolve) => (held.release = resolve));
+  t.putBackHooks.card = () => new Promise<boolean>((resolve) => (held.release = () => resolve(true)));
 
   const putting = t.service.putBack('task-7');
   // The owner pressed Sync while the agent was moving the card.
@@ -1153,7 +1156,7 @@ it('a put-back note stays when its Continue starts nothing', async () => {
   t.taskViews.push(view);
   const note = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' });
   // As a reopen does for a task a round is removing.
-  (t.service as unknown as { deps: TodoServiceDeps }).deps.tasks.continueTask = async () => view;
+  t.putBackHooks.continued = (v) => v;
 
   await t.service.startItem({ kind: 'note', id: note.id }, { noQuestions: false });
   expect(t.service.view().notes).toEqual([note]);
@@ -1204,4 +1207,28 @@ it("a sync that drops a put-back task's card returns the task to the board", asy
   await synced(t, { ...CARDS_ANSWER, cards: [card('c2')] });
 
   expect(t.taskCalls).toEqual([['returnToBoard', 'task-7']]);
+});
+
+it('a put-back whose session ended in a question or an error neither syncs nor touches the task', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+  t.putBackHooks.card = async () => false;
+  const runs = t.calls.length;
+
+  await t.service.putBack('task-7');
+
+  expect(t.calls).toHaveLength(runs);
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
+});
+
+it("a note's put-back whose note can't be written returns the task to the board", async () => {
+  const t = setup();
+  t.taskViews.push(paused());
+  vi.spyOn(t.service, 'saveNote').mockImplementation(() => {
+    throw new Error('EACCES: permission denied');
+  });
+
+  await expect(t.service.putBack('task-7')).rejects.toThrow('EACCES');
+  expect(t.taskCalls).toEqual([['markPutBack', 'task-7'], ['returnToBoard', 'task-7']]);
 });

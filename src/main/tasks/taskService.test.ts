@@ -2370,8 +2370,8 @@ describe('put back', () => {
     const { claudeSessionId } = t.readState()[0];
     expect(putBackPrompt(ADAPTERS.claude.instructions)).toBe(PUT_BACK_PROMPT);
 
-    let ended = false;
-    const putting = t.service.putBackCard(view.id).then(() => (ended = true));
+    let ended: boolean | null = null;
+    const putting = t.service.putBackCard(view.id).then((done) => (ended = done));
     const [sessionId] = t.service.sessionIds();
     expect(t.service.launchSpec(sessionId)).toEqual({
       cwd: t.projectDir,
@@ -2392,29 +2392,56 @@ describe('put back', () => {
     expect(t.readState()[0]).toMatchObject({ open: false, midTurn: false });
 
     await Promise.resolve();
-    expect(ended).toBe(false);
+    expect(ended).toBeNull();
     t.service.onSessionExit(sessionId);
     await putting;
     expect(ended).toBe(true);
   });
 
-  it('a put-back session that asks a question stays open', async () => {
+  it('a put-back session that asks a question stays open as an ordinary task, and the put-back settles as given up', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     t.killed.length = 0;
-    void t.service.putBackCard(view.id);
+    const putting = t.service.putBackCard(view.id);
     const [sessionId] = t.service.sessionIds();
 
     t.service.noteStatus(sessionId, 'working');
     t.service.noteStatus(sessionId, 'blocked');
+    await expect(putting).resolves.toBe(false);
+    // The owner answers, and the agent works on and finishes: the session is the owner's now.
+    t.service.noteStatus(sessionId, 'working');
+    t.service.noteStatus(sessionId, 'done');
     expect(t.killed).toEqual([]);
     expect(t.service.list()[0].session).not.toBeNull();
+  });
+
+  it('a put-back session that errs stays open, and settles as given up', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.killed.length = 0;
+    const putting = t.service.putBackCard(view.id);
+    const [sessionId] = t.service.sessionIds();
+
+    t.service.noteStatus(sessionId, 'working');
+    t.service.noteStatus(sessionId, 'error');
+    t.service.noteStatus(sessionId, 'idle');
+    await expect(putting).resolves.toBe(false);
+    expect(t.killed).toEqual([]);
+  });
+
+  it('a put-back launch that dies before any report owes no carry-on prompt', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    const putting = t.service.putBackCard(view.id);
+    t.service.onSessionExit(t.service.sessionIds()[0]);
+    await putting;
+    expect(t.readState()[0].midTurn).toBe(false);
   });
 
   it('putBackCard of a task whose conversation never began starts no session', async () => {
     const t = roundSetup();
     const view = await pausedTask(t, { begin: false });
-    await t.service.putBackCard(view.id);
+    await expect(t.service.putBackCard(view.id)).resolves.toBe(true);
     expect(t.service.sessionIds()).toEqual([]);
   });
 
