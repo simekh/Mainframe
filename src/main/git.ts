@@ -176,9 +176,13 @@ async function readUntracked(
 }
 
 /** git's own words: execFile's message leads with the whole command line. */
-function withGitMessage(err: unknown): never {
+function gitError(err: unknown): Error {
   const stderr = String((err as { stderr?: unknown }).stderr ?? '').trim();
-  throw stderr ? new Error(stderr) : err;
+  return stderr ? new Error(stderr) : (err as Error);
+}
+
+function withGitMessage(err: unknown): never {
+  throw gitError(err);
 }
 
 /**
@@ -247,8 +251,12 @@ async function base(projectDir: string): Promise<string> {
 /** Brings the remote's default branch up to date, so a merge made elsewhere shows. Never rejects: no remote, no network or a slow one is not an error. */
 export async function fetchBase(projectDir: string): Promise<void> {
   try {
-    const head = (await git(projectDir, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).trim();
-    await git(projectDir, ['fetch', '--quiet', 'origin', head.replace(/^origin\//, '')], {
+    // In full: a local branch named origin/<x> would make the short name ambiguous.
+    const head = (await git(projectDir, ['symbolic-ref', 'refs/remotes/origin/HEAD'])).trim();
+    const prefix = 'refs/remotes/origin/';
+    if (!head.startsWith(prefix)) return;
+    // FETCH_HEAD is the main checkout's: a session's `git pull` there reads it.
+    await git(projectDir, ['fetch', '--quiet', '--no-write-fetch-head', 'origin', head.slice(prefix.length)], {
       env: { GIT_TERMINAL_PROMPT: '0' },
       timeoutMs: 30_000,
     });
@@ -257,9 +265,9 @@ export async function fetchBase(projectDir: string): Promise<void> {
   }
 }
 
-async function branchState(projectDir: string, branch: string, from: string): Promise<TaskGitState['branch']> {
-  const ref = `refs/heads/${branch}`;
-  const tip = await git(projectDir, ['rev-parse', '--verify', '--quiet', ref]).then(
+/** The commit the branch points at; null when there is no such branch. */
+async function branchTip(projectDir: string, branch: string): Promise<string | null> {
+  return git(projectDir, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).then(
     (out) => out.trim(),
     (err: unknown) => {
       // As in branchExists: a git that ran and found no branch exits non-zero; one that never ran has a code such as ENOENT.
@@ -267,15 +275,25 @@ async function branchState(projectDir: string, branch: string, from: string): Pr
       return null;
     },
   );
+}
+
+/**
+ * A reflog entry of a command that made a commit on the branch: a commit (amended, merged or the first), a
+ * cherry-pick or a revert. A fast-forward, a pull, a reset or a rebase only moves the branch, perhaps onto a newer
+ * base, so it counts for nothing: an empty branch moved up is not mistaken for a merged one.
+ */
+const MADE_A_COMMIT = /^(commit( \([a-z]+\))?|cherry-pick|revert):/;
+
+async function branchState(projectDir: string, branch: string, tip: string | null, from: string): Promise<TaskGitState['branch']> {
   if (tip === null) return 'gone';
-  const reflog = (await git(projectDir, ['reflog', 'show', '--format=%H', ref]).catch(() => '')).split('\n').filter(Boolean);
+  const reflog = (await git(projectDir, ['reflog', 'show', '--format=%gs', `refs/heads/${branch}`]).catch(() => '')).split('\n').filter(Boolean);
   const untouched = reflog.length
-    ? reflog[reflog.length - 1] === tip
-    : (await git(projectDir, ['rev-list', '--count', `${from}..${ref}`])).trim() === '0';
+    ? !reflog.some((subject) => MADE_A_COMMIT.test(subject))
+    : (await git(projectDir, ['rev-list', '--count', `${from}..${tip}`])).trim() === '0';
   if (untouched) return 'no-commits';
   try {
     // Merging it into the base changes nothing when the result has the base's own tree.
-    const merged = (await git(projectDir, ['merge-tree', '--write-tree', from, ref])).split('\n')[0];
+    const merged = (await git(projectDir, ['merge-tree', '--write-tree', from, tip])).split('\n')[0];
     const tree = (await git(projectDir, ['rev-parse', `${from}^{tree}`])).trim();
     return merged === tree ? 'merged' : 'unmerged';
   } catch {
@@ -300,7 +318,9 @@ async function uncommittedPaths(worktreePath: string): Promise<string[]> {
 /** What removing a task's worktree and branch would lose. A folder that is gone, or a plain one inside the main checkout, has nothing. */
 export async function taskGitState(projectDir: string, branch: string, worktreePath: string): Promise<TaskGitState> {
   const from = await base(projectDir);
-  const state = await branchState(projectDir, branch, from);
+  // Everything is judged on this commit, so a commit added meanwhile is not passed by a check of the one before.
+  const tip = await branchTip(projectDir, branch);
+  const state = await branchState(projectDir, branch, tip, from);
   let uncommitted: string[] = [];
   let elsewhere = false;
   let head: string | null = null;
@@ -314,24 +334,38 @@ export async function taskGitState(projectDir: string, branch: string, worktreeP
     elsewhere = checkedOut !== `refs/heads/${branch}`;
     if (elsewhere) head = (await git(worktreePath, ['rev-parse', 'HEAD'])).trim();
   }
-  const tips = [...(state === 'gone' ? [] : [`refs/heads/${branch}`]), ...(head ? [head] : [])];
+  const tips = [...(tip ? [tip] : []), ...(head ? [head] : [])];
   const unsaved = tips.length
     ? (await git(projectDir, ['log', '--format=x%s', ...tips, '--not', from, '--remotes']))
         .split('\n')
         .filter(Boolean)
         .map((line) => line.slice(1))
     : [];
-  return { branch: state, uncommitted, elsewhere, unsaved };
+  return { branch: state, tip, uncommitted, elsewhere, unsaved };
 }
 
-/** Resolves at once when the folder is gone. Rejects with git's message: a locked worktree, or changes without `force`. */
+/** A removal git left half done: it dropped the worktree, but some of its folder is still there. */
+export class FolderLeftError extends Error {}
+
+/**
+ * Resolves when the folder is gone, clearing git's entry for it if it has one; other worktrees' entries are left
+ * alone. Rejects with git's message: a locked worktree, or changes without `force`; as a `FolderLeftError` when the
+ * folder is left behind no longer a worktree.
+ */
 export async function removeWorktree(projectDir: string, worktreePath: string, o: { force: boolean }): Promise<void> {
+  const remove = ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath];
   if (!(await pathExists(worktreePath))) {
-    await git(projectDir, ['worktree', 'prune']);
+    // A folder deleted by hand may still be registered; with no entry, git fails and there is nothing to clear.
+    await git(projectDir, remove).catch(() => {});
     return;
   }
-  await git(projectDir, ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath]).catch(withGitMessage);
-  await git(projectDir, ['worktree', 'prune']);
+  try {
+    await git(projectDir, remove);
+  } catch (err) {
+    const { message } = gitError(err);
+    if ((await pathExists(worktreePath)) && !(await isWorktreeTop(worktreePath).catch(() => false))) throw new FolderLeftError(message);
+    throw new Error(message);
+  }
 }
 
 /** False when nothing is at `path`; any other failure to look rejects. */
@@ -345,9 +379,19 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-/** `git branch -D`: the caller has proved the branch's commits are safe. Resolves when it is gone already. */
-export async function deleteBranch(projectDir: string, branch: string): Promise<void> {
-  if (await branchExists(projectDir, branch)) await git(projectDir, ['branch', '-D', branch]).catch(withGitMessage);
+/**
+ * Deletes the branch, as `git branch -D` does: the caller has proved its commits are safe. Given the `tip` that proof
+ * was made on, only while the branch still points there; it rejects otherwise. Resolves when it is gone already.
+ */
+export async function deleteBranch(projectDir: string, branch: string, tip?: string): Promise<void> {
+  if (!(await branchExists(projectDir, branch))) return;
+  if (tip === undefined) {
+    await git(projectDir, ['branch', '-D', branch]).catch(withGitMessage);
+    return;
+  }
+  await git(projectDir, ['update-ref', '-d', `refs/heads/${branch}`, tip]).catch(withGitMessage);
+  // Its settings, which `branch -D` would have removed; a branch with none has no section to remove.
+  await git(projectDir, ['config', '--remove-section', `branch.${branch}`]).catch(() => {});
 }
 
 export const gitQueries = {

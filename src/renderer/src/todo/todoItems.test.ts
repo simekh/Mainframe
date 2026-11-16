@@ -44,6 +44,7 @@ const task = (id: string, cardId: string, o: { open: boolean; sourceKind?: strin
   place: null,
   endedAt: null,
   merged: false,
+  puttingBack: false,
   problem: null,
   card: { sourceKind: o.sourceKind ?? 'Tracker', id: cardId, number: null, url: null, labels: [], position: 0, urgent: false },
   agent: 'claude',

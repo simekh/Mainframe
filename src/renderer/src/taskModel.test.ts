@@ -16,6 +16,7 @@ const task = (id: string, sessionId: string | null): TaskView => ({
   place: null,
   endedAt: null,
   merged: false,
+  puttingBack: false,
   problem: null,
   card: null,
   agent: 'claude',

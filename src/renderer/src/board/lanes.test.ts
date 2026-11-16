@@ -15,6 +15,7 @@ const task = (over: Partial<TaskView> = {}): TaskView => ({
   place: null,
   endedAt: null,
   merged: false,
+  puttingBack: false,
   problem: null,
   card: null,
   agent: 'claude',

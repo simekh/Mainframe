@@ -120,8 +120,10 @@ export interface SettingsView {
 export interface OpencodeChoices { agents: { id: string; isDefault: boolean }[]; models: SyncModel[] }
 
 export interface TaskGitState {
-  /** gone: no local branch. no-commits: the branch still points where it was created. merged: merging it into the base changes nothing. */
+  /** gone: no local branch. no-commits: no commit was made on the branch, though it may have moved up to a newer base. merged: merging it into the base changes nothing. */
   branch: 'gone' | 'no-commits' | 'merged' | 'unmerged';
+  /** The commit the branch pointed at when it was judged; null when it is gone. */
+  tip: string | null;
   /** Paths with uncommitted changes or untracked (not ignored) files in the worktree; [] when the folder is gone or is not a worktree's top. */
   uncommitted: string[];
   /** The worktree has something other than the task's branch checked out: another branch, or a detached HEAD. False when the folder is gone or is not a worktree's top. */
@@ -169,7 +171,9 @@ export interface TaskView {
   endedAt: number | null;
   /** A running task the last round found had nothing to lose. */
   merged: boolean;
-  /** Put back's failure line, kept in memory until a reopen or a move clears it; null for none. */
+  /** A Put back is under way for it, from its session to the sync after it: Reopen, Put back and Discard wait for it. */
+  puttingBack: boolean;
+  /** Why Put back, or a removal of its worktree, failed, kept in memory until a reopen or a move clears it; null for none. */
   problem: string | null;
   /** The to-do card the task was started from; null for a task that wasn't. */
   card: TaskCardRef | null;

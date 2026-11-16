@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { SESSION_START_FILE } from '../agents/claude';
-import type { GitQueries } from '../git';
+import { FolderLeftError, type GitQueries } from '../git';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { continuePrompt, inTurn, putBackPrompt, resumePromptFor, TurnTracker } from './carryOn';
@@ -99,10 +99,12 @@ export class TaskService {
   private readonly starting = new Set<string>();
   /** Running tasks the last round found had nothing to lose. */
   private readonly merged = new Set<string>();
-  /** Put back's failure line for a task, until a reopen or a move clears it. */
+  /** Why Put back, or a removal of the worktree, failed for a task, until a reopen or a move clears it. */
   private readonly problems = new Map<string, string>();
   /** Tasks whose worktree and branch a round is removing: a reopen meanwhile would start a session in what goes. */
   private readonly removing = new Set<string>();
+  /** Tasks a Put back is under way for, from its session to the sync after it. */
+  private readonly puttingBack = new Set<string>();
   /** The check round running, and the one queued after it. */
   private round: Promise<void> | null = null;
   private nextRound: Promise<void> | null = null;
@@ -222,6 +224,7 @@ export class TaskService {
 
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
+    this.refuseWhilePuttingBack(task);
     // A finished or discarded task has no worktree or branch: Continue brings it back.
     if (isEnded(task.place) || this.busy(task)) return this.view(task);
     const agent = agentOf(task);
@@ -307,6 +310,27 @@ export class TaskService {
     const session = view.session && this.sessions.get(view.session.id);
     if (!session) return true;
     return new Promise((resolve) => (session.putBack = { lastState: null, settle: resolve }));
+  }
+
+  /**
+   * Runs Put back's `run` with the task marked as being put back: the view shows it, and Reopen, Discard, a second Put
+   * back and the round leave the task alone until the run ends, however it ends.
+   */
+  async whilePuttingBack<T>(taskId: string, run: () => Promise<T>): Promise<T> {
+    const task = this.find(taskId);
+    this.refuseWhilePuttingBack(task);
+    this.puttingBack.add(task.id);
+    this.deps.onChange(this.list());
+    try {
+      return await run();
+    } finally {
+      this.puttingBack.delete(task.id);
+      this.deps.onChange(this.list());
+    }
+  }
+
+  private refuseWhilePuttingBack(task: TaskRecord): void {
+    if (this.puttingBack.has(task.id)) throw new Error(`${task.title} is being put back`);
   }
 
   /**
@@ -570,7 +594,7 @@ export class TaskService {
     await this.deps.git.fetchBase(this.deps.projectDir);
     for (const task of this.mine().filter((t) => t.place === undefined || t.place === 'putBack')) {
       if (this.quitting) return;
-      if (this.worktreeChanging(task)) continue;
+      if (this.worktreeChanging(task) || this.puttingBack.has(task.id)) continue;
       try {
         await this.checkTask(task);
       } catch (err) {
@@ -582,7 +606,7 @@ export class TaskService {
   private async checkTask(task: TaskRecord): Promise<void> {
     // Where the round found it: a move meanwhile (Discard, Put back) is not overwritten.
     const place = task.place;
-    const passed = await this.nothingToLose(task);
+    const passed = (await this.nothingToLose(task)) !== null;
     if (this.sessionOf(task.id)) {
       if (passed === this.merged.has(task.id)) return;
       if (passed) this.merged.add(task.id);
@@ -592,14 +616,16 @@ export class TaskService {
     }
     if (!passed) return;
     // The proof, again, just before anything is deleted.
-    if (!(await this.nothingToLose(task))) return;
+    const proof = await this.nothingToLose(task);
+    if (!proof) return;
     // An open task with no session is one restore, or a quit, has yet to bring back.
-    if (this.busy(task) || task.open || task.place !== place) return;
+    if (this.busy(task) || task.open || task.place !== place || this.puttingBack.has(task.id)) return;
     this.removing.add(task.id);
     try {
-      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: false });
+      await this.removeWorktreeOf(task, { force: false });
       if (this.quitting) return;
-      await this.deps.git.deleteBranch(this.deps.projectDir, task.branch);
+      // Only the commit the proof was made on: a branch that moved since, or was made again, stays.
+      if (proof.tip !== null) await this.deps.git.deleteBranch(this.deps.projectDir, task.branch, proof.tip);
     } catch (err) {
       this.warn(`Could not remove the worktree or branch of task ${task.id} (${task.slug}), so it stays: ${message(err)}`);
       return;
@@ -610,11 +636,31 @@ export class TaskService {
     this.moveOff(task, 'finished');
   }
 
-  /** Its conversation began, its worktree holds nothing uncommitted and is on its branch, and its branch is merged or gone. */
-  private async nothingToLose(task: TaskRecord): Promise<boolean> {
-    if (!this.began(task)) return false;
+  /**
+   * What git found, when the task has nothing to lose: its conversation began, its worktree holds nothing uncommitted
+   * and is on its branch, and its branch is merged or gone. Null otherwise.
+   */
+  private async nothingToLose(task: TaskRecord): Promise<TaskGitState | null> {
+    if (!this.began(task)) return null;
     const state = await this.deps.git.taskGitState(this.deps.projectDir, task.branch, task.worktreePath);
-    return state.uncommitted.length === 0 && !state.elsewhere && (state.branch === 'gone' || state.branch === 'merged');
+    const passed = state.uncommitted.length === 0 && !state.elsewhere && (state.branch === 'gone' || state.branch === 'merged');
+    return passed ? state : null;
+  }
+
+  /** Removes the task's worktree; a failure says why on its card, where a folder left behind says what to do. */
+  private async removeWorktreeOf(task: TaskRecord, o: { force: boolean }): Promise<void> {
+    try {
+      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, o);
+    } catch (err) {
+      this.problems.set(
+        task.id,
+        err instanceof FolderLeftError
+          ? `Delete the folder git left behind, then Discard: ${task.worktreePath} (${message(err)})`
+          : `Could not remove the worktree: ${message(err)}`,
+      );
+      this.commit();
+      throw err;
+    }
   }
 
   /** What a Discard would lose: the uncommitted and untracked files, and the commits on neither the base nor a remote branch. */
@@ -632,9 +678,10 @@ export class TaskService {
     const task = this.find(taskId);
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be discarded`);
     if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before discarding it`);
+    this.refuseWhilePuttingBack(task);
     this.removing.add(task.id);
     try {
-      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: true });
+      await this.removeWorktreeOf(task, { force: true });
       await this.deps.git.deleteBranch(this.deps.projectDir, task.branch);
     } finally {
       this.removing.delete(task.id);
@@ -782,6 +829,7 @@ export class TaskService {
       place: task.place ?? null,
       endedAt: task.endedAt ?? null,
       merged: this.merged.has(task.id),
+      puttingBack: this.puttingBack.has(task.id),
       problem: this.problems.get(task.id) ?? null,
       card: task.card ?? null,
       agent: agentOf(task),

@@ -10,6 +10,7 @@ import {
   changedFiles,
   deleteBranch,
   fetchBase,
+  FolderLeftError,
   removeWorktree,
   startCheck,
   taskDiff,
@@ -363,7 +364,7 @@ function taskBranch(main: string, name = 't'): { branch: string; wt: string } {
   return { branch, wt };
 }
 
-const GONE = { branch: 'gone', uncommitted: [], elsewhere: false, unsaved: [] };
+const GONE = { branch: 'gone', tip: null, uncommitted: [], elsewhere: false, unsaved: [] };
 
 it('taskGitState is gone for a missing branch and a missing folder', async () => {
   const { main } = repo();
@@ -396,7 +397,46 @@ it('taskGitState is no-commits for a branch still where it was created, even onc
   expect((await taskGitState(main, branch, wt)).branch).toBe('no-commits');
   commitFile(main, 'm.txt', 'm\n');
   git(main, 'push', 'origin', 'stage');
-  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'no-commits', uncommitted: [], elsewhere: false, unsaved: [] });
+  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'no-commits', tip: expect.any(String), uncommitted: [], elsewhere: false, unsaved: [] });
+});
+
+it('taskGitState is no-commits for an empty branch moved up to a newer base by a reset, a fast-forward or a rebase', async () => {
+  const { main } = repo();
+  const reset = taskBranch(main, 'reset');
+  const ff = taskBranch(main, 'ff');
+  const rebased = taskBranch(main, 'rebased');
+  commitFile(main, 'm.txt', 'm\n');
+  git(main, 'push', 'origin', 'stage');
+
+  git(reset.wt, 'reset', '--hard', 'origin/stage');
+  git(ff.wt, 'merge', '--ff-only', 'origin/stage');
+  git(rebased.wt, 'rebase', 'origin/stage');
+
+  for (const { branch, wt } of [reset, ff, rebased]) {
+    expect((await taskGitState(main, branch, wt)).branch).toBe('no-commits');
+  }
+});
+
+it('taskGitState is merged for a branch with its own commit, rebased onto a newer base and then merged', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  commitFile(main, 'm.txt', 'm\n');
+  git(main, 'push', 'origin', 'stage');
+  git(wt, 'rebase', 'origin/stage');
+  expect((await taskGitState(main, branch, wt)).branch).toBe('unmerged');
+
+  git(main, 'merge', '--ff-only', branch);
+  git(main, 'push', 'origin', 'stage');
+  expect((await taskGitState(main, branch, wt)).branch).toBe('merged');
+});
+
+it('taskGitState gives the tip it judged, and null for a branch that is gone', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  expect((await taskGitState(main, branch, wt)).tip).toBe(out(main, 'rev-parse', branch));
+  expect((await taskGitState(main, 'worktree-nope', wt)).tip).toBeNull();
 });
 
 it('taskGitState is merged after a fast-forward merge, a merge commit and a squash merge', async () => {
@@ -410,11 +450,11 @@ it('taskGitState is merged after a fast-forward merge, a merge commit and a squa
 
   git(main, 'merge', '--ff-only', ff.branch);
   git(main, 'push', 'origin', 'stage');
-  expect(await taskGitState(main, ff.branch, ff.wt)).toEqual({ branch: 'merged', uncommitted: [], elsewhere: false, unsaved: [] });
+  expect(await taskGitState(main, ff.branch, ff.wt)).toEqual({ branch: 'merged', tip: expect.any(String), uncommitted: [], elsewhere: false, unsaved: [] });
 
   git(main, 'merge', '--no-ff', '-m', 'merge mc', mc.branch);
   git(main, 'push', 'origin', 'stage');
-  expect(await taskGitState(main, mc.branch, mc.wt)).toEqual({ branch: 'merged', uncommitted: [], elsewhere: false, unsaved: [] });
+  expect(await taskGitState(main, mc.branch, mc.wt)).toEqual({ branch: 'merged', tip: expect.any(String), uncommitted: [], elsewhere: false, unsaved: [] });
 
   git(main, 'merge', '--squash', sq.branch);
   git(main, 'commit', '-m', 'squash sq');
@@ -431,12 +471,13 @@ it('taskGitState is unmerged for a branch with commits not on the base, and list
   commitFile(wt, 'b.txt', 'b\n');
   expect(await taskGitState(main, branch, wt)).toEqual({
     branch: 'unmerged',
+    tip: expect.any(String),
     uncommitted: [],
     elsewhere: false,
     unsaved: ['add b.txt', 'add a.txt'],
   });
   git(main, 'push', 'origin', branch);
-  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [] });
+  expect(await taskGitState(main, branch, wt)).toEqual({ branch: 'unmerged', tip: expect.any(String), uncommitted: [], elsewhere: false, unsaved: [] });
 });
 
 it('taskGitState lists uncommitted and untracked files, not ignored ones', async () => {
@@ -501,6 +542,106 @@ it('removeWorktree refuses a worktree with untracked files unless forced', async
   expect(existsSync(wt)).toBe(true);
   await removeWorktree(main, wt, { force: true });
   expect(existsSync(wt)).toBe(false);
+});
+
+/** The worktree folders git has registered, as it prints them. */
+function registered(main: string): string[] {
+  return out(main, 'worktree', 'list', '--porcelain')
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length));
+}
+
+it("removeWorktree clears a hand-deleted folder's registration, so its branch can go, and leaves other worktrees' entries", async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  const other = taskBranch(main, 'other');
+  rmSync(wt, { recursive: true, force: true });
+  rmSync(other.wt, { recursive: true, force: true });
+  expect(registered(main)).toHaveLength(3);
+
+  await removeWorktree(main, wt, { force: false });
+  await deleteBranch(main, branch);
+
+  expect(await branchExists(main, branch)).toBe(false);
+  // Only the task's own entry went: the other hand-deleted folder is the user's to prune.
+  expect(registered(main)).toHaveLength(2);
+  expect(registered(main).some((path) => path.endsWith('wt-other'))).toBe(true);
+});
+
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  'a removal git leaves half done rejects as a folder left behind; once the folder is deleted by hand, removal and the check work again',
+  async () => {
+    const { main } = repo();
+    const { branch, wt } = taskBranch(main);
+    commitFile(wt, '.gitignore', 'build/\n');
+    git(main, 'merge', '--ff-only', branch);
+    git(main, 'push', 'origin', 'stage');
+    mkdirSync(join(wt, 'build'));
+    writeFileSync(join(wt, 'build', 'out.txt'), 'x\n');
+    chmodSync(join(wt, 'build'), 0o555);
+    try {
+      const failed = removeWorktree(main, wt, { force: false });
+      await expect(failed).rejects.toBeInstanceOf(FolderLeftError);
+      await expect(failed).rejects.toThrow(/Permission denied/);
+      expect(existsSync(wt)).toBe(true);
+    } finally {
+      chmodSync(join(wt, 'build'), 0o755);
+    }
+
+    rmSync(wt, { recursive: true, force: true });
+    expect((await taskGitState(main, branch, wt)).branch).toBe('merged');
+    await removeWorktree(main, wt, { force: true });
+    await deleteBranch(main, branch);
+    expect(await branchExists(main, branch)).toBe(false);
+  },
+);
+
+it('a removal git refuses with the worktree intact rejects with an ordinary error, not a folder left behind', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  writeFileSync(join(wt, 'u.txt'), 'u\n');
+  const failed = removeWorktree(main, wt, { force: false });
+  await expect(failed).rejects.toThrow(/untracked/);
+  await expect(failed).rejects.not.toBeInstanceOf(FolderLeftError);
+});
+
+it('deleteBranch given the tip judged deletes the branch only while it still points there', async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  commitFile(wt, 'a.txt', 'a\n');
+  const judged = out(main, 'rev-parse', branch);
+  commitFile(wt, 'b.txt', 'b\n');
+  await removeWorktree(main, wt, { force: false });
+
+  await expect(deleteBranch(main, branch, judged)).rejects.toThrow();
+  expect(await branchExists(main, branch)).toBe(true);
+
+  git(main, 'config', `branch.${branch}.description`, 'kept by git branch');
+  await deleteBranch(main, branch, out(main, 'rev-parse', branch));
+  expect(await branchExists(main, branch)).toBe(false);
+  // As `git branch -D` does, the branch's settings go too: Continue makes a branch of the same name.
+  expect(() => out(main, 'config', '--get-regexp', `^branch\\.${branch}\\.`)).toThrow();
+});
+
+it("fetchBase leaves the main checkout's FETCH_HEAD alone, and fetches the remote's branch though a local branch is named origin/<it>", async () => {
+  const { origin, main } = repo();
+  const other = join(dirname(main), 'other');
+  git(dirname(main), 'clone', origin, other);
+  git(other, 'config', 'user.name', 'Test');
+  git(other, 'config', 'user.email', 'test@example.com');
+  git(other, 'config', 'commit.gpgsign', 'false');
+  commitFile(other, 'o.txt', 'o\n');
+  git(other, 'push', 'origin', 'stage');
+  // A local branch whose short name is the same as the remote-tracking one's.
+  git(main, 'branch', 'origin/stage');
+  const fetchHead = join(main, '.git', 'FETCH_HEAD');
+  rmSync(fetchHead, { force: true });
+
+  await fetchBase(main);
+
+  expect(out(main, 'rev-parse', 'refs/remotes/origin/stage')).toBe(out(other, 'rev-parse', 'HEAD'));
+  expect(existsSync(fetchHead)).toBe(false);
 });
 
 it('taskGitState keeps a commit with an empty subject among the unsaved ones', async () => {

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { GitQueries } from '../git';
+import { FolderLeftError, type GitQueries } from '../git';
 import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
@@ -56,7 +56,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     taskDiff: async () => [],
     addWorktree: async () => {},
     fetchBase: async () => {},
-    taskGitState: async () => ({ branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [] }),
+    taskGitState: async () => ({ branch: 'unmerged', tip: 'tip', uncommitted: [], elsewhere: false, unsaved: [] }),
     removeWorktree: async () => {},
     deleteBranch: async () => {},
     ...gitOverrides,
@@ -1588,13 +1588,14 @@ function roundSetup(gitOverrides: Partial<GitQueries> = {}) {
     taskGitState: async (_dir, branch) => {
       const calls = checked.push(branch);
       await hooks.before(branch, calls);
-      return { branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [], ...states.get(branch) };
+      const state = { branch: 'unmerged' as const, uncommitted: [], elsewhere: false, unsaved: [], ...states.get(branch) };
+      return { tip: state.branch === 'gone' ? null : `tip-of-${branch}`, ...state };
     },
     removeWorktree: async (dir, path, o) => {
       removals.push(['removeWorktree', dir, path, o]);
     },
-    deleteBranch: async (dir, branch) => {
-      removals.push(['deleteBranch', dir, branch]);
+    deleteBranch: async (dir, branch, tip) => {
+      removals.push(tip === undefined ? ['deleteBranch', dir, branch] : ['deleteBranch', dir, branch, tip]);
     },
     ...gitOverrides,
   });
@@ -1625,9 +1626,10 @@ it('a round moves a closed task with a merged branch and nothing uncommitted to 
   await t.service.checkRound();
 
   expect(t.service.list()[0]).toMatchObject({ place: 'finished', endedAt: 1000 });
+  // Only while the branch still points at the commit the check judged.
   expect(t.removals).toEqual([
     ['removeWorktree', t.projectDir, view.worktreePath, { force: false }],
-    ['deleteBranch', t.projectDir, view.branch],
+    ['deleteBranch', t.projectDir, view.branch, `tip-of-${view.branch}`],
   ]);
   expect(t.readState()[0]).toMatchObject({ place: 'finished', endedAt: 1000, open: false });
   expect(t.changes.at(-1)).toEqual(t.service.list());
@@ -1985,9 +1987,53 @@ it('a removal git refuses leaves the task where it was and warns', async () => {
 
   await t.service.checkRound();
 
-  expect(t.service.list()[0].place).toBeNull();
+  expect(t.service.list()[0]).toMatchObject({ place: null, problem: 'Could not remove the worktree: fatal: worktree is locked' });
+  expect(t.changes.at(-1)).toEqual(t.service.list());
   expect(t.readState()[0]).not.toHaveProperty('place');
   expect(t.warnings.some((w) => w.includes('worktree is locked'))).toBe(true);
+});
+
+it('a removal git leaves half done says on the card to delete the folder, and once it is gone the round finishes the task', async () => {
+  let left = true;
+  const t = roundSetup({
+    removeWorktree: async () => {
+      if (left) throw new FolderLeftError("error: failed to delete 'build': Permission denied");
+    },
+  });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({
+    place: null,
+    problem: `Delete the folder git left behind, then Discard: ${view.worktreePath} (error: failed to delete 'build': Permission denied)`,
+  });
+  expect(t.removals).toEqual([]);
+
+  // The owner deleted it by hand.
+  left = false;
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', problem: null });
+});
+
+it('a round deletes the branch only at the tip its second check judged, and none for a branch that check found gone', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+  t.checked.length = 0;
+  t.hooks.before = (_branch, calls) => {
+    if (calls === 2) t.states.set(view.branch, { ...MERGED, tip: 'second' });
+  };
+
+  await t.service.checkRound();
+  expect(t.removals.at(-1)).toEqual(['deleteBranch', t.projectDir, view.branch, 'second']);
+
+  const gone = await pausedTask(t, { title: 'Gone' });
+  t.states.set(gone.branch, { branch: 'gone' });
+  t.removals.length = 0;
+  await t.service.checkRound();
+  expect(t.service.list().find((v) => v.id === gone.id)!.place).toBe('finished');
+  expect(t.removals).toEqual([['removeWorktree', t.projectDir, gone.worktreePath, { force: false }]]);
 });
 
 it("a task git can't read is left alone, with a warning, and the round goes on to the others", async () => {
@@ -2249,9 +2295,29 @@ describe('discard', () => {
     const view = await pausedTask(t);
 
     await expect(t.service.discard(view.id)).rejects.toThrow('fatal: locked');
-    expect(t.service.list()[0].place).toBeNull();
+    expect(t.service.list()[0]).toMatchObject({ place: null, problem: 'Could not remove the worktree: fatal: locked' });
     // The task is free again: a second try is not blocked.
     await expect(t.service.discard(view.id)).rejects.toThrow('fatal: locked');
+  });
+
+  it('a discard git leaves half done says on the card to delete the folder, and a discard once it is gone moves the task', async () => {
+    let left = true;
+    const t = roundSetup({
+      removeWorktree: async () => {
+        if (left) throw new FolderLeftError('Permission denied');
+      },
+    });
+    const view = await pausedTask(t);
+
+    await expect(t.service.discard(view.id)).rejects.toThrow('Permission denied');
+    expect(t.service.list()[0]).toMatchObject({
+      place: null,
+      problem: `Delete the folder git left behind, then Discard: ${view.worktreePath} (Permission denied)`,
+    });
+
+    left = false;
+    await t.service.discard(view.id);
+    expect(t.service.list()[0]).toMatchObject({ place: 'discarded', problem: null });
   });
 
   it('discard refuses a running task', async () => {
@@ -2513,5 +2579,41 @@ describe('put back', () => {
     const running = await t.service.start({ ...NEW_TASK, title: 'Other' });
     t.service.markPutBack(running.id);
     expect(t.service.list().find((v) => v.id === running.id)!.place).toBeNull();
+  });
+
+  it('whilePuttingBack marks the task for the whole run, which Reopen, Discard, a second Put back and the round leave alone', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.states.set(view.branch, MERGED);
+    const gate = held();
+
+    const putting = t.service.whilePuttingBack(view.id, () => gate.promise);
+    expect(t.service.list()[0].puttingBack).toBe(true);
+    expect(t.changes.at(-1)![0].puttingBack).toBe(true);
+
+    await expect(t.service.whilePuttingBack(view.id, async () => {})).rejects.toThrow('Fix login is being put back');
+    await expect(t.service.reopen(view.id)).rejects.toThrow('Fix login is being put back');
+    await expect(t.service.discard(view.id)).rejects.toThrow('Fix login is being put back');
+    await t.service.checkRound();
+    expect(t.service.sessionIds()).toEqual([]);
+    expect(t.removals).toEqual([]);
+    expect(t.service.list()[0]).toMatchObject({ place: null, puttingBack: true });
+
+    gate.release();
+    await putting;
+    expect(t.service.list()[0].puttingBack).toBe(false);
+    expect(t.changes.at(-1)![0].puttingBack).toBe(false);
+  });
+
+  it('whilePuttingBack clears the mark when its run fails', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    await expect(
+      t.service.whilePuttingBack(view.id, async () => {
+        throw new Error('git refused');
+      }),
+    ).rejects.toThrow('git refused');
+    expect(t.service.list()[0].puttingBack).toBe(false);
+    await expect(t.service.reopen(view.id)).resolves.toMatchObject({ session: { id: expect.any(String) } });
   });
 });

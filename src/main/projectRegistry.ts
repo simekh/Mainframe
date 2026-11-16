@@ -14,7 +14,11 @@ export interface RegisteredProject {
   manager: ProjectSessions;
   /** Once registered: brings back its open tasks and starts its manager. */
   start(): void;
-  /** As its close or the app's quit begins: stops the sync run, whose answer must not be written once the owner has closed the project or the app has quit, and refuses any later one. */
+  /**
+   * As its close or the app's quit begins: stops the sync run, whose answer must not be written once the owner has
+   * closed the project or the app has quit, and refuses any later one; and stops its timer of finish checks, so no
+   * round starts for a project that is closing.
+   */
   cancelSync(): void;
   /** Once its sessions have ended: lets go of what else it holds. */
   release(): Promise<void>;

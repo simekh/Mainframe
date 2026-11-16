@@ -136,6 +136,17 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     returnToBoard: (taskId, problem) => {
       taskCalls.push(problem === undefined ? ['returnToBoard', taskId] : ['returnToBoard', taskId, problem]);
     },
+    // As the task service does: one Put back at a time, the mark shown on the task's view meanwhile.
+    whilePuttingBack: async (taskId, run) => {
+      const view = taskViews.find((v) => v.id === taskId)!;
+      if (view.puttingBack) throw new Error(`${view.title} is being put back`);
+      view.puttingBack = true;
+      try {
+        return await run();
+      } finally {
+        view.puttingBack = false;
+      }
+    },
   };
 
   const changes: ReturnType<TodoService['view']>[] = [];
@@ -1252,5 +1263,38 @@ it("a put-back that fails says why on the paused task's card, and says nothing o
     throw new Error('Close Fix the gate before putting it back');
   };
   await expect(t.service.putBack('task-7')).rejects.toThrow('Close Fix the gate');
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
+});
+
+it('a Put back runs marked from its session to its sync, and a second one meanwhile is refused without touching the task', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+
+  const putting = t.service.putBack('task-7');
+  expect(t.taskViews[0].puttingBack).toBe(true);
+  await flush();
+  await expect(t.service.putBack('task-7')).rejects.toThrow('Fix the gate is being put back');
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
+
+  t.last().answer(CARDS_ANSWER);
+  await putting;
+  expect(t.taskViews[0].puttingBack).toBe(false);
+  expect(t.taskCalls).toEqual([['putBackCard', 'task-7'], ['markPutBack', 'task-7']]);
+});
+
+it('a put-back sync that misses the card says nothing on a task that runs again', async () => {
+  const t = setup();
+  await synced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+
+  const putting = t.service.putBack('task-7');
+  await flush();
+  // Reopened while the sync ran.
+  t.taskViews[0].session = { id: 's2', startedWithPrompt: false };
+  t.taskViews[0].closedAt = null;
+  t.last().answer({ ...CARDS_ANSWER, cards: [card('c2')] });
+  await putting;
+
   expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
 });

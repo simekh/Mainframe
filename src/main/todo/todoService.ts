@@ -22,7 +22,7 @@ export interface TodoServiceDeps {
   agent(): AgentInUse;
   /** Saves an agent's setting for every project, so the next `agent()` has it. */
   saveAgentSetting(name: AgentName, patch: Partial<AgentSetting>): void;
-  tasks: Pick<TaskService, 'start' | 'list' | 'continueTask' | 'putBackCard' | 'markPutBack' | 'returnToBoard'>;
+  tasks: Pick<TaskService, 'start' | 'list' | 'continueTask' | 'putBackCard' | 'markPutBack' | 'returnToBoard' | 'whilePuttingBack'>;
   onChange(view: TodoView): void;
   run?: typeof runSync;
   newId?: () => string;
@@ -182,14 +182,22 @@ export class TodoService {
     if (!task) throw new Error(`Unknown task ${taskId}`);
     if (task.place !== null) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
     if (task.session !== null || task.closedAt === null) throw new Error(`Close ${task.title} before putting it back`);
-    try {
-      await this.putBackPaused(task);
-    } catch (err) {
-      // Paused, or marked put back without its note: back on the board with the reason. One that runs again has none.
-      const now = this.viewOf(taskId);
-      if (now && now.session === null && now.closedAt !== null) this.deps.tasks.returnToBoard(taskId, `Put back: ${err instanceof Error ? err.message : String(err)}`);
-      throw err;
-    }
+    // A second Put back meanwhile is refused here, before it can touch the task.
+    await this.deps.tasks.whilePuttingBack(taskId, async () => {
+      try {
+        await this.putBackPaused(task);
+      } catch (err) {
+        // Paused, or marked put back without its note: back on the board with the reason.
+        this.returnIfPaused(taskId, `Put back: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
+    });
+  }
+
+  /** Back on the board with Put back's failure line, unless the task runs again: its session must not carry the line. */
+  private returnIfPaused(taskId: string, problem: string): void {
+    const now = this.viewOf(taskId);
+    if (now && now.session === null && now.closedAt !== null) this.deps.tasks.returnToBoard(taskId, problem);
   }
 
   private async putBackPaused(task: TaskView): Promise<void> {
@@ -215,7 +223,7 @@ export class TodoService {
       // Not listed: the project is closing, or the file is a newer Mainframe's.
     }
     if (listed) this.deps.tasks.markPutBack(taskId);
-    else this.deps.tasks.returnToBoard(taskId, PUT_BACK_FAILED);
+    else this.returnIfPaused(taskId, PUT_BACK_FAILED);
   }
 
   /**
