@@ -154,8 +154,8 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   await expect(cardIn(page, 'needs-you', b)).toHaveCount(1);
 
   for (const id of [a, b]) await closeTask(page, id);
-  for (const id of [a, b]) await expect(cardIn(page, 'closed', id)).toHaveCount(1);
-  for (const id of [a, b]) await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  for (const id of [a, b]) await expect(cardIn(page, 'paused', id)).toHaveCount(1);
+  for (const id of [a, b]) await cardIn(page, 'paused', id).getByTestId('reopen').click();
 
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launchesOf(a).length).toBe(2);
@@ -209,14 +209,14 @@ test('tasks reopened at startup start at the size their terminal shows', async (
   await app.close();
 });
 
-test("a task whose claude can't start lands in Closed and stays closed after a restart", async () => {
+test("a task whose claude can't start lands in Paused and stays paused after a restart", async () => {
   const first = await launchWithClaudeGone();
   await first.page.getByTestId('new-task').click();
   await first.page.getByTestId('new-task-title').fill('Fix login');
   await first.page.getByTestId('new-task-start').click();
   await expect(first.page.getByTestId('task-card')).toHaveCount(1);
   const [id] = await ids(first.page);
-  await expect(cardIn(first.page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
+  await expect(cardIn(first.page, 'paused', id).getByTestId('task-ask')).toHaveText('Paused');
   // The terminal says why, without the bridge's wrapping. White space is ignored: it wraps the long path.
   const compact = (text: string) => text.replace(/\s+/g, '');
   await expect
@@ -228,7 +228,7 @@ test("a task whose claude can't start lands in Closed and stays closed after a r
   expect(saved).toEqual([expect.objectContaining({ id, open: false })]);
 
   const { app, page, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
-  await expect(cardIn(page, 'closed', id).getByTestId('task-ask')).toHaveText('Closed');
+  await expect(cardIn(page, 'paused', id).getByTestId('task-ask')).toHaveText('Paused');
   expect(launches(dataDir)).toEqual([]);
   await app.close();
 });
@@ -242,12 +242,12 @@ test('Reopen of a task whose claude never started begins its conversation, and t
   await first.page.getByTestId('new-task-start').click();
   await expect(first.page.getByTestId('task-card')).toHaveCount(1);
   const [id] = await ids(first.page);
-  await expect(cardIn(first.page, 'closed', id)).toHaveCount(1);
+  await expect(cardIn(first.page, 'paused', id)).toHaveCount(1);
   await first.app.close();
   const before = JSON.parse(readFileSync(join(first.dataDir, 'state.json'), 'utf8')).tasks[0].claudeSessionId;
 
   const { app, page, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir }, main);
-  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  await cardIn(page, 'paused', id).getByTestId('reopen').click();
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('No questions on this task');
   const [started, ...rest] = launches(dataDir);
@@ -261,7 +261,7 @@ test('Reopen of a task whose claude never started begins its conversation, and t
 
   // That launch began the conversation, so the next Reopen continues it, in the worktree it made.
   await page.getByTestId('close-session').click();
-  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  await cardIn(page, 'paused', id).getByTestId('reopen').click();
   await expect
     .poll(() => launches(dataDir)[1]?.args)
     .toEqual(['--worktree', 'fix-login', '--resume', started.args[5], '--settings', settingsFile(dataDir, id)]);
@@ -323,8 +323,8 @@ test('cards move between lanes as the session reports, and Reopen brings a close
   await expect(card(page, a).locator('.card-title')).toHaveAttribute('aria-current', 'true');
 
   await page.getByTestId('close-session').click();
-  const closed = cardIn(page, 'closed', a);
-  await expect(closed.getByTestId('task-ask')).toHaveText('Closed');
+  const closed = cardIn(page, 'paused', a);
+  await expect(closed.getByTestId('task-ask')).toHaveText('Paused');
   await expect(closed.getByTestId('task-age')).toHaveText('just now');
   await expect(closed.getByTestId('reopen')).toHaveAttribute('aria-label', 'Reopen Alpha');
 

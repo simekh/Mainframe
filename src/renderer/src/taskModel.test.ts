@@ -56,6 +56,13 @@ describe('updateTerminals', () => {
     expect(reopened).toEqual([{ sessionId: 's3', taskId: 'a' }, { sessionId: 's2', taskId: 'b' }]);
     expect(reopened[1]).toBe(two[1]);
   });
+
+  it('a task that leaves the board, put back, finished or discarded, takes its terminal with it', () => {
+    const two = updateTerminals([], [task('a', 's1'), task('b', 's2')]);
+    for (const place of ['putBack', 'finished', 'discarded'] as const) {
+      expect(updateTerminals(two, [{ ...task('a', null), place }, task('b', 's2')])).toEqual([{ sessionId: 's2', taskId: 'b' }]);
+    }
+  });
 });
 
 describe('addedTask', () => {

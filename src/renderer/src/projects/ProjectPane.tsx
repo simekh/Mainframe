@@ -17,6 +17,7 @@ import SessionPanel from '../panel/SessionPanel';
 import SidePanel from '../panel/SidePanel';
 import SettingsButton from '../settings/SettingsButton';
 import { settingsView } from '../settings/settingsStore';
+import { onBoard } from '../taskModel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
@@ -59,7 +60,8 @@ export default function ProjectPane(props: {
   });
 
   const tasks = () => tasksOf(dir);
-  const selected = createMemo(() => tasks().tasks.find((t) => t.id === tasks().selectedId));
+  // A task that left the board (put back, finished, discarded) leaves the session panel too.
+  const selected = createMemo(() => tasks().tasks.find((t) => t.id === tasks().selectedId && onBoard(t)));
   const [dialogOpen, setDialogOpen] = createSignal(false);
   const showManager = () => isManagerShown(dir);
   // Framed while the owner works in it beside other projects; alone on screen, it needs no frame.

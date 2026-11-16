@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { ProgramStatus, TaskView } from '../../../shared/types';
 import type { SessionState } from '../taskModel';
-import { cardActivity, cardAge, glyphOf, laneOf, laneOrder, nextNeedsYou, stateLabel } from './lanes';
+import { cardActivity, cardAge, cardAsk, glyphOf, laneOf, laneOrder, nextNeedsYou, stateLabel } from './lanes';
 
 const task = (over: Partial<TaskView> = {}): TaskView => ({
   id: 'a',
@@ -35,7 +35,7 @@ const starting = { text: 'Starting…', kind: 'busy' };
 
 describe('the lane table', () => {
   it.each([
-    ['session null', closedTask(), undefined, 'closed', 'dot', 'Closed', 'subtle', branch],
+    ['session null', closedTask(), undefined, 'paused', 'dot', 'Paused', 'subtle', branch],
     ['no report yet', task(), undefined, 'working', 'start', 'Starting…', 'muted', starting],
     [
       'idle, startedWithPrompt and not started',
@@ -124,6 +124,28 @@ describe('the lane table', () => {
     expect(cardActivity(closedTask(), state('done', { msg: 'All tests pass' }))).toEqual(branch);
     expect(cardActivity(task(), state('idle', { msg: 'Reading the brief' }, { started: false }))).toEqual(starting);
   });
+
+  it("a paused task's problem is its activity line, in place of its branch", () => {
+    const problem = 'Put back: the card is not on the to-do list';
+    expect(cardActivity(closedTask({ problem }), undefined)).toEqual({ text: problem, kind: 'problem' });
+  });
+});
+
+describe('cardAsk', () => {
+  it('a Paused card offers its paused actions under the label Paused', () => {
+    expect(cardAsk(closedTask(), undefined, 'paused')).toEqual({ text: 'Paused', tone: 'subtle', act: 'paused' });
+  });
+
+  it('a card in Needs you offers Answer, or Finish under the label Merged once the round found nothing to lose', () => {
+    const s = state('done');
+    expect(cardAsk(task(), s, 'needs-you')).toEqual({ text: 'Finished its turn', tone: 'strong', act: 'answer' });
+    expect(cardAsk(task({ merged: true }), s, 'needs-you')).toEqual({ text: 'Merged', tone: 'success', act: 'finish' });
+  });
+
+  it('a Working card offers nothing, merged or not', () => {
+    expect(cardAsk(task(), state('working'), 'working')).toBeNull();
+    expect(cardAsk(task({ merged: true }), state('working'), 'working')).toBeNull();
+  });
 });
 
 describe('cardAge', () => {
@@ -141,7 +163,7 @@ describe('cardAge', () => {
 });
 
 describe('laneOrder', () => {
-  it('laneOrder sorts open lanes oldest first and Closed newest first', () => {
+  it('laneOrder sorts open lanes oldest first and Paused newest first', () => {
     const open = (id: string, createdAt: number, sessionId: string) =>
       task({ id, createdAt, session: { id: sessionId, startedWithPrompt: true } });
     const tasks = [
@@ -161,7 +183,7 @@ describe('laneOrder', () => {
     const ids = (lane: keyof typeof order) => order[lane].map((t) => t.id);
     expect(ids('needs-you')).toEqual(['n1', 'n2']);
     expect(ids('working')).toEqual(['w1', 'w2']);
-    expect(ids('closed')).toEqual(['c2', 'c1']);
+    expect(ids('paused')).toEqual(['c2', 'c1']);
   });
 
   const cardAt = (position: number, urgent = false): TaskView['card'] => ({
@@ -223,7 +245,7 @@ describe('laneOrder', () => {
     expect(idsOf(tasks, sessions, 'needs-you')).toEqual(['older', 'newer']);
   });
 
-  it('Working and Closed keep their order whatever the cards', () => {
+  it('Working and Paused keep their order whatever the cards', () => {
     const tasks = [
       withSession('w-urgent', 20, cardAt(0, true)),
       withSession('w-plain', 10, cardAt(9)),
@@ -232,7 +254,22 @@ describe('laneOrder', () => {
     ];
     const sessions = { 's-w-urgent': state('working'), 's-w-plain': state('working') };
     expect(idsOf(tasks, sessions, 'working')).toEqual(['w-plain', 'w-urgent']);
-    expect(idsOf(tasks, sessions, 'closed')).toEqual(['c-new', 'c-old']);
+    expect(idsOf(tasks, sessions, 'paused')).toEqual(['c-new', 'c-old']);
+  });
+
+  it('laneOrder puts closed tasks in paused and leaves out tasks that are put back, finished or discarded', () => {
+    const tasks = [
+      closedTask({ id: 'paused' }),
+      closedTask({ id: 'put-back', place: 'putBack' }),
+      closedTask({ id: 'finished', place: 'finished', endedAt: 9 }),
+      closedTask({ id: 'discarded', place: 'discarded', endedAt: 9 }),
+      // Off the board whatever its session says.
+      { ...withSession('gone-running', 1), place: 'finished' as const },
+    ];
+    const order = laneOrder(tasks, { 's-gone-running': state('done') });
+    expect(order.paused.map((t) => t.id)).toEqual(['paused']);
+    expect(order['needs-you']).toEqual([]);
+    expect(order.working).toEqual([]);
   });
 });
 

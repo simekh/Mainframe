@@ -144,9 +144,9 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
             </For>
           )}
         </Show>
-        {/* Closed before this start: no terminal holds its last output. */}
+        {/* Paused before this start: no terminal holds its last output. */}
         <Show when={props.task && !props.task.session && !terminalOf(project.dir, props.task.id)}>
-          <p class="closed-note">Closed. Reopen continues this chat.</p>
+          <p class="closed-note">Paused. Reopen continues this chat.</p>
         </Show>
       </div>
     </div>

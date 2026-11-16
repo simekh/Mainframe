@@ -1,16 +1,16 @@
 // Adapted from Parallel Code (MIT): src/components/next-attention-task.ts (stepInQueue) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import type { ProgramKind, TaskView, TodoCard } from '../../../shared/types';
-import type { SessionState } from '../taskModel';
+import { onBoard, type SessionState } from '../taskModel';
 
-export type Lane = 'needs-you' | 'working' | 'closed';
+export type Lane = 'needs-you' | 'working' | 'paused';
 export type Glyph = 'ask' | 'error' | 'spin' | 'start' | 'ready' | 'wait' | 'dot';
-export type Tone = 'warn' | 'error' | 'strong' | 'muted' | 'subtle' | 'accent';
+export type Tone = 'warn' | 'error' | 'strong' | 'muted' | 'subtle' | 'accent' | 'success';
 
 /** One row of the lane table: where a task stands, from its session's OSC 7501 reports. */
 type Standing = 'closed' | 'starting' | 'waiting' | 'working' | 'blocked' | 'done' | 'error';
 
 const ROWS: Record<Standing, { lane: Lane; glyph: Glyph; label: string; tone: Tone }> = {
-  closed: { lane: 'closed', glyph: 'dot', label: 'Closed', tone: 'subtle' },
+  closed: { lane: 'paused', glyph: 'dot', label: 'Paused', tone: 'subtle' },
   starting: { lane: 'working', glyph: 'start', label: 'Starting…', tone: 'muted' },
   waiting: { lane: 'needs-you', glyph: 'wait', label: 'Waiting for you', tone: 'muted' },
   working: { lane: 'working', glyph: 'spin', label: 'Working', tone: 'accent' },
@@ -47,18 +47,33 @@ export function stateLabel(task: HasSession, s: SessionState | undefined): { tex
   return { text: row.label, tone: row.tone };
 }
 
-/** Claude's own line while it has one; the branch otherwise, or the reason it needs the owner. */
+/** Claude's own line while it has one; the branch otherwise, or the reason it needs the owner, or why Put back failed. */
 export function cardActivity(
   task: TaskView,
   s: SessionState | undefined,
-): { text: string; kind: 'msg' | 'busy' | 'branch' } {
+): { text: string; kind: 'msg' | 'busy' | 'branch' | 'problem' } {
   const standing = standingOf(task, s);
   if (standing === 'starting') return { text: 'Starting…', kind: 'busy' };
+  if (standing === 'closed' && task.problem) return { text: task.problem, kind: 'problem' };
   const status = s?.status;
   if (standing !== 'closed' && status?.msg) return { text: status.msg, kind: 'msg' };
   if (standing === 'blocked') return { text: status?.kind ? BLOCKED_BY[status.kind] : 'Blocked', kind: 'busy' };
   if (standing === 'error') return { text: 'Stopped with an error', kind: 'busy' };
   return { text: task.branch, kind: 'branch' };
+}
+
+/** What a card offers on its last row: Answer, Finish on a running task the round found merged, or a Paused card's three. */
+export type CardAct = 'answer' | 'finish' | 'paused';
+
+/** The card's last row, its label and what it offers; none in Working, where the session is busy. */
+export function cardAsk(
+  task: TaskView,
+  s: SessionState | undefined,
+  lane: Lane,
+): { text: string; tone: Tone; act: CardAct } | null {
+  if (lane === 'working') return null;
+  if (lane === 'needs-you' && task.merged) return { text: 'Merged', tone: 'success', act: 'finish' };
+  return { ...stateLabel(task, s), act: lane === 'paused' ? 'paused' : 'answer' };
 }
 
 /** How long the task has been in its state: since it closed, or since its session's state changed. */
@@ -75,15 +90,16 @@ export function cardAge(task: TaskView, s: SessionState | undefined, now: number
  * Each lane's tasks in board order. Needs you follows the to-do list as `listed` has it now (the synced cards, in
  * order): tasks whose card is urgent, then the other tasks with a card, each by the card's place in the list, then
  * tasks without a card, oldest first. A card no longer on the list goes after those on it, by its place and urgency
- * when its task started. Ties go oldest first. Working goes oldest first and Closed newest first.
+ * when its task started. Ties go oldest first. Working goes oldest first and Paused newest first. A task off the board
+ * (put back, finished or discarded) is in no lane.
  */
 export function laneOrder(
   tasks: TaskView[],
   sessions: Record<string, SessionState>,
   listed: readonly Pick<TodoCard, 'id' | 'urgent'>[] = [],
 ): Record<Lane, TaskView[]> {
-  const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], closed: [] };
-  for (const task of tasks) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
+  const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], paused: [] };
+  for (const task of tasks.filter(onBoard)) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
   const place = new Map(listed.map((card, at) => [card.id, { at, urgent: card.urgent }]));
   const rank = (t: TaskView) => {
     if (!t.card) return { group: 2, at: 0 };
@@ -95,7 +111,7 @@ export function laneOrder(
     return ra.group - rb.group || ra.at - rb.at || a.createdAt - b.createdAt;
   });
   lanes.working.sort((a, b) => a.createdAt - b.createdAt);
-  lanes.closed.sort((a, b) => b.createdAt - a.createdAt);
+  lanes.paused.sort((a, b) => b.createdAt - a.createdAt);
   return lanes;
 }
 

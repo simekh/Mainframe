@@ -8,7 +8,7 @@ import {
 
 test.afterEach(cleanUp);
 
-const CLOSED_NOTE = 'Closed. Reopen continues this chat.';
+const CLOSED_NOTE = 'Paused. Reopen continues this chat.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
 
@@ -36,7 +36,7 @@ test('the header shows the task, project and branch, with Close session and then
 
   await page.getByTestId('close-session').click();
   await expect(panel.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'dot');
-  await expect(state.locator('.label')).toHaveText('Closed');
+  await expect(state.locator('.label')).toHaveText('Paused');
   await expect(state.locator('.age')).toHaveText('just now');
   await expect(page.getByTestId('close-session')).toHaveCount(0);
   await expect(page.getByTestId('panel-reopen')).toHaveText('Reopen');
@@ -53,7 +53,7 @@ test('a task closed during this run keeps its terminal; one closed before it sho
   const first = await launchApp();
   const id = await startTask(first.page, 'Fix login');
   await first.page.getByTestId('close-session').click();
-  await expect(cardIn(first.page, 'closed', id)).toBeVisible();
+  await expect(cardIn(first.page, 'paused', id)).toBeVisible();
   await expect.poll(() => screen(first.page, id)).toContain('[Process exited]');
   await expect(first.page.locator('.well > .terminal:not(.terminal--hidden)')).toBeVisible();
   await expect(first.page.getByText(CLOSED_NOTE)).toHaveCount(0);

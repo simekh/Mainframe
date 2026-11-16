@@ -141,6 +141,9 @@ export function registerIpc(
       tasksOf(dir).start({ title, description, noQuestions, ...(isAgentName(agent) && { agent }) }),
   );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
+  ipcMain.handle(IPC.discardPreview, (_e, dir: string, taskId: string) => tasksOf(dir).discardPreview(taskId));
+  ipcMain.handle(IPC.discardTask, (_e, dir: string, taskId: string) => tasksOf(dir).discard(taskId));
+  ipcMain.handle(IPC.continueTask, (_e, dir: string, taskId: string) => tasksOf(dir).continueTask(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
   ipcMain.handle(IPC.openDiff, async (_e, dir: string, taskId: string, path: string) => {
     const seq = diff.nextSeq();
@@ -185,6 +188,7 @@ export function registerIpc(
     (_e, dir: string, { item, noQuestions, ownersCard }: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }) =>
       todoOf(dir).startItem(item, { noQuestions, ownersCard }),
   );
+  ipcMain.handle(IPC.putBackTask, (_e, dir: string, taskId: string) => todoOf(dir).putBack(taskId));
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
   const sessionEnded = (owner: TaskService | ManagerService, sessionId: string) => {

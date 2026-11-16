@@ -23,14 +23,18 @@ export interface TerminalEntry {
   taskId: string;
 }
 
+/** Whether the task is on the board: not put back, finished or discarded. Only these show on the board and in the session panel. */
+export const onBoard = (task: Pick<TaskView, 'place'>): boolean => task.place === null;
+
 /**
  * Gives each new session a terminal, in place of its task's earlier one. A closed task keeps its
- * last terminal so its final output stays readable. Unchanged entries keep their identity, so
- * their terminals stay mounted.
+ * last terminal so its final output stays readable, until it leaves the board. Unchanged entries keep
+ * their identity, so their terminals stay mounted.
  */
 export function updateTerminals(current: TerminalEntry[], tasks: TaskView[]): TerminalEntry[] {
-  let next = current;
-  for (const task of tasks) {
+  const gone = new Set(tasks.filter((task) => !onBoard(task)).map((task) => task.id));
+  let next = current.some((entry) => gone.has(entry.taskId)) ? current.filter((entry) => !gone.has(entry.taskId)) : current;
+  for (const task of tasks.filter(onBoard)) {
     const sessionId = task.session?.id;
     if (!sessionId || next.some((entry) => entry.sessionId === sessionId)) continue;
     const entry = { sessionId, taskId: task.id };

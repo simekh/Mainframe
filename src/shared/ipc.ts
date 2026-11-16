@@ -2,6 +2,7 @@ import type {
   AgentChoice,
   AgentName,
   ChangedFile,
+  DiscardPreview,
   ClipboardPaste,
   DiffView,
   ManagerView,
@@ -40,6 +41,9 @@ export const IPC = {
   startTask: 'tasks:start',
   reopenTask: 'tasks:reopen',
   closeTask: 'tasks:close',
+  discardPreview: 'tasks:discard-preview',
+  discardTask: 'tasks:discard',
+  continueTask: 'tasks:continue',
   changedFiles: 'tasks:changed-files',
   openDiff: 'diff:open',
   getDiff: 'diff:get',
@@ -61,6 +65,7 @@ export const IPC = {
   saveTodoNote: 'todo:save-note',
   deleteTodoNote: 'todo:delete-note',
   startTodoItem: 'todo:start-item',
+  putBackTask: 'todo:put-back',
   spawn: 'pty:spawn',
   write: 'pty:write',
   resize: 'pty:resize',
@@ -124,6 +129,12 @@ export interface MainframeApi {
   startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;
   closeTask(dir: string, taskId: string): void;
+  /** What a Discard of the paused task would lose. */
+  discardPreview(dir: string, taskId: string): Promise<DiscardPreview>;
+  /** Removes a paused task's worktree and branch, forced, and moves it to Discarded; rejects with why it couldn't. */
+  discardTask(dir: string, taskId: string): Promise<void>;
+  /** Brings a put-back, finished or discarded task back to the board, on its branch. */
+  continueTask(dir: string, taskId: string): Promise<TaskView>;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
   changedFiles(dir: string, taskId: string): Promise<ChangedFile[] | null>;
   /** Opens the diff window on the task's changes, scrolled to `path`; reads them afresh each time. */
@@ -163,6 +174,11 @@ export interface MainframeApi {
    * starts only with `ownersCard`, which only the ticket's Start anyway sets: the owner chose it.
    */
   startTodoItem(dir: string, req: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }): Promise<TaskView>;
+  /**
+   * Puts a paused task back on the to-do list. A card's task has its agent move the card first, so this resolves only
+   * once that session has ended; rejects with why it couldn't.
+   */
+  putBackTask(dir: string, taskId: string): Promise<void>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;

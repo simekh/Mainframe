@@ -108,6 +108,17 @@ export async function reopenTask(dir: string, id: string): Promise<void> {
   await window.mainframe.reopenTask(dir, id);
 }
 
+/** Brings a put-back, finished or discarded task back to the board; selected first, as a reopen is. */
+export async function continueTask(dir: string, id: string): Promise<void> {
+  select(dir, id);
+  await window.mainframe.continueTask(dir, id);
+}
+
+/** Resolves once the task is put back, which for a card's task takes its agent a turn. */
+export const putBackTask = (dir: string, id: string): Promise<void> => window.mainframe.putBackTask(dir, id);
+
+export const discardTask = (dir: string, id: string): Promise<void> => window.mainframe.discardTask(dir, id);
+
 export function closeTask(dir: string, id: string): void {
   window.mainframe.closeTask(dir, id);
 }

@@ -86,7 +86,7 @@ test('an OpenCode task closed and reopened from its card resumes the same sessio
   await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
 
   await closeTask(page, id);
-  await cardIn(page, 'closed', id).getByTestId('reopen').click();
+  await cardIn(page, 'paused', id).getByTestId('reopen').click();
   // On the arguments: the stand-in creates its file before it writes them.
   await expect.poll(() => launches(dataDir)[1]?.args.length).toBe(3);
   const [start, reopened] = launches(dataDir);

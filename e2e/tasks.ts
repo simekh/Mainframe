@@ -72,7 +72,7 @@ export const styleOf = (page: Page, taskId: string, text: string) =>
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** The task's card, found only inside the given lane of the board. */
-export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'closed', taskId: string) =>
+export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'paused', taskId: string) =>
   page.locator(`[data-testid=lane][data-lane=${lane}] [data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** A project's pane, found by its folder. `JSON.stringify` quotes the folder, as a Windows path's backslashes need. */

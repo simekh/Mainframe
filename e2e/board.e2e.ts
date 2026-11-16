@@ -1,6 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
-import { cardIn, closeTask, report, run, screen, sendLine, startTask } from './tasks';
+import { card, cardIn, closeTask, git, repo, report, run, screen, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -88,7 +91,7 @@ async function watchCard(page: Page, taskId: string): Promise<() => Promise<stri
   return () => page.evaluate(() => (window as Watched).__cardSpots ?? []);
 }
 
-test('a session that is closed goes straight to Closed, from Working and from Needs you', async () => {
+test('a session that is closed goes straight to Paused, from Working and from Needs you', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page, 'Alpha');
   await sendLine(page, a, "printf '\\033]7501;state=working\\033\\\\'");
@@ -100,9 +103,9 @@ test('a session that is closed goes straight to Closed, from Working and from Ne
   for (const [id, from] of [[a, 'working spin'], [b, 'needs-you ask']]) {
     const spots = await watchCard(page, id);
     await closeTask(page, id);
-    await expect(cardIn(page, 'closed', id)).toHaveCount(1);
+    await expect(cardIn(page, 'paused', id)).toHaveCount(1);
     await expect.poll(() => screen(page, id)).toContain('[Process exited]');
-    expect(await spots()).toEqual([from, 'closed dot']);
+    expect(await spots()).toEqual([from, 'paused dot']);
   }
   await app.close();
 });
@@ -174,9 +177,86 @@ test('a suggestion puts a ring on its card, and answering it takes the ring away
   await sendLine(page, id, `seq 100; ${SUGGESTION_BLOCK}`);
   await expect(working).toHaveAttribute('data-suggestion', 'true', { timeout: 1000 });
   await closeTask(page, id);
-  await expect(cardIn(page, 'closed', id)).toHaveCount(1);
+  await expect(cardIn(page, 'paused', id)).toHaveCount(1);
   await expect.poll(() => screen(page, id)).toContain('[Process exited]');
   await page.waitForTimeout(500);
-  await expect(cardIn(page, 'closed', id)).not.toHaveAttribute('data-suggestion', 'true');
+  await expect(cardIn(page, 'paused', id)).not.toHaveAttribute('data-suggestion', 'true');
+  await app.close();
+});
+
+/** The local branches named `name`: empty once it is deleted. */
+const branchList = (main: string, name: string) =>
+  execFileSync('git', ['-C', main, 'branch', '--list', name], { encoding: 'utf8' }).trim();
+
+/** Commits `file` in the folder, with `file` as its subject. */
+function commitFile(dir: string, file: string): void {
+  writeFileSync(join(dir, file), `${file}\n`);
+  git('-C', dir, 'add', file);
+  git('-C', dir, 'commit', '-m', file);
+}
+
+test('a closed task whose branch is merged leaves Paused for Finished, its worktree and branch gone', async () => {
+  const main = repo();
+  const { app, page } = await launchApp({}, main);
+  const id = await startTask(page, 'Fix login');
+  // fake-claude has made the worktree on its branch, as `claude -w fix-login` does: one commit there, merged into the
+  // base and pushed, and nothing left uncommitted.
+  const worktree = join(main, '.claude', 'worktrees', 'fix-login');
+  commitFile(worktree, 'login.txt');
+  git('-C', main, 'merge', '--no-ff', '-m', 'Merge fix login', 'worktree-fix-login');
+  git('-C', main, 'push', 'origin', 'HEAD');
+
+  await closeTask(page, id);
+  await expect(card(page, id)).toHaveCount(0, { timeout: 15_000 });
+  expect(branchList(main, 'worktree-fix-login')).toBe('');
+  expect(existsSync(worktree)).toBe(false);
+  await app.close();
+});
+
+test('Discard asks first, lists what would be lost, and removes the worktree and branch', async () => {
+  const main = repo();
+  const { app, page } = await launchApp({}, main);
+  const id = await startTask(page, 'Fix login');
+  const worktree = join(main, '.claude', 'worktrees', 'fix-login');
+  commitFile(worktree, 'unpushed.txt');
+  writeFileSync(join(worktree, 'draft.txt'), 'draft\n');
+  await closeTask(page, id);
+  const paused = cardIn(page, 'paused', id);
+  await expect(paused).toHaveCount(1);
+  await expect(paused.getByTestId('reopen')).toBeVisible();
+
+  // Asked first: Cancel keeps everything.
+  await paused.getByTestId('card-more').click();
+  await page.getByTestId('discard').click();
+  const dialog = page.getByTestId('discard-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('discard-file')).toHaveText(['draft.txt']);
+  await expect(dialog.getByTestId('discard-commit')).toHaveText(['unpushed.txt']);
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(paused).toHaveCount(1);
+  expect(existsSync(worktree)).toBe(true);
+
+  await paused.getByTestId('card-more').click();
+  await page.getByTestId('discard').click();
+  await expect(dialog.getByTestId('discard-file')).toHaveText(['draft.txt']);
+  await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(card(page, id)).toHaveCount(0);
+  expect(branchList(main, 'worktree-fix-login')).toBe('');
+  expect(existsSync(worktree)).toBe(false);
+  await app.close();
+});
+
+test('a paused task with nothing to lose says so before it is discarded', async () => {
+  const main = repo();
+  const { app, page } = await launchApp({}, main);
+  const id = await startTask(page, 'Fix login');
+  await closeTask(page, id);
+  const paused = cardIn(page, 'paused', id);
+  await expect(paused).toHaveCount(1);
+  await paused.getByTestId('card-more').click();
+  await page.getByTestId('discard').click();
+  await expect(page.getByTestId('discard-dialog')).toContainText('Nothing would be lost.');
   await app.close();
 });

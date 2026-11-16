@@ -292,7 +292,7 @@ test('Close session ends the process and keeps the task, and the other tasks kee
   await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
   await page.getByTestId('close-session').click();
 
-  await expect(cardIn(page, 'closed', b).getByTestId('task-ask')).toHaveText('Closed');
+  await expect(cardIn(page, 'paused', b).getByTestId('task-ask')).toHaveText('Paused');
   await expect.poll(() => screen(page, b)).toContain('[Process exited]');
   await expect.poll(() => isProcessRunning(bPid)).toBe(false);
   expect(await ids(page)).toEqual([a, b, c]);

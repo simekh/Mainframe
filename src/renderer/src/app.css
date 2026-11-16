@@ -2090,8 +2090,14 @@ kbd {
 }
 
 /* A state, not output: the interface font. */
-.card-activity.busy {
+.card-activity.busy,
+.card-activity.problem {
   font-family: var(--font-ui);
+}
+
+/* Why Put back left the task here: the owner's to act on. */
+.card-activity.problem {
+  color: var(--warning);
 }
 
 .card-ask {
@@ -2134,6 +2140,10 @@ kbd {
   color: var(--accent);
 }
 
+.tone-success {
+  color: var(--success);
+}
+
 /* Primary by full-strength text, not colour. */
 .card-act {
   position: relative;
@@ -2151,6 +2161,77 @@ kbd {
 
 .card-act:hover {
   background: color-mix(in srgb, var(--fg) 11%, transparent);
+}
+
+/* The Paused card's other actions, quieter than Reopen beside it: a square of the same height. */
+.card-more {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -4px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.card-more svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card-more:hover,
+.card:has(.card-menu:popover-open) .card-more {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg);
+}
+
+/* In the top layer, under its button's right edge, or above it where the window ends. */
+.card-menu {
+  inset: auto;
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
+  margin: 4px 0;
+  padding: 4px;
+  width: max-content;
+  max-width: 240px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+.card-menu:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 10px 7px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-align: left;
+}
+
+.card-menu-item:hover {
+  background: var(--hover);
+}
+
+.card-menu-hint {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Destroys work: the error colour, on its name only. */
+.card-menu-item.danger {
+  color: var(--error);
 }
 
 /* A card changing lanes flies as a copy above the board: each lane's list clips what leaves it.
@@ -2890,6 +2971,18 @@ kbd {
   opacity: 0.4;
 }
 
+/* A filled button that destroys work: Discard's confirm. */
+.btn.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--accent-text);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error) 85%, var(--fg));
+  border-color: color-mix(in srgb, var(--error) 85%, var(--fg));
+}
+
 /* The terminal panel, the session panel's and the manager's; it takes the height the rest leaves,
    and sits 8px in from the panel's edge on every side, the bottom too. */
 .well,
@@ -3138,6 +3231,49 @@ kbd {
   align-self: center;
   color: var(--fg-subtle);
   font-size: 12px;
+}
+
+/* --- Discard dialog: what would be lost, as a list along an error-coloured rule ------------- */
+
+.discard-safe {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.discard-loss {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--error) 55%, transparent);
+  user-select: text;
+}
+
+.discard-loss h3 {
+  margin: 6px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.discard-loss h3:first-child {
+  margin-top: 0;
+}
+
+.discard-loss ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.discard-loss li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 12px/20px var(--font-mono);
+  color: var(--fg);
 }
 
 /* --- Settings: the New task box, holding a list of titled sections --------------------------- */
@@ -3409,6 +3545,8 @@ kbd {
 
   .card,
   .card-act,
+  .card-more,
+  .card-menu-item,
   .btn,
   .tb-btn,
   .tb-jump,
