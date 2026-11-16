@@ -1867,27 +1867,66 @@ it("a round touches only its own project's tasks", async () => {
 it('an exit during a round is checked by a round after it', async () => {
   const gate = held();
   const t = roundSetup();
-  const first = await pausedTask(t, { title: 'First' });
+  // Second comes first in the round, which passes it over while it still runs, then holds on First.
   const second = await t.service.start({ ...NEW_TASK, title: 'Second' });
   t.sessionStarted(second.id, t.readState().find((r) => r.id === second.id)!.claudeSessionId);
+  const first = await pausedTask(t, { title: 'First' });
   let holding = true;
   t.hooks.before = (branch) => (holding && branch === first.branch ? gate.promise : undefined);
+  t.checked.length = 0;
 
   const round = t.service.checkRound();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  // Second has been passed over as running, or is yet to come; either way its exit queues a round.
+  expect(t.checked).toEqual([second.branch, first.branch]);
   t.states.set(second.branch, MERGED);
   t.service.close(second.id);
   t.service.onSessionExit(second.session!.id);
+  // The exit queued one round; more calls meanwhile join it.
   const queued = t.service.checkRound();
+  expect(t.service.checkRound()).toBe(queued);
   holding = false;
-  t.checked.length = 0;
+  gate.release();
+
+  await round;
+  expect(t.service.list().find((v) => v.id === second.id)!.place).toBeNull();
+  await queued;
+  expect(t.service.list().find((v) => v.id === second.id)!.place).toBe('finished');
+  expect(t.checked.filter((branch) => branch === second.branch)).toHaveLength(3);
+});
+
+it('a reopen whose git answers after the round has removed the task starts no session', async () => {
+  const answered = held<boolean>();
+  const t = roundSetup({ branchExists: () => answered.promise });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  const round = t.service.checkRound();
+  const reopened = t.service.reopen(view.id);
+  await round;
+  expect(t.service.list()[0].place).toBe('finished');
+  answered.release(true);
+  await reopened;
+
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', session: null });
+  expect(t.service.sessionIds()).toEqual([]);
+});
+
+it('a round does not move a task that was moved while it removed it', async () => {
+  const gate = held();
+  const t = roundSetup({ removeWorktree: () => gate.promise });
+  const records = new TaskRecords(t.stateFile, 1000, () => {});
+  const service = t.make(records);
+  const view = await pausedTask(t, { service });
+  t.states.set(view.branch, MERGED);
+
+  const round = service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // As Discard will.
+  records.all[0].place = 'discarded';
   gate.release();
   await round;
-  await queued;
 
-  expect(t.service.list().find((v) => v.id === second.id)!.place).toBe('finished');
-  expect(t.checked.filter((branch) => branch === second.branch).length).toBeGreaterThanOrEqual(2);
+  expect(records.all[0].place).toBe('discarded');
 });
 
 it('a removal git refuses leaves the task where it was and warns', async () => {

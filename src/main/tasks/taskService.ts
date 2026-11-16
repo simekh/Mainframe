@@ -211,11 +211,15 @@ export class TaskService {
 
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
+    const place = task.place;
     const branchExists = await this.deps.git.branchExists(this.deps.projectDir, task.branch);
 
     // Another reopen may have finished while git answered, or the project closed or the app began
-    // to quit: then the task stays as recorded, to carry on when the project next opens.
-    if (this.sessionOf(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || this.quitting) return this.view(task);
+    // to quit: then the task stays as recorded, to carry on when the project next opens. A round
+    // removing the task, or one that moved it meanwhile, leaves nothing to reopen.
+    if (this.sessionOf(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || task.place !== place || this.quitting) {
+      return this.view(task);
+    }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, branchExists);
@@ -416,6 +420,8 @@ export class TaskService {
   }
 
   private async checkTask(task: TaskRecord): Promise<void> {
+    // Where the round found it: a move meanwhile (Discard, Put back) is not overwritten.
+    const place = task.place;
     const passed = await this.nothingToLose(task);
     if (this.sessionOf(task.id)) {
       if (passed === this.merged.has(task.id)) return;
@@ -428,7 +434,9 @@ export class TaskService {
     // The proof, again, just before anything is deleted.
     if (!(await this.nothingToLose(task))) return;
     // An open task with no session is one restore, or a quit, has yet to bring back.
-    if (this.quitting || task.open || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id)) return;
+    if (this.quitting || task.open || task.place !== place || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id)) {
+      return;
+    }
     this.removing.add(task.id);
     try {
       await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: false });
@@ -440,6 +448,7 @@ export class TaskService {
     } finally {
       this.removing.delete(task.id);
     }
+    if (task.place !== place) return;
     task.place = 'finished';
     task.endedAt = this.now();
     this.commit();
