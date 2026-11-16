@@ -178,6 +178,8 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     recordedSession: () => null,
     // Its sessions stay in OpenCode's own store.
     chatKept: () => true,
+    began: (_taskDir, task) => task.began === true,
+    forgetChat: () => {},
     managerChat: (_dir, saved) => saved ?? null,
     managerLaunch: (o) => opencodeManagerLaunch(o, run),
     sync: makeOpencodeSync({ run, instructions }),

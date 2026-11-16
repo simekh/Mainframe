@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
-import { SESSION_START_FILE } from '../agents/claude';
 import { FolderLeftError, type GitQueries } from '../git';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
@@ -275,9 +274,9 @@ export class TaskService {
       task.claudeSessionId = adapter.recordedSession(dir)!;
       return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
     }
-    // Claude Code deleted the chat: a new one, which the agent's own flag starts in the fresh worktree. The old record
+    // The agent deleted the chat: a new one, which the agent's own flag starts in the fresh worktree. The old record
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
-    rmSync(join(dir, SESSION_START_FILE), { force: true });
+    adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
     const launch = this.startLaunch(task, bin, { continuing: true });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
@@ -385,9 +384,9 @@ export class TaskService {
     return this.mine().find((t) => t.card?.id === cardId && t.place !== 'discarded');
   }
 
-  /** Its conversation began: Claude Code recorded it, or OpenCode took the brief. */
+  /** Its conversation began, as its agent knows it. */
   private began(task: TaskRecord): boolean {
-    return agentOf(task) === 'opencode' ? task.began === true : ADAPTERS.claude.recordedSession(this.taskDir(task.id)) !== null;
+    return ADAPTERS[agentOf(task)].began(this.taskDir(task.id), task);
   }
 
   /** Moves a task that ended off the board, to `place`. */

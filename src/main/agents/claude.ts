@@ -267,6 +267,8 @@ export const claudeAgent: AgentAdapter = {
   }),
   recordedSession: readRecordedSession,
   chatKept,
+  began: (taskDir) => readRecordedSession(taskDir) !== null,
+  forgetChat: (taskDir) => rmSync(join(taskDir, SESSION_START_FILE), { force: true }),
   // Claude Code's own record says which chat it was in; manager.json's saved id is not needed.
   managerChat: readResumableSession,
   managerLaunch: claudeManagerLaunch,

@@ -91,6 +91,13 @@ export interface AgentAdapter {
   recordedSession(taskDir: string): string | null;
   /** Whether the agent still has the task's conversation to resume: Claude Code deletes old chats. */
   chatKept(taskDir: string): boolean;
+  /**
+   * Whether the task's conversation began: Claude Code recorded it in the task's folder; OpenCode took the brief, which
+   * the task's own `began` says.
+   */
+  began(taskDir: string, task: { began?: boolean }): boolean;
+  /** Forgets the conversation recorded in the task's folder, as one the agent no longer has; nothing for an agent that records none. */
+  forgetChat(taskDir: string): void;
   /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
   managerChat(dir: string, saved: string | undefined): string | null;
   managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;

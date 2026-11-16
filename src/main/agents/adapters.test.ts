@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import { AGENT_NAMES, type AgentName } from '../../shared/types';
 import { buildSpawnEnv } from '../pty/spawnEnv';
 import { ADAPTERS } from './adapters';
 import type { TaskStart } from './agent';
-import { startArgv } from './claude';
+import { SESSION_START_FILE, startArgv } from './claude';
 import { OPENCODE_ENV } from './opencode';
 
 const UUID_1 = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
@@ -38,6 +38,26 @@ describe('the agent adapters', () => {
 
   it("an OpenCode task's start carries the tabs-off env", () => {
     expect(ADAPTERS.opencode.taskStart({ ...o, bin: 'oc', sessionId: 'ses_' + 'a'.repeat(28) }).env).toEqual(OPENCODE_ENV);
+  });
+
+  it("a Claude task began once SessionStart recorded its conversation; forgetChat drops that record", () => {
+    const taskDir = mkdtempSync(join(tmpdir(), 'mainframe-began-'));
+    // The task's own flag is OpenCode's: it says nothing of a Claude task.
+    expect(ADAPTERS.claude.began(taskDir, { began: true })).toBe(false);
+    writeFileSync(join(taskDir, SESSION_START_FILE), JSON.stringify({ session_id: UUID_1, source: 'startup' }));
+    expect(ADAPTERS.claude.began(taskDir, {})).toBe(true);
+    ADAPTERS.claude.forgetChat(taskDir);
+    expect(existsSync(join(taskDir, SESSION_START_FILE))).toBe(false);
+    expect(ADAPTERS.claude.began(taskDir, {})).toBe(false);
+  });
+
+  it('an OpenCode task began once it took the brief, whatever its folder holds; forgetChat leaves the folder alone', () => {
+    const taskDir = mkdtempSync(join(tmpdir(), 'mainframe-began-'));
+    writeFileSync(join(taskDir, SESSION_START_FILE), JSON.stringify({ session_id: UUID_1, source: 'startup' }));
+    expect(ADAPTERS.opencode.began(taskDir, {})).toBe(false);
+    expect(ADAPTERS.opencode.began(taskDir, { began: true })).toBe(true);
+    ADAPTERS.opencode.forgetChat(taskDir);
+    expect(existsSync(join(taskDir, SESSION_START_FILE))).toBe(true);
   });
 
   it('a session drops every key an adapter names, and keeps the rest', () => {
