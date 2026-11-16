@@ -317,6 +317,8 @@ async function uncommittedPaths(worktreePath: string): Promise<string[]> {
 
 /** What removing a task's worktree and branch would lose. A folder that is gone, or a plain one inside the main checkout, has nothing. */
 export async function taskGitState(projectDir: string, branch: string, worktreePath: string): Promise<TaskGitState> {
+  // A folder git can't read as a repository has no branch to find: it rejects, rather than reporting the branch gone.
+  await git(projectDir, ['rev-parse', '--git-dir']).catch(withGitMessage);
   const from = await base(projectDir);
   // Everything is judged on this commit, so a commit added meanwhile is not passed by a check of the one before.
   const tip = await branchTip(projectDir, branch);

@@ -644,6 +644,12 @@ it("fetchBase leaves the main checkout's FETCH_HEAD alone, and fetches the remot
   expect(existsSync(fetchHead)).toBe(false);
 });
 
+it('taskGitState rejects for a project folder that is not a repository, rather than finding its branch gone', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mainframe-norepo-'));
+  cleanup.push(dir);
+  await expect(taskGitState(dir, 'worktree-x', join(dir, 'nowhere'))).rejects.toThrow(/not a git repository/);
+});
+
 it('taskGitState keeps a commit with an empty subject among the unsaved ones', async () => {
   const { main } = repo();
   const { branch, wt } = taskBranch(main);
