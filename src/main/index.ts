@@ -306,7 +306,11 @@ async function start(
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),
       status: (sessionId) => host.status(sessionId),
-      onChange: (tasks) => send(IPC.tasksChanged, { dir, tasks }),
+      onChange: (tasks) => {
+        send(IPC.tasksChanged, { dir, tasks });
+        // A put-back task's note goes once the task is anywhere else. No change comes before the project's to-do list is made.
+        todo.tasksChanged(tasks);
+      },
     });
     const todo = new TodoService({
       projectDir: dir,

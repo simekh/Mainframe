@@ -1175,6 +1175,29 @@ it('a put-back note stays when its Continue starts nothing', async () => {
   expect(t.service.view().notes).toEqual([note]);
 });
 
+it("a put-back task's note goes once the task's list shows it anywhere but put back, and only then", () => {
+  const t = setup();
+  const task = paused({ place: 'putBack' });
+  t.taskViews.push(task);
+  const own = t.service.saveNote({ title: 'Fix the gate', text: 'It sticks', taskId: 'task-7' });
+  const plain = t.service.saveNote({ title: 'Oil the hinge', text: '' });
+  const unknown = t.service.saveNote({ title: 'Other project', text: '', taskId: 'task-elsewhere' });
+  const changes = t.changes.length;
+
+  t.service.tasksChanged(t.taskViews);
+  expect(t.service.view().notes).toEqual([own, plain, unknown]);
+  // Nothing dropped, nothing written or sent.
+  expect(t.changes.length).toBe(changes);
+
+  // A round finished it, or it was continued or reopened: the Finished tab or the board shows it now.
+  for (const place of ['finished', null] as const) {
+    task.place = place;
+    t.service.tasksChanged(t.taskViews);
+    expect(t.service.view().notes).toEqual([plain, unknown]);
+    expect(t.changes.at(-1)!.notes).toEqual([plain, unknown]);
+  }
+});
+
 it('starting a card whose task is finished continues it; one whose task was discarded starts a new task', async () => {
   const t = setup();
   await synced(t);

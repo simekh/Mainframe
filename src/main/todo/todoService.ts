@@ -166,6 +166,23 @@ export class TodoService {
     this.removeNote(id);
   }
 
+  /**
+   * With each change to the project's tasks: a put-back task's note lasts only while its task is put back. Once a round
+   * finishes it, or a Continue or a Reopen brings it back to the board, the Finished tab or the board shows it, and the
+   * note goes. A task the list doesn't show keeps its note. Never throws: a failure only warns.
+   */
+  tasksChanged(tasks: TaskView[]): void {
+    const moved = new Set(tasks.filter((t) => t.place !== 'putBack').map((t) => t.id));
+    const notes = this.record.notes.filter((n) => n.taskId === undefined || !moved.has(n.taskId));
+    if (notes.length === this.record.notes.length) return;
+    try {
+      this.save({ ...this.record, notes });
+      this.changed();
+    } catch (err) {
+      (this.deps.warn ?? console.warn)(`Could not drop the notes of tasks no longer put back: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   private removeNote(id: string): void {
     this.save({ ...this.record, notes: this.record.notes.filter((n) => n.id !== id) });
     this.changed();
