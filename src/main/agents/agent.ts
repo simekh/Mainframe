@@ -13,7 +13,7 @@ export interface LaunchArgs { argv: string[]; env?: Record<string, string> }
 /** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
 export interface TaskStart { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
 
-export interface TaskReopen { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; branchExists: boolean; prompt?: string }
+export interface TaskReopen { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; prompt?: string }
 
 /** What settings.json keeps of one agent. */
 export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }
@@ -89,6 +89,8 @@ export interface AgentAdapter {
   taskReopen(o: TaskReopen): LaunchArgs;
   /** The conversation the agent last recorded in the task's folder (Claude Code's SessionStart hook); null when there is none, and always for OpenCode. */
   recordedSession(taskDir: string): string | null;
+  /** Whether the agent still has the task's conversation to resume: Claude Code deletes old chats. */
+  chatKept(taskDir: string): boolean;
   /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
   managerChat(dir: string, saved: string | undefined): string | null;
   managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;

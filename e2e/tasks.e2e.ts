@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { basename, join } from 'node:path';
 import { test, expect } from '@playwright/test';
@@ -104,7 +104,7 @@ test("the dialog warns when the main checkout has commits that new worktrees won
   await second.app.close();
 });
 
-test('quitting with tasks running reopens them at the next start, in their worktrees while the branch exists', async () => {
+test('quitting with tasks running reopens them at the next start in their worktrees, though a branch is gone', async () => {
   const main = repo();
   const first = await launchApp({}, main);
   const alpha = await startTask(first.page, 'Alpha');
@@ -129,9 +129,11 @@ test('quitting with tasks running reopens them at the next start, in their workt
   expect(reopened).toEqual(
     expect.arrayContaining([
       ['--worktree', 'alpha', '--resume', sessionIdOf(alphaStart.args), '--settings', settingsFile(dataDir, alpha)],
-      ['--resume', sessionIdOf(betaStart.args), '--settings', settingsFile(dataDir, beta)],
+      ['--worktree', 'beta', '--resume', sessionIdOf(betaStart.args), '--settings', settingsFile(dataDir, beta)],
     ]),
   );
+  // fake-claude made Beta's worktree again, on a new branch, as `claude --worktree` does.
+  expect(existsSync(join(main, '.claude', 'worktrees', 'beta'))).toBe(true);
   await app.close();
 });
 

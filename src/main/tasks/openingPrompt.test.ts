@@ -20,6 +20,16 @@ it('gives the brief, the description and the worktree note', () => {
   );
 });
 
+it('a continuing prompt says the earlier conversation is gone', () => {
+  expect(openingPrompt({ ...t, description: 'Only on iOS.', continuing: true })).toBe(
+    brief +
+      'Task: Fix login\n\n' +
+      'This continues an earlier task of the same name. Its conversation is gone; any of its work that was merged is in the default branch.\n\n' +
+      'Only on iOS.\n\n' +
+      tail,
+  );
+});
+
 it('leaves out an empty description', () => {
   expect(openingPrompt({ ...t, description: '  \n' })).toBe(brief + 'Task: Fix login\n\n' + tail);
 });

@@ -36,6 +36,8 @@ export function openingPrompt(t: {
   card?: PromptCard;
   /** Where the description is, instead of in this prompt. */
   descriptionFile?: string;
+  /** Continue starts the task again, as its earlier conversation is gone. */
+  continuing?: boolean;
 } & (
   | { agent: 'claude' }
   /** `projectDir` is the main checkout. */
@@ -45,6 +47,9 @@ export function openingPrompt(t: {
   const where = t.agent === 'opencode' ? t : { projectDir: '', worktreePath: '' };
   const description = t.description.trim();
   const parts = [brief(instructions), `Task: ${t.card?.number ? `${t.card.number} ` : ''}${t.title.trim()}`];
+  if (t.continuing) {
+    parts.push('This continues an earlier task of the same name. Its conversation is gone; any of its work that was merged is in the default branch.');
+  }
   if (t.card) parts.push(...cardParts(t.card, instructions));
   if (description) {
     if (t.descriptionFile) parts.push(descriptionInFile(t.descriptionFile, t.card !== undefined));

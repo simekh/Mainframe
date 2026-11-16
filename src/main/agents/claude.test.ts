@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
@@ -8,6 +8,7 @@ import { fakeRun } from '../testing/fakeRun';
 import { files, mac, NODE, win } from '../testing/lookups';
 import {
   checkClaude,
+  claudeAgent,
   claudePlaces,
   findClaude,
   hookSettings,
@@ -41,20 +42,39 @@ it('gives claude an extra folder right before --settings, so the prompt stays la
   ).toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--add-dir', '/b', '--settings', S, 'P']);
 });
 
-it('reopens in the worktree while its branch exists, and in the main checkout once it is gone', () => {
-  const o = { claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S };
-  expect(reopenArgv({ ...o, branchExists: true })).toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S]);
-  expect(reopenArgv({ ...o, branchExists: false })).toEqual(['claude', '--resume', U, '--settings', S]);
+// Claude Code makes a missing worktree from the default branch, and never resets one with work of its own.
+it('reopenArgv always resumes in the task\'s worktree', () => {
+  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S }))
+    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S]);
 });
 
 it('reopens with a prompt as the last argument when given one', () => {
-  const o = { claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' };
-  expect(reopenArgv({ ...o, branchExists: true })).toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, 'P']);
-  expect(reopenArgv({ ...o, branchExists: false })).toEqual(['claude', '--resume', U, '--settings', S, 'P']);
+  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
+    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, 'P']);
 });
 
 it('refuses to resume an id that is not a UUID', () => {
-  expect(() => reopenArgv({ claudeBin: 'claude', slug: 's', claudeSessionId: '--evil', settingsPath: S, branchExists: false })).toThrow('--evil');
+  expect(() => reopenArgv({ claudeBin: 'claude', slug: 's', claudeSessionId: '--evil', settingsPath: S })).toThrow('--evil');
+});
+
+it('chatKept is false once the transcript is gone, and true without a transcript path', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-kept-'));
+  const dir = join(root, 'task');
+  const projects = join(root, 'projects');
+  mkdirSync(dir);
+  mkdirSync(join(projects, '-main'), { recursive: true });
+  mkdirSync(join(projects, '-worktree'));
+  const record = (payload: object) => writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify(payload));
+
+  expect(claudeAgent.chatKept(dir)).toBe(false);
+  // Whatever its source: a resumed chat is gone too once Claude Code deletes its file.
+  record({ session_id: U, source: 'resume', transcript_path: join(projects, '-main', `${U}.jsonl`) });
+  expect(claudeAgent.chatKept(dir)).toBe(false);
+  writeFileSync(join(projects, '-worktree', `${U}.jsonl`), '');
+  expect(claudeAgent.chatKept(dir)).toBe(true);
+  record({ session_id: U, source: 'startup' });
+  rmSync(join(projects, '-worktree', `${U}.jsonl`));
+  expect(claudeAgent.chatKept(dir)).toBe(true);
 });
 
 it('starts the manager in the main checkout, named, with a fixed session id, its MCP config, hooks file and role prompt', () => {

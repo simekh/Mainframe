@@ -5,6 +5,10 @@ export const RESUME_PROMPT = 'Continue where you left off.';
 /** What it says instead when Claude was waiting for the owner's answer, so Claude asks again rather than picks one. */
 export const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
+/** What Continue says to a finished task's resumed chat, so it knows where it now runs. */
+export const continuePrompt = (branch: string): string =>
+  `Mainframe has continued this task in a fresh worktree on branch ${branch}, made from the default branch, which has any of your earlier work that was merged. Wait for my next message.`;
+
 /** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
 export const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
 

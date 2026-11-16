@@ -176,6 +176,8 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
     // OpenCode has no SessionStart hook: its task keeps the session Mainframe started, and its manager the chat manager.json saved.
     recordedSession: () => null,
+    // Its sessions stay in OpenCode's own store.
+    chatKept: () => true,
     managerChat: (_dir, saved) => saved ?? null,
     managerLaunch: (o) => opencodeManagerLaunch(o, run),
     sync: makeOpencodeSync({ run, instructions }),

@@ -5,7 +5,7 @@ import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { SYNC_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, SyncWords } from './agent';
-import { readResumableSession } from './claudeChat';
+import { chatKept, readResumableSession } from './claudeChat';
 import { isMcpToolName, prepareClaudeSync, readSyncAnswer } from './claudeSync';
 
 // Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
@@ -65,14 +65,14 @@ export function reopenArgv(o: {
   slug: string;
   claudeSessionId: string;
   settingsPath: string;
-  branchExists: boolean;
   /** Sent to the resumed conversation as its next prompt: Claude starts no turn of its own after a resume. */
   prompt?: string;
 }): string[] {
   if (!isUuid(o.claudeSessionId)) throw new Error(`not a session id: ${o.claudeSessionId}`);
-  const worktree = o.branchExists ? ['--worktree', o.slug] : [];
   const prompt = o.prompt === undefined ? [] : [o.prompt];
-  return [o.claudeBin, ...worktree, '--resume', o.claudeSessionId, '--settings', o.settingsPath, ...prompt];
+  // Claude Code makes a missing worktree, and its branch, from the default branch, and resets one that is there only
+  // when it has no work of its own, so the task never runs in the main checkout.
+  return [o.claudeBin, '--worktree', o.slug, '--resume', o.claudeSessionId, '--settings', o.settingsPath, ...prompt];
 }
 
 /**
@@ -262,11 +262,11 @@ export const claudeAgent: AgentAdapter = {
       slug: o.slug,
       claudeSessionId: o.sessionId,
       settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
-      branchExists: o.branchExists,
       prompt: o.prompt,
     }),
   }),
   recordedSession: readRecordedSession,
+  chatKept,
   // Claude Code's own record says which chat it was in; manager.json's saved id is not needed.
   managerChat: readResumableSession,
   managerLaunch: claudeManagerLaunch,

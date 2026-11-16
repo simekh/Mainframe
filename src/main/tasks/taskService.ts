@@ -7,7 +7,7 @@ import type { LaunchArgs } from '../agents/agent';
 import type { GitQueries } from '../git';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
-import { inTurn, resumePromptFor, TurnTracker } from './carryOn';
+import { continuePrompt, inTurn, resumePromptFor, TurnTracker } from './carryOn';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
@@ -82,7 +82,7 @@ export class TaskService {
   private readonly now: () => number;
   private readonly warn: (msg: string) => void;
   private readonly sessions = new Map<string, Session>();
-  /** Tasks whose worktree git is adding before their session starts: a reopen meanwhile would start a second one. */
+  /** Tasks a reopen or Continue is adding the worktree of: a reopen meanwhile would start a second session. */
   private readonly launching = new Set<string>();
   /** Tasks start has recorded but not yet given a session: off the board and the manager's list until then. */
   private readonly starting = new Set<string>();
@@ -211,18 +211,11 @@ export class TaskService {
 
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
-    const place = task.place;
-    const branchExists = await this.deps.git.branchExists(this.deps.projectDir, task.branch);
-
-    // Another reopen may have finished while git answered, or the project closed or the app began
-    // to quit: then the task stays as recorded, to carry on when the project next opens. A round
-    // removing the task, or one that moved it meanwhile, leaves nothing to reopen.
-    if (this.sessionOf(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || task.place !== place || this.quitting) {
-      return this.view(task);
-    }
+    // A finished or discarded task has no worktree or branch: Continue brings it back.
+    if (task.place === 'finished' || task.place === 'discarded' || this.busy(task)) return this.view(task);
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
-    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, branchExists);
+    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task);
 
     const bin = this.binOf(agent);
     const recorded = adapter.recordedSession(this.taskDir(task.id));
@@ -231,7 +224,7 @@ export class TaskService {
     let launch: LaunchArgs;
     if (recorded) {
       task.claudeSessionId = recorded;
-      launch = this.reopenLaunch(task, bin, branchExists, prompt);
+      launch = this.reopenLaunch(task, bin, prompt);
     } else {
       // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
@@ -241,15 +234,47 @@ export class TaskService {
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
   }
 
-  /** Adds the task's worktree, marking the task as launching while git runs. */
-  private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
-    this.launching.add(task.id);
-    try {
-      this.hideWorktreesFolder(task);
-      await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
-    } finally {
-      this.launching.delete(task.id);
+  /**
+   * Brings a finished or discarded task back to the board, in a fresh worktree on its branch name made from the base,
+   * which has any of its work that was merged. Its chat is resumed with a word on where it now runs; one the agent
+   * no longer has is started again with the opening prompt. A put-back task is reopened.
+   */
+  async continueTask(taskId: string): Promise<TaskView> {
+    const task = this.find(taskId);
+    if (task.place === undefined) throw new Error(`Task ${task.title} is on the board; reopen it instead`);
+    if (task.place === 'putBack') return this.reopen(taskId);
+    // It stays finished until its session starts, so no round checks it while git adds its worktree.
+    if (this.busy(task)) return this.view(task);
+    const agent = agentOf(task);
+    const adapter = ADAPTERS[agent];
+    const prompt = continuePrompt(task.branch);
+    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, prompt);
+
+    const bin = this.binOf(agent);
+    const dir = this.taskDir(task.id);
+    if (adapter.chatKept(dir)) {
+      task.claudeSessionId = adapter.recordedSession(dir) ?? task.claudeSessionId;
+      return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
     }
+    // Claude Code deleted the chat: a new one, which the agent's own flag starts in the fresh worktree.
+    task.claudeSessionId = adapter.newSessionId(this.newId);
+    const launch = this.startLaunch(task, bin, { continuing: true });
+    return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
+  }
+
+  /**
+   * A session runs, or is on its way, for the task, or a round is removing its worktree, or the project is closing or
+   * the app quitting: a reopen then leaves the task as recorded, to carry on when the project next opens.
+   */
+  private busy(task: TaskRecord): boolean {
+    return (
+      this.sessionOf(task.id) !== undefined || this.starting.has(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || this.quitting
+    );
+  }
+
+  private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
+    this.hideWorktreesFolder(task);
+    await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
   }
 
   /**
@@ -268,33 +293,40 @@ export class TaskService {
   }
 
   /**
-   * Resumes the session Mainframe started, in the task's worktree, or starts it again with the opening prompt when
-   * its conversation never began. A worktree folder deleted by hand is added back from its branch; with the branch
-   * gone too, the session runs in the project folder.
+   * Resumes the session Mainframe started, in the task's worktree, with `prompt`, or starts it again with the opening
+   * prompt when its conversation never began. A missing worktree folder is added back from its branch, or on a new
+   * branch from the base when the branch is gone too. Marked as launching while git runs, so no round removes the task
+   * and no second reopen starts it meanwhile.
    */
-  private async reopenInWorktree(task: TaskRecord, branchExists: boolean): Promise<TaskView> {
-    const agent = agentOf(task);
-    const bin = this.binOf(agent);
-    let cwd = this.deps.projectDir;
-    if (existsSync(task.worktreePath)) {
-      cwd = task.worktreePath;
-    } else if (branchExists) {
-      await this.addWorktree(task, false);
-      // As in reopen: the project may have closed, or the app begun to quit, while git ran.
-      if (this.quitting) return this.view(task);
-      cwd = task.worktreePath;
+  private async reopenInWorktree(task: TaskRecord, prompt = resumePromptFor(task)): Promise<TaskView> {
+    const bin = this.binOf(agentOf(task));
+    if (!existsSync(task.worktreePath)) {
+      const place = task.place;
+      this.launching.add(task.id);
+      try {
+        const create = !(await this.deps.git.branchExists(this.deps.projectDir, task.branch));
+        // The task may have moved, or the project closed or the app begun to quit, while git ran.
+        if (task.place !== place || this.quitting) return this.view(task);
+        await this.addWorktree(task, create);
+        if (task.place !== place || this.quitting) return this.view(task);
+      } finally {
+        this.launching.delete(task.id);
+      }
     }
+    const cwd = task.worktreePath;
     if (!task.began) {
       // OpenCode never took the brief: it failed to start, was quit at its login screen, or Mainframe quit first.
       return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
-    const prompt = resumePromptFor(task);
     const carryOn = prompt !== undefined;
-    const launch = this.reopenLaunch(task, bin, branchExists, prompt);
+    const launch = this.reopenLaunch(task, bin, prompt);
     return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn });
   }
 
+  /** Runs the task's session, which puts it on the board. */
   private relaunch(task: TaskRecord, launch: LaunchSpec, o: { startedWithPrompt: boolean; resumePending: boolean }): TaskView {
+    delete task.place;
+    delete task.endedAt;
     task.open = true;
     task.closedAt = null;
     // Cleared here; a session whose resume prompt never takes sets it again as it ends. askAgain is
@@ -538,14 +570,13 @@ export class TaskService {
   }
 
   /** The launch that resumes the task's conversation, `claudeSessionId`. */
-  private reopenLaunch(task: TaskRecord, bin: string, branchExists: boolean, prompt: string | undefined): LaunchArgs {
+  private reopenLaunch(task: TaskRecord, bin: string, prompt: string | undefined): LaunchArgs {
     return ADAPTERS[agentOf(task)].taskReopen({
       bin,
       nodeBin: this.deps.nodeBin,
       taskDir: this.taskDir(task.id),
       slug: task.slug,
       sessionId: task.claudeSessionId,
-      branchExists,
       prompt,
     });
   }
@@ -553,9 +584,9 @@ export class TaskService {
   /**
    * The launch that begins the task's conversation, under its `claudeSessionId`, with its opening prompt. On Windows,
    * when it would overflow the command line, the description goes to a file in a folder the session may read (`addDir`),
-   * and the prompt points at it.
+   * and the prompt points at it. `continuing`: Continue starts it again, as its earlier conversation is gone.
    */
-  private startLaunch(task: TaskRecord, bin: string): LaunchArgs {
+  private startLaunch(task: TaskRecord, bin: string, { continuing = false } = {}): LaunchArgs {
     const agent = agentOf(task);
     const build = (brief?: { dir: string; file: string }) =>
       ADAPTERS[agent].taskStart({
@@ -572,6 +603,7 @@ export class TaskService {
           noQuestions: task.noQuestions ?? false,
           card: task.card,
           descriptionFile: brief?.file,
+          continuing,
           ...(agent === 'opencode'
             ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
             : { agent: 'claude' as const }),

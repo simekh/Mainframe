@@ -275,6 +275,10 @@ describe("the manager's launch on OpenCode", () => {
     expect(opencodeAgent.managerChat('/d', id)).toBe(id);
     expect(opencodeAgent.managerChat('/d', undefined)).toBeNull();
   });
+
+  it("keeps a task's chat in its own store, so Continue always resumes it", () => {
+    expect(opencodeAgent.chatKept('/d')).toBe(true);
+  });
 });
 
 describe('runOpencode', () => {
