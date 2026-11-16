@@ -139,6 +139,9 @@ export interface StartCheck {
   base: string;
 }
 
+/** Where a task is off the board: put back on the to-do list, finished, or discarded. */
+export type TaskPlace = 'putBack' | 'finished' | 'discarded';
+
 export interface TaskView {
   id: string;
   title: string;
@@ -151,6 +154,14 @@ export interface TaskView {
   createdAt: number;
   /** When its last session ended; null while one runs. Closed cards show their age from it. */
   closedAt: number | null;
+  /** Where the task is; null on the board. */
+  place: TaskPlace | null;
+  /** When it went to its place; null on the board. */
+  endedAt: number | null;
+  /** A running task the last round found had nothing to lose. */
+  merged: boolean;
+  /** Put back's failure line, kept in memory until a reopen or a move clears it; null for none. */
+  problem: string | null;
   /** The to-do card the task was started from; null for a task that wasn't. */
   card: TaskCardRef | null;
   /** The agent CLI its sessions run on. */

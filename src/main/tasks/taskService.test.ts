@@ -356,6 +356,13 @@ it('start refuses an empty title', async () => {
   expect(existsSync(stateFile)).toBe(false);
 });
 
+it('a view carries place, endedAt, merged and problem: null, null, false and null for a new task', async () => {
+  const { service } = setup();
+  const view = await service.start(NEW_TASK);
+  expect(view).toMatchObject({ place: null, endedAt: null, merged: false, problem: null });
+  expect(service.reports()[0]).toMatchObject({ place: null, endedAt: null });
+});
+
 it('close kills the session; its exit then closes the task', async () => {
   const { service, killed, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
@@ -1163,6 +1170,8 @@ it('reports lists every task oldest first: a running one with its last state and
       claudeSessionId: firstRecord.claudeSessionId,
       createdAt: 1000,
       closedAt: null,
+      place: null,
+      endedAt: null,
       running: true,
       state: 'blocked',
       msg: 'Run rm -rf build?',
@@ -1177,6 +1186,8 @@ it('reports lists every task oldest first: a running one with its last state and
       claudeSessionId: secondRecord.claudeSessionId,
       createdAt: 1000,
       closedAt: 1000,
+      place: null,
+      endedAt: null,
       running: false,
       state: null,
       msg: null,

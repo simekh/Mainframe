@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import type { GitQueries } from '../git';
@@ -45,6 +45,10 @@ export interface SessionReport {
   claudeSessionId: string;
   createdAt: number;
   closedAt: number | null;
+  /** Where the task is; null on the board. */
+  place: TaskPlace | null;
+  /** When it went to its place; null on the board. */
+  endedAt: number | null;
   running: boolean;
   /** What its running session last reported; null before the first report, after a clear, and when none runs. */
   state: ProgramState | null;
@@ -79,6 +83,10 @@ export class TaskService {
   private readonly launching = new Set<string>();
   /** Tasks start has recorded but not yet given a session: off the board and the manager's list until then. */
   private readonly starting = new Set<string>();
+  /** Running tasks the last round found had nothing to lose. */
+  private readonly merged = new Set<string>();
+  /** Put back's failure line for a task, until a reopen or a move clears it. */
+  private readonly problems = new Map<string, string>();
   private quitting = false;
 
   constructor(private readonly deps: TaskServiceDeps) {
@@ -104,6 +112,8 @@ export class TaskService {
         claudeSessionId: task.claudeSessionId,
         createdAt: task.createdAt,
         closedAt: task.closedAt,
+        place: task.place ?? null,
+        endedAt: task.endedAt ?? null,
         running: running !== undefined,
         state: status?.state ?? null,
         msg: status?.msg ?? null,
@@ -488,6 +498,10 @@ export class TaskService {
       worktreePath: task.worktreePath,
       createdAt: task.createdAt,
       closedAt: task.closedAt,
+      place: task.place ?? null,
+      endedAt: task.endedAt ?? null,
+      merged: this.merged.has(task.id),
+      problem: this.problems.get(task.id) ?? null,
       card: task.card ?? null,
       agent: agentOf(task),
       session: running ? { id: running.id, startedWithPrompt: running.startedWithPrompt } : null,

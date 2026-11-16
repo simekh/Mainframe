@@ -23,6 +23,8 @@ const REPORT: SessionReport = {
   claudeSessionId: 'claude-1',
   createdAt: 1000,
   closedAt: null,
+  place: null,
+  endedAt: null,
   running: true,
   state: 'working',
   msg: null,
@@ -91,6 +93,13 @@ it("list_sessions takes no input and returns the reports as JSON, each with its 
   const result = json(await call('list_sessions'));
   expect(result).toEqual({ sessions: [REPORT] });
   expect(result.sessions[0].card).toEqual({ number: '#128', url: 'https://tracker.example/c/128' });
+});
+
+it("list_sessions reports each task's place and endedAt", async () => {
+  const { tools, call } = setup();
+  expect(tools.get('list_sessions')!.config.description).toContain('where it is: null on the board, putBack, finished or discarded, with endedAt');
+  const sessions = json(await call('list_sessions')).sessions;
+  expect(sessions[0]).toMatchObject({ place: null, endedAt: null });
 });
 
 it('start_task takes a title of 1 to 200 characters, an optional brief of up to 20000 and an optional noQuestions', () => {

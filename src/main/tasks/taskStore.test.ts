@@ -133,6 +133,19 @@ it('midTurn and askAgain load as saved, and a task kept before them loads withou
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
 
+it('loadTasks keeps place and endedAt, and loads records without them', () => {
+  const file = join(folder(), 'state.json');
+  const tasks = [TASK, { ...TASK, id: 't2', place: 'finished' as const, endedAt: 5 }, { ...TASK, id: 't3', place: 'putBack' as const }];
+  saveTasks(file, tasks);
+  const warnings: string[] = [];
+  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual(tasks);
+  expect(warnings).toEqual([]);
+  // A place that is none of the three is a bad file, set aside as the others are.
+  writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ ...TASK, place: 'gone' }] }));
+  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual([]);
+  expect(warnings).toHaveLength(1);
+});
+
 it("keeps a task's card", () => {
   const file = join(folder(), 'state.json');
   const card = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
