@@ -891,14 +891,22 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   expect(worded.x + worded.width).toBeLessThan((await box(first.page, 'todo-fold')).x);
   for (let i = 0; i < 2; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
-  // The two tabs fit whole, even with a three-digit count written in: neither runs under Quick Add.
+  // The two tabs fit whole, with room to spare for a system that rounds glyphs wider, even with a three-digit count:
+  // it is written in for the measure, and Solid's own text node is put back after it. The room is from the tabs' end
+  // to Quick Add, past the header's 4 px gap.
   const tablist = first.page.getByRole('tablist', { name: 'Todo' });
-  const fits = await tablist.evaluate((el) => {
-    el.querySelector('.todo-tab-count')!.textContent = '128';
-    return el.scrollWidth <= el.clientWidth;
+  const spare = await tablist.evaluate((el) => {
+    const count = el.querySelector('.todo-tab-count')!;
+    const own = [...count.childNodes];
+    count.textContent = '128';
+    const tabsEnd = el.getBoundingClientRect().left + el.scrollWidth;
+    const room = el.parentElement!.querySelector('.todo-add')!.getBoundingClientRect().left - tabsEnd - 4;
+    count.replaceChildren(...own);
+    return room;
   });
-  expect(fits).toBe(true);
-  const name = (await tablist.boundingBox())!;
+  expect(spare).toBeGreaterThanOrEqual(4);
+  // The tab named last, where the tabs end, on their line.
+  const name = await box(first.page, 'todo-tab-finished');
   const add = await box(first.page, 'todo-add-note');
   const sync = await box(first.page, 'todo-sync');
   const fold = await box(first.page, 'todo-fold');
@@ -1303,7 +1311,7 @@ test('the Finished tab lists a finished task, and Continue brings it back to the
   await app.close();
 });
 
-test("Put back on a note's task brings its note back, and Start on it continues the task", async () => {
+test("Put back on a note's task brings its note back, and Continue on it continues the task", async () => {
   const { app, page, dataDir } = await launchApp({}, repo());
   const ticket = page.getByTestId('ticket-panel');
   await page.getByTestId('todo-toggle').click();

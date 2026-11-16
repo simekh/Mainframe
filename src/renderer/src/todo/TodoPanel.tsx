@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, createUniqueId, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
 import type { StartCheck, SyncModel } from '../../../shared/types';
 import { now } from '../board/ageClock';
@@ -147,7 +147,11 @@ export default function TodoPanel(props: {
     setTab(next);
     saveTodoTab(localStorage, project.dir, next);
   };
-  const finishedCount = createMemo(() => finishedTasks(tasksOf(project.dir).tasks, '').length);
+  const finished = createMemo(() => finishedTasks(tasksOf(project.dir).tasks, ''));
+  // Each pane's own, as several projects' panels show at once.
+  const ids = createUniqueId();
+  const tabId = (t: TodoTab) => `todo-tab-${t}-${ids}`;
+  const panelId = (t: TodoTab) => `todo-tabpanel-${t}-${ids}`;
   const allItems = createMemo(() => {
     const v = view();
     return v ? todoItems(v, tasksOf(project.dir).tasks) : [];
@@ -193,6 +197,8 @@ export default function TodoPanel(props: {
    * the start check, so its Start warns as New task's does.
    */
   function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
+    // A ticket is To do's: a Start that failed after the owner turned to Finished brings To do back with it.
+    if (tab() !== 'todo') showTab('todo');
     const opening = ++latestCheck;
     setWarning(found?.warning ?? null);
     setStartError(found?.error ?? null);
@@ -345,6 +351,8 @@ export default function TodoPanel(props: {
               class="todo-tab"
               role="tab"
               data-testid="todo-tab-todo"
+              id={tabId('todo')}
+              aria-controls={panelId('todo')}
               aria-selected={tab() === 'todo' ? 'true' : 'false'}
               onMouseDown={keepFocus}
               onClick={() => showTab('todo')}
@@ -355,11 +363,13 @@ export default function TodoPanel(props: {
               class="todo-tab"
               role="tab"
               data-testid="todo-tab-finished"
+              id={tabId('finished')}
+              aria-controls={panelId('finished')}
               aria-selected={tab() === 'finished' ? 'true' : 'false'}
               onMouseDown={keepFocus}
               onClick={() => showTab('finished')}
             >
-              Finished <span class="todo-tab-count">{finishedCount()}</span>
+              Finished <span class="todo-tab-count">{finished().length}</span>
             </button>
           </div>
           <Show when={tab() === 'todo' && view()}>
@@ -395,12 +405,14 @@ export default function TodoPanel(props: {
         </div>
 
         <Show when={tab() === 'finished'}>
-          <FinishedList />
+          <div class="todo-tabpanel" role="tabpanel" id={panelId('finished')} aria-labelledby={tabId('finished')}>
+            <FinishedList tasks={finished()} />
+          </div>
         </Show>
 
         <Show when={tab() === 'todo' && view()}>
           {(v) => (
-            <>
+            <div class="todo-tabpanel" role="tabpanel" id={panelId('todo')} aria-labelledby={tabId('todo')}>
               {/* Laid out as the manager's row under its title, so the two headers' dividers line up. */}
               <div class="p-branch-bar">
                 {/* The service's name opens the list where it lives, as the ticket's Open in does for a card. */}
@@ -641,7 +653,7 @@ export default function TodoPanel(props: {
                   </button>
                 </div>
               </Show>
-            </>
+            </div>
           )}
         </Show>
 

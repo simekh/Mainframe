@@ -51,7 +51,7 @@ export function saveTodoTab(storage: Pick<Storage, 'setItem'>, dir: string, tab:
   }
 }
 
-export const loadTodoPrefs =(storage: Pick<Storage, 'getItem'>, dir: string): PanelPrefs =>
+export const loadTodoPrefs = (storage: Pick<Storage, 'getItem'>, dir: string): PanelPrefs =>
   loadPanelPrefs(storage, dir, { key: KEY, defaults: DEFAULTS });
 
 export const saveTodoPrefs = (storage: Pick<Storage, 'setItem'>, dir: string, prefs: PanelPrefs): void =>

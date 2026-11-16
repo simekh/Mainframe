@@ -102,7 +102,8 @@ The Todo panel has two tabs, **To do** and **Finished**. Finished lists the proj
 **Continue** brings a task back to the board:
 
 - from the Finished tab, for a finished or discarded task: it runs in a fresh worktree on the task's branch name, from today's base, and resumes its conversation if your agent still has it (Claude Code deletes chats after 30 days by default); otherwise it starts a new one that says what it continues;
-- from the to-do list, for a put-back task: its note or card offers Continue in place of Start, and the task goes on in its own worktree and branch. Deleting a put-back task's note sends the task back to Paused, so it never goes missing.
+- from the to-do list, for a put-back task: its note or card offers Continue in place of Start, and the task goes on in its own worktree and branch. Deleting a put-back task's note sends the task back to Paused, so it never goes missing;
+- from the to-do list, for a card whose task is finished (you moved the card back for more work): the card offers Continue, which continues that task as the Finished tab does. A card whose task was discarded offers Start, which starts a fresh task. Continue on a discarded task whose card has since been started again is refused: continue the newer task instead.
 
 ## Set up the Todo panel
 

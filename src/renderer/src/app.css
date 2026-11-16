@@ -784,11 +784,24 @@ html[data-platform='darwin'] .setup-titlebar {
   padding: 6px 0 4px 16px;
 }
 
+/* It clips rather than run under Quick Add, should a count ever outgrow the room; the padding keeps the mark under the
+   tab on show inside it. */
 .todo-tablist {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
+  margin-bottom: -8px;
+  padding-bottom: 8px;
+  overflow: hidden;
+}
+
+/* What a tab shows, under the title bar: the column the panel's own children made before the tabs. */
+.todo-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Named and counted as the board's lanes are, so both fit beside the buttons at the panel's narrowest. The one on show
@@ -866,17 +879,18 @@ html[data-platform='darwin'] .setup-titlebar {
   }
 }
 
-/* Toward the panel's narrowest the tabs close up a little, so a three-digit count still fits whole. */
+/* Toward the panel's narrowest the tabs and buttons close up, so a three-digit count fits with room to spare. */
 @container (max-width: 300px) {
   .todo-tabs {
-    gap: 6px;
+    gap: 4px;
   }
 
   .todo-tablist {
-    gap: 8px;
+    gap: 6px;
   }
 
   .todo-tab {
+    gap: 3px;
     font-size: 12px;
   }
 }

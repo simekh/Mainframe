@@ -1,23 +1,24 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
+import type { TaskView } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { useProject } from '../projects/projectContext';
-import { continueTask, tasksOf } from '../tasksStore';
+import { continueTask } from '../tasksStore';
 import { endedLine, finishedTasks } from './todoItems';
 
 // Its buttons don't take the focus on click, as the Todo panel's don't.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
 /**
- * The Todo panel's Finished tab: the project's finished and discarded tasks, the newest first, with a search on the
+ * The Todo panel's Finished tab: the project's finished and discarded tasks (`finishedTasks`, which the panel counts
+ * for its tab too), the newest first, with a search on the
  * title and the card number. Continue brings a task back to the board, selected; a Continue that fails says why on its
  * row.
  */
-export default function FinishedList() {
+export default function FinishedList(props: { tasks: TaskView[] }) {
   const project = useProject();
   const [query, setQuery] = createSignal('');
   const [failed, setFailed] = createSignal<{ id: string; message: string } | null>(null);
-  const all = createMemo(() => finishedTasks(tasksOf(project.dir).tasks, ''));
-  const shown = createMemo(() => finishedTasks(all(), query()));
+  const shown = createMemo(() => finishedTasks(props.tasks, query()));
 
   const continueOne = (id: string) => {
     setFailed(null);
@@ -48,7 +49,7 @@ export default function FinishedList() {
         />
       </label>
       <div class="todo-scroll">
-        <Show when={all().length === 0}>
+        <Show when={props.tasks.length === 0}>
           <p class="finished-empty">Tasks land here once their work is merged, or when you discard them.</p>
         </Show>
         <ul class="todo-list" aria-label="Finished">
@@ -82,7 +83,7 @@ export default function FinishedList() {
             )}
           </For>
         </ul>
-        <Show when={all().length > 0 && shown().length === 0}>
+        <Show when={props.tasks.length > 0 && shown().length === 0}>
           <p class="finished-empty">No finished task matches “{query().trim()}”.</p>
         </Show>
       </div>

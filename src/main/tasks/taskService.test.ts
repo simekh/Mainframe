@@ -2310,6 +2310,27 @@ describe('discard', () => {
     expect(t.service.list()).toHaveLength(2);
   });
 
+  it("Continue refuses a discarded task whose card has since started another task, and continues one whose card has none", async () => {
+    const t = roundSetup();
+    const first = await t.service.start({ ...NEW_TASK, card: CARD });
+    t.service.close(first.id);
+    t.service.onSessionExit(first.session!.id);
+    await t.service.discard(first.id);
+    const second = await t.service.start({ ...NEW_TASK, title: 'Again', card: CARD });
+
+    await expect(t.service.continueTask(first.id)).rejects.toThrow(
+      `${CARD.number} already has the task "Again"; continue that one instead`,
+    );
+    expect(t.service.list().find((v) => v.id === first.id)).toMatchObject({ place: 'discarded', session: null });
+
+    // Once that one is discarded too, the card has no other task, and the first continues.
+    t.service.close(second.id);
+    t.service.onSessionExit(second.session!.id);
+    await t.service.discard(second.id);
+    const continued = await t.service.continueTask(first.id);
+    expect(continued.place).toBeNull();
+  });
+
   it('a card whose task is finished still refuses Start', async () => {
     const t = roundSetup();
     const first = await t.service.start({ ...NEW_TASK, card: CARD });

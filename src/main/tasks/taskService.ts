@@ -253,6 +253,10 @@ export class TaskService {
     const task = this.find(taskId);
     if (task.place === undefined) throw new Error(`Task ${task.title} is on the board; reopen it instead`);
     if (task.place === 'putBack') return this.reopen(taskId);
+    // A card has at most one task that isn't discarded: one started afresh since keeps the card.
+    const card = task.card;
+    const other = task.place === 'discarded' && card ? this.mine().find((t) => t.card?.id === card.id && t.place !== 'discarded') : undefined;
+    if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
     // It stays finished until its session starts, so no round checks it while git adds its worktree.
     if (this.busy(task)) return this.view(task);
     const agent = agentOf(task);
