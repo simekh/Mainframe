@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
+import { SESSION_START_FILE } from '../agents/claude';
 import type { GitQueries } from '../git';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
@@ -253,10 +254,13 @@ export class TaskService {
     const bin = this.binOf(agent);
     const dir = this.taskDir(task.id);
     if (adapter.chatKept(dir)) {
-      task.claudeSessionId = adapter.recordedSession(dir) ?? task.claudeSessionId;
+      // A kept chat is a recorded one.
+      task.claudeSessionId = adapter.recordedSession(dir)!;
       return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true });
     }
-    // Claude Code deleted the chat: a new one, which the agent's own flag starts in the fresh worktree.
+    // Claude Code deleted the chat: a new one, which the agent's own flag starts in the fresh worktree. The old record
+    // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
+    rmSync(join(dir, SESSION_START_FILE), { force: true });
     task.claudeSessionId = adapter.newSessionId(this.newId);
     const launch = this.startLaunch(task, bin, { continuing: true });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
@@ -275,6 +279,16 @@ export class TaskService {
   private async addWorktree(task: TaskRecord, create: boolean): Promise<void> {
     this.hideWorktreesFolder(task);
     await this.deps.git.addWorktree(this.deps.projectDir, task.worktreePath, task.branch, { create });
+  }
+
+  /** Removes the worktree a reopen just added, unforced, and its branch when the reopen made it; a failure only warns. */
+  private async removeAdded(task: TaskRecord, branchMade: boolean): Promise<void> {
+    try {
+      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: false });
+      if (branchMade) await this.deps.git.deleteBranch(this.deps.projectDir, task.branch);
+    } catch (err) {
+      this.warn(`Could not remove the worktree just added for task ${task.id} (${task.slug}): ${message(err)}`);
+    }
   }
 
   /**
@@ -308,7 +322,11 @@ export class TaskService {
         // The task may have moved, or the project closed or the app begun to quit, while git ran.
         if (task.place !== place || this.quitting) return this.view(task);
         await this.addWorktree(task, create);
-        if (task.place !== place || this.quitting) return this.view(task);
+        if (task.place !== place || this.quitting) {
+          // A task that moved, or a Continue's that stays finished, has no session to use it: what was made goes.
+          await this.removeAdded(task, create);
+          return this.view(task);
+        }
       } finally {
         this.launching.delete(task.id);
       }

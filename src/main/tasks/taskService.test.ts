@@ -2140,3 +2140,80 @@ it('Continue refuses a task on the board', async () => {
   await expect(service.continueTask(view.id)).rejects.toThrow('Task Fix login is on the board; reopen it instead');
   expect(service.sessionIds()).toEqual([]);
 });
+
+it('a chat-gone Continue drops the old session record, so an exit before the new one fires keeps the new id', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t, { begin: false });
+  const first = t.readState()[0].claudeSessionId;
+  const transcript_path = join(t.dataDir, 'projects', '-acme', `${first}.jsonl`);
+  writeFileSync(join(t.taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: first, source: 'startup', transcript_path }));
+  t.states.set(view.branch, MERGED);
+  await t.service.checkRound();
+
+  const continued = await t.service.continueTask(view.id);
+  const { claudeSessionId } = t.readState()[0];
+  expect(existsSync(join(t.taskDir(view.id), SESSION_START_FILE))).toBe(false);
+  // claude quit before its SessionStart fired.
+  t.service.onSessionExit(continued.session!.id);
+  expect(t.readState()[0].claudeSessionId).toBe(claudeSessionId);
+  expect(claudeSessionId).not.toBe(first);
+});
+
+it('a Continue cut short while git adds the worktree removes the worktree and the branch it made', async () => {
+  let adding: Promise<void> | null = null;
+  const t = roundSetup({ addWorktree: () => adding ?? Promise.resolve() });
+  const records = new TaskRecords(t.stateFile, 1000, () => {});
+  const service = t.make(records);
+  const view = await pausedOpencodeTask(service);
+  records.all[0].place = 'finished';
+  const gate = held();
+  adding = gate.promise;
+
+  const continuing = service.continueTask(view.id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // As Discard will.
+  records.all[0].place = 'discarded';
+  gate.release();
+  await continuing;
+
+  expect(service.sessionIds()).toEqual([]);
+  expect(t.removals).toEqual([
+    ['removeWorktree', t.projectDir, view.worktreePath, { force: false }],
+    ['deleteBranch', t.projectDir, view.branch],
+  ]);
+});
+
+it('a reopen cut short by a quit while git adds the worktree back removes it, and keeps the branch it did not make', async () => {
+  let adding: Promise<void> | null = null;
+  const t = roundSetup({ addWorktree: () => adding ?? Promise.resolve(), branchExists: async () => true });
+  const view = await pausedOpencodeTask(t.service);
+  const gate = held();
+  adding = gate.promise;
+
+  const reopening = t.service.reopen(view.id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  t.service.beginQuit();
+  gate.release();
+  await reopening;
+
+  expect(t.service.sessionIds()).toEqual([]);
+  expect(t.removals).toEqual([['removeWorktree', t.projectDir, view.worktreePath, { force: false }]]);
+});
+
+it('a failed removal after a cut-short reopen only warns', async () => {
+  let adding: Promise<void> | null = null;
+  const t = roundSetup({
+    addWorktree: () => adding ?? Promise.resolve(),
+    removeWorktree: async () => { throw new Error('fatal: busy'); },
+  });
+  const view = await pausedOpencodeTask(t.service);
+  const gate = held();
+  adding = gate.promise;
+
+  const reopening = t.service.reopen(view.id);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  t.service.beginQuit();
+  gate.release();
+  await expect(reopening).resolves.toMatchObject({ session: null });
+  expect(t.warnings.some((w) => w.includes('fatal: busy'))).toBe(true);
+});
