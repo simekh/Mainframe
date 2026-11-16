@@ -771,8 +771,8 @@ html[data-platform='darwin'] .setup-titlebar {
   z-index: 6;
 }
 
-/* The tab strip is the island's title bar, laid out as the manager's: its one tab sits on the manager's
-   title line, and Quick Add and Sync just left of the fold button. */
+/* The tab strip is the island's title bar, laid out as the manager's: its tabs sit on the manager's title line, and
+   To do's Quick Add and Sync just left of the fold button. */
 .todo-tabs {
   flex: none;
   display: flex;
@@ -784,23 +784,53 @@ html[data-platform='darwin'] .setup-titlebar {
   padding: 6px 0 4px 16px;
 }
 
-/* The tab on show, marked under its name without moving it off that line. */
-.todo-tab {
-  position: relative;
-  margin: 0;
-  font: 600 17px/1.3 var(--font-display);
-  letter-spacing: -0.025em;
+.todo-tablist {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
-.todo-tab::after {
+/* Named and counted as the board's lanes are, so both fit beside the buttons at the panel's narrowest. The one on show
+   is full-strength and marked under its name without moving it off that line; the other steps back. */
+.todo-tab {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--fg-subtle);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.todo-tab:hover {
+  color: var(--fg-muted);
+}
+
+.todo-tab[aria-selected='true'] {
+  color: var(--fg);
+}
+
+.todo-tab[aria-selected='true']::after {
   content: '';
   position: absolute;
   right: 0;
-  bottom: -5px;
+  bottom: -7px;
   left: 0;
   height: 2px;
   border-radius: 1px;
   background: var(--accent);
+}
+
+/* As a lane's count: quiet figures beside the name. */
+.todo-tab-count {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Quick Add leads the two, outlined in dashes as the Todo mark is: what it adds is Mainframe's own. Written over
@@ -811,18 +841,43 @@ html[data-platform='darwin'] .setup-titlebar {
   border-color: var(--border);
 }
 
-/* The header's room toward the panel's narrowest (spec §7): with its word, Sync needs a panel of about 312 px, so
-   below about 315 it drops the word, its name stays, and it is a square as the fold button and the pin beside it are.
-   Written over .btn, which comes later. */
-@container (max-width: 312px) {
+.btn.todo-add svg {
+  display: none;
+}
+
+/* The header's room: beside the two tabs, Quick Add and Sync keep their words only in a wide panel. Narrower, each is
+   a square as the fold button and the pin beside it are, its name kept (Quick Add's a plus sign, as in New task). Written
+   over .btn, which comes later. */
+@container (max-width: 420px) {
+  .btn.todo-add,
   .btn.todo-sync {
     width: 28px;
     padding: 0;
     justify-content: center;
   }
 
+  .btn.todo-add svg {
+    display: block;
+  }
+
+  .todo-add span,
   .todo-sync span {
     display: none;
+  }
+}
+
+/* Toward the panel's narrowest the tabs close up a little, so a three-digit count still fits whole. */
+@container (max-width: 300px) {
+  .todo-tabs {
+    gap: 6px;
+  }
+
+  .todo-tablist {
+    gap: 8px;
+  }
+
+  .todo-tab {
+    font-size: 12px;
   }
 }
 
@@ -1205,6 +1260,100 @@ html[data-platform='darwin'] .setup-titlebar {
   border: 1px dashed var(--border);
   background: none;
   color: var(--fg-subtle);
+}
+
+/* The Finished tab's search is the row under its title: a bare field on the line, whose divider takes the focus
+   colour while it is typed in. */
+.finished-bar {
+  gap: 8px;
+  cursor: text;
+}
+
+.finished-bar:focus-within {
+  border-bottom-color: var(--border-focus);
+}
+
+.finished-bar svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--fg-subtle);
+}
+
+.finished-search {
+  flex: 1;
+  min-width: 0;
+  height: 19px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+.finished-search::placeholder {
+  color: var(--fg-subtle);
+}
+
+/* What is behind, so quieter than what is ahead: the rows have no fill until hovered, the title and its line on the
+   left and Continue at the right, on the title's line. */
+.finished-row {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius-md);
+}
+
+.finished-row:hover {
+  background: color-mix(in srgb, var(--fg) 4.5%, transparent);
+}
+
+.finished-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finished-title {
+  color: var(--fg-muted);
+  font-weight: 500;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.finished-meta {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* A discarded attempt was given up: its line says so in the warning's tone, as nothing else on the row does. */
+.finished-row[data-place='discarded'] .finished-meta {
+  color: color-mix(in srgb, var(--warning) 70%, var(--fg-subtle));
+}
+
+.finished-error {
+  color: var(--error);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.finished-row .card-act {
+  margin-top: -3px;
+}
+
+.finished-empty {
+  flex: none;
+  max-width: 36ch;
+  margin: 0;
+  padding: 4px 4px 0;
+  color: var(--fg-subtle);
+  text-wrap: pretty;
 }
 
 /* Quiet, at the panel's foot: it undoes an allow or a pick that was wrong. */

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { clampTodoWidth, loadHideMine, loadTodoPrefs, saveHideMine, saveTodoPrefs, TODO_WIDTH } from './todoPrefs';
+import {
+  clampTodoWidth, loadHideMine, loadTodoPrefs, loadTodoTab, saveHideMine, saveTodoPrefs, saveTodoTab, TODO_WIDTH,
+} from './todoPrefs';
 
 /** A Storage stand-in over a plain map. */
 function memoryStorage(entries: Record<string, string> = {}) {
@@ -49,6 +51,17 @@ describe('todoPrefs', () => {
       },
     };
     expect(() => saveHideMine(full, '/acme', true)).not.toThrow();
+  });
+
+  it('the open tab starts on To do and is kept per project; a refused write keeps it for this run only', () => {
+    const storage = memoryStorage();
+    expect(loadTodoTab(storage, '/acme')).toBe('todo');
+    saveTodoTab(storage, '/acme', 'finished');
+    expect(loadTodoTab(storage, '/acme')).toBe('finished');
+    expect(loadTodoTab(storage, '/globex')).toBe('todo');
+    expect(loadTodoTab(memoryStorage({ 'mainframe.todo-tab:/acme': 'junk' }), '/acme')).toBe('todo');
+    const full = { setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); } };
+    expect(() => saveTodoTab(full, '/acme', 'finished')).not.toThrow();
   });
 
   it.each([

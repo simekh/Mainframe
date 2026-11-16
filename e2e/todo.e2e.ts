@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
@@ -7,7 +7,7 @@ import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
   box, card, cardIn, closeTask, edgesWhile, expectSlide, expectStripAt, heldSyncs, holdSyncs, ids, isOnTop, launches, middle,
-  openedLinks, projectPane as pane, railRow, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus,
+  openedLinks, projectPane as pane, railRow, releaseSyncs, repo, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus,
   todoDir,
 } from './tasks';
 
@@ -891,7 +891,14 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   expect(worded.x + worded.width).toBeLessThan((await box(first.page, 'todo-fold')).x);
   for (let i = 0; i < 2; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
-  const name = (await first.page.getByRole('heading', { name: 'Todo', level: 2 }).boundingBox())!;
+  // The two tabs fit whole, even with a three-digit count written in: neither runs under Quick Add.
+  const tablist = first.page.getByRole('tablist', { name: 'Todo' });
+  const fits = await tablist.evaluate((el) => {
+    el.querySelector('.todo-tab-count')!.textContent = '128';
+    return el.scrollWidth <= el.clientWidth;
+  });
+  expect(fits).toBe(true);
+  const name = (await tablist.boundingBox())!;
   const add = await box(first.page, 'todo-add-note');
   const sync = await box(first.page, 'todo-sync');
   const fold = await box(first.page, 'todo-fold');
@@ -1210,5 +1217,134 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
   await expect(page.getByTestId('todo-panel').locator('img')).toHaveCount(0);
   await expect(ticket.locator('img')).toHaveCount(0);
   expect(await page.evaluate(() => (globalThis as { __pwned?: unknown }).__pwned)).toBeUndefined();
+  await app.close();
+});
+
+/** A task record as main keeps it in `state.json`, off the board in `place` since `endedAt`. */
+function endedRecord(main: string, o: { id: string; chat: string; slug: string; title: string; place: string; endedAt: number; number?: string }) {
+  return {
+    id: o.id,
+    projectDir: main,
+    title: o.title,
+    description: '',
+    slug: o.slug,
+    name: o.title,
+    claudeSessionId: o.chat,
+    worktreePath: join(main, '.claude', 'worktrees', o.slug),
+    branch: `worktree-${o.slug}`,
+    createdAt: o.endedAt - 3_600_000,
+    closedAt: o.endedAt,
+    open: false,
+    agent: 'claude',
+    place: o.place,
+    endedAt: o.endedAt,
+    ...(o.number && {
+      card: { sourceKind: 'Tracker', id: `c${o.number}`, number: `#${o.number}`, url: null, labels: [], position: 0, urgent: false },
+    }),
+  };
+}
+
+/** Day and short month in the app's own locale, as the Finished tab writes them. */
+const shortDate = (page: Page, at: number) =>
+  page.evaluate((t) => new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(t), at);
+
+test('the Finished tab lists a finished task, and Continue brings it back to the board in its worktree', async () => {
+  const main = repo();
+  const dataDir = removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-e2e-')));
+  const finishedAt = Date.UTC(2026, 10, 11, 12);
+  const discardedAt = Date.UTC(2026, 10, 9, 12);
+  const finished = endedRecord(main, { id: 't-fin', chat: '6f1c2a4e-0b8d-4c3e-9a51-2d7e8f90ab12', slug: 'stripe-webhooks', title: 'Stripe webhooks', place: 'finished', endedAt: finishedAt, number: '112' });
+  const discarded = endedRecord(main, { id: 't-dis', chat: '0d4b7e21-5a3c-4f8e-b6d2-9c1e3a5f7b80', slug: 'name-check', title: 'Name check on signup', place: 'discarded', endedAt: discardedAt });
+  writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ version: 1, tasks: [discarded, finished] }));
+  // What SessionStart recorded of the finished task's chat, which Continue resumes.
+  mkdirSync(join(dataDir, 'tasks', finished.id), { recursive: true });
+  writeFileSync(join(dataDir, 'tasks', finished.id, 'session-start.json'), JSON.stringify({ session_id: finished.claudeSessionId, source: 'resume' }));
+
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, main);
+  await page.getByTestId('todo-toggle').click();
+  // To do is the tab on show, with Quick Add and Sync; Finished counts its tasks.
+  const toDo = page.getByRole('tab', { name: 'To do' });
+  const finishedTab = page.getByTestId('todo-tab-finished');
+  await expect(toDo).toHaveAttribute('aria-selected', 'true');
+  await expect(finishedTab).toHaveText('Finished 2');
+  await expect(page.getByTestId('todo-add-note')).toBeVisible();
+  await expect(page.getByTestId('task-card')).toHaveCount(0);
+
+  await finishedTab.click();
+  await expect(finishedTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('todo-add-note')).toHaveCount(0);
+  await expect(page.getByTestId('todo-sync')).toHaveCount(0);
+  const rows = page.getByTestId('finished-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('#112 Stripe webhooks');
+  await expect(rows.nth(0)).toContainText(`Finished ${await shortDate(page, finishedAt)}`);
+  await expect(rows.nth(0)).not.toContainText('no card');
+  await expect(rows.nth(1)).toContainText('Name check on signup');
+  await expect(rows.nth(1)).toContainText(`Discarded ${await shortDate(page, discardedAt)} · no card`);
+
+  // The search filters on the title and the card number.
+  const search = page.getByTestId('finished-search');
+  await search.fill('#112');
+  await expect(rows).toHaveCount(1);
+  await search.fill('SIGNUP');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Name check on signup');
+  await search.fill('');
+  await expect(rows).toHaveCount(2);
+
+  await rows.nth(0).getByRole('button', { name: 'Continue Stripe webhooks' }).click();
+  await expect.poll(() => launches(dataDir).length).toBe(1);
+  const args = launches(dataDir)[0].args;
+  expect(args.slice(args.indexOf('--worktree'), args.indexOf('--worktree') + 2)).toEqual(['--worktree', 'stripe-webhooks']);
+  expect(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2)).toEqual(['--resume', finished.claudeSessionId]);
+  await expect(cardIn(page, 'working', finished.id)).toHaveAttribute('data-selected', 'true');
+  await expect(rows).toHaveCount(1);
+  await expect(finishedTab).toHaveText('Finished 1');
+  await app.close();
+});
+
+test("Put back on a note's task brings its note back, and Start on it continues the task", async () => {
+  const { app, page, dataDir } = await launchApp({}, repo());
+  const ticket = page.getByTestId('ticket-panel');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-add-note').click();
+  await ticket.getByLabel('Title').fill('Tidy the flags');
+  await ticket.getByLabel('Text').fill('Remove the old flags.');
+  await ticket.getByTestId('note-save').click();
+  const items = page.getByTestId('todo-item');
+  await items.first().getByTestId('todo-start').click();
+  await expect.poll(() => ids(page)).toHaveLength(1);
+  const [id] = await ids(page);
+  await expect(items).toHaveCount(0);
+  await expect.poll(() => launches(dataDir).length).toBe(1);
+
+  await closeTask(page, id);
+  const paused = cardIn(page, 'paused', id);
+  await expect(paused).toHaveCount(1);
+  await paused.getByTestId('card-more').click();
+  await page.getByTestId('put-back').click();
+  await expect(card(page, id)).toHaveCount(0);
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Tidy the flags');
+  await expect(items.first().getByTestId('todo-start')).toHaveCount(0);
+  await expect(items.first().getByTestId('todo-reopen')).toHaveCount(0);
+  const continueButton = items.first().getByTestId('todo-continue');
+  await expect(continueButton).toHaveAccessibleName('Continue Tidy the flags');
+
+  // Its ticket offers Continue in place of Start, and its delete says where the task goes.
+  await items.first().click();
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-continue')).toBeVisible();
+  await expect(ticket.getByTestId('note-delete')).toHaveAttribute('title', 'Delete this todo; its task goes back to Paused on the board');
+  await ticket.getByTestId('ticket-close').click();
+
+  await continueButton.click();
+  await expect.poll(() => launches(dataDir).length).toBe(2);
+  const args = launches(dataDir)[1].args;
+  expect(args).toContain('--resume');
+  expect(args).toContain('--worktree');
+  await expect(cardIn(page, 'working', id)).toHaveAttribute('data-selected', 'true');
+  await expect(items).toHaveCount(0);
   await app.close();
 });

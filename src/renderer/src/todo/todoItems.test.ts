@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { TaskView, TodoCard, TodoNote, TodoSource, TodoView } from '../../../shared/types';
-import { reopenTaskId, sourcePlace, startsFromTicket, syncedAgo, syncedLine, todoItems, visibleItems } from './todoItems';
+import {
+  endedLine, finishedTasks, reopenTaskId, sourcePlace, startsFromTicket, syncedAgo, syncedLine, todoItems, visibleItems,
+} from './todoItems';
 
 const card = (id: string, extra: Partial<TodoCard> = {}): TodoCard => ({
   id,
@@ -104,6 +106,45 @@ describe('todoItems', () => {
     ]);
   });
 
+  it('a card whose task is put back or finished offers continue; one whose task was discarded offers start', () => {
+    const placed = (id: string, cardId: string, place: TaskView['place']): TaskView => ({
+      ...task(id, cardId, { open: false }),
+      place,
+      endedAt: 1,
+    });
+    const items = todoItems(view({ cards: [card('1'), card('2'), card('3'), card('4', { forOwner: true })] }), [
+      placed('t1', '1', 'putBack'),
+      placed('t2', '2', 'finished'),
+      placed('t3', '3', 'discarded'),
+      placed('t4', '4', 'finished'),
+    ]);
+    expect(items.map((i) => [i.key, i.action])).toEqual([
+      ['card:1', { kind: 'continue', taskId: 't1' }],
+      ['card:2', { kind: 'continue', taskId: 't2' }],
+      ['card:3', { kind: 'start' }],
+      ['card:4', { kind: 'continue', taskId: 't4' }],
+    ]);
+    // A discarded attempt never shadows the card's live task, before or after it in the list.
+    for (const tasks of [
+      [placed('old', '1', 'discarded'), task('live', '1', { open: false })],
+      [task('live', '1', { open: false }), placed('old', '1', 'discarded')],
+    ]) {
+      expect(todoItems(view({ cards: [card('1')] }), tasks)[0].action).toEqual({ kind: 'reopen', taskId: 'live' });
+    }
+    expect(keys(view({ cards: [card('1')] }), [task('live', '1', { open: true }), placed('old', '1', 'discarded')])).toEqual([]);
+    // Neither Reopen nor Continue has a Start in the ticket.
+    expect(items.map(startsFromTicket)).toEqual([false, false, true, false]);
+  });
+
+  it('a put-back note offers continue', () => {
+    const items = todoItems(view({ notes: [note('a'), { ...note('b'), taskId: 't9' }] }), []);
+    expect(items.map((i) => [i.key, i.action])).toEqual([
+      ['note:a', { kind: 'start' }],
+      ['note:b', { kind: 'continue', taskId: 't9' }],
+    ]);
+    expect(startsFromTicket(items[1])).toBe(false);
+  });
+
   it("a task matches its card whatever name the latest sync gave the source", () => {
     const renamed = [task('t1', '1', { open: true, sourceKind: 'Tracker Issues' }), task('t2', '2', { open: false, sourceKind: 'Tracker Issues' })];
     const items = todoItems(view({ cards: [card('1'), card('2'), card('3')] }), renamed);
@@ -111,6 +152,47 @@ describe('todoItems', () => {
       ['card:2', { kind: 'reopen', taskId: 't2' }],
       ['card:3', { kind: 'start' }],
     ]);
+  });
+});
+
+describe('finishedTasks', () => {
+  const ended = (id: string, place: TaskView['place'], endedAt: number, title: string, number: string | null): TaskView => {
+    const base = task(id, `c-${id}`, { open: false });
+    return { ...base, title, place, endedAt, card: number === null ? null : { ...base.card!, number } };
+  };
+
+  it('finishedTasks orders by endedAt and filters on title and number', () => {
+    const tasks = [
+      ended('a', 'finished', 10, 'Stripe webhooks', '#112'),
+      ended('b', 'discarded', 30, 'Name check on signup', null),
+      ended('c', 'putBack', 40, 'Onboarding copy', '#119'),
+      { ...ended('d', null, 50, 'Menu editor', '#104'), endedAt: null },
+      ended('e', 'finished', 20, 'Menu editor', '#104'),
+    ];
+    const ids = (query: string) => finishedTasks(tasks, query).map((t) => t.id);
+    expect(ids('')).toEqual(['b', 'e', 'a']);
+    expect(ids('  ')).toEqual(['b', 'e', 'a']);
+    expect(ids('MENU')).toEqual(['e']);
+    expect(ids('112')).toEqual(['a']);
+    expect(ids('#112')).toEqual(['a']);
+    expect(ids('#11')).toEqual(['a']);
+    expect(ids('signup')).toEqual(['b']);
+    expect(ids('nothing like it')).toEqual([]);
+  });
+});
+
+describe('endedLine', () => {
+  // Midday, so no time zone moves it to another day.
+  const nov11 = Date.UTC(2026, 10, 11, 12);
+  const at = (place: TaskView['place'], card: boolean): TaskView => {
+    const base = task('t', 'c', { open: false });
+    return { ...base, place, endedAt: nov11, card: card ? base.card : null };
+  };
+
+  it('says where the task went and when, day and short month, and when it has no card', () => {
+    expect(endedLine(at('finished', true), 'en-GB')).toBe('Finished 11 Nov');
+    expect(endedLine(at('discarded', true), 'en-GB')).toBe('Discarded 11 Nov');
+    expect(endedLine(at('finished', false), 'en-GB')).toBe('Finished 11 Nov · no card');
   });
 });
 

@@ -157,7 +157,14 @@ export default function TicketPanel(props: {
                 </button>
                 <Show when={note()}>
                   {(n) => (
-                    <button class="btn ticket-delete" data-testid="note-delete" onMouseDown={keepFocus} onClick={() => remove(n().id)}>
+                    <button
+                      class="btn ticket-delete"
+                      data-testid="note-delete"
+                      // A put-back task is reached only through its note, so it goes back to the board with the note.
+                      title={n().taskId === undefined ? undefined : 'Delete this todo; its task goes back to Paused on the board'}
+                      onMouseDown={keepFocus}
+                      onClick={() => remove(n().id)}
+                    >
                       Delete todo
                     </button>
                   )}
@@ -274,6 +281,30 @@ export default function TicketPanel(props: {
               </div>
             </footer>
           )}
+        </Match>
+        <Match when={action()?.kind === 'continue'}>
+          <footer class="ticket-foot">
+            <Show when={props.error}>
+              {(message) => (
+                <p class="ticket-error" data-testid="ticket-error" role="alert">
+                  {message()}
+                </p>
+              )}
+            </Show>
+            <div class="ticket-actions">
+              <button
+                class="btn primary"
+                data-testid="ticket-continue"
+                disabled={props.starting}
+                onMouseDown={keepFocus}
+                // Through the item as Start goes, which main routes to the task; a card for the owner is the owner's own choice.
+                onClick={() => props.onStart({ noQuestions: false, ownersCard: item()?.forOwner })}
+              >
+                <ResumeIcon />
+                Continue
+              </button>
+            </div>
+          </footer>
         </Match>
       </Switch>
     </section>
