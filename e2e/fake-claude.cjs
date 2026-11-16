@@ -4,7 +4,7 @@
 // only, so on Windows the same file builds into a real .exe (e2e/globalSetup.ts). It stands in for
 // `opencode` too: run through e2e/fake-opencode.cjs, or on Windows as the copy named fake-opencode.exe.
 'use strict';
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const { basename, dirname, join } = require('node:path');
 
@@ -24,6 +24,7 @@ if (logDir && !versionCheck && isOpencode) {
   const env = Object.entries(process.env).filter(([key]) => key.startsWith('OPENCODE_') || key === 'PWD');
   writeFileSync(own('env'), JSON.stringify(Object.fromEntries(env)));
 }
+if (!versionCheck) addWorktree();
 if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
 
 if (versionCheck && isOpencode) {
@@ -45,6 +46,42 @@ if (versionCheck && isOpencode) {
   raw();
 } else {
   session();
+}
+
+/**
+ * With `-w <slug>` or `--worktree <slug>`, makes the task's worktree as `claude -w` does, before anything else (the
+ * tests wait on <pid>.argv): branch worktree-<slug> from origin/HEAD, else HEAD, in .claude/worktrees/<slug>. A
+ * branch that is there is checked out again; a folder that is there is left alone. Outside a repo it does nothing.
+ */
+function addWorktree() {
+  const at = args.findIndex((arg) => arg === '-w' || arg === '--worktree');
+  const slug = at >= 0 ? args[at + 1] : undefined;
+  if (!slug) return;
+  const folder = join('.claude', 'worktrees', slug);
+  if (existsSync(folder)) return;
+  const git = (...gitArgs) => execFileSync('git', gitArgs, { stdio: 'pipe' });
+  try {
+    const branch = `worktree-${slug}`;
+    let branchExists = true;
+    try {
+      git('rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
+    } catch {
+      branchExists = false;
+    }
+    if (branchExists) {
+      git('worktree', 'add', folder, branch);
+      return;
+    }
+    let base = 'origin/HEAD';
+    try {
+      git('rev-parse', '--verify', '--quiet', base);
+    } catch {
+      base = 'HEAD';
+    }
+    git('worktree', 'add', '--no-track', '-b', branch, folder, base);
+  } catch {
+    // Not a repo, or git refused: the session runs without a worktree, as before.
+  }
 }
 
 /**

@@ -15,9 +15,8 @@ async function withTask() {
   const launched = await launchApp({}, main);
   const { page } = launched;
   await startTask(page, 'Fix login');
-  // What `claude -w fix-login` would do, then a commit and an untracked file.
+  // A commit and an untracked file in the worktree fake-claude made, as `claude -w fix-login` does.
   const worktree = join(main, '.claude', 'worktrees', 'fix-login');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-fix-login', worktree, 'origin/stage');
   writeFileSync(join(worktree, 'a.txt'), Array.from({ length: 200 }, (_, i) => `line ${i + 1}\n`).join(''));
   git('-C', worktree, 'add', 'a.txt');
   git('-C', worktree, 'commit', '-m', 'a');
@@ -98,7 +97,6 @@ test('a second click reuses the window, reads the changes again, and loads anoth
 
   const other = await startTask(page, 'Other');
   const otherTree = join(main, '.claude', 'worktrees', 'other');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-other', otherTree, 'origin/stage');
   writeFileSync(join(otherTree, 'o.txt'), 'o\n');
   await card(page, other).click();
   await expect(rows).toHaveCount(1, { timeout: 12_000 });

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { GitQueries } from '../git';
-import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskView } from '../../shared/types';
+import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
@@ -1563,4 +1563,371 @@ it('old records load as Claude tasks', async () => {
   const service = make();
   expect(service.list()[0].agent).toBe('claude');
   expect(service.reports()[0].agent).toBe('claude');
+});
+
+/** A promise and the function that settles it, for holding a fake git call until the test lets it go. */
+function held<T = void>(): { promise: Promise<T>; release: (value: T) => void } {
+  let release!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => (release = resolve));
+  return { promise, release };
+}
+
+/**
+ * A service whose git reports, per branch, the state the test sets in `states` (unmerged with nothing uncommitted
+ * until then), and records each taskGitState branch and each removal in order.
+ */
+function roundSetup(gitOverrides: Partial<GitQueries> = {}) {
+  const states = new Map<string, Partial<TaskGitState>>();
+  const checked: string[] = [];
+  const removals: unknown[][] = [];
+  /** Runs before each taskGitState answers, with the branch and how many calls came before: a test can hold it, or throw. */
+  const hooks: { before: (branch: string, calls: number) => Promise<void> | void } = { before: () => {} };
+  const t = setup({
+    taskGitState: async (_dir, branch) => {
+      const calls = checked.push(branch);
+      await hooks.before(branch, calls);
+      return { branch: 'unmerged', uncommitted: [], elsewhere: false, unsaved: [], ...states.get(branch) };
+    },
+    removeWorktree: async (dir, path, o) => {
+      removals.push(['removeWorktree', dir, path, o]);
+    },
+    deleteBranch: async (dir, branch) => {
+      removals.push(['deleteBranch', dir, branch]);
+    },
+    ...gitOverrides,
+  });
+  return { ...t, states, checked, removals, hooks };
+}
+
+/** Starts a task on `service`, lets its conversation begin unless told not to, closes it and waits for its exit's round. */
+async function pausedTask(
+  t: ReturnType<typeof roundSetup>,
+  o: { title?: string; begin?: boolean; service?: TaskService } = {},
+): Promise<TaskView> {
+  const service = o.service ?? t.service;
+  const view = await service.start({ ...NEW_TASK, title: o.title ?? NEW_TASK.title });
+  if (o.begin !== false) t.sessionStarted(view.id, t.readState().find((r) => r.id === view.id)!.claudeSessionId);
+  service.close(view.id);
+  service.onSessionExit(view.session!.id);
+  await service.checkRound();
+  return view;
+}
+
+const MERGED: Partial<TaskGitState> = { branch: 'merged', unsaved: ['squashed away'] };
+
+it('a round moves a closed task with a merged branch and nothing uncommitted to Finished, removing its worktree and branch', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', endedAt: 1000 });
+  expect(t.removals).toEqual([
+    ['removeWorktree', t.projectDir, view.worktreePath, { force: false }],
+    ['deleteBranch', t.projectDir, view.branch],
+  ]);
+  expect(t.readState()[0]).toMatchObject({ place: 'finished', endedAt: 1000, open: false });
+  expect(t.changes.at(-1)).toEqual(t.service.list());
+});
+
+it('a round moves a closed task whose branch and worktree are gone to Finished', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { branch: 'gone' });
+
+  await t.service.checkRound();
+
+  expect(t.readState()[0]).toMatchObject({ place: 'finished', endedAt: 1000 });
+});
+
+it('a round moves a closed OpenCode task whose conversation began to Finished, and leaves one that never began', async () => {
+  const t = roundSetup();
+  const began = await t.service.start({ ...OPENCODE_TASK, title: 'Began' });
+  const never = await t.service.start({ ...OPENCODE_TASK, title: 'Never' });
+  t.service.noteStatus(began.session!.id, 'working');
+  for (const view of [began, never]) {
+    t.service.close(view.id);
+    t.service.onSessionExit(view.session!.id);
+    t.states.set(view.branch, { branch: 'gone' });
+  }
+
+  await t.service.checkRound();
+
+  expect(t.service.list().map((v) => [v.title, v.place])).toEqual([['Began', 'finished'], ['Never', null]]);
+});
+
+it('a round leaves a task whose conversation never began, though its branch is gone', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t, { begin: false });
+  t.states.set(view.branch, { branch: 'gone' });
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0].place).toBeNull();
+  expect(t.removals).toEqual([]);
+});
+
+it('a round leaves a task whose branch has no commits of its own', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { branch: 'no-commits' });
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0].place).toBeNull();
+  expect(t.removals).toEqual([]);
+});
+
+it('a round leaves a merged task with uncommitted files, and removes nothing', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { ...MERGED, uncommitted: ['notes.txt'] });
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0].place).toBeNull();
+  expect(t.readState()[0]).not.toHaveProperty('place');
+  expect(t.removals).toEqual([]);
+});
+
+it('a worktree on another branch keeps its task Paused', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, { branch: 'gone', elsewhere: true });
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0].place).toBeNull();
+  expect(t.removals).toEqual([]);
+});
+
+it('a round marks a running merged task merged, without closing or removing anything, and clears the mark when it no longer passes', async () => {
+  const t = roundSetup();
+  const view = await t.service.start(NEW_TASK);
+  t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+  t.states.set(view.branch, MERGED);
+  const before = t.changes.length;
+
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({ merged: true, place: null, session: { id: view.session!.id } });
+  expect(t.changes.length).toBe(before + 1);
+  expect(t.changes.at(-1)![0].merged).toBe(true);
+  expect(t.removals).toEqual([]);
+  expect(t.readState()[0]).toMatchObject({ open: true });
+
+  // Nothing changed: nothing is sent.
+  await t.service.checkRound();
+  expect(t.changes.length).toBe(before + 1);
+
+  t.states.set(view.branch, { ...MERGED, uncommitted: ['a.txt'] });
+  await t.service.checkRound();
+  expect(t.service.list()[0].merged).toBe(false);
+  expect(t.changes.at(-1)![0].merged).toBe(false);
+});
+
+it('a closed merged task is finished by the round its exit starts', async () => {
+  const t = roundSetup();
+  const view = await t.service.start(NEW_TASK);
+  t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+  t.states.set(view.branch, MERGED);
+  await t.service.checkRound();
+  expect(t.service.list()[0].merged).toBe(true);
+
+  t.service.close(view.id);
+  t.service.onSessionExit(view.session!.id);
+  await t.service.checkRound();
+
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', merged: false, session: null });
+  expect(t.removals.map((r) => r[0])).toEqual(['removeWorktree', 'deleteBranch']);
+});
+
+it('a task that closes and no longer passes loses its merged mark', async () => {
+  const t = roundSetup();
+  const view = await t.service.start(NEW_TASK);
+  t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+  t.states.set(view.branch, MERGED);
+  await t.service.checkRound();
+  t.states.set(view.branch, { ...MERGED, uncommitted: ['a.txt'] });
+
+  t.service.close(view.id);
+  t.service.onSessionExit(view.session!.id);
+  expect(t.changes.at(-1)![0]).toMatchObject({ merged: false, session: null });
+  await t.service.checkRound();
+  expect(t.service.list()[0]).toMatchObject({ merged: false, place: null });
+});
+
+it('a task reopened while the round checks it is not removed', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  const gate = held();
+  t.states.set(view.branch, MERGED);
+  t.checked.length = 0;
+  // The second check, just before the removal, waits.
+  t.hooks.before = (_branch, calls) => (calls === 2 ? gate.promise : undefined);
+
+  const round = t.service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(t.checked.length).toBe(2);
+  await t.service.reopen(view.id);
+  gate.release();
+  await round;
+
+  expect(t.removals).toEqual([]);
+  expect(t.service.list()[0]).toMatchObject({ place: null, session: { startedWithPrompt: false } });
+});
+
+it('a task reopened while the round removes it gets no session', async () => {
+  const gate = held();
+  const t = roundSetup({ removeWorktree: () => gate.promise });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  const round = t.service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await t.service.reopen(view.id);
+  gate.release();
+  await round;
+
+  expect(t.service.list()[0]).toMatchObject({ place: 'finished', session: null });
+  expect(t.service.sessionIds()).toEqual([]);
+});
+
+it('a round leaves an open task that has no session yet, as restore or a quit leaves it', async () => {
+  const t = roundSetup();
+  const view = await t.service.start(NEW_TASK);
+  t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+  t.service.beginQuit();
+  t.service.onSessionExit(view.session!.id);
+  const next = t.make();
+  t.states.set(view.branch, MERGED);
+
+  await next.checkRound();
+
+  expect(next.list()[0]).toMatchObject({ place: null, session: null });
+  expect(t.removals).toEqual([]);
+});
+
+it('no round removes anything after beginQuit', async () => {
+  const gate = held();
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+  t.checked.length = 0;
+  t.hooks.before = (_branch, calls) => (calls === 2 ? gate.promise : undefined);
+
+  const round = t.service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  t.service.beginQuit();
+  gate.release();
+  await round;
+  await t.service.checkRound();
+
+  expect(t.removals).toEqual([]);
+  expect(t.service.list()[0].place).toBeNull();
+});
+
+it('no branch is deleted when the quit begins while the worktree is removed', async () => {
+  const gate = held();
+  const t = roundSetup({ removeWorktree: () => gate.promise });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  const round = t.service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  t.service.beginQuit();
+  gate.release();
+  await round;
+
+  expect(t.removals).toEqual([]);
+  expect(t.service.list()[0].place).toBeNull();
+});
+
+it("a round touches only its own project's tasks", async () => {
+  const t = roundSetup();
+  const records = new TaskRecords(t.stateFile, 1000, () => {});
+  const otherDir = join(t.root, 'Other');
+  mkdirSync(otherDir);
+  const mine = t.make(records);
+  const other = t.make(records, otherDir);
+  const a = await pausedTask(t, { service: mine, title: 'Mine' });
+  const b = await pausedTask(t, { service: other, title: 'Theirs' });
+  t.states.set(a.branch, MERGED);
+  t.states.set(b.branch, MERGED);
+  t.checked.length = 0;
+
+  await mine.checkRound();
+
+  expect(t.checked.every((branch) => branch === a.branch)).toBe(true);
+  expect(mine.list()[0].place).toBe('finished');
+  expect(other.list()[0].place).toBeNull();
+  expect(t.removals.every((r) => r[1] === t.projectDir)).toBe(true);
+});
+
+it('an exit during a round is checked by a round after it', async () => {
+  const gate = held();
+  const t = roundSetup();
+  const first = await pausedTask(t, { title: 'First' });
+  const second = await t.service.start({ ...NEW_TASK, title: 'Second' });
+  t.sessionStarted(second.id, t.readState().find((r) => r.id === second.id)!.claudeSessionId);
+  let holding = true;
+  t.hooks.before = (branch) => (holding && branch === first.branch ? gate.promise : undefined);
+
+  const round = t.service.checkRound();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Second has been passed over as running, or is yet to come; either way its exit queues a round.
+  t.states.set(second.branch, MERGED);
+  t.service.close(second.id);
+  t.service.onSessionExit(second.session!.id);
+  const queued = t.service.checkRound();
+  holding = false;
+  t.checked.length = 0;
+  gate.release();
+  await round;
+  await queued;
+
+  expect(t.service.list().find((v) => v.id === second.id)!.place).toBe('finished');
+  expect(t.checked.filter((branch) => branch === second.branch).length).toBeGreaterThanOrEqual(2);
+});
+
+it('a removal git refuses leaves the task where it was and warns', async () => {
+  const t = roundSetup({
+    removeWorktree: async () => {
+      throw new Error('fatal: worktree is locked');
+    },
+  });
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+
+  await t.service.checkRound();
+
+  expect(t.service.list()[0].place).toBeNull();
+  expect(t.readState()[0]).not.toHaveProperty('place');
+  expect(t.warnings.some((w) => w.includes('worktree is locked'))).toBe(true);
+});
+
+it("a task git can't read is left alone, with a warning, and the round goes on to the others", async () => {
+  const t = roundSetup();
+  const bad = await pausedTask(t, { title: 'Bad' });
+  const good = await pausedTask(t, { title: 'Good' });
+  t.states.set(good.branch, MERGED);
+  t.hooks.before = (branch) => {
+    if (branch === bad.branch) throw new Error('not a git repository');
+  };
+
+  await expect(t.service.checkRound()).resolves.toBeUndefined();
+
+  expect(t.service.list().map((v) => [v.title, v.place])).toEqual([['Bad', null], ['Good', 'finished']]);
+  expect(t.warnings.some((w) => w.includes('not a git repository'))).toBe(true);
+});
+
+it('restore runs a round once its tasks are reopened', async () => {
+  const t = roundSetup();
+  const view = await pausedTask(t);
+  t.states.set(view.branch, MERGED);
+  const next = t.make();
+
+  await next.restore();
+
+  expect(next.list()[0].place).toBe('finished');
 });

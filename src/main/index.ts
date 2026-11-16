@@ -36,7 +36,7 @@ import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
 import type { AppSettings } from './setup/settings';
 import { SetupFlow } from './setup/setupFlow';
-import { TaskService } from './tasks/taskService';
+import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
@@ -330,6 +330,8 @@ async function start(
       agent: () => agents.inUse(),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });
+    // This project's own check for finished tasks, stopped as it closes or the app quits.
+    let finishCheck: ReturnType<typeof setInterval> | undefined;
     const project: Project = {
       service,
       manager,
@@ -339,8 +341,12 @@ async function start(
         service.restore().catch((err: unknown) => console.error(`[tasks] could not restore the tasks of ${dir}`, err));
         // Logged, never thrown: the tasks run on without the manager.
         manager.start().catch((err: unknown) => console.error(`[manager] could not start the manager of ${dir}`, err));
+        finishCheck = setInterval(() => void service.checkRound(), FINISH_CHECK_MS);
       },
-      cancelSync: () => todo.close(),
+      cancelSync: () => {
+        clearInterval(finishCheck);
+        todo.close();
+      },
       release: () => mcp.close(),
     };
     return project;

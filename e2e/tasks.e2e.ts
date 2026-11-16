@@ -109,7 +109,9 @@ test('quitting with tasks running reopens them at the next start, in their workt
   const first = await launchApp({}, main);
   const alpha = await startTask(first.page, 'Alpha');
   const beta = await startTask(first.page, 'Beta');
-  git('-C', main, 'branch', 'worktree-alpha');
+  // fake-claude made both worktrees, as `claude -w` does: Beta's goes, branch and all.
+  git('-C', main, 'worktree', 'remove', '--force', join(main, '.claude', 'worktrees', 'beta'));
+  git('-C', main, 'branch', '-D', 'worktree-beta');
   await first.app.close();
   const [alphaStart, betaStart] = launches(first.dataDir);
 
@@ -158,8 +160,9 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   await expect.poll(() => launchesOf(b).length).toBe(2);
   const alpha = sessionIdOf(launchesOf(a)[0]);
   const beta = sessionIdOf(launchesOf(b)[0]);
-  expect(launchesOf(a)[1]).toEqual(['--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
-  expect(launchesOf(b)[1]).toEqual(['--resume', beta, '--settings', settingsFile(dataDir, b)]);
+  // fake-claude made each task's worktree and branch, as `claude -w` does, so each reopen runs in it.
+  expect(launchesOf(a)[1]).toEqual(['--worktree', 'alpha', '--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
+  expect(launchesOf(b)[1]).toEqual(['--worktree', 'beta', '--resume', beta, '--settings', settingsFile(dataDir, b)]);
 
   // Both sessions say they are idle before they have worked. Alpha was given a prompt, so its card
   // keeps to Working until it does; Beta was not, so it is waiting for the owner. The echo comes
@@ -179,8 +182,8 @@ test("a session closed mid-turn carries on when reopened; one that was waiting d
   const second = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, main);
   await expect.poll(() => launchesOf(a).length).toBe(3);
   await expect.poll(() => launchesOf(b).length).toBe(3);
-  expect(launchesOf(a)[2]).toEqual(['--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
-  expect(launchesOf(b)[2]).toEqual(['--resume', beta, '--settings', settingsFile(dataDir, b)]);
+  expect(launchesOf(a)[2]).toEqual(['--worktree', 'alpha', '--resume', alpha, '--settings', settingsFile(dataDir, a), 'Continue where you left off.']);
+  expect(launchesOf(b)[2]).toEqual(['--worktree', 'beta', '--resume', beta, '--settings', settingsFile(dataDir, b)]);
   await second.app.close();
 });
 
@@ -254,12 +257,12 @@ test('Reopen of a task whose claude never started begins its conversation, and t
   expect(started.args[8].startsWith('This task is your brief')).toBe(true);
   await expect.poll(() => screen(page, id)).toContain('$');
 
-  // That launch began the conversation, so the next Reopen continues it.
+  // That launch began the conversation, so the next Reopen continues it, in the worktree it made.
   await page.getByTestId('close-session').click();
   await cardIn(page, 'closed', id).getByTestId('reopen').click();
   await expect
     .poll(() => launches(dataDir)[1]?.args)
-    .toEqual(['--resume', started.args[5], '--settings', settingsFile(dataDir, id)]);
+    .toEqual(['--worktree', 'fix-login', '--resume', started.args[5], '--settings', settingsFile(dataDir, id)]);
   await app.close();
 });
 

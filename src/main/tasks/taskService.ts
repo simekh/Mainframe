@@ -12,6 +12,9 @@ import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES 
 import { openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
 
+/** How often each open project checks its tasks for ones with nothing to lose, besides at each session's end. */
+export const FINISH_CHECK_MS = 3 * 60_000;
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -87,6 +90,11 @@ export class TaskService {
   private readonly merged = new Set<string>();
   /** Put back's failure line for a task, until a reopen or a move clears it. */
   private readonly problems = new Map<string, string>();
+  /** Tasks whose worktree and branch a round is removing: a reopen meanwhile would start a session in what goes. */
+  private readonly removing = new Set<string>();
+  /** The check round running, and the one queued after it. */
+  private round: Promise<void> | null = null;
+  private nextRound: Promise<void> | null = null;
   private quitting = false;
 
   constructor(private readonly deps: TaskServiceDeps) {
@@ -207,7 +215,7 @@ export class TaskService {
 
     // Another reopen may have finished while git answered, or the project closed or the app began
     // to quit: then the task stays as recorded, to carry on when the project next opens.
-    if (this.sessionOf(task.id) || this.launching.has(task.id) || this.quitting) return this.view(task);
+    if (this.sessionOf(task.id) || this.launching.has(task.id) || this.removing.has(task.id) || this.quitting) return this.view(task);
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, branchExists);
@@ -307,6 +315,7 @@ export class TaskService {
         }
       }
     }
+    await this.checkRound();
   }
 
   close(taskId: string): void {
@@ -358,7 +367,90 @@ export class TaskService {
       task.open = false;
       task.closedAt = this.now();
     }
+    // The mark is for a running task; once closed, the round decides.
+    this.merged.delete(task.id);
     this.commit();
+    // A task's exit is when it may have finished: Finish is Close.
+    void this.checkRound();
+  }
+
+  /**
+   * Checks the project's tasks on the board or put back: a running one with nothing to lose is marked merged, a
+   * paused one has its worktree and branch removed and moves to Finished. One round at a time; a call while one runs
+   * queues one more after it, so a task that ended after the running round passed it is checked. Never rejects.
+   */
+  checkRound(): Promise<void> {
+    if (this.nextRound) return this.nextRound;
+    if (this.round) {
+      this.nextRound = this.round.then(() => {
+        this.nextRound = null;
+        return this.runRound();
+      });
+      return this.nextRound;
+    }
+    return this.runRound();
+  }
+
+  private runRound(): Promise<void> {
+    const round = this.roundOnce()
+      .catch((err: unknown) => this.warn(`The check round failed: ${message(err)}`))
+      .finally(() => {
+        if (this.round === round) this.round = null;
+      });
+    this.round = round;
+    return round;
+  }
+
+  private async roundOnce(): Promise<void> {
+    if (this.quitting) return;
+    await this.deps.git.fetchBase(this.deps.projectDir);
+    for (const task of this.mine().filter((t) => t.place === undefined || t.place === 'putBack')) {
+      if (this.quitting) return;
+      if (this.starting.has(task.id) || this.launching.has(task.id)) continue;
+      try {
+        await this.checkTask(task);
+      } catch (err) {
+        this.warn(`Could not check task ${task.id} (${task.slug}): ${message(err)}`);
+      }
+    }
+  }
+
+  private async checkTask(task: TaskRecord): Promise<void> {
+    const passed = await this.nothingToLose(task);
+    if (this.sessionOf(task.id)) {
+      if (passed === this.merged.has(task.id)) return;
+      if (passed) this.merged.add(task.id);
+      else this.merged.delete(task.id);
+      this.deps.onChange(this.list());
+      return;
+    }
+    if (!passed) return;
+    // The proof, again, just before anything is deleted.
+    if (!(await this.nothingToLose(task))) return;
+    // An open task with no session is one restore, or a quit, has yet to bring back.
+    if (this.quitting || task.open || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id)) return;
+    this.removing.add(task.id);
+    try {
+      await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: false });
+      if (this.quitting) return;
+      await this.deps.git.deleteBranch(this.deps.projectDir, task.branch);
+    } catch (err) {
+      this.warn(`Could not remove the worktree or branch of task ${task.id} (${task.slug}), so it stays: ${message(err)}`);
+      return;
+    } finally {
+      this.removing.delete(task.id);
+    }
+    task.place = 'finished';
+    task.endedAt = this.now();
+    this.commit();
+  }
+
+  /** Its conversation began, its worktree holds nothing uncommitted and is on its branch, and its branch is merged or gone. */
+  private async nothingToLose(task: TaskRecord): Promise<boolean> {
+    const began = agentOf(task) === 'opencode' ? task.began === true : ADAPTERS.claude.recordedSession(this.taskDir(task.id)) !== null;
+    if (!began) return false;
+    const state = await this.deps.git.taskGitState(this.deps.projectDir, task.branch, task.worktreePath);
+    return state.uncommitted.length === 0 && !state.elsewhere && (state.branch === 'gone' || state.branch === 'merged');
   }
 
   beginQuit(): void {
@@ -513,6 +605,8 @@ export class TaskService {
     this.deps.onChange(this.list());
   }
 }
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** A task kept before tasks named their agent runs on Claude Code. */
 const agentOf = (task: TaskRecord): AgentName => task.agent ?? 'claude';

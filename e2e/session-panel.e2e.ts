@@ -76,14 +76,13 @@ test('changed files lists what the task changed in its worktree', async () => {
   await startTask(page, 'Fix login');
   const files = page.getByTestId('changed-files');
   const heading = files.locator('.pane-heading');
-  // fake-claude makes no worktree: git finds none yet while the session runs.
+  // fake-claude has made the worktree, as `claude -w fix-login` does, and nothing has changed in it yet.
   await expect(files).toHaveAttribute('data-count', '0');
   await expect(heading.locator('.label')).toHaveText('No changes yet');
   await expect(heading).toBeDisabled();
 
-  // What `claude -w fix-login` would do, then a commit and an untracked file.
+  // A commit and an untracked file in it.
   const worktree = join(main, '.claude', 'worktrees', 'fix-login');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-fix-login', worktree, 'origin/stage');
   writeFileSync(join(worktree, 'a.txt'), 'a\n');
   git('-C', worktree, 'add', 'a.txt');
   git('-C', worktree, 'commit', '-m', 'a');
@@ -119,9 +118,8 @@ test('switching tasks resizes no terminal off screen, and none whose panel looks
   const { app, page } = await launchApp({}, main);
   const files = page.getByTestId('changed-files');
   const a = await startTask(page, 'Alpha');
-  // Three changed files in Alpha's worktree, as `claude -w alpha` and its edits would leave them.
+  // Three changed files in the worktree fake-claude made for Alpha, as its edits would leave them.
   const worktree = join(main, '.claude', 'worktrees', 'alpha');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-alpha', worktree, 'origin/stage');
   for (const name of ['a.txt', 'b.txt', 'c.txt']) writeFileSync(join(worktree, name), `${name}\n`);
   await expect(files).toHaveAttribute('data-count', '3', { timeout: 12_000 });
   await settled(page);
