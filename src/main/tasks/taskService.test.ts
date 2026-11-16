@@ -2262,7 +2262,7 @@ describe('discard', () => {
     expect(t.service.list()[0].place).toBeNull();
   });
 
-  it('discard refuses a task a round is removing, and a reopen is refused while a discard removes', async () => {
+  it('discard refuses a task a round is removing', async () => {
     const gate = held();
     const t = roundSetup();
     const view = await pausedTask(t);
@@ -2320,5 +2320,40 @@ describe('discard', () => {
     expect(t.service.list()[0].place).toBe('finished');
 
     await expect(t.service.start({ ...NEW_TASK, title: 'Again', card: CARD })).rejects.toThrow('already has the task');
+  });
+
+  it('a round leaves alone a task a discard is removing, and a reopen then starts no session', async () => {
+    const gate = held();
+    const t = roundSetup({ removeWorktree: () => gate.promise });
+    const view = await pausedTask(t);
+    t.states.set(view.branch, MERGED);
+    const calls = () => t.checked.length;
+
+    const discarding = t.service.discard(view.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const before = calls();
+    await t.service.checkRound();
+    expect(calls()).toBe(before);
+    await t.service.reopen(view.id);
+    expect(t.service.sessionIds()).toEqual([]);
+    gate.release(undefined);
+    await discarding;
+    expect(t.service.list()[0].place).toBe('discarded');
+  });
+
+  it('discard refuses a finished task, a put-back task and an open task without a session', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    const rec = t.readState()[0];
+    const task = (t.service as unknown as { find(id: string): { place?: string; open: boolean } }).find(view.id);
+    task.place = 'finished';
+    await expect(t.service.discard(view.id)).rejects.toThrow('not paused on the board');
+    task.place = 'putBack';
+    await expect(t.service.discard(view.id)).rejects.toThrow('not paused on the board');
+    delete task.place;
+    task.open = true;
+    await expect(t.service.discard(view.id)).rejects.toThrow(`Close ${view.title} before discarding it`);
+    expect(rec).toBeDefined();
+    expect(t.removals.filter((r) => r[0] === 'removeWorktree')).toEqual([]);
   });
 });

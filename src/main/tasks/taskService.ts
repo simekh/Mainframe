@@ -460,7 +460,7 @@ export class TaskService {
     await this.deps.git.fetchBase(this.deps.projectDir);
     for (const task of this.mine().filter((t) => t.place === undefined || t.place === 'putBack')) {
       if (this.quitting) return;
-      if (this.starting.has(task.id) || this.launching.has(task.id)) continue;
+      if (this.starting.has(task.id) || this.launching.has(task.id) || this.removing.has(task.id)) continue;
       try {
         await this.checkTask(task);
       } catch (err) {
@@ -484,7 +484,7 @@ export class TaskService {
     // The proof, again, just before anything is deleted.
     if (!(await this.nothingToLose(task))) return;
     // An open task with no session is one restore, or a quit, has yet to bring back.
-    if (this.quitting || task.open || task.place !== place || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id)) {
+    if (this.quitting || task.open || task.place !== place || this.sessionOf(task.id) || this.launching.has(task.id) || this.starting.has(task.id) || this.removing.has(task.id)) {
       return;
     }
     this.removing.add(task.id);
@@ -525,7 +525,9 @@ export class TaskService {
    */
   async discard(taskId: string): Promise<void> {
     const task = this.find(taskId);
-    if (this.busy(task)) throw new Error(`Close ${task.title} before discarding it`);
+    if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be discarded`);
+    // An open task with no session is one restore has yet to bring back: still running, as far as the owner is concerned.
+    if (task.open || this.busy(task)) throw new Error(`Close ${task.title} before discarding it`);
     this.removing.add(task.id);
     try {
       await this.deps.git.removeWorktree(this.deps.projectDir, task.worktreePath, { force: true });
