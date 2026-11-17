@@ -121,7 +121,7 @@ it('the first start launches claude in the main checkout, under a fresh id and w
   expect(view).toEqual({ session: { id: expect.any(String), startedWithPrompt: false } });
   const chat = chatOf(view);
   expect(new Set([chat, view.session!.id]).size).toBe(2);
-  expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(chat, false) });
+  expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(chat, false), answerStatusEarly: true });
   expect(service.view()).toEqual(view);
   expect(changes).toEqual([view]);
 });

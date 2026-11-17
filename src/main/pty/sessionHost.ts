@@ -56,7 +56,14 @@ interface Session {
   records: ProgramStatusRecords;
   /** Whether Windows' one kill of the pty has been made. */
   killed: boolean;
+  /** Ends the early answers of `answerStatusEarly`; set while they run. */
+  stopEarly?: () => void;
 }
+
+/** Turns bracketed paste on: a program sends it as its screen takes input, in raw mode, so a reply is not echoed. */
+const PASTE_ON = '\x1b[?2004h';
+const EARLY_EVERY_MS = 250;
+const EARLY_FOR_MS = 30_000;
 
 /** Owns the PTYs of running sessions: output batching, OSC 7501 answering and status. */
 export class SessionHost {
@@ -79,8 +86,12 @@ export class SessionHost {
 
   spawn(
     id: string,
-    /** `env` is the session's own, laid over the host's. */
-    spec: { argv: string[]; cwd: string; env?: Record<string, string>; cols: number; rows: number },
+    /**
+     * `env` is the session's own, laid over the host's. `answerStatusEarly`: answer OSC 7501 before the program asks, from
+     * when its screen takes input until its query or first report. Claude Code waits 2 seconds from the start of its
+     * probe, which under load is long before its query gets out; a reply already in the pty is read once it waits.
+     */
+    spec: { argv: string[]; cwd: string; env?: Record<string, string>; cols: number; rows: number; answerStatusEarly?: boolean },
     listener: SessionListener,
   ): void {
     // Started after the hang-ups, it would still be running as the app goes.
@@ -106,10 +117,22 @@ export class SessionHost {
     );
     const records = new ProgramStatusRecords();
     const batcher = createOutputBatcher({ intervalMs: this.opts.outputBatchMs, send: (d) => listener.onData(d) });
-    this.sessions.set(id, { proc, batcher, records, killed: false });
+    const session: Session = { proc, batcher, records, killed: false };
+    this.sessions.set(id, session);
+    // The end of the output so far, to see PASTE_ON split across two chunks; null once the early answers have begun.
+    let pasteTail: string | null = spec.answerStatusEarly ? '' : null;
 
     proc.onData((chunk) => {
+      if (pasteTail !== null) {
+        const seen = pasteTail + chunk;
+        pasteTail = seen.slice(1 - PASTE_ON.length);
+        if (seen.includes(PASTE_ON)) {
+          pasteTail = null;
+          this.answerEarly(id, session);
+        }
+      }
       for (const event of scanner.feed(chunk)) {
+        session.stopEarly?.();
         if (event.type === 'query') {
           // Answer at once: Claude Code sends CSI c right after the query, and xterm's reply to
           // that, if it arrives first, means "unsupported".
@@ -123,6 +146,7 @@ export class SessionHost {
     });
 
     proc.onExit(({ exitCode, signal }) => {
+      session.stopEarly?.();
       batcher.flush();
       batcher.dispose();
       records.onProcessExit();
@@ -133,6 +157,23 @@ export class SessionHost {
       this.sessions.delete(id);
       if (this.sessions.size === 0) for (const end of this.endWaits.splice(0)) end();
     });
+  }
+
+  /**
+   * Writes the OSC 7501 reply now and every EARLY_EVERY_MS, for EARLY_FOR_MS or until `session.stopEarly` is called.
+   * Again and again, as Claude Code drops a reply it reads before its probe waits, and on a busy machine that wait may
+   * begin seconds after its screen takes input.
+   */
+  private answerEarly(id: string, session: Session): void {
+    const answer = () => this.write(id, OSC7501_SUPPORT_REPLY);
+    const every = setInterval(answer, EARLY_EVERY_MS);
+    const end = setTimeout(() => session.stopEarly?.(), EARLY_FOR_MS);
+    session.stopEarly = () => {
+      clearInterval(every);
+      clearTimeout(end);
+      delete session.stopEarly;
+    };
+    answer();
   }
 
   write(id: string, data: string): void {
@@ -194,6 +235,7 @@ export class SessionHost {
    * pty is killed once, with no signal.
    */
   private killSession(session: Session, signal?: 'SIGKILL'): void {
+    session.stopEarly?.();
     if (this.opts.platform !== 'win32') {
       session.proc.kill(signal);
       return;

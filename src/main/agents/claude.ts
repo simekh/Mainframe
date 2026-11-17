@@ -210,6 +210,7 @@ async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
       rolePrompt: o.rolePrompt,
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   };
 }
 
@@ -255,6 +256,7 @@ export const claudeAgent: AgentAdapter = {
       ...(o.addDir && { addDir: o.addDir }),
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   }),
   taskReopen: (o) => ({
     argv: reopenArgv({
@@ -264,6 +266,7 @@ export const claudeAgent: AgentAdapter = {
       settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   }),
   recordedSession: readRecordedSession,
   chatKept,

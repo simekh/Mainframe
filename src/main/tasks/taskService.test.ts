@@ -135,6 +135,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
   expect(readFileSync(settingsPath, 'utf8')).toBe(hookSettings(taskDir(record.id), NODE));
   expect(service.launchSpec(view.session!.id)).toEqual({
     cwd: projectDir,
+    answerStatusEarly: true,
     argv: startArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
@@ -431,6 +432,7 @@ it('exits during a quit leave tasks open, and restore reopens them', async () =>
   expect(restored).toMatchObject({ id: view.id, closedAt: null, session: { startedWithPrompt: false } });
   expect(second.launchSpec(restored.session!.id)).toEqual({
     cwd: projectDir,
+    answerStatusEarly: true,
     argv: reopenArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
@@ -526,6 +528,7 @@ it('quitting with a working session records it before the exit arrives, and rest
   expect(restored).toMatchObject({ id: view.id, closedAt: null, session: { startedWithPrompt: true } });
   expect(second.launchSpec(restored.session!.id)).toEqual({
     cwd: projectDir,
+    answerStatusEarly: true,
     argv: reopenArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
@@ -838,6 +841,7 @@ it('reopen resumes in the task\'s worktree from the main checkout, without askin
   const reopened = await service.reopen(view.id);
   expect(service.launchSpec(reopened.session!.id)).toEqual({
     cwd: projectDir,
+    answerStatusEarly: true,
     argv: ['claude', '--worktree', 'fix-login', '--resume', claudeSessionId, '--settings', join(taskDir(view.id), 'settings.json')],
   });
   expect(asked).toEqual([]);
@@ -1289,7 +1293,7 @@ it("a Claude task's launch is unchanged", async () => {
 
   const spec = service.launchSpec(view.session!.id);
   expect(spec).not.toHaveProperty('env');
-  expect(spec).toEqual({ cwd: projectDir, argv: expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
+  expect(spec).toEqual({ cwd: projectDir, answerStatusEarly: true, argv: expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
   expect(added).toEqual([]);
   expect(view.agent).toBe('claude');
   expect(readState()[0].agent).toBe('claude');
@@ -2117,6 +2121,7 @@ it('Continue of a finished Claude task resumes its chat in its worktree with the
   expect(continued).toMatchObject({ place: null, endedAt: null, closedAt: null, session: { startedWithPrompt: true } });
   expect(t.service.launchSpec(continued.session!.id)).toEqual({
     cwd: t.projectDir,
+    answerStatusEarly: true,
     argv: reopenArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
@@ -2151,6 +2156,7 @@ it('Continue of a finished task whose chat is gone starts a new conversation wit
   expect(continued).toMatchObject({ place: null, session: { startedWithPrompt: true } });
   expect(t.service.launchSpec(continued.session!.id)).toEqual({
     cwd: t.projectDir,
+    answerStatusEarly: true,
     argv: startArgv({
       claudeBin: 'claude',
       slug: 'fix-login',
@@ -2548,6 +2554,7 @@ describe('put back', () => {
     const [sessionId] = t.service.sessionIds();
     expect(t.service.launchSpec(sessionId)).toEqual({
       cwd: t.projectDir,
+      answerStatusEarly: true,
       argv: reopenArgv({
         claudeBin: 'claude',
         slug: 'fix-login',
