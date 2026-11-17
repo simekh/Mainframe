@@ -62,6 +62,21 @@ Mainframe remembers what it found in `settings.json` in its data folder. At ever
 
 To open more projects, use **File → Open Project…** (⌘O) on a Mac. Windows and Linux have the system's own title bar and no menu bar: there, use the **Open project** button at the bottom of the project list, or Ctrl+Shift+O. Mainframe remembers which projects are open.
 
+## Updating
+
+Mainframe looks for new releases on the remote you cloned it from. When there is one, an **Update available** pill shows in the window; click it to see what's new and update. Updating restarts Mainframe: your sessions stop and come back, as after Quit. To look right away, use **Mainframe → Check for Updates…** on a Mac, or the **Check for Updates…** button in Settings on any system.
+
+One click works when Mainframe was started with `npm start` and your clone has no changes or commits of its own. Otherwise the dialog says why and shows the commands to run instead, with your remote and the release filled in. They look like this:
+
+```sh
+git fetch <remote> tag v<version>
+git merge --ff-only v<version>
+npm install
+npm start
+```
+
+Cloned before updates came in? Run `git pull` once.
+
 ## Keys
 
 The Mac has Cmd keys. Windows and Linux have Ctrl keys, as Windows Terminal and VS Code do.
