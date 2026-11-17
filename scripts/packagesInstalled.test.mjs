@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { packagesInstalled } from './packagesInstalled.mjs';
 
@@ -34,6 +35,12 @@ describe('packagesInstalled', () => {
       'node_modules/zod': { version: '4.6.7' },
     });
     expect(packagesInstalled(wanted, installed)).toBe(false);
+  });
+
+  // Run on each system in CI right after `npm ci`: a false here would reinstall at every start on that system.
+  it("is true for this repo's own tree after an install", () => {
+    const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
+    expect(packagesInstalled(read('package-lock.json'), read('node_modules/.package-lock.json'))).toBe(true);
   });
 
   it('is false when an installed optional package is at another version', () => {
