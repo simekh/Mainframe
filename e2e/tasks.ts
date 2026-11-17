@@ -406,7 +406,7 @@ export async function sendManagerLine(page: Page, line: string): Promise<void> {
 
 /** A JSON-RPC response of Mainframe's MCP server: the parts of `tools/list` and `tools/call` results the tests read. */
 interface McpResponse {
-  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }> };
+  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }>; isError?: boolean };
 }
 
 /** Where Mainframe's MCP server is and the header that lets a client in, as a manager's config names them. */

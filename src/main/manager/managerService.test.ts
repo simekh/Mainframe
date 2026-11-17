@@ -131,7 +131,7 @@ it('start writes manager.json, the hooks and permissions in settings.json, and m
   const view = await service.start();
 
   expect(readRecord()).toEqual({ version: 1, midTurn: false, agent: 'claude', chats: { claude: chatOf(view) } });
-  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, NODE, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo']));
+  expect(readFileSync(file('settings.json'), 'utf8')).toBe(hookSettings(dir, NODE, ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo', 'mcp__mainframe__close_session']));
   expect(readFileSync(file('mcp.json'), 'utf8')).toBe(mcpConfigJson(MCP.url, MCP.token));
   // Windows has no owner-only mode bits (spec §10.2).
   if (process.platform !== 'win32') expect(statSync(file('mcp.json')).mode & 0o777).toBe(0o600);

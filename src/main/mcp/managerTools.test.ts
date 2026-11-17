@@ -28,6 +28,7 @@ const REPORT: SessionReport = {
   running: true,
   state: 'working',
   msg: null,
+  merged: false,
   card: { number: '#128', url: 'https://tracker.example/c/128' },
   agent: 'claude',
 };
@@ -40,6 +41,7 @@ function setup(
     sync?: () => Promise<SyncOutcome>;
     startItem?: (item: unknown, opts: { ownersCard?: boolean }) => Promise<TaskView>;
     ask?: TodoView['ask'];
+    close?: (taskId: string) => { title: string; msg: string | null; merged: boolean };
   } = {},
 ) {
   const tools = new Map<string, Registered>();
@@ -51,6 +53,7 @@ function setup(
   const calls: string[] = [];
   const started: unknown[] = [];
   const startedItems: unknown[] = [];
+  const closed: string[] = [];
   registerManagerTools(
     server,
     {
@@ -60,6 +63,11 @@ function setup(
         calls.push('start');
         started.push(req);
         return overrides.start ? overrides.start(req) : VIEW;
+      },
+      closeWhenTurnOver: (taskId) => {
+        calls.push('close');
+        closed.push(taskId);
+        return overrides.close ? overrides.close(taskId) : { title: 'Fix login', msg: null, merged: false };
       },
     },
     {
@@ -73,7 +81,7 @@ function setup(
     },
   );
   const call = (name: string, args?: unknown) => tools.get(name)!.handler(args);
-  return { tools, calls, started, startedItems, call };
+  return { tools, calls, started, startedItems, closed, call };
 }
 
 const json = (result: ToolResult) => {
@@ -81,10 +89,44 @@ const json = (result: ToolResult) => {
   return JSON.parse(result.content[0].text);
 };
 
-it('registers list_sessions, start_task and sync_todo, and nothing else, each with a description', () => {
+it('registers list_sessions, start_task, sync_todo and close_session, and nothing else, each with a description', () => {
   const { tools } = setup();
-  expect([...tools.keys()]).toEqual(['list_sessions', 'start_task', 'sync_todo']);
+  expect([...tools.keys()]).toEqual(['list_sessions', 'start_task', 'sync_todo', 'close_session']);
   for (const tool of tools.values()) expect(tool.config.description).toMatch(/\w/);
+});
+
+it('list_sessions says what merged means', () => {
+  const { tools } = setup();
+  expect(tools.get('list_sessions')!.config.description).toContain('merged: true once Mainframe found its branch merged with nothing uncommitted');
+});
+
+it('close_session takes a task id, closes that task and returns what was closed', async () => {
+  const { tools, call, calls, closed } = setup({ close: () => ({ title: 'Fix login', msg: 'All merged', merged: true }) });
+  const schema = tools.get('close_session')!.config.inputSchema!;
+  expect(schema.safeParse({ taskId: 'task-1' }).success).toBe(true);
+  expect(schema.safeParse({}).success).toBe(false);
+  expect(json(await call('close_session', { taskId: 'task-1' }))).toEqual({ taskId: 'task-1', title: 'Fix login', msg: 'All merged', merged: true });
+  expect(calls).toEqual(['close']);
+  expect(closed).toEqual(['task-1']);
+});
+
+it("close_session passes a refusal on as an error, in the service's words", async () => {
+  const refusal = "Fix login's session is working; it can be closed once its turn is over.";
+  const { call } = setup({
+    close: () => {
+      throw new Error(refusal);
+    },
+  });
+  const result = await call('close_session', { taskId: 'task-1' });
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toBe(refusal);
+});
+
+it('close_session is for when the owner asks, and says it deletes nothing', () => {
+  const { tools } = setup();
+  const description = tools.get('close_session')!.config.description;
+  expect(description).toContain('Only when the owner asks for it');
+  expect(description).toContain('nothing is deleted');
 });
 
 it("list_sessions takes no input and returns the reports as JSON, each with its task's card", async () => {

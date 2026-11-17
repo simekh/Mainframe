@@ -71,7 +71,7 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
   ]);
 
   const { hooks, permissions } = JSON.parse(readFileSync(settings, 'utf8'));
-  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'] });
+  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo', 'mcp__mainframe__close_session'] });
   expect(hooks.SessionStart[0].hooks[0].args).toContain(join(managerDir(dataDir), 'session-start.json'));
 
   // Windows has no owner-only mode bits (spec §10.2).
@@ -102,7 +102,7 @@ test("the manager's tools answer only with the token, and start_task starts a ta
   expect((await mcpCall(dataDir, 'tools/list', {}, { token: 'not-the-token' })).status).toBe(401);
   const listed = await mcpCall(dataDir, 'tools/list', {});
   expect(listed.status).toBe(200);
-  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task', 'sync_todo']);
+  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task', 'sync_todo', 'close_session']);
 
   // New task selects the task it starts; the manager's start leaves the selection, and the focus, where they are.
   const alpha = await startTask(page, 'Alpha');
@@ -121,6 +121,28 @@ test("the manager's tools answer only with the token, and start_task starts a ta
     expect.objectContaining({ taskId: alpha, title: 'Alpha', running: true, state: 'blocked', msg: 'approve Bash: ls' }),
     expect.objectContaining({ taskId, title: 'From the manager', running: true, state: null }),
   ]);
+  await app.close();
+});
+
+test('close_session closes a session that finished its turn, and refuses one that is working', async () => {
+  const { app, page, dataDir } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const alpha = await startTask(page, 'Alpha');
+  const beta = await startTask(page, 'Beta');
+  await sendLine(page, alpha, report('working'));
+  // "All done", base64 as the report carries it.
+  await sendLine(page, alpha, report('done:msg=QWxsIGRvbmU='));
+  await sendLine(page, beta, report('working'));
+  await expect(cardIn(page, 'needs-you', alpha)).toHaveCount(1);
+  await expect(cardIn(page, 'working', beta)).toHaveCount(1);
+
+  expect(await callTool(dataDir, 'close_session', { taskId: alpha })).toEqual({ taskId: alpha, title: 'Alpha', msg: 'All done', merged: false });
+  await expect(cardIn(page, 'paused', alpha)).toHaveCount(1);
+
+  const refused = await mcpCall(dataDir, 'tools/call', { name: 'close_session', arguments: { taskId: beta } });
+  expect(refused.body!.result!.isError).toBe(true);
+  expect(refused.body!.result!.content![0].text).toContain("Beta's session is working");
+  await expect(cardIn(page, 'working', beta)).toHaveCount(1);
   await app.close();
 });
 

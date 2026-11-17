@@ -138,6 +138,7 @@ test("the manager starts on OpenCode with Mainframe's server, its rules and its 
   const rules = [
     { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
     { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+    { action: 'mainframe_close_session', resource: '*', effect: 'allow' },
     { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
   ];
   // At the top and under every agent `api agent.list` gives, as the chat may run on any of them.

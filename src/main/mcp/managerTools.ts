@@ -22,17 +22,17 @@ const ASKS_ABOUT = { tools: 'tools', lists: 'a list', model: 'the model' };
 const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
   `${branch} has ${commitsThatArent(ahead)} on ${base}. New worktrees start from ${base}, so this task won't have ${ahead === 1 ? 'it' : 'them'}.`;
 
-/** The tools the manager session has: to read the task sessions, to start one, and to sync the Todo panel. */
+/** The tools the manager session has: to read the task sessions, to start one, to sync the Todo panel, and to close a session. */
 export function registerManagerTools(
   server: McpServer,
-  tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck'>,
+  tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck' | 'closeWhenTurnOver'>,
   todo: Pick<TodoService, 'sync' | 'startItem' | 'view'>,
 ): void {
   server.registerTool(
     'list_sessions',
     {
       description:
-        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude' or 'opencode') and that agent's session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
+        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude' or 'opencode') and that agent's session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, merged: true once Mainframe found its branch merged with nothing uncommitted while it runs (its card is then in the board's Done lane), and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
     },
     async () => text({ sessions: tasks.reports() }),
   );
@@ -84,6 +84,22 @@ export function registerManagerTools(
         if ('error' in outcome) return failure(outcome.error);
         if ('ask' in outcome) return text({ needsOwner: NEEDS_OWNER[outcome.ask] });
         return text({ cards: outcome.cards });
+      } catch (err) {
+        return failure(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'close_session',
+    {
+      description:
+        "Closes a task's session, as the owner's Close session button does: the session ends and nothing is deleted. The task goes to Paused, or to Finished once Mainframe finds its branch merged with nothing uncommitted; the owner can reopen it either way. Only when the owner asks for it. taskId is the one list_sessions gives. Refused while the session is working, waiting for the owner's answer, still starting or being put back: say so to the owner rather than try again. Returns the task's title, its last message, and merged: whether it goes to Finished.",
+      inputSchema: z.object({ taskId: z.string() }),
+    },
+    async ({ taskId }) => {
+      try {
+        return text({ taskId, ...tasks.closeWhenTurnOver(taskId) });
       } catch (err) {
         return failure(err);
       }

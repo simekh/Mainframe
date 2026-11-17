@@ -145,6 +145,7 @@ describe('findOpencode', () => {
 const RULES = [
   { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
   { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+  { action: 'mainframe_close_session', resource: '*', effect: 'allow' },
   { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
 ];
 
