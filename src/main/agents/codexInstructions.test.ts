@@ -51,9 +51,10 @@ describe('codexMissesClaudeMd', () => {
     await expect(check(projectWith('  \n\n', 'CLAUDE.md'), run)).resolves.toBe(false);
   });
 
-  it('with an AGENTS.md, or no CLAUDE.md, codex is not run at all', async () => {
+  it('with an AGENTS.md or an AGENTS.override.md (which Codex reads first), or no CLAUDE.md, codex is not run at all', async () => {
     const run = vi.fn(async () => notLoaded);
     await expect(check(project('CLAUDE.md', 'AGENTS.md'), run)).resolves.toBe(false);
+    await expect(check(project('CLAUDE.md', 'AGENTS.override.md'), run)).resolves.toBe(false);
     await expect(check(project('AGENTS.md'), run)).resolves.toBe(false);
     await expect(check(project(), run)).resolves.toBe(false);
     expect(run).not.toHaveBeenCalled();

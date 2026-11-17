@@ -25,7 +25,8 @@ const runCodex: Run = async ([file, ...args], o) =>
   (await execFileAsync(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: 10_000, maxBuffer: MAX_OUTPUT })).stdout;
 
 /**
- * True when the project has a CLAUDE.md but no AGENTS.md and Codex, asked offline what it would send, prints its
+ * True when the project has a CLAUDE.md but no AGENTS.md or AGENTS.override.md (which Codex reads before any
+ * fallback name, so listing CLAUDE.md would change nothing) and Codex, asked offline what it would send, prints its
  * environment context but no AGENTS.md instructions message containing CLAUDE.md's own text: the user's Codex config
  * doesn't list CLAUDE.md. (Codex puts that heading on any instructions message, so the text is what tells them apart.)
  * Any doubt (Codex failing, an unreadable or empty CLAUDE.md, output without the environment context) is false: a
@@ -33,7 +34,8 @@ const runCodex: Run = async ([file, ...args], o) =>
  */
 export async function codexMissesClaudeMd(o: { bin: string; projectDir: string; env: Record<string, string>; run?: Run }): Promise<boolean> {
   const { bin, projectDir, env, run = runCodex } = o;
-  if (!existsSync(join(projectDir, 'CLAUDE.md')) || existsSync(join(projectDir, 'AGENTS.md'))) return false;
+  const has = (name: string) => existsSync(join(projectDir, name));
+  if (!has('CLAUDE.md') || has('AGENTS.md') || has('AGENTS.override.md')) return false;
   try {
     const snippet = readFileSync(join(projectDir, 'CLAUDE.md'), 'utf8').replace(/\r\n/g, '\n').trim().slice(0, SNIPPET_LENGTH);
     if (snippet === '') return false;
