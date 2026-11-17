@@ -26,6 +26,8 @@ describe('nextVersion', () => {
     expect(() => nextVersion('v0.4.0', 'Fixed: y', '0.3.0')).toThrow();
     expect(() => nextVersion('v0.4.0', 'Fixed: y', '0.4.0')).toThrow();
     expect(() => nextVersion('v0.4.0', 'Fixed: y', '1.0')).toThrow();
+    expect(() => nextVersion('v0.4.0', 'Fixed: y', '1.02.0')).toThrow();
+    expect(() => nextVersion('v0.4.0', 'Fixed: y', '01.2.3')).toThrow();
   });
 });
 

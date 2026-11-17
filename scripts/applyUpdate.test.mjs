@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyUpdate } from './applyUpdate.mjs';
+import { applyUpdate, RELEASE_TAG } from './applyUpdate.mjs';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: 'pipe' }).trim();
 
@@ -58,6 +58,13 @@ afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retr
 const head = () => git('-C', user, 'rev-parse', 'HEAD');
 const release = () => git('-C', user, 'rev-parse', 'v0.2.0^{commit}');
 
+describe('RELEASE_TAG', () => {
+  it('takes plain release tags only, with no leading zeros', () => {
+    expect(RELEASE_TAG.test('v0.10.0')).toBe(true);
+    for (const tag of ['v1.02.0', 'v01.2.3', 'v1.2.3-rc.1', '1.2.3']) expect(RELEASE_TAG.test(tag)).toBe(false);
+  });
+});
+
 describe('applyUpdate', () => {
   it('fast-forwards to the release and runs npm install once', () => {
     expect(applyUpdate(user, 'v0.2.0', run)).toEqual({ ok: true });
@@ -94,6 +101,16 @@ describe('applyUpdate', () => {
     const before = head();
     expect(applyUpdate(user, 'v0.2.0', run)).toMatchObject({ ok: false, stage: 'merge' });
     expect(head()).toBe(before);
+    expect(npmCalls).toEqual([]);
+  });
+
+  it('keeps a lockfile edit when the branch has a commit of its own', () => {
+    commit(user, 'mine.txt', 'mine\n', 'my own');
+    writeFileSync(join(user, 'package-lock.json'), '{"rewritten":true}\n');
+    const before = head();
+    expect(applyUpdate(user, 'v0.2.0', run)).toMatchObject({ ok: false, stage: 'merge' });
+    expect(head()).toBe(before);
+    expect(git('-C', user, 'status', '--porcelain', '--untracked-files=no')).toBe('M package-lock.json');
     expect(npmCalls).toEqual([]);
   });
 

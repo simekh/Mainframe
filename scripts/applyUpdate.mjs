@@ -3,8 +3,8 @@
 // script can't import.
 import { execFileSync } from 'node:child_process';
 
-/** A release tag as the app writes it. Anything else never reaches git. */
-export const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+/** A release tag as the app writes it, with no leading zeros. Anything else never reaches git. */
+export const RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 /** A read-only git query's output; '' when git exits non-zero (a ref that isn't there). */
 function read(dir, args) {
@@ -24,6 +24,11 @@ export function applyUpdate(dir, tag, run) {
   const ok = (cmd, args) => run(cmd, args).status === 0;
   if (!read(dir, ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) {
     return { ok: false, stage: 'merge', message: `this clone doesn't have ${tag}. Nothing was changed.` };
+  }
+
+  // Checked before the lockfile is touched, so an update that can't fast-forward leaves everything as it was.
+  if (!ok('git', ['-C', dir, 'merge-base', '--is-ancestor', 'HEAD', `refs/tags/${tag}`])) {
+    return { ok: false, stage: 'merge', message: `git could not fast-forward to ${tag}. Nothing was changed.` };
   }
 
   // `npm install` can rewrite the lockfile on its own; that alone doesn't stop an update. Restored from HEAD, so a

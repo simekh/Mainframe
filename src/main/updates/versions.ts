@@ -2,9 +2,12 @@ export type Version = [number, number, number];
 
 const NO_NOTES = 'No notes for this release.';
 
-/** Reads a release tag. Only a plain `v<major>.<minor>.<patch>` counts, so pre-release tags are never offered. */
+/**
+ * Reads a release tag. Only a plain `v<major>.<minor>.<patch>` counts, with no leading zeros, so pre-release tags and
+ * look-alikes such as `v1.02.0` are never offered.
+ */
 export function parseTag(tag: string): Version | null {
-  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+  const match = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tag);
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 

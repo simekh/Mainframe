@@ -6,8 +6,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
-const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
-const VERSION = /^(\d+)\.(\d+)\.(\d+)$/;
+// Numbers without leading zeros, as the app's parseTag reads them.
+const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const parts = (match) => match.slice(1).map(Number);

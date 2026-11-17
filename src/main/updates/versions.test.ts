@@ -25,7 +25,7 @@ describe('parseTag', () => {
   });
 
   it('rejects everything else, pre-releases included', () => {
-    for (const tag of ['v1.2', 'v1.2.3-beta.1', '1.2.3', 'vx.y.z', 'v1.2.3.4', ' v1.2.3']) {
+    for (const tag of ['v1.2', 'v1.2.3-beta.1', '1.2.3', 'vx.y.z', 'v1.2.3.4', ' v1.2.3', 'v1.02.0', 'v01.2.3', 'v1.2.03']) {
       expect(parseTag(tag)).toBeNull();
     }
   });
