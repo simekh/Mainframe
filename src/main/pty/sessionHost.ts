@@ -119,7 +119,8 @@ export class SessionHost {
     const batcher = createOutputBatcher({ intervalMs: this.opts.outputBatchMs, send: (d) => listener.onData(d) });
     const session: Session = { proc, batcher, records, killed: false };
     this.sessions.set(id, session);
-    // The end of the output so far, to see PASTE_ON split across two chunks; null once the early answers have begun.
+    // The end of the output so far, to see PASTE_ON split across two chunks; null once the early answers have begun, or
+    // once the session has asked or reported, so none are needed.
     let pasteTail: string | null = spec.answerStatusEarly ? '' : null;
 
     proc.onData((chunk) => {
@@ -132,6 +133,7 @@ export class SessionHost {
         }
       }
       for (const event of scanner.feed(chunk)) {
+        pasteTail = null;
         session.stopEarly?.();
         if (event.type === 'query') {
           // Answer at once: Claude Code sends CSI c right after the query, and xterm's reply to

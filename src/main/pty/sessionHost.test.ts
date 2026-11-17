@@ -162,6 +162,15 @@ describe('answerStatusEarly', () => {
     expect(replies(log)).toBe(1);
   });
 
+  it('answers nothing early once the session has asked or reported', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit('\x1b]7501;state=idle\x07');
+    ptys[0].emit(PASTE_ON);
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(0);
+  });
+
   it('stops after 30 seconds without a query or a report', () => {
     const { host, ptys, log, listener } = setup();
     host.spawn('s1', early, listener);
