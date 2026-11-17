@@ -143,26 +143,18 @@ describe('cardAsk', () => {
     expect(cardAsk(closedTask(), undefined, 'paused')).toEqual({ text: 'Paused', tone: 'subtle', act: 'paused' });
   });
 
-  it('a card in Needs you offers Answer, or Finish under the label Merged once the round found nothing to lose', () => {
-    const s = state('done');
-    expect(cardAsk(task(), s, 'needs-you')).toEqual({ text: 'Finished its turn', tone: 'strong', act: 'answer' });
-    expect(cardAsk(task({ merged: true }), s, 'needs-you')).toEqual({ text: 'Merged', tone: 'success', act: 'finish' });
+  it('a card in Needs you offers Answer under its label, merged or not', () => {
+    expect(cardAsk(task(), state('done'), 'needs-you')).toEqual({ text: 'Finished its turn', tone: 'strong', act: 'answer' });
+    expect(cardAsk(task({ merged: true }), state('blocked'), 'needs-you')).toEqual({ text: 'Needs input', tone: 'warn', act: 'answer' });
+  });
+
+  it('a Done card says Merged and offers Finish', () => {
+    expect(cardAsk(task({ merged: true }), state('done'), 'done')).toEqual({ text: 'Merged', tone: 'success', act: 'finish' });
   });
 
   it('a Working card offers nothing, merged or not', () => {
     expect(cardAsk(task(), state('working'), 'working')).toBeNull();
     expect(cardAsk(task({ merged: true }), state('working'), 'working')).toBeNull();
-  });
-
-  it('a merged card offers Finish only once its session is done or waiting; asking or stopped, it offers Answer', () => {
-    const merged = task({ merged: true });
-    const finish = { text: 'Merged', tone: 'success', act: 'finish' };
-    expect(cardAsk(merged, state('done'), 'needs-you')).toEqual(finish);
-    expect(cardAsk(merged, state('idle'), 'needs-you')).toEqual(finish);
-    const asking = { text: 'Needs input', tone: 'warn', act: 'answer' };
-    expect(cardAsk(merged, state('blocked', { kind: 'question' }), 'needs-you')).toEqual(asking);
-    expect(cardAsk(merged, state('blocked', { kind: 'permission' }), 'needs-you')).toEqual(asking);
-    expect(cardAsk(merged, state('error'), 'needs-you')).toEqual({ text: 'Stopped', tone: 'error', act: 'answer' });
   });
 
   it('a card being put back offers no Reopen, Put back or Discard, and no Finish, but Answer while it asks', () => {
@@ -185,6 +177,38 @@ describe('cardAge', () => {
 
   it('a closed task without closedAt has no age', () => {
     expect(cardAge(closedTask({ closedAt: null }), state('done', {}, { since: 0 }), 10_000_000)).toBe('');
+  });
+});
+
+describe('the Done lane', () => {
+  const merged = task({ merged: true });
+
+  it('holds a merged running task whose turn is over', () => {
+    expect(laneOf(merged, state('done'))).toBe('done');
+    expect(laneOf(merged, state('idle'))).toBe('done');
+  });
+
+  it('gives a merged task back when it works again, asks, stops, starts, or is being put back', () => {
+    expect(laneOf(merged, state('working'))).toBe('working');
+    expect(laneOf(merged, state('idle', {}, { started: false }))).toBe('working');
+    expect(laneOf(merged, state('blocked', { kind: 'question' }))).toBe('needs-you');
+    expect(laneOf(merged, state('blocked', { kind: 'permission' }))).toBe('needs-you');
+    expect(laneOf(merged, state('error'))).toBe('needs-you');
+    expect(laneOf(task({ merged: true, puttingBack: true }), state('done'))).toBe('needs-you');
+  });
+
+  it('leaves an unmerged task that finished its turn in Needs you', () => {
+    expect(laneOf(task(), state('done'))).toBe('needs-you');
+  });
+
+  it('laneOrder puts Done cards in done, oldest first, and out of needs-you', () => {
+    const open = (id: string, createdAt: number, isMerged: boolean) =>
+      task({ id, createdAt, merged: isMerged, session: { id: `s-${id}`, startedWithPrompt: true } });
+    const tasks = [open('newer', 2, true), open('unmerged', 3, false), open('older', 1, true)];
+    const sessions = { 's-newer': state('done'), 's-unmerged': state('done'), 's-older': state('done') };
+    const order = laneOrder(tasks, sessions);
+    expect(order.done.map((t) => t.id)).toEqual(['older', 'newer']);
+    expect(order['needs-you'].map((t) => t.id)).toEqual(['unmerged']);
   });
 });
 

@@ -10,11 +10,12 @@ import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
 import { todoOf } from '../todo/todoStore';
 
-// A flex row of lanes.
+// A flex row of lanes. Done is drawn only while it holds a card, last, so its coming and going moves no other lane.
 const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
   { lane: 'needs-you', name: 'Needs you', empty: 'Nothing needs you' },
   { lane: 'working', name: 'Working', empty: 'Nothing running' },
   { lane: 'paused', name: 'Paused', empty: 'No paused tasks' },
+  { lane: 'done', name: 'Done', empty: '' },
 ];
 
 /** The lanes of task cards. Cards that change place move there rather than jump. */
@@ -73,24 +74,26 @@ export default function Board() {
     <div class="lanes" ref={root}>
       <For each={LANES}>
         {({ lane, name, empty }) => (
-          <section class="lane" data-testid="lane" data-lane={lane} data-empty={String(order()[lane].length === 0)}>
-            <h3 class="lane-title">
-              {name} <span class="lane-count">{order()[lane].length}</span>
-            </h3>
-            <ul class="cards" aria-label={name}>
-              <For each={order()[lane]} fallback={<li class="lane-empty">{empty}</li>}>
-                {(task) => (
-                  <TaskCard
-                    task={task}
-                    session={sessionOf(task)}
-                    lane={lane}
-                    now={now()}
-                    onDiscard={askDiscard}
-                  />
-                )}
-              </For>
-            </ul>
-          </section>
+          <Show when={lane !== 'done' || order().done.length > 0}>
+            <section class="lane" data-testid="lane" data-lane={lane} data-empty={String(order()[lane].length === 0)}>
+              <h3 class="lane-title">
+                {name} <span class="lane-count">{order()[lane].length}</span>
+              </h3>
+              <ul class="cards" aria-label={name}>
+                <For each={order()[lane]} fallback={<li class="lane-empty">{empty}</li>}>
+                  {(task) => (
+                    <TaskCard
+                      task={task}
+                      session={sessionOf(task)}
+                      lane={lane}
+                      now={now()}
+                      onDiscard={askDiscard}
+                    />
+                  )}
+                </For>
+              </ul>
+            </section>
+          </Show>
         )}
       </For>
       <Show when={discarding()}>

@@ -213,6 +213,36 @@ test('a closed task whose branch is merged leaves Paused for Finished, its workt
   await app.close();
 });
 
+test('a running task whose branch is merged moves to Done when its turn ends, and Finish there sends it to Finished', async () => {
+  const main = repo();
+  const { app, page } = await launchApp({}, main);
+  const doneLane = page.locator('[data-testid=lane][data-lane=done]');
+  const id = await startTask(page, 'Fix login');
+
+  // A turn that ends with nothing merged stays in Needs you, and draws no Done lane.
+  await sendLine(page, id, report('working'));
+  await sendLine(page, id, report('done'));
+  await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
+  await expect(doneLane).toHaveCount(0);
+
+  const worktree = join(main, '.claude', 'worktrees', 'fix-login');
+  commitFile(worktree, 'login.txt');
+  git('-C', main, 'merge', '--no-ff', '-m', 'Merge fix login', 'worktree-fix-login');
+  git('-C', main, 'push', 'origin', 'HEAD');
+  await sendLine(page, id, report('working'));
+  await sendLine(page, id, report('done'));
+
+  await expect(cardIn(page, 'done', id)).toHaveCount(1, { timeout: 15_000 });
+  await expect(cardIn(page, 'done', id).getByTestId('task-ask')).toHaveText(/Merged/);
+  await expect(page.locator('[data-testid=lane][data-lane=needs-you] [data-testid=task-card]')).toHaveCount(0);
+
+  await cardIn(page, 'done', id).getByTestId('finish').click();
+  await expect(card(page, id)).toHaveCount(0, { timeout: 15_000 });
+  await expect(doneLane).toHaveCount(0);
+  expect(branchList(main, 'worktree-fix-login')).toBe('');
+  await app.close();
+});
+
 test('Discard asks first, lists what would be lost, and removes the worktree and branch', async () => {
   const main = repo();
   const { app, page } = await launchApp({}, main);
