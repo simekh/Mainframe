@@ -128,10 +128,9 @@ export class ManagerService {
     return view;
   }
 
-  launchSpec(sessionId: string): { argv: string[]; cwd: string; env?: Record<string, string> } {
+  launchSpec(sessionId: string): LaunchArgs & { cwd: string } {
     if (this.session?.id !== sessionId) throw new Error(`Unknown session ${sessionId}`);
-    const { argv, env } = this.session.launch;
-    return { argv, cwd: this.deps.projectDir, env };
+    return { ...this.session.launch, cwd: this.deps.projectDir };
   }
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */

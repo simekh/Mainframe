@@ -30,14 +30,18 @@ describe('the agent adapters', () => {
     expect(ADAPTERS.opencode.worktreesDir).toBe('.mainframe/worktrees');
   });
 
-  it("a Claude task's start is today's argv, with no env", () => {
+  it("a Claude task's start is today's argv, with no env, answered early", () => {
     expect(ADAPTERS.claude.taskStart(o)).toEqual({
       argv: startArgv({ claudeBin: 'claude', slug: 's', name: 'p-s', claudeSessionId: UUID_1, settingsPath: join(dir, 'settings.json'), prompt: 'P' }),
+      answerStatusEarly: true,
     });
+    expect(ADAPTERS.claude.taskReopen({ ...o, prompt: undefined }).answerStatusEarly).toBe(true);
   });
 
-  it("an OpenCode task's start carries the tabs-off env", () => {
-    expect(ADAPTERS.opencode.taskStart({ ...o, bin: 'oc', sessionId: 'ses_' + 'a'.repeat(28) }).env).toEqual(OPENCODE_ENV);
+  it("an OpenCode task's start carries the tabs-off env, and is answered only when it asks", () => {
+    const start = ADAPTERS.opencode.taskStart({ ...o, bin: 'oc', sessionId: 'ses_' + 'a'.repeat(28) });
+    expect(start.env).toEqual(OPENCODE_ENV);
+    expect(start.answerStatusEarly).toBeUndefined();
   });
 
   it("a Claude task began once SessionStart recorded its conversation; forgetChat drops that record", () => {
