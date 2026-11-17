@@ -102,13 +102,13 @@ jobs:
       matrix:
         # On a push the inputs are empty: every system.
         os: ${{ fromJSON((inputs.os == '' || inputs.os == 'all') && '["macos-latest","windows-latest","ubuntu-latest"]' || format('["{0}"]', inputs.os)) }}
-        shard: ${{ fromJSON((inputs.e2e != '' || inputs.grep != '') && '[1]' || '[1,2,3]') }}
+        shard: ${{ fromJSON((inputs.e2e != '' || inputs.grep != '') && '["1/1"]' || '["1/3","2/3","3/3"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       E2E_FILES: ${{ inputs.e2e }}
       E2E_GREP: ${{ inputs.grep }}
-      SHARD: ${{ matrix.shard }}/${{ (inputs.e2e != '' || inputs.grep != '') && 1 || 3 }}
+      SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
 
@@ -160,6 +160,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
-          name: test-results-${{ matrix.os }}-${{ matrix.shard }}
+          # Numbered by job: the shard's own name holds a / that an artifact's may not.
+          name: test-results-${{ matrix.os }}-${{ strategy.job-index }}
           path: test-results/
           if-no-files-found: ignore
