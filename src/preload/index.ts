@@ -72,6 +72,11 @@ const api: MainframeApi = {
   setAgentOptions: (name, patch) => ipcRenderer.invoke(IPC.setAgentOptions, name, patch),
   opencodeChoices: () => ipcRenderer.invoke(IPC.opencodeChoices),
   onShowSettings: (cb) => listen(IPC.showSettings, cb),
+  getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
+  onUpdate: (cb) => listen(IPC.updateChanged, cb),
+  checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  onCheckForUpdates: (cb) => listen(IPC.menuCheckForUpdates, cb),
 };
 
 contextBridge.exposeInMainWorld('mainframe', api);

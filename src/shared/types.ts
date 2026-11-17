@@ -137,6 +137,26 @@ export type ByHandWhy = 'not-launcher' | 'uncommitted' | 'own-commits';
 /** How an update gets applied: by one click, or by commands the user runs themselves. */
 export type UpdateHow = { kind: 'one-click' } | { kind: 'by-hand'; why: ByHandWhy; commands: string[] };
 
+/** A newer release than the one running: its version ('0.5.0'), the notes for every release missed, and how to take it. */
+export interface UpdateAvailable {
+  latest: string;
+  notes: string;
+  how: UpdateHow;
+}
+
+/**
+ * The app's update state. `current` is the running release, null when the clone has none (shown as unreleased);
+ * `failure` is why the last one-click update did not happen, as start.mjs said.
+ */
+export interface UpdateView {
+  current: string | null;
+  available: UpdateAvailable | null;
+  failure: string | null;
+}
+
+/** What a Check for Updates… found. */
+export type CheckResult = { kind: 'available' } | { kind: 'up-to-date' } | { kind: 'failed'; why: string };
+
 export interface StartCheck {
   /** Commits on the main checkout's branch that origin/HEAD does not have. */
   ahead: number;

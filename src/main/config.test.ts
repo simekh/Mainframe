@@ -26,6 +26,12 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads the update settings, and the update folder only in e2e', () => {
+    const env = { MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_UPDATE_FILE: '/x/update', MAINFRAME_UPDATE_FAILED: 'it failed' };
+    expect(loadConfig(env, '/data')).toMatchObject({ updateDir: undefined, launcherFile: '/x/update', updateFailure: 'it failed' });
+    expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').updateDir).toBe('/x/clone');
+  });
+
   it('makes a relative data dir absolute', () => {
     expect(loadConfig({ MAINFRAME_DATA_DIR: 'd' }, '/data').dataDir).toBe(resolve('d'));
   });

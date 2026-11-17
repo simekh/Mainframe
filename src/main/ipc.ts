@@ -11,6 +11,7 @@ import type { AgentSettingPatch, AgentsInUse } from './setup/agentsInUse';
 import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
+import type { UpdateService } from './updates/updateService';
 
 /** The page's choice of agents, with only names in AGENT_ORDER; anything else is refused. */
 function agentChoice(raw: unknown): AgentChoice {
@@ -105,6 +106,16 @@ export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: Agent
     agents.saveAgentSetting(agentOf(name), patch);
   });
   ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
+}
+
+/** The update calls take nothing from the page. The view waits for the running version, so it never shows a released clone as unreleased. */
+export function registerUpdateIpc(updates: UpdateService): void {
+  ipcMain.handle(IPC.getUpdate, async () => {
+    await updates.running;
+    return updates.view();
+  });
+  ipcMain.handle(IPC.checkForUpdates, () => updates.check());
+  ipcMain.handle(IPC.installUpdate, () => updates.install());
 }
 
 export function registerIpc(
