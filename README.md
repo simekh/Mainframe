@@ -18,7 +18,7 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 | [Node.js](https://nodejs.org/), the newest LTS (Claude Code's hooks run on it) | yes | yes | yes |
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH. At least one is needed, and you can have both | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode` | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe` | Claude Code: native installer or npm. OpenCode: `opencode` |
-| A compiler for `npm install` | no | no | yes, see below |
+| A compiler, to install the packages | no | no | yes, see below |
 
 Each project you open must be a git repository.
 
@@ -34,9 +34,9 @@ Each task's files sit inside your project, under `.claude\worktrees\<name>\` (Cl
 git config --global core.longpaths true
 ```
 
-**On Linux**, `npm install` compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
+**On Linux**, installing the packages compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
 
-Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after an `npm install` that reinstalls Electron:
+Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after the packages are installed again:
 
 ```sh
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
@@ -45,14 +45,15 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 ## Run it
 
-The same four commands on every system, in a terminal (PowerShell on Windows):
+The same three commands on every system, in a terminal (PowerShell on Windows):
 
 ```sh
 git clone <this repo's URL> mainframe
 cd mainframe
-npm install
 npm start
 ```
+
+The first `npm start` installs Mainframe's packages before it starts (with `npm ci`), and so does any `npm start` after a `git pull` that changed them.
 
 On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
 
