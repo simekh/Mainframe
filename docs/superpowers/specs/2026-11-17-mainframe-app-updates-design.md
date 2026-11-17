@@ -153,8 +153,8 @@ The hand-run commands depend on why one click can't work (designer's call):
 2. The app quits the normal way, so sessions are recorded and come back at the next start, as after Quit. It exits
    with a code that means "update to `v<version>`". The tag can travel in the exit code plus a small file in the data
    folder, or similar (builder's call).
-3. `start.mjs` sees that code. With Mainframe closed, so Windows has no files locked, it fetches the tag, fast-forwards
-   to it and runs `npm install`.
+3. `start.mjs` sees that code. The check already fetched the tag, so with Mainframe closed (Windows then has no files
+   locked) it only fast-forwards to it and runs `npm install`: no git fetch at restart.
 4. It then starts the updated Mainframe by running the updated `scripts/start.mjs preview` again, which builds and
    launches it, and exits with that run's code.
 

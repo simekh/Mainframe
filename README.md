@@ -168,3 +168,5 @@ npm run release -- 1.0.0   # or name the version yourself
 ```
 
 It refuses when the notes are empty, when there are uncommitted changes, or when the branch is behind or ahead of its upstream (it only ever pushes its own commit and tag). It then shows the version and the notes and asks before it moves the notes to a `## <version> · <date>` section, commits `Release <version>`, tags it and pushes both to the branch's remote. When the remote is on GitHub and the [GitHub CLI](https://cli.github.com/) (`gh`) is installed, it also creates a GitHub Release with the same notes; otherwise it says it skipped that.
+
+Never move or delete a tag once it is pushed: clones may already have it. Fix a bad release with a new patch release.
