@@ -173,6 +173,7 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     worktreeNote: mainframeWorktreeNote,
     mainframeAddsWorktree: true,
     worktreesDir: '.mainframe/worktrees',
+    tracksBegan: true,
     needsNode: false,
     newSessionId: newOpencodeSessionId,
     // No `addDir`: OpenCode reads outside the project by default.

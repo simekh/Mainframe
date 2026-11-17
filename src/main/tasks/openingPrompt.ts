@@ -1,4 +1,4 @@
-import type { TaskCardRef } from '../../shared/types';
+import type { AgentName, TaskCardRef } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { Instructions } from '../agents/agent';
 
@@ -29,6 +29,10 @@ function descriptionInFile(file: string, isCard: boolean): string {
 }
 
 export function openingPrompt(t: {
+  agent: AgentName;
+  /** The main checkout. */
+  projectDir: string;
+  worktreePath: string;
   title: string;
   description: string;
   branch: string;
@@ -38,13 +42,8 @@ export function openingPrompt(t: {
   descriptionFile?: string;
   /** Continue starts the task again, as its earlier conversation is gone. */
   continuing?: boolean;
-} & (
-  | { agent: 'claude' }
-  /** `projectDir` is the main checkout. */
-  | { agent: 'opencode'; projectDir: string; worktreePath: string }
-)): string {
+}): string {
   const { instructions, worktreeNote } = ADAPTERS[t.agent];
-  const where = t.agent === 'opencode' ? t : { projectDir: '', worktreePath: '' };
   const description = t.description.trim();
   const parts = [brief(instructions), `Task: ${t.card?.number ? `${t.card.number} ` : ''}${t.title.trim()}`];
   if (t.continuing) {
@@ -55,7 +54,7 @@ export function openingPrompt(t: {
     if (t.descriptionFile) parts.push(descriptionInFile(t.descriptionFile, t.card !== undefined));
     else parts.push(t.card ? `From the owner: ${description}` : description);
   }
-  parts.push(worktreeNote({ branch: t.branch, projectDir: where.projectDir, worktreePath: where.worktreePath }));
+  parts.push(worktreeNote({ branch: t.branch, projectDir: t.projectDir, worktreePath: t.worktreePath }));
   if (t.noQuestions) parts.push(noQuestions(instructions));
   return parts.join('\n\n');
 }

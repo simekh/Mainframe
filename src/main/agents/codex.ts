@@ -83,6 +83,7 @@ export const codexAgent: AgentAdapter = {
   worktreeNote: mainframeWorktreeNote,
   mainframeAddsWorktree: true,
   worktreesDir: '.mainframe/worktrees',
+  tracksBegan: true,
   needsNode: false,
   // Mainframe's own key for the task, never sent to Codex: a reopen resumes the worktree's latest session.
   newSessionId: (uuid) => uuid(),

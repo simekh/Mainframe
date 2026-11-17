@@ -468,7 +468,7 @@ export class TaskService {
     }
     const cwd = task.worktreePath;
     if (!task.began) {
-      // OpenCode never took the brief: it failed to start, was quit at its login screen, or Mainframe quit first.
+      // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
       return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
@@ -537,7 +537,7 @@ export class TaskService {
     session.turn.note(state);
     const task = this.find(session.taskId);
     this.lookForWorktree(session, task);
-    if (agentOf(task) === 'opencode' && !task.began && inTurn(state)) {
+    if (ADAPTERS[agentOf(task)].tracksBegan && !task.began && inTurn(state)) {
       task.began = true;
       // Saved, not sent: nothing the window shows has changed.
       this.deps.records.save();
@@ -831,9 +831,9 @@ export class TaskService {
           card: task.card,
           descriptionFile: brief?.file,
           continuing,
-          ...(agent === 'opencode'
-            ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
-            : { agent: 'claude' as const }),
+          agent,
+          projectDir: this.deps.projectDir,
+          worktreePath: task.worktreePath,
         }),
         ...(brief && { addDir: brief.dir }),
       });

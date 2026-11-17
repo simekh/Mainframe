@@ -23,12 +23,12 @@ afterEach(() => {
 
 /**
  * The agents Mainframe found at start, as every open project shares them; change its fields to change what the next
- * start sees. Both agents are found and ticked, and Claude Code is the default.
+ * start sees. Every agent is found and ticked, and Claude Code is the default.
  */
 function fakeAgents() {
   return {
-    bins: { claude: 'claude', opencode: '/bin/opencode' } as Record<AgentName, string | null>,
-    on: ['claude', 'opencode'] as AgentName[],
+    bins: { claude: 'claude', opencode: '/bin/opencode', codex: '/bin/codex' } as Record<AgentName, string | null>,
+    on: ['claude', 'opencode', 'codex'] as AgentName[],
     default: 'claude' as AgentName,
     bin(name: AgentName) {
       return this.bins[name];
@@ -103,6 +103,9 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
 
 const NEW_TASK = { title: 'Fix login', description: 'Users get logged out', noQuestions: false };
 
+/** The folders an opening prompt is handed; Claude Code's worktree note names neither, so any will do. */
+const CLAUDE_FOLDERS = { projectDir: '/p', worktreePath: '/p/.claude/worktrees/fix-login' };
+
 it('start records the task, writes its hooks file and launches claude -w with the opening prompt', async () => {
   const { service, projectDir, readState, taskDir, changes } = setup();
   const view = await service.start(NEW_TASK);
@@ -141,7 +144,7 @@ it('start records the task, writes its hooks file and launches claude -w with th
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath,
-      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
+      prompt: openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false }),
     }),
   });
   expect(changes.at(-1)).toEqual([view]);
@@ -154,7 +157,7 @@ it('start trims the title and passes noQuestions on to the opening prompt', asyn
   expect(view.title).toBe('Fix login');
   expect(readState()[0].noQuestions).toBe(true);
   const prompt = service.launchSpec(view.session!.id).argv.at(-1);
-  expect(prompt).toBe(openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
+  expect(prompt).toBe(openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: true }));
 });
 
 /** Over 32,000 characters once quoted, as typed: with leading spaces and a trailing newline. */
@@ -171,6 +174,7 @@ function expectedStart(claudeSessionId: string, taskDir: string, description: st
     ...(brief && { addDir: brief.dir }),
     prompt: openingPrompt({
       agent: 'claude',
+      ...CLAUDE_FOLDERS,
       title: 'Fix login',
       description,
       branch: 'worktree-fix-login',
@@ -243,7 +247,7 @@ it("a task started from a card keeps it, shows it, and its launch carries the ca
   expect(service.list()[0].card).toEqual(CARD);
   expect(readState()[0].card).toEqual(CARD);
   expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -944,7 +948,7 @@ it('reopen of a task whose first launch never began a conversation starts one, w
       name: 'acme-fix-login',
       claudeSessionId: record.claudeSessionId,
       settingsPath: join(taskDir(view.id), 'settings.json'),
-      prompt: openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
+      prompt: openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: true }),
     }),
   );
 });
@@ -958,7 +962,7 @@ it('a reopen that must begin the conversation again keeps the card in its prompt
   const reopened = await service.reopen(view.id);
   expect(reopened.card).toEqual(CARD);
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
+    openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
 });
 
@@ -983,7 +987,7 @@ it('a task kept before its noQuestions was recorded reopens with the prompt that
   const service = make();
   const reopened = await service.reopen('old');
   expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
+    openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: '', branch: 'worktree-fix-login', noQuestions: false }),
   );
   expect(readState()[0]).not.toHaveProperty('noQuestions');
 });
@@ -1449,6 +1453,74 @@ it('a Claude task records no began', async () => {
   const view = await service.start(NEW_TASK);
   service.noteStatus(view.session!.id, 'working');
   expect(readState()[0]).not.toHaveProperty('began');
+});
+
+const CODEX_TASK = { ...NEW_TASK, agent: 'codex' as const };
+
+/** The opening prompt of a Codex task started from CODEX_TASK in `projectDir`. */
+const codexOpening = (projectDir: string) =>
+  openingPrompt({
+    agent: 'codex',
+    projectDir,
+    worktreePath: join(projectDir, '.mainframe', 'worktrees', 'fix-login'),
+    title: 'Fix login',
+    description: 'Users get logged out',
+    branch: 'worktree-fix-login',
+    noQuestions: false,
+  });
+
+it('a Codex task starts `codex <opening prompt>` in its own worktree under .mainframe/worktrees', async () => {
+  const { added, addWorktree } = recordingAdds();
+  const { service, projectDir, readState } = setup({ addWorktree });
+  const view = await service.start(CODEX_TASK);
+  const worktreePath = join(projectDir, '.mainframe', 'worktrees', 'fix-login');
+
+  expect(added).toEqual([[projectDir, worktreePath, 'worktree-fix-login', { create: true }]]);
+  expect(readState()[0].agent).toBe('codex');
+  expect(service.launchSpec(view.session!.id)).toEqual({ argv: ['/bin/codex', codexOpening(projectDir)], cwd: worktreePath });
+  expect(view.session).toMatchObject({ startedWithPrompt: true });
+});
+
+it('a Codex task that never reported a turn starts again with its opening prompt on reopen', async () => {
+  const { service, projectDir, readState } = setup();
+  const view = await service.start(CODEX_TASK);
+  // Codex was quit at its trust question or its sign-in screen: it never reported a turn.
+  service.noteStatus(view.session!.id, 'idle');
+  service.onSessionExit(view.session!.id);
+  expect(readState()[0]).not.toHaveProperty('began');
+
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id)).toEqual({
+    argv: ['/bin/codex', codexOpening(projectDir)],
+    cwd: join(projectDir, '.mainframe', 'worktrees', 'fix-login'),
+  });
+  expect(reopened.session).toMatchObject({ startedWithPrompt: true });
+});
+
+it('a Codex task that reported working reopens with `codex resume --last`', async () => {
+  const { service, make, projectDir, readState } = setup();
+  const view = await service.start(CODEX_TASK);
+  service.noteStatus(view.session!.id, 'working');
+  expect(readState()[0].began).toBe(true);
+  service.noteStatus(view.session!.id, 'done');
+  service.onSessionExit(view.session!.id);
+
+  const resumed = await service.reopen(view.id);
+  expect(service.launchSpec(resumed.session!.id)).toEqual({
+    argv: ['/bin/codex', 'resume', '--last'],
+    cwd: join(projectDir, '.mainframe', 'worktrees', 'fix-login'),
+  });
+  expect(resumed.session).toMatchObject({ startedWithPrompt: false });
+
+  // Quit mid-turn: the carry-on reopen resumes with the carry-on prompt.
+  service.noteStatus(resumed.session!.id, 'working');
+  service.beginQuit();
+  service.onSessionExit(resumed.session!.id);
+  const next = make();
+  await next.restore();
+  const [carriedOn] = next.list();
+  expect(next.launchSpec(carriedOn.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', RESUME_PROMPT]);
+  expect(carriedOn.session).toMatchObject({ startedWithPrompt: true });
 });
 
 it('an OpenCode start that meets a quit records the task, which begins with its brief at the next start', async () => {
@@ -2158,7 +2230,8 @@ it('Continue of a finished task whose chat is gone starts a new conversation wit
       claudeSessionId,
       settingsPath: join(t.taskDir(view.id), 'settings.json'),
       prompt: openingPrompt({
-        agent: 'claude', title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, continuing: true,
+        agent: 'claude',
+        ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, continuing: true,
       }),
     }),
   });
