@@ -1,6 +1,6 @@
 # Mainframe
 
-Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs), [OpenCode](https://opencode.ai) and [Codex](https://developers.openai.com/codex) sessions side by side, across your projects, in one window.
+Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs), [OpenCode](https://opencode.ai) and [Codex](https://learn.chatgpt.com/docs/codex/cli) sessions side by side, across your projects, in one window.
 
 - **A board of tasks.** Each task is a Claude Code, OpenCode or Codex session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's and Codex's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running. A fourth lane, **Done**, shows while there are running tasks whose work Mainframe found merged.
 - **A manager.** Each project has one agent session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
@@ -17,7 +17,7 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 |---|---|---|---|
 | [Node.js](https://nodejs.org/), the newest LTS (Claude Code's hooks run on it) | yes | yes | yes |
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
-| [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH, **or** [Codex](https://developers.openai.com/codex) 0.169 or later, logged in, from its installer or on PATH. At least one is needed, and you can have more than one | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`), Homebrew's cask or PATH | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe`. Codex: its installer (`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`) or PATH; not npm, see below | Claude Code: native installer or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`) or PATH |
+| [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH, **or** [Codex](https://learn.chatgpt.com/docs/codex/cli) 0.169 or later, logged in, from its installer or on PATH. At least one is needed, and you can have more than one | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`), Homebrew's cask or PATH | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe`. Codex: its installer (`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`) or PATH; not npm, see below | Claude Code: native installer or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`) or PATH |
 | A compiler, to install the packages | no | no | yes, see below |
 
 Each project you open must be a git repository.
