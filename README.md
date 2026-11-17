@@ -2,7 +2,7 @@
 
 Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) and [OpenCode](https://opencode.ai) sessions side by side, across your projects, in one window.
 
-- **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running.
+- **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running. A fourth lane, **Done**, shows while there are running tasks whose work Mainframe found merged.
 - **A manager.** Each project has one agent session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
 - **A Todo panel.** It reads your to-do list from your task tracker through a connector set up in your agent, so it works with any tracker you have one for: Trello, Linear, GitHub Issues and others. You start a task from a card.
 - **Several projects at once.** Show them one at a time, side by side, or in a grid. Quit ends every session, and the next start brings them back.
@@ -18,7 +18,7 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 | [Node.js](https://nodejs.org/), the newest LTS (Claude Code's hooks run on it) | yes | yes | yes |
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH. At least one is needed, and you can have both | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode` | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe` | Claude Code: native installer or npm. OpenCode: `opencode` |
-| A compiler for `npm install` | no | no | yes, see below |
+| A compiler, to install the packages | no | no | yes, see below |
 
 Each project you open must be a git repository.
 
@@ -34,9 +34,9 @@ Each task's files sit inside your project, under `.claude\worktrees\<name>\` (Cl
 git config --global core.longpaths true
 ```
 
-**On Linux**, `npm install` compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
+**On Linux**, installing the packages compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
 
-Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after an `npm install` that reinstalls Electron:
+Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after a `git pull` brings a new Electron:
 
 ```sh
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
@@ -45,14 +45,15 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 ## Run it
 
-The same four commands on every system, in a terminal (PowerShell on Windows):
+The same three commands on every system, in a terminal (PowerShell on Windows):
 
 ```sh
 git clone <this repo's URL> mainframe
 cd mainframe
-npm install
 npm start
 ```
+
+Each `npm start` (and `npm run dev`) runs `npm install` first: the first one installs Mainframe's packages, and later ones bring them up to date after a `git pull`, or take a moment when nothing changed.
 
 On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
 
@@ -95,7 +96,7 @@ A task whose session you close, or whose session ends, goes to **Paused** on the
 - **Put back** returns the task to the to-do list for later, and takes it off the board. A task you started from a note becomes a note again. For a task you started from a tracker card, its own agent moves the card back to your to-do list, the way your project's instructions say; if the card is not on the list at the next sync, the task stays Paused and its card says so. The worktree and branch stay as they are.
 - **Discard** gives the attempt up. A dialog first lists what would be lost: uncommitted and untracked files, and commits that are on neither the base nor any remote branch. On confirm, Mainframe removes the worktree and deletes the branch. A tracker card is left alone, so starting it again starts a fresh task.
 
-A task whose work is all merged leaves the board by itself for the **Finished** tab. Every few minutes, and whenever a session ends, Mainframe checks each Paused and put-back task: when its conversation began, its worktree has nothing uncommitted and its branch has commits of its own that are all in the base (the remote's default branch, or the main checkout's current branch when there is no remote), it removes the worktree and the branch and moves the task to Finished. Anything it can't prove safe stays put. A task whose session is still running is only marked **Merged**, with a **Finish** button that closes it and moves it the same way.
+A task whose work is all merged leaves the board by itself for the **Finished** tab. Every few minutes, and whenever a session ends or finishes its turn, Mainframe checks each Paused and put-back task: when its conversation began, its worktree has nothing uncommitted and its branch has commits of its own that are all in the base (the remote's default branch, or the main checkout's current branch when there is no remote), it removes the worktree and the branch and moves the task to Finished. Anything it can't prove safe stays put. A task whose session is still running moves to the **Done** lane once its turn is over, marked **Merged**, with a **Finish** button that closes it and moves it the same way. You can also ask the manager to close sessions for you, the Done ones or any you name: it closes a session as **Close session** does, so only merged work goes to Finished, and it leaves alone a session that is working or waiting for your answer.
 
 The Todo panel has two tabs, **To do** and **Finished**. Finished lists the project's finished and discarded tasks, newest first, with a search on the title and the card number.
 

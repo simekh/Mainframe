@@ -186,11 +186,12 @@ export const mcpConfigJson = (url: string, token: string): string =>
   JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } });
 
 /**
- * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, and a sync, whose
- * background run may use only the tools the owner confirmed. Starting a task goes through the owner's permission mode,
- * so the role prompt is not all that stands between the manager and a session.
+ * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, a sync, whose
+ * background run may use only the tools the owner confirmed, and a close, the owner's own Close session: it removes only a worktree whose work is all merged.
+ * Starting a task goes through the owner's permission mode, so the role prompt is not all that stands between the
+ * manager and a session.
  */
-const MANAGER_ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'];
+const MANAGER_ALLOWED_TOOLS = ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo', 'mcp__mainframe__close_session'];
 
 /** Writes the manager's settings.json and mcp.json into its folder, on every launch: the port and the token change with each run of the app. */
 async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
@@ -210,6 +211,7 @@ async function claudeManagerLaunch(o: ManagerLaunch): Promise<LaunchArgs> {
       rolePrompt: o.rolePrompt,
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   };
 }
 
@@ -256,6 +258,7 @@ export const claudeAgent: AgentAdapter = {
       ...(o.addDir && { addDir: o.addDir }),
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   }),
   taskReopen: (o) => ({
     argv: reopenArgv({
@@ -265,6 +268,7 @@ export const claudeAgent: AgentAdapter = {
       settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
       prompt: o.prompt,
     }),
+    answerStatusEarly: true,
   }),
   recordedSession: readRecordedSession,
   chatKept,

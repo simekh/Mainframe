@@ -72,7 +72,7 @@ export const styleOf = (page: Page, taskId: string, text: string) =>
 export const card = (page: Page, taskId: string) => page.locator(`[data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** The task's card, found only inside the given lane of the board. */
-export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'paused', taskId: string) =>
+export const cardIn = (page: Page, lane: 'needs-you' | 'working' | 'paused' | 'done', taskId: string) =>
   page.locator(`[data-testid=lane][data-lane=${lane}] [data-testid=task-card][data-task-id="${taskId}"]`);
 
 /** A project's pane, found by its folder. `JSON.stringify` quotes the folder, as a Windows path's backslashes need. */
@@ -407,7 +407,7 @@ export async function sendManagerLine(page: Page, line: string): Promise<void> {
 
 /** A JSON-RPC response of Mainframe's MCP server: the parts of `tools/list` and `tools/call` results the tests read. */
 interface McpResponse {
-  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }> };
+  result?: { tools?: Array<{ name: string }>; content?: Array<{ type: string; text: string }>; isError?: boolean };
 }
 
 /** Where Mainframe's MCP server is and the header that lets a client in, as a manager's config names them. */

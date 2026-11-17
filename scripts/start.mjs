@@ -24,8 +24,15 @@ function orNull(read) {
 }
 
 // Electron has no install script: it downloads its binary the first time it is required. electron-vite
-// and the sandbox helper below both need that binary on disk, so a fresh clone gets it here.
-require('electron');
+// and the sandbox helper below both need that binary on disk, so a fresh clone gets it here. It is missing
+// only when npm skipped the prestart/predev install (`ignore-scripts`, or another package manager).
+try {
+  require('electron');
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND') throw error;
+  console.error("Mainframe's packages aren't installed. Run `npm install`, then start it again.");
+  process.exit(1);
+}
 
 const restriction = orNull(() => readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8'));
 const helper = orNull(() => {

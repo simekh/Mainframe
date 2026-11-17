@@ -18,6 +18,12 @@ const FOLDER_LEFT = 'Delete the folder git left behind, then Discard:';
 /** How often each open project checks its tasks for ones with nothing to lose, besides at each session's end. */
 export const FINISH_CHECK_MS = 3 * 60_000;
 
+/** Where a task with no session is, as the manager is told it. */
+const WHERE: Record<TaskPlace | 'board', string> = { board: 'paused', putBack: 'put back', finished: 'finished', discarded: 'discarded' };
+
+/** What a session in a turn is doing, as the manager is told it; any other session whose turn is not over is starting. */
+const IN_TURN: Partial<Record<ProgramState, string>> = { working: 'working', blocked: "waiting for the owner's answer" };
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -60,6 +66,8 @@ export interface SessionReport {
   state: ProgramState | null;
   /** The `msg` of that report; null when it had none. */
   msg: string | null;
+  /** A running task the last round found had nothing to lose: its card is in the board's Done lane. */
+  merged: boolean;
   /** The card the task was started from; null for a task that has none. */
   card: Pick<TaskCardRef, 'number' | 'url'> | null;
   /** What kind of id `claudeSessionId` is. */
@@ -150,6 +158,7 @@ export class TaskService {
         running: running !== undefined,
         state: status?.state ?? null,
         msg: status?.msg ?? null,
+        merged: this.merged.has(task.id),
         card: task.card ? { number: task.card.number, url: task.card.url } : null,
         agent: agentOf(task),
       };
@@ -523,6 +532,27 @@ export class TaskService {
     this.deps.kill(running.id);
   }
 
+  /**
+   * Closes the task's session as `close` does, for the manager: only once its turn is over, as Mainframe finds it now
+   * and not as a list read a moment ago said. Says what it closed; throws, with a sentence the manager passes on, when
+   * the task has no session, is being put back, or its session is ending, in a turn or still starting.
+   */
+  closeWhenTurnOver(taskId: string): { title: string; msg: string | null; merged: boolean } {
+    const task = this.find(taskId);
+    this.refuseWhilePuttingBack(task);
+    const running = this.sessionOf(taskId);
+    if (!running) throw new Error(`${task.title} has no session running: it is ${WHERE[task.place ?? 'board']}.`);
+    if (running.turn.ending) throw new Error(`${task.title}'s session is already closing.`);
+    const status = this.deps.status(running.id);
+    if (!running.turn.over(running.startedWithPrompt)) {
+      const what = (status && IN_TURN[status.state]) ?? 'still starting';
+      throw new Error(`${task.title}'s session is ${what}; it can be closed once its turn is over.`);
+    }
+    const closed = { title: task.title, msg: status?.msg ?? null, merged: this.merged.has(task.id) };
+    this.close(taskId);
+    return closed;
+  }
+
   /** The sessions it runs: one per open task. */
   sessionIds(): string[] {
     return [...this.sessions.keys()];
@@ -538,9 +568,12 @@ export class TaskService {
   noteStatus(sessionId: string, state: ProgramState | null): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    const wasOver = session.turn.over(session.startedWithPrompt);
     session.turn.note(state);
     const task = this.find(session.taskId);
     this.lookForWorktree(session, task);
+    // New work may land on a merged branch: the card leaves Done until a round proves it again.
+    if (inTurn(state) && this.merged.delete(task.id)) this.deps.onChange(this.list());
     if (ADAPTERS[agentOf(task)].tracksBegan && !task.began && inTurn(state)) {
       task.began = true;
       // Saved, not sent: nothing the window shows has changed.
@@ -554,6 +587,9 @@ export class TaskService {
       } else if (state === 'done' || (state === 'idle' && session.putBack.worked)) {
         this.close(task.id);
       }
+    } else if (!wasOver && session.turn.over(session.startedWithPrompt)) {
+      // A turn's end is when a running task may have been merged: its card goes to Done without waiting for the timer.
+      void this.checkRound();
     }
   }
 
@@ -631,9 +667,12 @@ export class TaskService {
     // Where the round found it: a move meanwhile (Discard, Put back) is not overwritten.
     const place = task.place;
     const passed = (await this.nothingToLose(task)) !== null;
-    if (this.sessionOf(task.id)) {
-      if (passed === this.merged.has(task.id)) return;
-      if (passed) this.merged.add(task.id);
+    const running = this.sessionOf(task.id);
+    if (running) {
+      // A session that went back to work while git was read may be adding to the branch: the next turn's end proves it.
+      const mark = passed && !inTurn(this.deps.status(running.id)?.state ?? null);
+      if (mark === this.merged.has(task.id)) return;
+      if (mark) this.merged.add(task.id);
       else this.merged.delete(task.id);
       this.deps.onChange(this.list());
       return;
