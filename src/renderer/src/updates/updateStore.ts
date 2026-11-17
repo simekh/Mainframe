@@ -19,8 +19,19 @@ export const showUpdateDialog = (result: CheckResult = { kind: 'available' }) =>
 
 window.mainframe.onUpdate(setView);
 
-/** Runs a check, as Check for Updates… does, and shows what it found. */
-export const checkNow = (): Promise<void> => window.mainframe.checkForUpdates().then(showUpdateDialog);
+/**
+ * Runs a check, as Check for Updates… does, and shows what it found. A release found is read into the view first, so
+ * the dialog never says up to date while main knows one; a check that can't run shows why.
+ */
+export async function checkNow(): Promise<void> {
+  try {
+    const result = await window.mainframe.checkForUpdates();
+    if (result.kind === 'available') setView(await window.mainframe.getUpdate());
+    showUpdateDialog(result);
+  } catch (err) {
+    showUpdateDialog({ kind: 'failed', why: errorMessage(err) });
+  }
+}
 
 window.mainframe.onCheckForUpdates(() => void checkNow());
 

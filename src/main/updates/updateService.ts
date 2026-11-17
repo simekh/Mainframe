@@ -73,13 +73,14 @@ export class UpdateService {
   async install(): Promise<void> {
     const { available, source } = this;
     if (!available || !source) throw new Error('There is no update to install.');
-    const { launcherFile } = this.deps;
     const how = await this.how(source);
-    if (how.kind === 'by-hand' || launcherFile === undefined) {
+    // how() is by hand without a launcher file; the check only narrows its type.
+    const file = this.deps.launcherFile;
+    if (how.kind === 'by-hand' || !file) {
       this.show({ ...available, how }, source);
       throw new Error('This update has to be made by hand.');
     }
-    await writeFile(launcherFile, source.tag);
+    await writeFile(file, source.tag);
     this.deps.requestQuit();
   }
 
