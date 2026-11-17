@@ -730,6 +730,9 @@ it('taskGitState keeps a commit with an empty subject among the unsaved ones', a
 it('taskGitState rejects when it cannot read the worktree, rather than reporting nothing to lose', async () => {
   const { main } = repo();
   const { branch, wt } = taskBranch(main);
+  // Replaced, not overwritten: Git for Windows hides the worktree's .git file, and Windows refuses to
+  // overwrite a hidden file (EPERM).
+  rmSync(join(wt, '.git'));
   writeFileSync(join(wt, '.git'), 'garbage\n');
   await expect(taskGitState(main, branch, wt)).rejects.toThrow();
 });
