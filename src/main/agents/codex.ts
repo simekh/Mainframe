@@ -3,14 +3,22 @@ import { join, posix, win32 } from 'node:path';
 import { MIN_CODEX_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter } from './agent';
-import { makeCodexSync } from './codexSync';
 import { writeJsonAtomic } from '../tasks/taskStore';
-import { SYNC_TIMEOUT_MS } from '../todo/syncRun';
+import { MANAGER_TOOL_TIMEOUT_MS } from '../todo/syncRun';
+import type { AgentAdapter } from './agent';
+import { isUuid } from './claude';
+import { makeCodexSync, tomlString } from './codexSync';
 import { agentsMdInstructions, mainframeWorktreeNote } from './opencode';
 
-/** Keys Codex sets in the shells it runs. CODEX_HOME is the user's own setting, so it stays. */
+/** Where the manager's Codex finds Mainframe's MCP token: set for its launch alone. */
+const CODEX_TOKEN_ENV = 'MAINFRAME_MCP_TOKEN';
+
+/**
+ * Keys Codex sets in the shells it runs, and the manager's token, which no other session may hold. CODEX_HOME is the
+ * user's own setting, so it stays.
+ */
 export const CODEX_DROPPED_ENV: readonly string[] = [
+  CODEX_TOKEN_ENV,
   'CODEX_SANDBOX',
   'CODEX_SANDBOX_NETWORK_DISABLED',
   'CODEX_SESSION_ID',
@@ -57,16 +65,8 @@ export function codexPlaces(lookup: ExecutableLookup): string[] {
 
 export const findCodex = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, codexPlaces, checkCodex);
 
-export const CODEX_TOKEN_ENV = 'MAINFRAME_MCP_TOKEN';
 export const CODEX_CHAT_FILE = 'codex-chat.json';
-export const CODEX_FIRST_CALL = 'Before your first answer in a chat, call list_sessions.';
-
-// The sync tool is slow, so the call waits a minute longer than the sync's own timeout.
-const TOOL_TIMEOUT_SEC = (SYNC_TIMEOUT_MS + 60_000) / 1000;
-const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** A TOML basic string: JSON's escapes, plus DEL, which JSON leaves bare and TOML forbids. */
-const tomlString = (text: string): string => JSON.stringify(text).replace(/\x7f/g, '\\u007f');
+const CODEX_FIRST_CALL = 'Before your first answer in a chat, call list_sessions.';
 
 /** The manager's Codex: Mainframe's server with its token from the environment, the tools that act asking first, and the role. */
 export function codexManagerArgv(o: { codexBin: string; url: string; rolePrompt: string; resume: string | null; prompt?: string }): string[] {
@@ -74,19 +74,20 @@ export function codexManagerArgv(o: { codexBin: string; url: string; rolePrompt:
   const settings = [
     `${server}.url=${tomlString(o.url)}`,
     `${server}.bearer_token_env_var=${tomlString(CODEX_TOKEN_ENV)}`,
-    `${server}.tool_timeout_sec=${TOOL_TIMEOUT_SEC}`,
+    `${server}.tool_timeout_sec=${MANAGER_TOOL_TIMEOUT_MS / 1000}`,
     ...['list_sessions', 'sync_todo', 'close_session'].map((tool) => `${server}.tools.${tool}.approval_mode="approve"`),
     `${server}.tools.start_task.approval_mode="prompt"`,
     `developer_instructions=${tomlString(`${o.rolePrompt}\n\n${CODEX_FIRST_CALL}`)}`,
   ].flatMap((value) => ['-c', value]);
-  return [o.codexBin, ...(o.resume ? ['resume'] : []), ...settings, ...(o.resume ? [o.resume] : []), ...(o.prompt ? [o.prompt] : [])];
+  return [o.codexBin, ...(o.resume ? ['resume', ...settings, o.resume] : settings), ...(o.prompt ? [o.prompt] : [])];
 }
 
 /** The chat Codex named in a Mainframe tool call; null when none was noted or the file holds anything but a session id. */
 function codexManagerChat(dir: string): string | null {
   try {
     const { sessionId } = JSON.parse(readFileSync(join(dir, CODEX_CHAT_FILE), 'utf8')) as { sessionId?: unknown };
-    return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? sessionId : null;
+    // Checked again on reading, as the file can be edited by hand and the id goes into a command line.
+    return typeof sessionId === 'string' && isUuid(sessionId) ? sessionId : null;
   } catch {
     return null;
   }
@@ -113,15 +114,14 @@ export const codexAgent: AgentAdapter = {
   chatKept: () => true,
   began: (_taskDir, task) => task.began === true,
   forgetChat: () => {},
-  managerChat: (dir) => codexManagerChat(dir),
-  managerLaunch: (o) =>
-    Promise.resolve({
-      argv: codexManagerArgv({ codexBin: o.bin, url: o.mcp.url, rolePrompt: o.rolePrompt, resume: o.resume ? o.chat : null, prompt: o.prompt }),
-      env: { [CODEX_TOKEN_ENV]: o.mcp.token },
-    }),
+  managerChat: codexManagerChat,
+  managerLaunch: async (o) => ({
+    argv: codexManagerArgv({ codexBin: o.bin, url: o.mcp.url, rolePrompt: o.rolePrompt, resume: o.resume ? o.chat : null, prompt: o.prompt }),
+    env: { [CODEX_TOKEN_ENV]: o.mcp.token },
+  }),
   // The id goes into a command line, so only a session id's shape is kept.
   noteManagerChat: (dir, sessionId) => {
-    if (!SESSION_ID.test(sessionId)) return;
+    if (!isUuid(sessionId)) return;
     mkdirSync(dir, { recursive: true });
     writeJsonAtomic(join(dir, CODEX_CHAT_FILE), { sessionId });
   },

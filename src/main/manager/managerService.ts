@@ -51,6 +51,8 @@ interface Session {
   resumed: boolean;
   /** It has reported a state: its chat is one the agent still has. */
   reported: boolean;
+  /** The chat id last kept from its tool calls, so a call naming the same chat writes nothing. */
+  noted?: string;
 }
 
 export class ManagerService {
@@ -148,11 +150,13 @@ export class ManagerService {
 
   /** A tool call of the running manager, as its agent names its chat: kept, so the next start resumes it. Never throws into the call. */
   noteToolCall(sessionId: string): void {
-    if (!this.session) return;
+    const session = this.session;
+    if (!session || session.noted === sessionId) return;
     try {
-      this.session.adapter.noteManagerChat?.(this.dir, sessionId);
+      session.adapter.noteManagerChat?.(this.dir, sessionId);
+      session.noted = sessionId;
     } catch (err) {
-      this.warn(`Could not keep the manager's chat ${sessionId} (${String(err)}); the next start begins a new one`);
+      this.warn(`Could not keep the manager's chat ${sessionId} (${String(err)}); the next start may not resume it`);
     }
   }
 

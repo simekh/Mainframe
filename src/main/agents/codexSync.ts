@@ -53,7 +53,7 @@ export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
   if (failed) throw new Error(`The sync run failed: ${failed.error?.message ?? failed.message ?? 'unknown error'}`);
   for (const { type, item } of all) {
     if (type !== 'item.completed' || item?.type !== 'mcp_tool_call' || item.status !== 'completed') continue;
-    const name = `mcp__${codexNamespace(String(item.server))}__${String(item.tool)}`;
+    const name = `mcp__${codexNamespace(`${item.server}`)}__${item.tool}`;
     if (!tools.includes(name)) throw new Error(`The sync used a tool that wasn't allowed: ${name}`);
   }
   const text = all.findLast((e) => e.type === 'item.completed' && e.item?.type === 'agent_message')?.item?.text;
@@ -72,30 +72,38 @@ export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
 /** Codex's `-c` takes TOML, and a dotted name can't be addressed by it: only these characters pass. */
 const passable = (name: string): boolean => /^[A-Za-z0-9_-]+$/.test(name);
 
+/** The servers' names from what `mcp list --json` printed; throws saying what was wrong with it. */
+function serverNames(stdout: string): string[] {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(stdout);
+  } catch {
+    // Not JSON.parse's own message, which quotes the output.
+    throw new Error('its answer was not JSON');
+  }
+  if (!Array.isArray(rows)) throw new Error('its answer held no list of servers');
+  return rows.map((row) => {
+    const name = isNode(row) ? row.name : undefined;
+    if (typeof name !== 'string') throw new Error('a server in its answer had no name');
+    return name;
+  });
+}
+
 /** The names of the MCP servers Codex has for the project: `mcp list` reads the project's config from where it runs. */
 export async function listCodexServers(o: { bin: string; projectDir: string; env: Record<string, string>; run?: Run }): Promise<string[]> {
   const { bin, projectDir, env, run = runCodex } = o;
   try {
-    const stdout = await run([bin, 'mcp', 'list', '--json'], { cwd: projectDir, env });
-    let rows: unknown;
-    try {
-      rows = JSON.parse(stdout);
-    } catch {
-      // Not JSON.parse's own message, which quotes the output.
-      throw new Error('its answer was not JSON');
-    }
-    if (!Array.isArray(rows)) throw new Error('its answer held no list of servers');
-    return rows.map((row) => {
-      const name = isNode(row) ? row.name : undefined;
-      if (typeof name !== 'string') throw new Error('a server in its answer had no name');
-      return name;
-    });
+    return serverNames(await run([bin, 'mcp', 'list', '--json'], { cwd: projectDir, env }));
   } catch (err) {
     throw new Error(`Codex could not list its MCP servers: ${(err as Error).message}`);
   }
 }
 
-const toml = (key: string, value: string | string[]): string => `${key}=${JSON.stringify(value)}`;
+/** A TOML basic string: JSON's escapes, plus DEL, which JSON leaves bare and TOML forbids. */
+export const tomlString = (text: string): string => JSON.stringify(text).replace(/\x7f/g, '\\u007f');
+
+const toml = (key: string, value: string | string[]): string =>
+  `${key}=${typeof value === 'string' ? tomlString(value) : `[${value.map(tomlString).join(',')}]`}`;
 
 /**
  * The run's `-c` values. Its own tools that act are switched off. Discover sees every server, but a call to any tool
@@ -107,8 +115,8 @@ export function codexSyncConfig(step: SyncStep, tools: string[], servers: string
     if (!passable(server)) throw new Error(`Codex's MCP server "${server}" has a name Mainframe can't pass to Codex`);
   }
   const allowedOf = new Map<string, string[]>();
+  const prefixOf = (s: string) => `mcp__${codexNamespace(s)}__`;
   for (const name of step.kind === 'read' ? tools : []) {
-    const prefixOf = (s: string) => `mcp__${codexNamespace(s)}__`;
     const owners = servers.filter((s) => name.startsWith(prefixOf(s)));
     if (owners.length !== 1) throw new Error(`Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`);
     const tool = name.slice(prefixOf(owners[0]).length);

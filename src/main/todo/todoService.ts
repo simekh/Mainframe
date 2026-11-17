@@ -383,7 +383,7 @@ export class TodoService {
       return () => clearTimeout(id);
     });
     const running = waiting ?? this.begin(cancel);
-    running.cancel = cancel;
+    if (waiting) waiting.cancel = cancel;
     running.stopTimer = setTimer(() => {
       if (this.running !== running) return;
       running.long = true;

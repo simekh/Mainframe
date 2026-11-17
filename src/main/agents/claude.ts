@@ -3,7 +3,7 @@ import { join, posix, win32 } from 'node:path';
 import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
-import { SYNC_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
+import { MANAGER_TOOL_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, SyncWords } from './agent';
 import { chatKept, readResumableSession } from './claudeChat';
 import { isMcpToolName, prepareClaudeSync, readSyncAnswer } from './claudeSync';
@@ -178,12 +178,9 @@ export function readRecordedSession(dir: string): string | null {
   return readRecordedStart(dir)?.id ?? null;
 }
 
-/** How long `claude` waits on one of Mainframe's MCP tools, in ms: a minute past the sync run's time limit, which `sync_todo` waits out. */
-const TOOL_TIMEOUT_MS = SYNC_TIMEOUT_MS + 60_000;
-
 /** The `--mcp-config` entry that has `claude` call Mainframe's MCP server, as `mainframe`. */
 export const mcpConfigJson = (url: string, token: string): string =>
-  JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: TOOL_TIMEOUT_MS } } });
+  JSON.stringify({ mcpServers: { mainframe: { type: 'http', url, headers: { Authorization: `Bearer ${token}` }, timeout: MANAGER_TOOL_TIMEOUT_MS } } });
 
 /**
  * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, a sync, whose

@@ -496,6 +496,16 @@ it("a Codex manager resumes the chat Codex named in a tool call, and starts a ne
   expect(resumes(t, second)).toBe(true);
 });
 
+it('a later tool call naming the same chat writes nothing; one naming another chat keeps that one', async () => {
+  const t = setup();
+  const noted: string[] = [];
+  t.use({ ...CODEX, adapter: { ...ADAPTERS.codex, noteManagerChat: (_dir, id) => noted.push(id) } });
+  await t.service.start();
+  const other = '22222222-2222-4222-8222-222222222222';
+  for (const id of [U2, U2, other, other]) t.service.noteToolCall(id);
+  expect(noted).toEqual([U2, other]);
+});
+
 it('a resumed Codex manager that exits without a report forgets the chat; one that reported keeps it', async () => {
   const t = setup();
   t.use(CODEX);

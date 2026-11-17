@@ -6,6 +6,9 @@ import type { SyncWords } from '../agents/agent';
 /** A sync run is stopped after this long. */
 export const SYNC_TIMEOUT_MS = 5 * 60_000;
 
+/** How long the manager's agent waits on one of Mainframe's MCP tools: a minute past a sync's limit, which `sync_todo` waits out. */
+export const MANAGER_TOOL_TIMEOUT_MS = SYNC_TIMEOUT_MS + 60_000;
+
 /** After this long a running sync says it is still going and may use a lot of tokens. */
 export const LONG_SYNC_MS = 2 * 60_000;
 

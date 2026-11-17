@@ -54,14 +54,12 @@ export function jsonLines<T extends object>(stdout: string): T[] {
   });
 }
 
-const events = (stdout: string): Event[] => jsonLines<Event>(stdout);
-
 /**
  * The run's answer from its JSON events: the text of the message that stopped, checked against SYNC_ANSWER. A run
  * that failed, or that completed a tool outside `tools`, has no answer. Throws an Error whose message is for the panel.
  */
 export function readOpencodeAnswer(stdout: string, tools: string[]): SyncAnswer {
-  const all = events(stdout);
+  const all = jsonLines<Event>(stdout);
   const failed = all.find((e) => e.type === 'error');
   if (failed) throw new Error(`The sync run failed: ${failed.error?.message ?? failed.error?.type ?? 'unknown error'}`);
   for (const e of all) {
@@ -182,7 +180,7 @@ export function makeOpencodeSync({ run, instructions }: { run: typeof runOpencod
     isToolName: isOpencodeToolName,
     // Every run is saved as a session; `--archived` keeps it out of the user's lists until it is gone.
     afterRun: ({ bin, dir, env, stdout }) => {
-      const id = events(stdout).find((e) => typeof e.sessionID === 'string')?.sessionID;
+      const id = jsonLines<Event>(stdout).find((e) => typeof e.sessionID === 'string')?.sessionID;
       if (id === undefined) return;
       const runDir = runDirOf(dir);
       // `session delete` takes its folder from PWD, as `run` does.
