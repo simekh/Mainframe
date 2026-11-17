@@ -144,3 +144,4 @@ Codex reads `AGENTS.md` by itself, but a `CLAUDE.md` only when the user's Codex 
 - The next branch: the manager and the Todo sync on Codex.
 - Commands an agent leaves running when its terminal closes: check Claude Code and OpenCode, then fix it once for all.
 - Codex through npm on Windows (`codex.cmd`): run the native `codex.exe` from the npm package, if friends ask for it.
+- README: Codex in the agent lists, MAINFRAME_CODEX_BIN in the env table, Codex's .mainframe/worktrees, the CLAUDE.md config note, and that npm's codex.cmd isn't used on Windows. Written in the manager-and-sync branch, before any push.

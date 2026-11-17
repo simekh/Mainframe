@@ -3326,7 +3326,7 @@ kbd {
   font-size: 12px;
 }
 
-/* The agent pick: two quiet radios on one line, set like the checkbox below them. */
+/* The agent pick: quiet radios on one line, set like the checkbox below them. */
 .nt-agents {
   display: flex;
   gap: 18px;

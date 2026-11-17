@@ -211,10 +211,15 @@ function agentsBlock(view: SetupView, platform: NodeJS.Platform): Explanation | 
   if (someAgentWorks(view)) return null;
   const failing = AGENT_ORDER.filter((name) => view.agents[name].check.state !== 'found');
   const off = AGENT_ORDER.filter((name) => works(view, name));
+  const offNames = off.map((name) => AGENT_NAMES[name]);
   const lines = [
     off.length === 0
       ? NO_AGENT
-      : `I couldn't use the coding agent that's switched on. ${AGENT_NAMES[off[0]]} is here, but it's switched off: I can use it instead.`,
+      : `I couldn't use the coding agent that's switched on. ${
+          off.length === 1
+            ? `${offNames[0]} is here, but it's switched off: I can use it instead.`
+            : `${offNames.slice(0, -1).join(', ')} and ${offNames.at(-1)} are here, but switched off: I can use one of them instead.`
+        }`,
     ...AGENT_ORDER.flatMap((name) => {
       const { check, fromEnv } = view.agents[name];
       return check.state === 'found' ? [] : agentReason(name, check, fromEnv, platform);

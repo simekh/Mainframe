@@ -15,6 +15,11 @@ describe('newTaskAgents', () => {
     expect(newTaskAgents(view({}, {}, 'opencode'))).toEqual({ options: ['claude', 'opencode'], start: 'opencode', hints: [] });
   });
 
+  it('offers a ticked, found Codex after OpenCode', () => {
+    const all: SettingsView = { ...view({}, {}), agents: { claude: found, opencode: found, codex: found } };
+    expect(newTaskAgents(all)).toEqual({ options: ['claude', 'opencode', 'codex'], start: 'claude', hints: [] });
+  });
+
   it('leaves out an unticked agent without a hint', () => {
     expect(newTaskAgents(view({}, { ticked: false }))).toEqual({ options: ['claude'], start: 'claude', hints: [] });
   });

@@ -23,6 +23,15 @@ describe('defaultChoice', () => {
     ]);
   });
 
+  it('offers a ticked, found Codex after OpenCode', () => {
+    const base = view({ claude: [found, true], opencode: [found, true], defaultAgent: 'claude', runDefault: 'claude' });
+    expect(defaultChoice({ ...base, agents: { ...base.agents, codex: { check: found, fromEnv: false, ticked: true } } })).toEqual([
+      { name: 'claude', works: true },
+      { name: 'opencode', works: true },
+      { name: 'codex', works: true },
+    ]);
+  });
+
   it('offers nothing while one ticked agent works and it is the saved default', () => {
     expect(defaultChoice(view({ claude: [found, true], opencode: [found, false], defaultAgent: 'claude', runDefault: 'claude' }))).toEqual([]);
     expect(defaultChoice(view({ claude: [missing, false], opencode: [found, true], defaultAgent: 'opencode', runDefault: 'opencode' }))).toEqual([]);

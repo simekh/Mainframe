@@ -331,6 +331,26 @@ describe('explanations', () => {
         },
       ]);
     });
+
+    it('names every agent switched off, with a Use button for each', () => {
+      const twoOff: Over = {
+        claude: missing,
+        opencode: found('/o', '2.2.7'),
+        codex: found('/x', MIN_CODEX_VERSION),
+        ticked: { claude: true, opencode: false, codex: false },
+      };
+      expect(blocks(twoOff)).toEqual([
+        {
+          check: 'agents',
+          lines: [
+            "I couldn't use the coding agent that's switched on. OpenCode and Codex are here, but switched off: I can use one of them instead.",
+            CLAUDE_NOWHERE,
+            ASK,
+          ],
+          buttons: ['use-opencode', 'use-codex', 'find-claude', 'install-claude', 'look-again'],
+        },
+      ]);
+    });
   });
 
   describe('looked again', () => {

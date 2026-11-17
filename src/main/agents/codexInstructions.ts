@@ -9,14 +9,24 @@ type Run = (argv: string[], o: { cwd: string; env: Record<string, string> }) => 
 
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const AGENTS_MD_HEADING = '# AGENTS.md instructions for ';
+const ENVIRONMENT_CONTEXT = '<environment_context>';
+
+/** The texts of the user messages' `input_text` parts, skipping anything not in that shape. */
+const userTexts = (items: unknown[]): string[] =>
+  items.flatMap((item) => {
+    const { type, role, content } = (item ?? {}) as { type?: unknown; role?: unknown; content?: unknown };
+    if (type !== 'message' || role !== 'user' || !Array.isArray(content)) return [];
+    return content.flatMap((part) => (part?.type === 'input_text' && typeof part.text === 'string' ? [part.text as string] : []));
+  });
 
 /** Runs codex with no shell and resolves with stdout. What it prints holds the project's instructions, so it is never logged. */
 const runCodex: Run = async ([file, ...args], o) =>
   (await execFileAsync(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: 10_000, maxBuffer: MAX_OUTPUT })).stdout;
 
 /**
- * True when the project has a CLAUDE.md but no AGENTS.md and Codex, asked offline what it would send, loads no
- * AGENTS.md instructions: the user's Codex config doesn't list CLAUDE.md. Any doubt (Codex failing, odd output) is false.
+ * True when the project has a CLAUDE.md but no AGENTS.md and Codex, asked offline what it would send, prints its
+ * environment context but no AGENTS.md instructions: the user's Codex config doesn't list CLAUDE.md. Any doubt (Codex
+ * failing, output without the environment context) is false: a wrong note is worse than none.
  */
 export async function codexMissesClaudeMd(o: { bin: string; projectDir: string; env: Record<string, string>; run?: Run }): Promise<boolean> {
   const { bin, projectDir, env, run = runCodex } = o;
@@ -24,10 +34,8 @@ export async function codexMissesClaudeMd(o: { bin: string; projectDir: string; 
   try {
     const items: unknown = JSON.parse(await run([bin, 'debug', 'prompt-input'], { cwd: projectDir, env }));
     if (!Array.isArray(items)) return false;
-    return !items.some((item) => {
-      const { type, role, content } = (item ?? {}) as { type?: unknown; role?: unknown; content?: unknown };
-      return type === 'message' && role === 'user' && Array.isArray(content) && content.some((part) => part?.type === 'input_text' && typeof part.text === 'string' && part.text.startsWith(AGENTS_MD_HEADING));
-    });
+    const texts = userTexts(items);
+    return texts.some((text) => text.startsWith(ENVIRONMENT_CONTEXT)) && !texts.some((text) => text.startsWith(AGENTS_MD_HEADING));
   } catch {
     return false;
   }

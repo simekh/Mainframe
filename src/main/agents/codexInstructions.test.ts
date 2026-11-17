@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexConfigFile, codexMissesClaudeMd } from './codexInstructions';
 
-const loaded = JSON.stringify([{ type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions for /p\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>' }] }]);
-const notLoaded = JSON.stringify([{ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>…' }] }]);
+const environment = { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>…' }] };
+const heading = { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions for /p\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>' }] };
+const loaded = JSON.stringify([heading, environment]);
+const notLoaded = JSON.stringify([environment]);
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -38,12 +40,18 @@ describe('codexMissesClaudeMd', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('codex failing, printing non-JSON, or printing an object counts as not missed', async () => {
+  it('the AGENTS.md heading anywhere in the prompt input means it is not missed', async () => {
+    await expect(check(project('CLAUDE.md'), async () => JSON.stringify([environment, heading]))).resolves.toBe(false);
+  });
+
+  it('codex failing, printing non-JSON, an object, or a list without its environment context counts as not missed', async () => {
     const dir = project('CLAUDE.md');
     await expect(check(dir, async () => Promise.reject(new Error('exit 1')))).resolves.toBe(false);
     await expect(check(dir, async () => 'oops')).resolves.toBe(false);
     await expect(check(dir, async () => '{}')).resolves.toBe(false);
-    await expect(check(dir, async () => '[null, 3, {"type":"message","role":"user","content":[null]}]')).resolves.toBe(true);
+    await expect(check(dir, async () => '[]')).resolves.toBe(false);
+    await expect(check(dir, async () => '[null, 3, {"type":"message","role":"user","content":[null]}]')).resolves.toBe(false);
+    await expect(check(dir, async () => JSON.stringify([{ ...environment, role: 'developer' }]))).resolves.toBe(false);
   });
 
   it('codex runs as `<bin> debug prompt-input` in the project folder', async () => {

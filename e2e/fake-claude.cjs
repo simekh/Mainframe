@@ -94,12 +94,13 @@ function addWorktree() {
 }
 
 /**
- * `codex debug prompt-input`: prints codex-prompt-input.json from the log folder when the test wrote one, else an empty
- * list, which loads no AGENTS.md instructions.
+ * `codex debug prompt-input`: prints codex-prompt-input.json from the log folder when the test wrote one, else only
+ * the environment context, which loads no AGENTS.md instructions.
  */
 function promptInputItems() {
   const file = logDir && join(logDir, 'codex-prompt-input.json');
-  process.stdout.write(file && existsSync(file) ? readFileSync(file) : '[]');
+  const environment = [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n</environment_context>' }] }];
+  process.stdout.write(file && existsSync(file) ? readFileSync(file) : JSON.stringify(environment));
 }
 
 /**

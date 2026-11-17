@@ -60,14 +60,14 @@ test("the New task box says when Codex won't read the project's CLAUDE.md", asyn
   // Codex's config folder of the test's own, so the note names no file on the machine running it.
   const codexHome = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-codex-home-')));
   const { app, page, dataDir } = await launchWithCodex(main, { CODEX_HOME: codexHome });
+  // The fake codex prints only the environment context until the test writes this file.
   const promptInput = join(fakeLogDir(dataDir), 'codex-prompt-input.json');
-  writeFileSync(promptInput, '[]');
 
   await page.getByTestId('new-task').click();
   await expect(page.getByTestId('new-task-codex-note')).toHaveCount(0);
   await page.getByTestId('new-task-agent-codex').check();
   const note = page.getByTestId('new-task-codex-note');
-  await expect(note).toContainText(`Codex won't read this project's CLAUDE.md. Add this line at the top of ${join(codexHome, 'config.toml')}, then start the task:`);
+  await expect(note).toContainText(`Codex won't read this project's CLAUDE.md. Add this line at the top of ${join(codexHome, 'config.toml')} (or, if the file already has project_doc_fallback_filenames, add "CLAUDE.md" to that list), then start the task:`);
   await expect(note).toContainText('project_doc_fallback_filenames = ["CLAUDE.md"]');
   await expect(page.getByTestId('new-task-codex-note-copy')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -75,7 +75,8 @@ test("the New task box says when Codex won't read the project's CLAUDE.md", asyn
 
   // Codex loads the project's instructions now, as after the line was added.
   const loaded = { type: 'message', role: 'user', content: [{ type: 'input_text', text: `# AGENTS.md instructions for ${main}\n\n# Rules\n` }] };
-  writeFileSync(promptInput, JSON.stringify([loaded]));
+  const environment = { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n</environment_context>' }] };
+  writeFileSync(promptInput, JSON.stringify([loaded, environment]));
   // Main's answer first: an absent note alone would pass while the box is still asking.
   expect(await page.evaluate((d) => window.mainframe.codexClaudeMdNote(d), main)).toBeNull();
   await page.getByTestId('new-task').click();

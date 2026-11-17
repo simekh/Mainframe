@@ -23,7 +23,7 @@ const press: Record<SetupButton, () => void> = {
   'find-codex': () => void findAgent('codex'),
   'install-claude': () => openLinkLogged('https://code.claude.com/docs/en/setup', 'setup'),
   'install-opencode': () => openLinkLogged('https://opencode.ai/', 'setup'),
-  'install-codex': () => openLinkLogged('https://developers.openai.com/codex/cli', 'setup'),
+  'install-codex': () => openLinkLogged('https://learn.chatgpt.com/docs/codex/cli', 'setup'),
   'install-git': () => openLinkLogged('https://git-scm.com/downloads', 'setup'),
   'look-again': () => void lookAgain(),
   'choose-project': () => void chooseProject(),
