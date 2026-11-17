@@ -1,11 +1,29 @@
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
+import type { AppSettings } from '../src/main/setup/settings';
 import { cleanUp, fakeCodex, launchApp, launchWithCodex, removeAfterTest } from './launch';
-import { card, cardIn, closeTask, fakeLogDir, git, launches, report, repo, sendLine, startTask } from './tasks';
+import {
+  card, cardIn, closeTask, codexSyncReply, envOf, fakeLogDir, git, launches, managerLaunches, report, repo, sendLine, startTask, syncLaunches,
+} from './tasks';
 
 test.afterEach(cleanUp);
+
+const ON_CODEX: AppSettings = { welcomeSeen: true, defaultAgent: 'codex' };
+
+/** Codex's strict answer schema has every top-level field: what an answer leaves out, it prints as null. */
+const answer = (fields: object) => ({ kind: null, message: null, connector: null, readTools: null, lists: null, source: null, cards: null, ...fields });
+
+const TOOLS = answer({ kind: 'tools', connector: 'Tracker', readTools: ['mcp__tracker__get_cards'] });
+
+const CARDS = answer({
+  kind: 'cards',
+  source: { kind: 'Tracker', board: 'Shop', list: 'To do', url: 'https://tracker.example/shop/to-do' },
+  cards: [
+    { id: 'c128', number: '#128', title: 'Search ignores accents', description: '', labels: [], checklists: [], url: null, forOwner: false, urgent: false },
+  ],
+});
 
 test('a Codex task starts in its own worktree under .mainframe/worktrees', async () => {
   const main = repo();
@@ -91,5 +109,63 @@ test('setup lists Codex', async () => {
   const row = page.locator('.setup-agent').filter({ has: page.getByTestId('setup-tick-codex') });
   await expect(row).toContainText('Codex');
   await expect(row).toContainText('v0.169.0');
+  await app.close();
+});
+
+test("the manager starts on Codex with Mainframe's server, its tools' approvals and its role, the token only in its environment", async () => {
+  const main = repo();
+  const { app, dataDir } = await launchWithCodex(main, {}, ON_CODEX);
+  // On the arguments: the stand-in creates its file before it writes them.
+  await expect.poll(() => managerLaunches(dataDir)[0]?.args[0]).toBe('-c');
+  const [launch] = managerLaunches(dataDir);
+  expect(realpathSync(launch.cwd)).toBe(realpathSync(main));
+  expect(launch.args).not.toContain('resume');
+  expect(launch.args).toContainEqual(expect.stringMatching(/^mcp_servers\.mainframe\.url="http:\/\/127\.0\.0\.1:/));
+  expect(launch.args).toContain('mcp_servers.mainframe.tools.start_task.approval_mode="prompt"');
+  expect(launch.args).toContainEqual(expect.stringMatching(/^developer_instructions=.*call list_sessions/s));
+
+  const token = envOf(launch).MAINFRAME_MCP_TOKEN;
+  expect(token).toMatch(/^[0-9a-f]{64}$/);
+  expect(launch.args.filter((arg) => arg.includes(token))).toEqual([]);
+  await app.close();
+});
+
+test('after a tool call names the chat, the next start resumes it', async () => {
+  const main = repo();
+  const id = '01a1e9f7-dc3e-7483-81d3-5c390b1a5b42';
+  const first = await launchWithCodex(main, { FAKE_CODEX_SESSION_ID: id }, ON_CODEX);
+  const { dataDir } = first;
+  await expect.poll(() => managerLaunches(dataDir)[0]?.args[0]).toBe('-c');
+  // The stand-in's list_sessions call, naming the chat as Codex does, was answered: it records the answer's status.
+  const called = managerLaunches(dataDir)[0].file.replace(/\.argv$/, '.called');
+  await expect.poll(() => existsSync(called) && readFileSync(called, 'utf8')).toBe('200');
+  await first.app.close();
+
+  const second = await launchWithCodex(main, { MAINFRAME_DATA_DIR: dataDir }, ON_CODEX);
+  await expect.poll(() => managerLaunches(dataDir)[1]?.args.slice(0, 2)).toEqual(['resume', '-c']);
+  expect(managerLaunches(dataDir)[1].args).toContain(id);
+  await second.app.close();
+});
+
+test('a sync on Codex finds the connector, then reads with only the confirmed tools', async () => {
+  const { app, page, dataDir } = await launchWithCodex(repo(), {}, ON_CODEX);
+  writeFileSync(join(fakeLogDir(dataDir), 'codex-mcp-list.json'), JSON.stringify([{ name: 'tracker', enabled: true }]));
+  const panel = page.getByTestId('todo-panel');
+  codexSyncReply(dataDir, TOOLS);
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-sync').click();
+  await expect(panel.getByTestId('todo-confirm-tools')).toBeVisible();
+
+  const [discover] = syncLaunches(dataDir);
+  expect(discover.args).toContain('mcp_servers.tracker.default_tools_approval_mode="prompt"');
+  expect(discover.args).toContain('--output-schema');
+
+  codexSyncReply(dataDir, CARDS);
+  await panel.getByTestId('todo-confirm-tools').click();
+  await expect(panel.getByTestId('todo-item')).toHaveCount(1);
+  await expect(panel.getByTestId('todo-item')).toContainText('Search ignores accents');
+  const read = syncLaunches(dataDir)[1];
+  expect(read.args).toContain('mcp_servers.tracker.enabled_tools=["get_cards"]');
+  expect(read.args).toContain('mcp_servers.tracker.tools.get_cards.approval_mode="approve"');
   await app.close();
 });

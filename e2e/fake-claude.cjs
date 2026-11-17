@@ -7,6 +7,7 @@
 'use strict';
 const { execFileSync, spawn } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { request } = require('node:http');
 const { basename, dirname, join } = require('node:path');
 
 const args = process.argv.slice(2);
@@ -21,12 +22,16 @@ const isCodex = process.env.FAKE_AGENT === 'codex' || basename(process.execPath)
 const versionCheck = args[0] === '--version';
 // Codex's `debug prompt-input`, the New task box's CLAUDE.md check: not a launch either, so nothing is recorded.
 const promptInput = isCodex && args[0] === 'debug' && args[1] === 'prompt-input';
-const recorded = !versionCheck && !promptInput;
+// Codex's `mcp list --json`, which the sync asks before each run: not a launch, so nothing is recorded.
+const mcpList = isCodex && args[0] === 'mcp' && args[1] === 'list';
+const recorded = !versionCheck && !promptInput && !mcpList;
 
-// As OpenCode, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
-// the tests wait on <pid>.argv. That is every OPENCODE_ variable, and PWD, where `run` and `api` take their folder from.
-if (logDir && recorded && isOpencode) {
-  const env = Object.entries(process.env).filter(([key]) => key.startsWith('OPENCODE_') || key === 'PWD');
+// As OpenCode or Codex, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
+// the tests wait on <pid>.argv. That is every OPENCODE_ variable, and PWD, where `run` and `api` take their folder from;
+// for Codex, the MAINFRAME_MCP_TOKEN its manager reads.
+if (logDir && recorded && (isOpencode || isCodex)) {
+  const kept = (key) => (isCodex ? key === 'MAINFRAME_MCP_TOKEN' : key.startsWith('OPENCODE_') || key === 'PWD');
+  const env = Object.entries(process.env).filter(([key]) => kept(key));
   writeFileSync(own('env'), JSON.stringify(Object.fromEntries(env)));
 }
 if (recorded) addWorktree();
@@ -38,6 +43,10 @@ if (versionCheck && isOpencode) {
   process.stdout.write(`codex-cli ${process.env.FAKE_CODEX_VERSION ?? '0.169.0'}\n`);
 } else if (promptInput) {
   promptInputItems();
+} else if (mcpList) {
+  // What the test wrote in codex-mcp-list.json, else no server.
+  const file = logDir && join(logDir, 'codex-mcp-list.json');
+  process.stdout.write(file && existsSync(file) ? readFileSync(file) : '[]');
 } else if (versionCheck) {
   const answer = () => process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
   setTimeout(answer, Number(process.env.FAKE_CLAUDE_VERSION_DELAY_MS ?? 0));
@@ -45,7 +54,7 @@ if (versionCheck && isOpencode) {
   // bridge.e2e.ts: some output and a status over OSC 7501, then a clean exit a moment later.
   process.stdout.write('bridge-ok\x1b]7501;state=working\x1b\\');
   setTimeout(() => {}, 300);
-} else if (args[0] === '-p' || (isOpencode && args[0] === 'run')) {
+} else if (args[0] === '-p' || (isOpencode && args[0] === 'run') || (isCodex && args[0] === 'exec')) {
   sync();
 } else if (isOpencode && args[0] === '--standalone' && args[1] === 'api') {
   api(args[2]);
@@ -53,8 +62,37 @@ if (versionCheck && isOpencode) {
   // `session delete` after a sync run: nothing to do.
 } else if (process.env.FAKE_CLAUDE_RAW === '1') {
   raw();
+} else if (isCodex && process.env.FAKE_CODEX_SESSION_ID) {
+  callMainframe(process.env.FAKE_CODEX_SESSION_ID, session);
 } else {
   session();
+}
+
+/**
+ * As Codex's manager does once its chat begins: one `list_sessions` call to Mainframe's server from the `-c` settings,
+ * with the token from the environment, naming the chat in `_meta` as Codex does. Records the answer's status in
+ * <pid>.called, then goes `on`. A launch with no such server goes on at once.
+ */
+function callMainframe(sessionId, on) {
+  const prefix = 'mcp_servers.mainframe.url=';
+  const setting = args.find((arg) => arg.startsWith(prefix));
+  if (!setting) return on();
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_sessions', arguments: {}, _meta: { sessionId } } });
+  const headers = {
+    'content-type': 'application/json',
+    accept: 'application/json, text/event-stream',
+    authorization: `Bearer ${process.env.MAINFRAME_MCP_TOKEN}`,
+  };
+  const req = request(JSON.parse(setting.slice(prefix.length)), { method: 'POST', headers }, (res) => {
+    res.resume();
+    res.on('end', () => {
+      writeFileSync(own('called'), String(res.statusCode));
+      on();
+    });
+  });
+  // No server to answer: the shell runs all the same, and no call is recorded.
+  req.on('error', () => on());
+  req.end(body);
 }
 
 /**
@@ -145,8 +183,8 @@ function api(op) {
 }
 
 /**
- * A sync is a `claude -p` or `opencode run` run: it records the prompt it reads on stdin, and prints what the test put in
- * sync-reply.json as its answer, JSON events for OpenCode (nothing without one, which Mainframe reads as a failed run). While
+ * A sync is a `claude -p`, `opencode run` or `codex exec` run: it records the prompt it reads on stdin, and prints what the
+ * test put in sync-reply.json as its answer, JSON events for OpenCode and Codex (nothing without one, which Mainframe reads as a failed run). While
  * sync-hold is in the folder, it waits instead of replying, and records that it waits in <pid>.holding.
  * Mainframe stops a run with SIGTERM: it is recorded in <pid>.sigterm, after the run has printed its
  * reply as it went, like a run that answers just as it is stopped. It ends by an empty event loop, never

@@ -307,17 +307,24 @@ function allLaunches(dataDir: string): Array<{ file: string; cwd: string; args: 
 
 type Launch = { file: string; args: string[] };
 
-/** The environment the stand-in recorded for an OpenCode launch, beside its arguments: every OPENCODE_ variable, and PWD. */
+/**
+ * The environment the stand-in recorded for an OpenCode or Codex launch, beside its arguments: every OPENCODE_ variable
+ * and PWD, or Codex's MAINFRAME_MCP_TOKEN.
+ */
 export const envOf = (launch: { file: string }): Record<string, string> =>
   JSON.parse(readFileSync(launch.file.replace(/\.argv$/, '.env'), 'utf8'));
 
-/** A sync is a `claude -p` or an `opencode run` run; sessions are interactive. */
-const isSync = (launch: Launch) => launch.args[0] === '-p' || launch.args[0] === 'run';
+/** A sync is a `claude -p`, an `opencode run` or a `codex exec` run; sessions are interactive. */
+const isSync = (launch: Launch) => ['-p', 'run', 'exec'].includes(launch.args[0]);
 /** OpenCode's commands that run to an end, after the `--standalone` every OpenCode launch passes: `api …` and `session …`. */
 const isHelper = (launch: Launch) => launch.args[0] === '--standalone' && ['api', 'session'].includes(launch.args[1]);
-/** Only the manager's launches carry a role prompt: Claude Code's as an argument, OpenCode's in a config that names Mainframe's server. */
+/**
+ * Only the manager's launches carry a role prompt: Claude Code's as an argument, OpenCode's in a config that names
+ * Mainframe's server, Codex's beside that server's address in its `-c` settings.
+ */
 const isManager = (launch: Launch) =>
   launch.args.includes('--append-system-prompt') ||
+  launch.args.some((arg) => arg.startsWith('mcp_servers.mainframe.url=')) ||
   (existsSync(launch.file.replace(/\.argv$/, '.env')) && (envOf(launch).OPENCODE_CONFIG_CONTENT ?? '').includes('"mcp"'));
 
 /** The sessions' launches in this data folder, the manager's and the tasks', oldest first. */
@@ -357,6 +364,20 @@ export function opencodeSyncReply(dataDir: string, answer: unknown): void {
     event('step_finish', { type: 'step-finish', reason: 'stop', cost: 0, tokens: {} }),
   ];
   writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), `${events.join('\n')}\n`);
+}
+
+/**
+ * What the next Codex sync runs print: `codex exec --json`'s events for a turn whose last agent message is `answer`
+ * as JSON.
+ */
+export function codexSyncReply(dataDir: string, answer: unknown): void {
+  const events = [
+    { type: 'thread.started', thread_id: '01a1e9f7-dc3e-7483-81d3-5c390b1a5b42' },
+    { type: 'turn.started' },
+    { type: 'item.completed', item: { id: 'item_0', type: 'agent_message', text: JSON.stringify(answer) } },
+    { type: 'turn.completed', usage: { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 } },
+  ];
+  writeFileSync(join(fakeLogDir(dataDir), 'sync-reply.json'), `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
 }
 
 /** From now until `releaseSyncs`, a sync run waits without replying, until it is stopped. */
