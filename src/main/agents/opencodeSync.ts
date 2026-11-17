@@ -42,16 +42,19 @@ export const isOpencodeToolName = (name: string): boolean => /^(?!opencode_|expe
 
 type Event = { type?: string; sessionID?: string; error?: { message?: string; type?: string }; part?: Record<string, unknown> };
 
-function events(stdout: string): Event[] {
+/** The JSON objects among a run's output lines; any other line is skipped. */
+export function jsonLines<T extends object>(stdout: string): T[] {
   return stdout.split('\n').flatMap((line) => {
     try {
       const e: unknown = JSON.parse(line);
-      return typeof e === 'object' && e !== null ? [e as Event] : [];
+      return typeof e === 'object' && e !== null ? [e as T] : [];
     } catch {
       return [];
     }
   });
 }
+
+const events = (stdout: string): Event[] => jsonLines<Event>(stdout);
 
 /**
  * The run's answer from its JSON events: the text of the message that stopped, checked against SYNC_ANSWER. A run

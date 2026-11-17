@@ -1,4 +1,5 @@
 import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
+import { jsonLines } from './opencodeSync';
 
 type Node = Record<string, unknown>;
 
@@ -35,23 +36,12 @@ export const codexNamespace = (server: string): string => server.replace(/[^A-Za
 type Item = { type?: string; text?: string; server?: string; tool?: string; status?: string };
 type Event = { type?: string; message?: string; error?: { message?: string }; item?: Item };
 
-function events(stdout: string): Event[] {
-  return stdout.split('\n').flatMap((line) => {
-    try {
-      const e: unknown = JSON.parse(line);
-      return typeof e === 'object' && e !== null ? [e as Event] : [];
-    } catch {
-      return [];
-    }
-  });
-}
-
 /**
  * The run's answer from `codex exec --json`: the text of its last agent message, checked against SYNC_ANSWER. A run
  * that failed, or that completed a tool outside `tools`, has no answer. Throws an Error whose message is for the panel.
  */
 export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
-  const all = events(stdout);
+  const all = jsonLines<Event>(stdout);
   const failed = all.find((e) => e.type === 'turn.failed' || e.type === 'error');
   if (failed) throw new Error(`The sync run failed: ${failed.error?.message ?? failed.message ?? 'unknown error'}`);
   for (const { type, item } of all) {
