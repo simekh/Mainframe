@@ -40,6 +40,7 @@ const expectedView = (
     agents: {
       claude: { check: claude, fromEnv: claudeFromEnv, ticked: ticked.claude ?? claude.state === 'found' },
       opencode: { check: opencode, fromEnv: false, ticked: ticked.opencode ?? opencode.state === 'found' },
+      codex: { check: { state: 'missing' }, fromEnv: false, ticked: false },
     },
     lookedAgain: false,
     ask: null,
@@ -75,7 +76,7 @@ const settings = () => readSettings(dataDir, () => {});
  */
 function harness(o: { envClaudeBin?: string; envOpencodeBin?: string; programs?: Record<string, string>; nodeBin?: string | null } = {}) {
   const programs: Record<string, string> = o.programs ?? { [GIT]: 'git version 2.56.0\n', [NATIVE]: CURRENT };
-  const picks: { claude?: string; opencode?: string; folder?: string } = {};
+  const picks: { claude?: string; opencode?: string; codex?: string; folder?: string } = {};
   const ran: string[] = [];
   const events: string[] = [];
   const views: (SetupView | null)[] = [];
@@ -596,7 +597,7 @@ describe('the agents', () => {
     await h.flow.chooseProject(OPENCODE_ONLY);
     const saved = { welcomeSeen: true, defaultAgent: 'opencode', agents: { claude: { enabled: false, bin: NATIVE }, opencode: { enabled: true, bin: OC } } };
     expect(settings()).toStrictEqual(saved);
-    expect(h.start).toHaveBeenCalledWith({ settings: saved, checks: { claude: foundClaude(), opencode: foundOpencode() } }, [acme]);
+    expect(h.start).toHaveBeenCalledWith({ settings: saved, checks: { claude: foundClaude(), opencode: foundOpencode(), codex: { state: 'missing' } } }, [acme]);
   });
 
   it("a choice that can't be used is refused", async () => {
@@ -623,7 +624,7 @@ describe('the agents', () => {
     expect(h.start).toHaveBeenCalledOnce();
     const [found, dirs] = h.start.mock.calls[0];
     expect(dirs).toEqual([acme, globex]);
-    expect(found.checks).toEqual({ claude: foundClaude(), opencode: foundOpencode() });
+    expect(found.checks).toEqual({ claude: foundClaude(), opencode: foundOpencode(), codex: { state: 'missing' } });
     expect(tickedAgents(found.settings, found.checks)).toEqual(['claude', 'opencode']);
   });
 
@@ -676,7 +677,7 @@ describe('the agents', () => {
     await h.flow.useAgent('opencode');
     const saved = { agents: { claude: { enabled: true }, opencode: { enabled: true, bin: OC } }, defaultAgent: 'opencode', welcomeSeen: true };
     expect(settings()).toStrictEqual(saved);
-    expect(h.start).toHaveBeenCalledWith({ settings: saved, checks: { claude: { state: 'missing' }, opencode: foundOpencode() } }, [acme, globex]);
+    expect(h.start).toHaveBeenCalledWith({ settings: saved, checks: { claude: { state: 'missing' }, opencode: foundOpencode(), codex: { state: 'missing' } } }, [acme, globex]);
     expect(h.flow.view()).toBeNull();
   });
 

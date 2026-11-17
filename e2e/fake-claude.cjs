@@ -2,7 +2,8 @@
 // Stands in for `claude` in e2e tests: answers `--version`; otherwise records its working directory and
 // arguments, then runs a plain shell so the terminal tests can type into it. CommonJS with built-ins
 // only, so on Windows the same file builds into a real .exe (e2e/globalSetup.ts). It stands in for
-// `opencode` too: run through e2e/fake-opencode.cjs, or on Windows as the copy named fake-opencode.exe.
+// `opencode` and `codex` too: run through e2e/fake-opencode.cjs or e2e/fake-codex.cjs, or on Windows as the
+// copies named fake-opencode.exe and fake-codex.exe.
 'use strict';
 const { execFileSync, spawn } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
@@ -13,22 +14,30 @@ const logDir = process.env.FAKE_CLAUDE_LOG_DIR;
 /** This run's own file in the log folder, `<pid>.<ext>`. */
 const own = (ext) => join(logDir, `${process.pid}.${ext}`);
 const isOpencode = process.env.FAKE_AGENT === 'opencode' || basename(process.execPath).startsWith('fake-opencode');
+const isCodex = process.env.FAKE_AGENT === 'codex' || basename(process.execPath).startsWith('fake-codex');
 
 // Mainframe's start check, not a launch: nothing is recorded. FAKE_CLAUDE_VERSION sets the answer, and
 // FAKE_CLAUDE_VERSION_DELAY_MS holds it back, as a slow real claude does, so the window is up before the projects open.
 const versionCheck = args[0] === '--version';
+// Codex's `debug prompt-input`, the New task box's CLAUDE.md check: not a launch either, so nothing is recorded.
+const promptInput = isCodex && args[0] === 'debug' && args[1] === 'prompt-input';
+const recorded = !versionCheck && !promptInput;
 
 // As OpenCode, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
 // the tests wait on <pid>.argv. That is every OPENCODE_ variable, and PWD, where `run` and `api` take their folder from.
-if (logDir && !versionCheck && isOpencode) {
+if (logDir && recorded && isOpencode) {
   const env = Object.entries(process.env).filter(([key]) => key.startsWith('OPENCODE_') || key === 'PWD');
   writeFileSync(own('env'), JSON.stringify(Object.fromEntries(env)));
 }
-if (!versionCheck) addWorktree();
-if (logDir && !versionCheck) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
+if (recorded) addWorktree();
+if (logDir && recorded) writeFileSync(own('argv'), [process.cwd(), ...args].map((arg) => `${arg}\0`).join(''));
 
 if (versionCheck && isOpencode) {
   process.stdout.write(`opencode v${process.env.FAKE_OPENCODE_VERSION ?? '2.2.7'}\n`);
+} else if (versionCheck && isCodex) {
+  process.stdout.write(`codex-cli ${process.env.FAKE_CODEX_VERSION ?? '0.169.0'}\n`);
+} else if (promptInput) {
+  promptInputItems();
 } else if (versionCheck) {
   const answer = () => process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)\n`);
   setTimeout(answer, Number(process.env.FAKE_CLAUDE_VERSION_DELAY_MS ?? 0));
@@ -82,6 +91,16 @@ function addWorktree() {
   } catch {
     // Not a repo, or git refused: the session runs without a worktree, as before.
   }
+}
+
+/**
+ * `codex debug prompt-input`: prints codex-prompt-input.json from the log folder when the test wrote one, else only
+ * the environment context, which loads no AGENTS.md instructions.
+ */
+function promptInputItems() {
+  const file = logDir && join(logDir, 'codex-prompt-input.json');
+  const environment = [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>\n</environment_context>' }] }];
+  process.stdout.write(file && existsSync(file) ? readFileSync(file) : JSON.stringify(environment));
 }
 
 /**

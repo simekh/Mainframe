@@ -245,6 +245,7 @@ export const claudeAgent: AgentAdapter = {
   mainframeAddsWorktree: false,
   // Where `claude -w` puts them.
   worktreesDir: '.claude/worktrees',
+  tracksBegan: false,
   needsNode: true,
   newSessionId: (uuid) => uuid(),
   taskStart: (o) => ({

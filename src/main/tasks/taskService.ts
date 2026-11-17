@@ -30,7 +30,7 @@ export interface TaskServiceDeps {
   /** Every project's tasks, shared with the other open projects' services. */
   records: TaskRecords;
   /** The agents found at start, shared with the other open projects' services: asked at each start and reopen. */
-  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked'>;
+  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked' | 'codexClaudeMdNote'>;
   /** What Claude Code's SessionStart hook runs: a real program path; null when no node was found. */
   nodeBin: string | null;
   /**
@@ -167,6 +167,10 @@ export class TaskService {
 
   startCheck(): Promise<StartCheck | null> {
     return this.deps.git.startCheck(this.deps.projectDir);
+  }
+
+  codexClaudeMdNote(): Promise<string | null> {
+    return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 
   async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName }): Promise<TaskView> {
@@ -477,7 +481,7 @@ export class TaskService {
     }
     const cwd = task.worktreePath;
     if (!task.began) {
-      // OpenCode never took the brief: it failed to start, was quit at its login screen, or Mainframe quit first.
+      // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
       return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
@@ -570,7 +574,7 @@ export class TaskService {
     this.lookForWorktree(session, task);
     // New work may land on a merged branch: the card leaves Done until a round proves it again.
     if (inTurn(state) && this.merged.delete(task.id)) this.deps.onChange(this.list());
-    if (agentOf(task) === 'opencode' && !task.began && inTurn(state)) {
+    if (ADAPTERS[agentOf(task)].tracksBegan && !task.began && inTurn(state)) {
       task.began = true;
       // Saved, not sent: nothing the window shows has changed.
       this.deps.records.save();
@@ -870,9 +874,9 @@ export class TaskService {
           card: task.card,
           descriptionFile: brief?.file,
           continuing,
-          ...(agent === 'opencode'
-            ? { agent: 'opencode' as const, projectDir: this.deps.projectDir, worktreePath: task.worktreePath }
-            : { agent: 'claude' as const }),
+          agent,
+          projectDir: this.deps.projectDir,
+          worktreePath: task.worktreePath,
         }),
         ...(brief && { addDir: brief.dir }),
       });

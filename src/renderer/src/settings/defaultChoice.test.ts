@@ -9,6 +9,7 @@ const view = (o: { claude: [ProgramCheck, boolean]; opencode: [ProgramCheck, boo
   agents: {
     claude: { check: o.claude[0], fromEnv: false, ticked: o.claude[1] },
     opencode: { check: o.opencode[0], fromEnv: false, ticked: o.opencode[1] },
+    codex: { check: missing, fromEnv: false, ticked: false },
   },
   defaultAgent: o.defaultAgent,
   runDefault: o.runDefault,
@@ -19,6 +20,15 @@ describe('defaultChoice', () => {
     expect(defaultChoice(view({ claude: [found, true], opencode: [found, true], defaultAgent: 'claude', runDefault: 'claude' }))).toEqual([
       { name: 'claude', works: true },
       { name: 'opencode', works: true },
+    ]);
+  });
+
+  it('offers a ticked, found Codex after OpenCode', () => {
+    const base = view({ claude: [found, true], opencode: [found, true], defaultAgent: 'claude', runDefault: 'claude' });
+    expect(defaultChoice({ ...base, agents: { ...base.agents, codex: { check: found, fromEnv: false, ticked: true } } })).toEqual([
+      { name: 'claude', works: true },
+      { name: 'opencode', works: true },
+      { name: 'codex', works: true },
     ]);
   });
 

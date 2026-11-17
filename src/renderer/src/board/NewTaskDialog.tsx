@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { AGENT_NAMES, type AgentName, type StartCheck } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { commandHeld, commandName } from '../keys';
@@ -7,6 +7,8 @@ import { loadSettings, settingsView } from '../settings/settingsStore';
 import { startTask } from '../tasksStore';
 import { newTaskAgents } from './newTaskAgents';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
+
+const CODEX_CLAUDE_MD_LINE = 'project_doc_fallback_filenames = ["CLAUDE.md"]';
 
 /** Mounted to show it, as a modal; it calls `onClose` once it has closed (Cancel, Esc or a start). */
 export default function NewTaskDialog(props: { onClose: () => void }) {
@@ -28,6 +30,24 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
   const [error, setError] = createSignal<string | null>(null);
   const [starting, setStarting] = createSignal(false);
   const ahead = () => aheadOf(check());
+  // Asked afresh each time the box turns to Codex; a failed check shows no note.
+  const [codexNote] = createResource(
+    () => agent() === 'codex',
+    () =>
+      window.mainframe.codexClaudeMdNote(project.dir).catch((err: unknown) => {
+        console.error('[new task] codex note failed', err);
+        return null;
+      }),
+  );
+  const [copied, setCopied] = createSignal(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(copiedTimer));
+  function copyCodexLine(): void {
+    window.mainframe.copyText(CODEX_CLAUDE_MD_LINE);
+    setCopied(true);
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => setCopied(false), 1500);
+  }
 
   onMount(() => {
     dialog.showModal();
@@ -141,6 +161,23 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             </p>
           )}
         </For>
+        <Show when={agent() === 'codex' && !codexNote.loading && codexNote()}>
+          {(note) => (
+            <div class="nt-codex-note" data-testid="new-task-codex-note">
+              <p class="nt-hint">
+                Codex won't read this project's CLAUDE.md. Add this line at the top of <code>{note()}</code> (or, if the
+                file already has <code>project_doc_fallback_filenames</code>, add <code>"CLAUDE.md"</code> to that list),
+                then start the task:
+              </p>
+              <div class="nt-codex-line">
+                <code>{CODEX_CLAUDE_MD_LINE}</code>
+                <button class="btn" type="button" data-testid="new-task-codex-note-copy" onClick={copyCodexLine}>
+                  {copied() ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Show>
         <div class="check">
           <input
             id="nt-noq"

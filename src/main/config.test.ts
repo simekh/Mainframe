@@ -26,6 +26,13 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads MAINFRAME_CODEX_BIN, and rejects an empty one with its own message', () => {
+    expect(loadConfig({ MAINFRAME_CODEX_BIN: '/x/codex' }, '/data').codexBin).toBe('/x/codex');
+    expect(() => loadConfig({ MAINFRAME_CODEX_BIN: '' }, '/d')).toThrow(
+      'MAINFRAME_CODEX_BIN must name the codex binary, got an empty value',
+    );
+  });
+
   it('reads the update settings, and the update folder only in e2e', () => {
     const env = { MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_UPDATE_FILE: '/x/update', MAINFRAME_UPDATE_FAILED: 'it failed' };
     expect(loadConfig(env, '/data')).toMatchObject({ updateDir: undefined, launcherFile: '/x/update', updateFailure: 'it failed' });

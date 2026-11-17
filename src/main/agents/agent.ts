@@ -71,7 +71,7 @@ export const cheapestKnown = (models: SyncModel[]): string | null => models.find
 /** Everything Mainframe knows about one agent CLI. */
 export interface AgentAdapter {
   readonly name: AgentName;
-  /** MAINFRAME_CLAUDE_BIN or MAINFRAME_OPENCODE_BIN. */
+  /** MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN or MAINFRAME_CODEX_BIN. */
   readonly envVar: string;
   find(o: FindOptions): Promise<ProgramCheck>;
   check(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck>;
@@ -84,19 +84,21 @@ export interface AgentAdapter {
   readonly mainframeAddsWorktree: boolean;
   /** Where this agent's task worktrees live, relative to the project folder, with `/` between the names. */
   readonly worktreesDir: string;
+  /** Mainframe marks the task began at its first in-turn report, as the agent records no session itself. */
+  readonly tracksBegan: boolean;
   /** Its launches run node (Claude Code's hooks), so it can't be used while no node was found. */
   readonly needsNode: boolean;
   /** A new conversation id; Claude Code's comes from `uuid`, so tests can name it. */
   newSessionId(uuid: () => string): string;
   taskStart(o: TaskStart): LaunchArgs;
   taskReopen(o: TaskReopen): LaunchArgs;
-  /** The conversation the agent last recorded in the task's folder (Claude Code's SessionStart hook); null when there is none, and always for OpenCode. */
+  /** The conversation the agent last recorded in the task's folder (Claude Code's SessionStart hook); null when there is none, and always for an agent that records no session (OpenCode, Codex). */
   recordedSession(taskDir: string): string | null;
-  /** Whether the agent still has the task's conversation to resume: Claude Code deletes old chats. */
+  /** Whether the agent still has the task's conversation to resume: Claude Code deletes old chats; the others keep theirs. */
   chatKept(taskDir: string): boolean;
   /**
-   * Whether the task's conversation began: Claude Code recorded it in the task's folder; OpenCode took the brief, which
-   * the task's own `began` says.
+   * Whether the task's conversation began: Claude Code recorded it in the task's folder; an agent that records no session
+   * (OpenCode, Codex) took the brief, which the task's own `began` says.
    */
   began(taskDir: string, task: { began?: boolean }): boolean;
   /** Forgets the conversation recorded in the task's folder, as one the agent no longer has; nothing for an agent that records none. */

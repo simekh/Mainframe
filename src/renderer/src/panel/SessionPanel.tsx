@@ -83,9 +83,9 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                   <i aria-hidden="true" />
                   <span>{project.name}</span>
                 </span>
-                <Show when={task().agent === 'opencode'}>
+                <Show when={task().agent !== 'claude'}>
                   <span class="agent-mark" data-testid="task-agent">
-                    {AGENT_NAMES.opencode}
+                    {AGENT_NAMES[task().agent]}
                   </span>
                 </Show>
                 <span class="p-branch">

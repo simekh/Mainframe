@@ -9,7 +9,7 @@ import { readSettings, writeSettings, type AppSettings } from './settings';
 
 export interface SetupDeps {
   dataDir: string;
-  /** MAINFRAME_CLAUDE_BIN and MAINFRAME_OPENCODE_BIN: each is the only place looked for its agent, and nothing is saved about it. */
+  /** MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN and MAINFRAME_CODEX_BIN: each is the only place looked for its agent, and nothing is saved about it. */
   envBins: Partial<Record<AgentName, string>>;
   lookup: ExecutableLookup;
   run: VersionRunner;
@@ -40,7 +40,7 @@ export class SetupFlow {
   private lookedAgain = false;
   // Nothing has been looked at before `begin`, so its first pass runs every check.
   private git: ProgramCheck = { state: 'missing' };
-  private agents: Checks = { claude: { state: 'missing' }, opencode: { state: 'missing' } };
+  private agents: Checks = { claude: { state: 'missing' }, opencode: { state: 'missing' }, codex: { state: 'missing' } };
   private current: SetupView | null = null;
   /** The action in progress, so a second click while it waits on a dialog or a check starts nothing new. */
   private pending: Promise<void> | null = null;
@@ -142,9 +142,14 @@ export class SetupFlow {
       const saved = [check.path, this.settings.agents?.[name]?.bin].filter((path) => path !== undefined);
       return ADAPTERS[name].find({ fromEnv: envBins[name], saved, lookup, run });
     };
-    const [git, claude, opencode] = await Promise.all([this.git.state === 'found' ? this.git : checkGit(lookup, run), look('claude'), look('opencode')]);
+    const [git, claude, opencode, codex] = await Promise.all([
+      this.git.state === 'found' ? this.git : checkGit(lookup, run),
+      look('claude'),
+      look('opencode'),
+      look('codex'),
+    ]);
     this.git = git;
-    this.agents = { claude, opencode };
+    this.agents = { claude, opencode, codex };
   }
 
   /** The agent to run by default, once git works and so does a ticked agent. */

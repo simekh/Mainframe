@@ -32,7 +32,7 @@ export function registerManagerTools(
     'list_sessions',
     {
       description:
-        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude' or 'opencode') and that agent's session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, merged: true once Mainframe found its branch merged with nothing uncommitted while it runs (its card is then in the board's Done lane), and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
+        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude', 'opencode' or 'codex') and that agent's session id (for Codex, Mainframe's own key: Codex resumes from the task's worktree), whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, merged: true once Mainframe found its branch merged with nothing uncommitted while it runs (its card is then in the board's Done lane), and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
     },
     async () => text({ sessions: tasks.reports() }),
   );

@@ -2263,7 +2263,7 @@ kbd {
   background: var(--project);
 }
 
-/* Names the agent on an OpenCode task's card and panel header; a Claude Code task carries none. */
+/* Names the agent on a task's card and panel header; a Claude Code task carries none. */
 .agent-mark {
   flex: none;
   padding: 0 5px;
@@ -3368,7 +3368,7 @@ kbd {
   font-size: 12px;
 }
 
-/* The agent pick: two quiet radios on one line, set like the checkbox below them. */
+/* The agent pick: quiet radios on one line, set like the checkbox below them. */
 .nt-agents {
   display: flex;
   gap: 18px;
@@ -3387,10 +3387,43 @@ kbd {
   accent-color: var(--accent);
 }
 
-/* Why OpenCode isn't offered, when one was found that Mainframe can't use. */
+/* Quiet notes under the agent choice: why an agent isn't offered, or what Codex needs first. */
 .nt-hint {
   margin: 0;
   color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+/* Codex won't read CLAUDE.md: the hint, then the line to add set apart in an input-like well,
+   with its Copy button at the well's end. */
+.nt-codex-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.nt-codex-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 5px 5px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.nt-codex-line code {
+  flex: 1;
+  min-width: 0;
+  user-select: text;
+}
+
+.nt-codex-line .btn {
+  height: 24px;
+  padding: 0 8px;
+  min-width: 58px;
+  justify-content: center;
   font-size: 12px;
 }
 

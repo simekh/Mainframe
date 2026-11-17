@@ -5,7 +5,7 @@ import { runDefault, tickedAgents } from './agentChoice';
 const found: ProgramCheck = { state: 'found', path: '/x' };
 const broken: ProgramCheck = { state: 'broken' };
 const missing: ProgramCheck = { state: 'missing' };
-const checks = (claude: ProgramCheck, opencode: ProgramCheck): Record<AgentName, ProgramCheck> => ({ claude, opencode });
+const checks = (claude: ProgramCheck, opencode: ProgramCheck): Record<AgentName, ProgramCheck> => ({ claude, opencode, codex: missing });
 
 describe('tickedAgents', () => {
   it('ticks an agent with no saved choice only when it is found', () => {

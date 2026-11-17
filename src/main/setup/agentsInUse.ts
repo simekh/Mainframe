@@ -2,6 +2,7 @@ import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type OpencodeChoices, t
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
+import { codexConfigFile, codexMissesClaudeMd } from '../agents/codexInstructions';
 import { opencodeChoices, type runOpencode } from '../agents/opencode';
 import type { ExecutableLookup } from '../pty/findExecutable';
 import { agentStatus, runDefault, tickedAgents, usableChecks } from './agentChoice';
@@ -29,7 +30,7 @@ export class AgentsInUse {
       dataDir: string;
       settings: AppSettings;
       checks: Record<AgentName, ProgramCheck>;
-      /** The agents MAINFRAME_CLAUDE_BIN and MAINFRAME_OPENCODE_BIN name: nothing is saved about those. */
+      /** The agents MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN and MAINFRAME_CODEX_BIN name: nothing is saved about those. */
       envBins: Partial<Record<AgentName, string>>;
       run: VersionRunner;
       lookup: ExecutableLookup;
@@ -40,6 +41,8 @@ export class AgentsInUse {
       onChange(view: SettingsView): void;
       /** Runs OpenCode's listing commands; tests hand it a fake. */
       runOpencode?: typeof runOpencode;
+      /** Asks Codex what it would load for a project; tests hand it a fake. */
+      codexMissesClaudeMd?: typeof codexMissesClaudeMd;
     },
   ) {
     // The setup starts the projects only once a ticked agent is found; one that needs node may still not run.
@@ -89,7 +92,7 @@ export class AgentsInUse {
       return { ...status[name], ...(managerAgent !== undefined && { managerAgent }), ...(syncModel !== undefined && { syncModel }) };
     };
     const inUse = this.defaultAgent();
-    return { agents: { claude: agentView('claude'), opencode: agentView('opencode') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
+    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
   }
 
   setTicked(name: AgentName, ticked: boolean): void {
@@ -130,6 +133,17 @@ export class AgentsInUse {
     const bin = this.bin('opencode');
     if (bin === null) throw new Error(`${AGENT_NAMES.opencode} doesn't work`);
     return opencodeChoices({ bin, dataDir: this.deps.dataDir, env: this.deps.env, run: this.deps.runOpencode });
+  }
+
+  /**
+   * The Codex config file where the user can list CLAUDE.md, when Codex is found and would not read the project's.
+   * Null otherwise. Asked afresh each time: nothing is cached, so the note goes once the user has added the line.
+   */
+  async codexClaudeMdNote(projectDir: string): Promise<string | null> {
+    const bin = this.bin('codex');
+    if (bin === null) return null;
+    const missed = await (this.deps.codexMissesClaudeMd ?? codexMissesClaudeMd)({ bin, projectDir, env: this.deps.env });
+    return missed ? codexConfigFile(this.deps.env, this.deps.lookup.platform) : null;
   }
 
   private save(next: AppSettings): void {

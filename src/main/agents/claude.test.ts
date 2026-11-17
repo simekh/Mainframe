@@ -109,7 +109,7 @@ it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', ()
 it("rolePrompt with Claude's words is today's role prompt", () => {
   expect(rolePrompt(ADAPTERS.claude.instructions)).toBe(
     [
-      "You are the manager in Mainframe, the app the owner uses to run several agent sessions, each running Claude Code or OpenCode, on this project at once, one per task. You run in the project's main checkout; each task runs in a worktree of its own and shows on Mainframe's board.",
+      "You are the manager in Mainframe, the app the owner uses to run several coding agent sessions on this project at once, one per task. You run in the project's main checkout; each task runs in a worktree of its own and shows on Mainframe's board.",
       "The owner talks to you about their to-do list, about the work in progress, and about work that has no task yet. Mainframe's tools (mainframe) let you list the task sessions, start new ones, close one, and sync the Todo panel's list. Start or close a session only when the owner asks you to.",
       "You may make small changes yourself, following this repo's CLAUDE.md. Work that needs a branch of its own should become a task, so that it shows on the board.",
     ].join('\n\n'),

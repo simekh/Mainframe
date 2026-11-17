@@ -471,7 +471,7 @@ async function launch(config: AppConfig): Promise<void> {
     quitting = true;
   };
   onQuitBegins(win, quitBegins);
-  const envBins = { claude: config.claudeBin, opencode: config.opencodeBin };
+  const envBins = { claude: config.claudeBin, opencode: config.opencodeBin, codex: config.codexBin };
   const lookup = lookupIn(programs.env);
   const run = runVersion(programs.env);
   // After start the settings are AgentsInUse's alone: the flow writes them no more.

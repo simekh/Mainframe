@@ -12,6 +12,8 @@ const t = {
   branch: 'worktree-fix-login',
   noQuestions: false,
   agent: 'claude' as const,
+  projectDir: '/p',
+  worktreePath: '/p/.claude/worktrees/fix-login',
 };
 
 it('gives the brief, the description and the worktree note', () => {
@@ -95,7 +97,7 @@ it('passes on no-questions mode', () => {
 
 it('an OpenCode prompt names AGENTS.md and the main checkout, and no Claude Code worktree tools', () => {
   const card = { sourceKind: 'Tracker', number: '#1', url: null, labels: [] };
-  const prompt = openingPrompt({ ...t, agent: 'opencode', projectDir: '/p', worktreePath: '/p/.claude/worktrees/fix-login', description: 'x', card, noQuestions: true });
+  const prompt = openingPrompt({ ...t, agent: 'opencode', description: 'x', card, noQuestions: true });
   expect(prompt).toContain(
     "Mainframe started you in this task's own worktree, /p/.claude/worktrees/fix-login, on branch worktree-fix-login. " +
       'The main checkout is /p: when you need it, for example to merge, run git there with git -C /p.',
@@ -108,4 +110,11 @@ it('an OpenCode prompt names AGENTS.md and the main checkout, and no Claude Code
   expect(prompt.match(/CLAUDE\.md/g)).toHaveLength(1);
   expect(prompt).not.toContain('EnterWorktree');
   expect(prompt).not.toContain('ExitWorktree');
+});
+
+it("a Codex prompt names its Mainframe worktree and this repo's instructions", () => {
+  const prompt = openingPrompt({ ...t, agent: 'codex', branch: 'worktree-s', worktreePath: '/p/.mainframe/worktrees/s', description: 'x' });
+  expect(prompt).toContain("Mainframe started you in this task's own worktree, /p/.mainframe/worktrees/s, on branch worktree-s.");
+  expect(prompt).toContain("this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)");
+  expect(prompt).not.toContain('EnterWorktree');
 });

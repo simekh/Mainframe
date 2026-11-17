@@ -5,6 +5,8 @@ export interface AppConfig {
   claudeBin?: string;
   /** MAINFRAME_OPENCODE_BIN; not set when OpenCode is to be found on PATH or in its installer's folder. */
   opencodeBin?: string;
+  /** MAINFRAME_CODEX_BIN; not set when Codex is to be found on PATH or in its installer's folder. */
+  codexBin?: string;
   dataDir: string;
   inputBatchMs: number;
   outputBatchMs: number;
@@ -35,6 +37,12 @@ function readOpencodeBin(env: NodeJS.ProcessEnv): string | undefined {
   return raw;
 }
 
+function readCodexBin(env: NodeJS.ProcessEnv): string | undefined {
+  const raw = env.MAINFRAME_CODEX_BIN;
+  if (raw === '') throw new Error('MAINFRAME_CODEX_BIN must name the codex binary, got an empty value');
+  return raw;
+}
+
 function readBatchMs(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
   const raw = env[key];
   if (raw === undefined) return fallback;
@@ -50,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppC
   return {
     claudeBin: readClaudeBin(env),
     opencodeBin: readOpencodeBin(env),
+    codexBin: readCodexBin(env),
     dataDir: resolve(env.MAINFRAME_DATA_DIR ?? defaultDataDir),
     inputBatchMs: readBatchMs(env, 'MAINFRAME_INPUT_BATCH_MS', 0),
     outputBatchMs: readBatchMs(env, 'MAINFRAME_OUTPUT_BATCH_MS', 8),

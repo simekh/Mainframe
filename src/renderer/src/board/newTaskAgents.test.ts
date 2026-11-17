@@ -5,7 +5,7 @@ import { newTaskAgents } from './newTaskAgents';
 const found: AgentView = { check: { state: 'found', path: '/bin/x', version: '2.1.300' }, fromEnv: false, ticked: true };
 
 const view = (claude: Partial<AgentView>, opencode: Partial<AgentView>, runDefault: 'claude' | 'opencode' = 'claude'): SettingsView => ({
-  agents: { claude: { ...found, ...claude }, opencode: { ...found, ...opencode } },
+  agents: { claude: { ...found, ...claude }, opencode: { ...found, ...opencode }, codex: { check: { state: 'missing' }, fromEnv: false, ticked: false } },
   defaultAgent: runDefault,
   runDefault,
 });
@@ -13,6 +13,11 @@ const view = (claude: Partial<AgentView>, opencode: Partial<AgentView>, runDefau
 describe('newTaskAgents', () => {
   it('offers both ticked, found agents and starts on the default', () => {
     expect(newTaskAgents(view({}, {}, 'opencode'))).toEqual({ options: ['claude', 'opencode'], start: 'opencode', hints: [] });
+  });
+
+  it('offers a ticked, found Codex after OpenCode', () => {
+    const all: SettingsView = { ...view({}, {}), agents: { claude: found, opencode: found, codex: found } };
+    expect(newTaskAgents(all)).toEqual({ options: ['claude', 'opencode', 'codex'], start: 'claude', hints: [] });
   });
 
   it('leaves out an unticked agent without a hint', () => {

@@ -152,12 +152,17 @@ async function opencodeManagerLaunch(o: ManagerLaunch, run: typeof runOpencode):
   };
 }
 
-const instructions: Instructions = {
+/** How OpenCode's and Codex's prompts name the repo's instructions: both read AGENTS.md first. */
+export const agentsMdInstructions: Instructions = {
   first: "this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)",
   again: 'those instructions',
   requires: 'those instructions require',
   integrates: 'those instructions integrate',
 };
+
+/** The opening prompt's note for an agent Mainframe starts in the task's worktree. */
+export const mainframeWorktreeNote: AgentAdapter['worktreeNote'] = ({ branch, worktreePath, projectDir }) =>
+  `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`;
 
 /** OpenCode's adapter. `run` runs opencode's commands that run to an end; tests hand it a fake. */
 export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpencode } = {}): AgentAdapter {
@@ -168,11 +173,11 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     check: checkOpencode,
     // OpenCode sets these in the shells it runs.
     droppedEnv: ['OPENCODE_TERMINAL', 'OPENCODE_PTY_HANDOFF'],
-    instructions,
-    worktreeNote: ({ branch, worktreePath, projectDir }) =>
-      `Mainframe started you in this task's own worktree, ${worktreePath}, on branch ${branch}. The main checkout is ${projectDir}: when you need it, for example to merge, run git there with git -C ${projectDir}.`,
+    instructions: agentsMdInstructions,
+    worktreeNote: mainframeWorktreeNote,
     mainframeAddsWorktree: true,
     worktreesDir: '.mainframe/worktrees',
+    tracksBegan: true,
     needsNode: false,
     newSessionId: newOpencodeSessionId,
     // No `addDir`: OpenCode reads outside the project by default.
@@ -186,7 +191,7 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     forgetChat: () => {},
     managerChat: (_dir, saved) => saved ?? null,
     managerLaunch: (o) => opencodeManagerLaunch(o, run),
-    sync: makeOpencodeSync({ run, instructions }),
+    sync: makeOpencodeSync({ run, instructions: agentsMdInstructions }),
   };
 }
 
