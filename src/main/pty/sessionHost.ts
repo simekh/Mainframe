@@ -124,14 +124,6 @@ export class SessionHost {
     let pasteTail: string | null = spec.answerStatusEarly ? '' : null;
 
     proc.onData((chunk) => {
-      if (pasteTail !== null) {
-        const seen = pasteTail + chunk;
-        pasteTail = seen.slice(1 - PASTE_ON.length);
-        if (seen.includes(PASTE_ON)) {
-          pasteTail = null;
-          this.answerEarly(id, session);
-        }
-      }
       for (const event of scanner.feed(chunk)) {
         pasteTail = null;
         session.stopEarly?.();
@@ -142,6 +134,14 @@ export class SessionHost {
         } else {
           records.apply(event.report, Date.now());
           listener.onStatus(records.current());
+        }
+      }
+      if (pasteTail !== null) {
+        const seen = pasteTail + chunk;
+        pasteTail = seen.slice(1 - PASTE_ON.length);
+        if (seen.includes(PASTE_ON)) {
+          pasteTail = null;
+          this.answerEarly(id, session);
         }
       }
       batcher.push(chunk);
@@ -164,10 +164,17 @@ export class SessionHost {
   /**
    * Writes the OSC 7501 reply now and every EARLY_EVERY_MS, for EARLY_FOR_MS or until `session.stopEarly` is called.
    * Again and again, as Claude Code drops a reply it reads before its probe waits, and on a busy machine that wait may
-   * begin seconds after its screen takes input.
+   * begin seconds after its screen takes input. A pty that refuses one has gone: the answers end there, as an error thrown
+   * from the timer would reach no caller.
    */
   private answerEarly(id: string, session: Session): void {
-    const answer = () => this.write(id, OSC7501_SUPPORT_REPLY);
+    const answer = () => {
+      try {
+        this.write(id, OSC7501_SUPPORT_REPLY);
+      } catch {
+        session.stopEarly?.();
+      }
+    };
     const every = setInterval(answer, EARLY_EVERY_MS);
     const end = setTimeout(() => session.stopEarly?.(), EARLY_FOR_MS);
     session.stopEarly = () => {

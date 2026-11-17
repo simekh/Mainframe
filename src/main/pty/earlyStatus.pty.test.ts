@@ -10,6 +10,9 @@ import { buildSpawnEnv } from './spawnEnv';
 
 const PROBE = fileURLToPath(new URL('./fixtures/lateStatusProbe.mjs', import.meta.url));
 
+// Under the test's timeout, so a probe that hangs ends with what it got rather than as a bare timeout.
+const GIVE_UP_MS = 8000;
+
 function runProbe(answerStatusEarly: boolean): Promise<{ replied: boolean; reported: boolean }> {
   const host = new SessionHost({
     spawnPty: spawnNodePty(process.platform),
@@ -21,6 +24,7 @@ function runProbe(answerStatusEarly: boolean): Promise<{ replied: boolean; repor
   let output = '';
   const states: string[] = [];
   return new Promise((resolve) => {
+    const giveUp = setTimeout(() => host.kill('probe', 'SIGKILL'), GIVE_UP_MS);
     host.spawn(
       'probe',
       { argv: [process.execPath, PROBE], cwd: tmpdir(), cols: 80, rows: 24, answerStatusEarly },
@@ -32,6 +36,7 @@ function runProbe(answerStatusEarly: boolean): Promise<{ replied: boolean; repor
           if (status) states.push(status.state);
         },
         onExit: () => {
+          clearTimeout(giveUp);
           const line = /PROBE (\{.*?\})/.exec(output);
           resolve({ replied: line ? (JSON.parse(line[1]) as { replied: boolean }).replied : false, reported: states.includes('idle') });
         },
