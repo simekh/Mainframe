@@ -31,7 +31,8 @@ function gitBash(): string {
 /**
  * On Windows, builds `e2e/fake-claude.cjs` into a real `.exe` (a Node single executable application)
  * and hands its path to the tests as FAKE_CLAUDE_EXE: Mainframe starts `claude` there only as an .exe,
- * never a script. A copy named `fake-opencode.exe`, which acts as OpenCode, goes to the tests as FAKE_OPENCODE_EXE.
+ * never a script. A copy named `fake-opencode.exe`, which acts as OpenCode, goes to the tests as FAKE_OPENCODE_EXE, and one
+ * named `fake-codex.exe`, which acts as Codex, as FAKE_CODEX_EXE.
  * It also names the stand-in's shell in FAKE_CLAUDE_SHELL, unless that is set already.
  * Returns the teardown that removes the .exe. Elsewhere the tests run the script itself.
  */
@@ -50,5 +51,8 @@ export default function globalSetup(): (() => void) | undefined {
   const opencodeExe = join(dir, 'fake-opencode.exe');
   copyFileSync(exe, opencodeExe);
   process.env.FAKE_OPENCODE_EXE = opencodeExe;
+  const codexExe = join(dir, 'fake-codex.exe');
+  copyFileSync(exe, codexExe);
+  process.env.FAKE_CODEX_EXE = codexExe;
   return () => rmSync(dir, { recursive: true, force: true });
 }

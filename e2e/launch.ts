@@ -41,9 +41,19 @@ export const fakeOpencode = process.env.FAKE_OPENCODE_EXE ?? join(root, 'e2e', '
 export const launchWithOpencode = (projects: string | string[], env: Record<string, string> = {}, settings?: AppSettings) =>
   launchApp({ MAINFRAME_OPENCODE_BIN: fakeOpencode, ...env }, projects, { settings });
 
+/** The stand-in for `codex`: `e2e/fake-codex.cjs`, on Windows a copy of the .exe named `fake-codex.exe`. */
+export const fakeCodex = process.env.FAKE_CODEX_EXE ?? join(root, 'e2e', 'fake-codex.cjs');
+
+/**
+ * `launchApp` with the stand-in as `codex` beside the one as `claude`. Found, and with no tick saved, it counts as
+ * ticked, so the New task box offers it.
+ */
+export const launchWithCodex = (projects: string | string[], env: Record<string, string> = {}, settings?: AppSettings) =>
+  launchApp({ MAINFRAME_CODEX_BIN: fakeCodex, ...env }, projects, { settings });
+
 /**
  * The app's environment in a test: the stand-in as `claude`, logging to the data folder, and an `opencode`
- * that isn't there, so no OpenCode on the machine shows in the New task box unless a test names one. A variable
+ * and a `codex` that aren't there, so no OpenCode or Codex on the machine shows in the New task box unless a test names one. A variable
  * `env` gives as `undefined` is left out, even one set here.
  */
 function appEnv(dataDir: string, env: Record<string, string | undefined>): Record<string, string> {
@@ -54,6 +64,7 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     MAINFRAME_E2E: '1',
     MAINFRAME_CLAUDE_BIN: fakeClaude,
     MAINFRAME_OPENCODE_BIN: join(dataDir, 'no-opencode'),
+    MAINFRAME_CODEX_BIN: join(dataDir, 'no-codex'),
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',

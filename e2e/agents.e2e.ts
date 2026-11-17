@@ -90,7 +90,7 @@ test('a later start whose ticked agent is gone offers Use OpenCode, which switch
   await app.close();
 });
 
-test('a first start with both agents asks which is the default, and runs everything on the one picked', async () => {
+test('a first start with Claude Code and OpenCode asks which is the default, and runs everything on the one picked', async () => {
   const pc = computer();
   const claude = pc.installClaude();
   const project = repo();

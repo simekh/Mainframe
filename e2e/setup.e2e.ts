@@ -99,7 +99,7 @@ test('a claude too old says to update', async () => {
   await expect(page.getByTestId('setup')).toContainText(update);
   await expect(setupItem(page, 'look-again')).toBeVisible();
   await expect(setupItem(page, 'find-claude')).toBeVisible();
-  // With no agent working, the agents block offers both agents' links.
+  // With no agent working, the agents block offers every agent's link.
   await expect(setupItem(page, 'install-opencode')).toBeVisible();
 
   await setupItem(page, 'look-again').click();
