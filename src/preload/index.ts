@@ -24,6 +24,7 @@ const api: MainframeApi = {
   onShowProject: (cb) => listen(IPC.showProject, cb),
   listTasks: (dir) => ipcRenderer.invoke(IPC.listTasks, dir),
   startCheck: (dir) => ipcRenderer.invoke(IPC.startCheck, dir),
+  codexClaudeMdNote: (dir) => ipcRenderer.invoke(IPC.codexClaudeMdNote, dir),
   startTask: (dir, req) => ipcRenderer.invoke(IPC.startTask, dir, req),
   reopenTask: (dir, taskId) => ipcRenderer.invoke(IPC.reopenTask, dir, taskId),
   closeTask: (dir, taskId) => ipcRenderer.send(IPC.closeTask, dir, taskId),

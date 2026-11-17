@@ -1,7 +1,8 @@
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type CodexConfigNote, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
+import { codexConfigFile, codexMissesClaudeMd } from '../agents/codexInstructions';
 import { opencodeChoices, type runOpencode } from '../agents/opencode';
 import type { ExecutableLookup } from '../pty/findExecutable';
 import { agentStatus, runDefault, tickedAgents, usableChecks } from './agentChoice';
@@ -40,6 +41,8 @@ export class AgentsInUse {
       onChange(view: SettingsView): void;
       /** Runs OpenCode's listing commands; tests hand it a fake. */
       runOpencode?: typeof runOpencode;
+      /** Asks Codex what it would load for a project; tests hand it a fake. */
+      codexMissesClaudeMd?: typeof codexMissesClaudeMd;
     },
   ) {
     // The setup starts the projects only once a ticked agent is found; one that needs node may still not run.
@@ -130,6 +133,17 @@ export class AgentsInUse {
     const bin = this.bin('opencode');
     if (bin === null) throw new Error(`${AGENT_NAMES.opencode} doesn't work`);
     return opencodeChoices({ bin, dataDir: this.deps.dataDir, env: this.deps.env, run: this.deps.runOpencode });
+  }
+
+  /**
+   * Set when Codex is found and would not read the project's CLAUDE.md, with the Codex config file where the user can
+   * list it. Asked afresh each time: nothing is cached, so the note goes once the user has added the line.
+   */
+  async codexClaudeMdNote(projectDir: string): Promise<CodexConfigNote | null> {
+    const bin = this.bin('codex');
+    if (bin === null) return null;
+    const missed = await (this.deps.codexMissesClaudeMd ?? codexMissesClaudeMd)({ bin, projectDir, env: this.deps.env });
+    return missed ? { configFile: codexConfigFile(this.deps.env, process.platform) } : null;
   }
 
   private save(next: AppSettings): void {

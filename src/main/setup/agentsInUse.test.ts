@@ -268,4 +268,25 @@ describe('AgentsInUse', () => {
     expect(envs[0]).toMatchObject({ HOME: '/h' });
     expect(h.saved()).toBeNull();
   });
+
+  describe('codexClaudeMdNote', () => {
+    const withCodex = (missed: boolean | null) => {
+      const check = vi.fn(async () => missed === true);
+      const a = new AgentsInUse({ dataDir: '/data', settings: {}, checks: { ...both, codex: missed === null ? missing : found('/bin/codex') }, envBins: {}, ...deps, env: { CODEX_HOME: '/c' }, onChange: () => {}, codexMissesClaudeMd: check });
+      return { a, check };
+    };
+
+    it('is null, without running the check, when Codex is not found', async () => {
+      const { a, check } = withCodex(null);
+      await expect(a.codexClaudeMdNote('/p')).resolves.toBeNull();
+      expect(check).not.toHaveBeenCalled();
+    });
+
+    it('names the config file when the check says CLAUDE.md is missed, and is null when not', async () => {
+      const missed = withCodex(true);
+      await expect(missed.a.codexClaudeMdNote('/p')).resolves.toEqual({ configFile: expect.stringMatching(/config\.toml$/) });
+      expect(missed.check).toHaveBeenCalledWith({ bin: '/bin/codex', projectDir: '/p', env: { CODEX_HOME: '/c' } });
+      await expect(withCodex(false).a.codexClaudeMdNote('/p')).resolves.toBeNull();
+    });
+  });
 });

@@ -134,6 +134,7 @@ export function registerIpc(
   // Rejections reach the renderer's invoke, which shows them.
   ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
   ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
+  ipcMain.handle(IPC.codexClaudeMdNote, (_e, dir: string) => tasksOf(dir).codexClaudeMdNote());
   // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,

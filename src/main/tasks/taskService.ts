@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type CodexConfigNote,type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { FolderLeftError, type GitQueries } from '../git';
@@ -24,7 +24,7 @@ export interface TaskServiceDeps {
   /** Every project's tasks, shared with the other open projects' services. */
   records: TaskRecords;
   /** The agents found at start, shared with the other open projects' services: asked at each start and reopen. */
-  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked'>;
+  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked' | 'codexClaudeMdNote'>;
   /** What Claude Code's SessionStart hook runs: a real program path; null when no node was found. */
   nodeBin: string | null;
   /**
@@ -158,6 +158,10 @@ export class TaskService {
 
   startCheck(): Promise<StartCheck | null> {
     return this.deps.git.startCheck(this.deps.projectDir);
+  }
+
+  codexClaudeMdNote(): Promise<CodexConfigNote | null> {
+    return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 
   async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName }): Promise<TaskView> {
