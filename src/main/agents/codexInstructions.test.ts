@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { codexConfigFile, codexMissesClaudeMd } from './codexInstructions';
 
 const environment = { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>…' }] };
-const heading = { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions for /p\n\n<INSTRUCTIONS>\nx\n</INSTRUCTIONS>' }] };
+const headingWith = (text: string) => ({ type: 'message', role: 'user', content: [{ type: 'input_text', text: `# AGENTS.md instructions for /p\n\n<INSTRUCTIONS>\n${text}\n\n</INSTRUCTIONS>` }] });
+const heading = headingWith('rules');
 const loaded = JSON.stringify([heading, environment]);
 const notLoaded = JSON.stringify([environment]);
 
@@ -15,9 +16,13 @@ afterEach(() => {
 });
 
 function project(...files: string[]): string {
+  return projectWith('rules', ...files);
+}
+
+function projectWith(text: string, ...files: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), 'codex-instr-'));
   dirs.push(dir);
-  for (const file of files) writeFileSync(join(dir, file), 'rules');
+  for (const file of files) writeFileSync(join(dir, file), text);
   return dir;
 }
 
@@ -30,6 +35,20 @@ describe('codexMissesClaudeMd', () => {
 
   it('a CLAUDE.md that Codex loads is not missed', async () => {
     await expect(check(project('CLAUDE.md'), async () => loaded)).resolves.toBe(false);
+  });
+
+  it('an instructions message that lacks CLAUDE.md\'s text (global rules only) means it is missed', async () => {
+    await expect(check(projectWith('project rules', 'CLAUDE.md'), async () => JSON.stringify([headingWith('global rules'), environment]))).resolves.toBe(true);
+  });
+
+  it('a CRLF CLAUDE.md matches the LF text Codex prints', async () => {
+    const dir = projectWith('line one\r\nline two\r\n', 'CLAUDE.md');
+    await expect(check(dir, async () => JSON.stringify([headingWith('line one\nline two'), environment]))).resolves.toBe(false);
+  });
+
+  it('an empty CLAUDE.md has nothing to load, so it is not missed', async () => {
+    const run = vi.fn(async () => notLoaded);
+    await expect(check(projectWith('  \n\n', 'CLAUDE.md'), run)).resolves.toBe(false);
   });
 
   it('with an AGENTS.md, or no CLAUDE.md, codex is not run at all', async () => {

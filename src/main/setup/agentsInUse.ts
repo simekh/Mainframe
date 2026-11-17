@@ -143,7 +143,7 @@ export class AgentsInUse {
     const bin = this.bin('codex');
     if (bin === null) return null;
     const missed = await (this.deps.codexMissesClaudeMd ?? codexMissesClaudeMd)({ bin, projectDir, env: this.deps.env });
-    return missed ? codexConfigFile(this.deps.env, process.platform) : null;
+    return missed ? codexConfigFile(this.deps.env, this.deps.lookup.platform) : null;
   }
 
   private save(next: AppSettings): void {

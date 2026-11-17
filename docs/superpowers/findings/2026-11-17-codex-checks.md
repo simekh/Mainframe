@@ -58,6 +58,8 @@ The fake answers each `POST /v1/responses` with server-sent events: `response.cr
 
 `codex debug prompt-input`, run in a folder, prints as JSON what the model would be sent, offline and in under half a second. A loaded file is a user message starting `# AGENTS.md instructions for <folder>`, with the file inside `<INSTRUCTIONS>`. The heading says AGENTS.md even when the file is `CLAUDE.md`.
 
+With a global `$CODEX_HOME/AGENTS.md` too: alone it gives `# AGENTS.md instructions` (no "for <folder>"); with the project's file loaded, both share one message, `# AGENTS.md instructions for <folder>`, the global text first, then `--- project-doc ---`, then the project's. So the heading alone doesn't say which file was loaded: a file from the user's own fallback list (`OTHER.md`) gets the same heading. Only the file's text inside `<INSTRUCTIONS>` does.
+
 **A resume with no session.** `codex resume --last "<prompt>"` in a worktree with no session of its own starts a new chat there with that prompt.
 
 ## Not checked

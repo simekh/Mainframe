@@ -288,5 +288,10 @@ describe('AgentsInUse', () => {
       expect(missed.check).toHaveBeenCalledWith({ bin: '/bin/codex', projectDir: '/p', env: { CODEX_HOME: '/c' } });
       await expect(withCodex(false).a.codexClaudeMdNote('/p')).resolves.toBeNull();
     });
+
+    it('builds the config path for the lookup platform, not the running one', async () => {
+      const a = new AgentsInUse({ dataDir: '/data', settings: {}, checks: { ...both, codex: found('/bin/codex') }, envBins: {}, ...deps, lookup: { ...deps.lookup, platform: 'win32' as const }, env: { USERPROFILE: 'C:\\Users\\u' }, onChange: () => {}, codexMissesClaudeMd: async () => true });
+      await expect(a.codexClaudeMdNote('/p')).resolves.toBe('C:\\Users\\u\\.codex\\config.toml');
+    });
   });
 });

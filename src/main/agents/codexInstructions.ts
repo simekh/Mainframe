@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -10,6 +10,7 @@ type Run = (argv: string[], o: { cwd: string; env: Record<string, string> }) => 
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const AGENTS_MD_HEADING = '# AGENTS.md instructions for ';
 const ENVIRONMENT_CONTEXT = '<environment_context>';
+const SNIPPET_LENGTH = 200;
 
 /** The texts of the user messages' `input_text` parts, skipping anything not in that shape. */
 const userTexts = (items: unknown[]): string[] =>
@@ -25,17 +26,21 @@ const runCodex: Run = async ([file, ...args], o) =>
 
 /**
  * True when the project has a CLAUDE.md but no AGENTS.md and Codex, asked offline what it would send, prints its
- * environment context but no AGENTS.md instructions: the user's Codex config doesn't list CLAUDE.md. Any doubt (Codex
- * failing, output without the environment context) is false: a wrong note is worse than none.
+ * environment context but no AGENTS.md instructions message containing CLAUDE.md's own text: the user's Codex config
+ * doesn't list CLAUDE.md. (Codex puts that heading on any instructions message, so the text is what tells them apart.)
+ * Any doubt (Codex failing, an unreadable or empty CLAUDE.md, output without the environment context) is false: a
+ * wrong note is worse than none.
  */
 export async function codexMissesClaudeMd(o: { bin: string; projectDir: string; env: Record<string, string>; run?: Run }): Promise<boolean> {
   const { bin, projectDir, env, run = runCodex } = o;
   if (!existsSync(join(projectDir, 'CLAUDE.md')) || existsSync(join(projectDir, 'AGENTS.md'))) return false;
   try {
+    const snippet = readFileSync(join(projectDir, 'CLAUDE.md'), 'utf8').replace(/\r\n/g, '\n').trim().slice(0, SNIPPET_LENGTH);
+    if (snippet === '') return false;
     const items: unknown = JSON.parse(await run([bin, 'debug', 'prompt-input'], { cwd: projectDir, env }));
     if (!Array.isArray(items)) return false;
     const texts = userTexts(items);
-    return texts.some((text) => text.startsWith(ENVIRONMENT_CONTEXT)) && !texts.some((text) => text.startsWith(AGENTS_MD_HEADING));
+    return texts.some((text) => text.startsWith(ENVIRONMENT_CONTEXT)) && !texts.some((text) => text.startsWith(AGENTS_MD_HEADING) && text.replace(/\r\n/g, '\n').includes(snippet));
   } catch {
     return false;
   }
