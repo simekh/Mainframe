@@ -105,7 +105,8 @@ async function main() {
   const branch = gitOrEmpty(['symbolic-ref', '--short', 'HEAD']);
   if (!branch) throw new Refusal('HEAD is not on a branch.');
   const remote = gitOrEmpty(['config', `branch.${branch}.remote`]);
-  if (!remote || !gitOrEmpty(['rev-parse', '--abbrev-ref', '@{upstream}'])) {
+  const mergeRef = gitOrEmpty(['config', `branch.${branch}.merge`]);
+  if (!remote || !mergeRef || !gitOrEmpty(['rev-parse', '--abbrev-ref', '@{upstream}'])) {
     throw new Refusal(`Branch ${branch} has no upstream. Set one with git branch --set-upstream-to.`);
   }
   if (git(['status', '--porcelain', '--untracked-files=no'])) {
@@ -149,11 +150,11 @@ async function main() {
   git(['commit', '--quiet', '-m', `Release ${version}`]);
   git(['tag', '-a', tag, '-m', `Mainframe ${version}`]);
   try {
-    git(['push', '--quiet', remote, 'HEAD', tag], { remote: true });
+    git(['push', '--quiet', remote, `HEAD:${mergeRef}`, tag], { remote: true });
   } catch (error) {
-    throw new Error(`Committed and tagged ${tag} locally, but the push failed: ${String(error.stderr ?? error.message).trim()}\nRun: git push ${remote} HEAD ${tag}`);
+    throw new Error(`Committed and tagged ${tag} locally, but the push failed: ${String(error.stderr ?? error.message).trim()}\nRun: git push ${remote} HEAD:${mergeRef} ${tag}`);
   }
-  console.log(`Released ${version}: pushed ${branch} and ${tag} to ${remote}.`);
+  console.log(`Released ${version}: pushed ${mergeRef.replace(/^refs\/heads\//, '')} and ${tag} to ${remote}.`);
 
   const url = gitOrEmpty(['remote', 'get-url', remote]);
   if (!url.includes('github.com') || !ghAvailable()) {

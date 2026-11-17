@@ -93,6 +93,15 @@ describe('release.mjs', () => {
     expect(r.stdout).toMatch(/skipp\w+ the GitHub Release/i);
   });
 
+  it('advances the upstream branch when the local branch has another name', () => {
+    git('-C', dev, 'checkout', '--quiet', '-b', 'foo');
+    git('-C', dev, 'branch', '--set-upstream-to=origin/trunk');
+    const r = run(dev, '--yes');
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(git('-C', origin, 'rev-parse', 'trunk')).toBe(git('-C', dev, 'rev-parse', 'HEAD'));
+    expect(git('-C', origin, 'branch', '--list', 'foo')).toBe('');
+  });
+
   it('refuses an empty Unreleased', () => {
     commit(dev, 'CHANGELOG.md', '# Changelog\n\n## Unreleased\n', 'empty');
     git('-C', dev, 'push', '--quiet', 'origin', 'HEAD:trunk');
