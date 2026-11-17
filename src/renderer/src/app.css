@@ -1924,7 +1924,42 @@ kbd {
   height: var(--row-height);
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 6px 12px 4px 0;
+}
+
+/* Update available: the one thing in the row that isn't always there, so it alone wears the accent, as a pill that
+   reads as news rather than a control. It sits right before the cog. */
+.tb-update {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tb-update:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.tb-update:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.tb-update > svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* Its own icon, not one in the state glyph an off Manager button shows. */
@@ -1951,8 +1986,15 @@ kbd {
 /* The words go; the state glyph stays. */
 @container (max-width: 560px) {
   .tb-jump span,
+  .tb-update span,
   .tb-toggle > span:not(.glyph) {
     display: none;
+  }
+
+  .tb-update {
+    width: 24px;
+    padding: 0;
+    justify-content: center;
   }
 }
 
@@ -3439,6 +3481,64 @@ kbd {
   color: var(--fg);
 }
 
+/* --- Update dialog: a release's notes along an accent rule, or the commands to run by hand --- */
+
+.update-dialog .nt h2 {
+  overflow-wrap: anywhere;
+}
+
+/* The notes take what room they need, up to a scroll: several missed releases can be long. */
+.update-notes {
+  max-height: min(320px, 45vh);
+  overflow-y: auto;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  user-select: text;
+}
+
+/* Each release's heading, `0.5.0 · 17 Nov`, as a quiet line over its notes, not a second title. */
+.update-notes .md :is(h3, h4) {
+  margin: 14px 0 4px;
+  color: var(--fg-muted);
+  font: 500 12px/1.4 var(--font-mono);
+}
+
+.update-notes .md > :first-child {
+  margin-top: 0;
+}
+
+.update-by-hand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+}
+
+.update-by-hand p {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.update-by-hand code {
+  color: var(--warning);
+  font: 12px var(--font-mono);
+}
+
+/* To copy into a terminal: selectable, and a line per command as it would be typed. */
+.update-by-hand pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: 12px/1.7 var(--font-mono);
+  user-select: text;
+}
+
 /* --- Settings: the New task box, holding a list of titled sections --------------------------- */
 
 .settings-dialog {
@@ -3553,7 +3653,8 @@ kbd {
   unicode-bidi: isolate;
 }
 
-.settings-find {
+.settings-find,
+.settings-check {
   margin-left: auto;
 }
 
@@ -3714,6 +3815,7 @@ kbd {
   .tb-btn,
   .tb-jump,
   .tb-toggle,
+  .tb-update,
   .panel-pin,
   .panel-fold,
   .panel-strip,
@@ -3737,9 +3839,23 @@ kbd {
     transition: transform 140ms var(--ease-out);
   }
 
+  /* The pill arrives once, with a ring that spreads from it and fades: the news of a release, told once. */
+  .tb-update {
+    animation: update-arrive 1.6s var(--ease-out) 1;
+  }
+
   /* Only during a drag: as it ends, each row takes its new place in the list at once, with nothing to slide back. */
   .rail-list[data-dragging='true'] .rail-item:not([data-dragging='true']) {
     transition: transform 140ms var(--ease-out);
+  }
+}
+
+@keyframes update-arrive {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent);
   }
 }
 

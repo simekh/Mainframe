@@ -2,6 +2,7 @@ import { createEffect, createResource, createSignal, For, Index, Show } from 'so
 import { AGENT_NAMES, AGENT_ORDER, type AgentName, type SettingsView, type SyncModel } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { checkLine } from '../setup/setupCopy';
+import { checkNow, updateView } from '../updates/updateStore';
 import { defaultChoice, works } from './defaultChoice';
 import { closeSettings, settingsOpen, settingsView } from './settingsStore';
 
@@ -154,6 +155,29 @@ function OpencodeSection(props: { view: SettingsView }) {
   );
 }
 
+/** Mainframe's own version, and Check for Updates…: the way in on Windows and Linux, which have no menu bar. */
+function MainframeSection() {
+  const [checking, setChecking] = createSignal(false);
+  const check = () => {
+    setChecking(true);
+    void checkNow().finally(() => setChecking(false));
+  };
+  return (
+    <section class="settings-section" aria-labelledby="settings-mainframe">
+      <h3 id="settings-mainframe" class="settings-title">
+        Mainframe
+      </h3>
+      <div class="settings-row" data-testid="settings-version-row">
+        <span class="settings-key">Version</span>{' '}
+        <span class="settings-version">{updateView() ? (updateView()!.current ?? 'unreleased') : '…'}</span>
+        <button class="btn settings-check" type="button" data-testid="settings-check-updates" disabled={checking()} onClick={check}>
+          {checking() ? 'Checking…' : 'Check for Updates…'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 /** Settings, for the whole app: mounted once, shown over the window while `settingsOpen()`. */
 export default function SettingsDialog() {
   let dialog!: HTMLDialogElement;
@@ -227,6 +251,7 @@ export default function SettingsDialog() {
             <Show when={view().agents.opencode.ticked && works(view(), 'opencode')}>
               <OpencodeSection view={view()} />
             </Show>
+            <MainframeSection />
           </>
         )}
       </Show>

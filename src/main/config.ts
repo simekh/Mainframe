@@ -51,7 +51,8 @@ export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppC
     logOsc: env.MAINFRAME_LOG_OSC === '1',
     e2e,
     updateDir: e2e ? env.MAINFRAME_E2E_UPDATE_DIR : undefined,
-    launcherFile: env.MAINFRAME_UPDATE_FILE,
-    updateFailure: env.MAINFRAME_UPDATE_FAILED,
+    // Empty counts as unset: an empty failure would open the dialog with nothing to say.
+    launcherFile: env.MAINFRAME_UPDATE_FILE || undefined,
+    updateFailure: env.MAINFRAME_UPDATE_FAILED || undefined,
   };
 }

@@ -30,6 +30,7 @@ describe('loadConfig', () => {
     const env = { MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_UPDATE_FILE: '/x/update', MAINFRAME_UPDATE_FAILED: 'it failed' };
     expect(loadConfig(env, '/data')).toMatchObject({ updateDir: undefined, launcherFile: '/x/update', updateFailure: 'it failed' });
     expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').updateDir).toBe('/x/clone');
+    expect(loadConfig({ MAINFRAME_UPDATE_FILE: '', MAINFRAME_UPDATE_FAILED: '' }, '/data')).toMatchObject({ launcherFile: undefined, updateFailure: undefined });
   });
 
   it('makes a relative data dir absolute', () => {
