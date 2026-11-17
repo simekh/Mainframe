@@ -94,7 +94,7 @@ export function registerManagerTools(
     'close_session',
     {
       description:
-        "Closes a task's session, as the owner's Close session button does: the session ends and nothing is deleted. The task goes to Paused, or to Finished once Mainframe finds its branch merged with nothing uncommitted; the owner can reopen it either way. Only when the owner asks for it. taskId is the one list_sessions gives. Refused while the session is working, waiting for the owner's answer, still starting or being put back: say so to the owner rather than try again. Returns the task's title, its last message, and merged: whether it goes to Finished.",
+        "Closes a task's session, as the owner's Close session button does. The task goes to Paused with its worktree kept, or, once Mainframe finds its branch merged with nothing uncommitted, to Finished: its worktree and branch are removed, as only merged work is. The owner can continue it either way. Only when the owner asks for it. taskId is the one list_sessions gives. Refused while the session is working, waiting for the owner's answer, still starting or being put back: say so to the owner rather than try again. Returns the task's title, its last message, and merged: whether it goes to Finished.",
       inputSchema: z.object({ taskId: z.string() }),
     },
     async ({ taskId }) => {

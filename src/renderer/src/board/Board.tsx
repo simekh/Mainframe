@@ -10,7 +10,8 @@ import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
 import { todoOf } from '../todo/todoStore';
 
-// A flex row of lanes. Done is drawn only while it holds a card, last, so its coming and going moves no other lane.
+// A flex row of lanes. Done is drawn only while it holds a card, last, so the others keep their places; in a narrow pane
+// they make room for it.
 const LANES: Array<{ lane: Lane; name: string; empty?: string }> = [
   { lane: 'needs-you', name: 'Needs you', empty: 'Nothing needs you' },
   { lane: 'working', name: 'Working', empty: 'Nothing running' },

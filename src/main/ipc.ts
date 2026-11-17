@@ -216,8 +216,9 @@ export function registerIpc(
       host.spawn(sessionId, { ...owner.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
         onStatus: (status) => {
-          owner.noteStatus(sessionId, status?.state ?? null);
+          // The state first: a task list the report changes (a merged mark cleared) is never drawn with the old state.
           send(IPC.status, { sessionId, status });
+          owner.noteStatus(sessionId, status?.state ?? null);
         },
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });

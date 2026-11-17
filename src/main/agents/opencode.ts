@@ -109,8 +109,8 @@ export async function opencodeChoices(o: { bin: string; dataDir: string; env: Re
 }
 
 /**
- * What the manager may call without asking. A close does not ask: it deletes nothing and Reopen undoes it. Starting a
- * task asks: OpenCode otherwise allows every tool.
+ * What the manager may call without asking. A close does not ask: it is the owner's own Close session, which removes only
+ * a worktree whose work is all merged. Starting a task asks: OpenCode otherwise allows every tool.
  */
 const MANAGER_RULES = [
   { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },

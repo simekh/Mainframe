@@ -187,7 +187,7 @@ export const mcpConfigJson = (url: string, token: string): string =>
 
 /**
  * What the manager may call without asking, as an allow rule names a tool: the read of the sessions, a sync, whose
- * background run may use only the tools the owner confirmed, and a close, which deletes nothing and Reopen undoes.
+ * background run may use only the tools the owner confirmed, and a close, the owner's own Close session: it removes only a worktree whose work is all merged.
  * Starting a task goes through the owner's permission mode, so the role prompt is not all that stands between the
  * manager and a session.
  */

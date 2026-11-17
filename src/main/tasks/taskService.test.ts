@@ -2408,6 +2408,30 @@ it('a merged task whose session starts working again loses its mark until a roun
   expect(t.changes.length).toBe(before + 1);
 });
 
+it('a round that ends while the session works again does not put the merged mark back', async () => {
+  let fetched!: () => void;
+  const t = roundSetup({ fetchBase: () => new Promise<void>((resolve) => (fetched = resolve)) });
+  const { view, sid } = await runningTask(t);
+  t.states.set(view.branch, MERGED);
+  say(t, sid, 'done');
+
+  say(t, sid, 'working');
+  fetched();
+  await vi.waitFor(() => expect(t.checked).toEqual([view.branch]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(t.service.list()[0].merged).toBe(false);
+});
+
+it('a turn that ends idle starts a round too', async () => {
+  const t = roundSetup();
+  const { view, sid } = await runningTask(t);
+  t.states.set(view.branch, MERGED);
+  say(t, sid, 'working');
+
+  say(t, sid, 'idle');
+  await vi.waitFor(() => expect(t.service.list()[0].merged).toBe(true));
+});
+
 it('reports say whether a running task is marked merged', async () => {
   const t = roundSetup();
   const merged = await runningTask(t, 'Merged');

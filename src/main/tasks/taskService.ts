@@ -22,7 +22,7 @@ export const FINISH_CHECK_MS = 3 * 60_000;
 const WHERE: Record<TaskPlace | 'board', string> = { board: 'paused', putBack: 'put back', finished: 'finished', discarded: 'discarded' };
 
 /** What a session in a turn is doing, as the manager is told it; any other session whose turn is not over is starting. */
-const IN_TURN: Partial<Record<string, string>> = { working: 'working', blocked: "waiting for the owner's answer" };
+const IN_TURN: Partial<Record<ProgramState, string>> = { working: 'working', blocked: "waiting for the owner's answer" };
 
 export interface TaskServiceDeps {
   projectDir: string;
@@ -541,7 +541,7 @@ export class TaskService {
     if (running.turn.ending) throw new Error(`${task.title}'s session is already closing.`);
     const status = this.deps.status(running.id);
     if (!running.turn.over(running.startedWithPrompt)) {
-      const what = IN_TURN[status?.state ?? ''] ?? 'still starting';
+      const what = (status && IN_TURN[status.state]) ?? 'still starting';
       throw new Error(`${task.title}'s session is ${what}; it can be closed once its turn is over.`);
     }
     const closed = { title: task.title, msg: status?.msg ?? null, merged: this.merged.has(task.id) };
@@ -564,6 +564,7 @@ export class TaskService {
   noteStatus(sessionId: string, state: ProgramState | null): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    const wasOver = session.turn.over(session.startedWithPrompt);
     session.turn.note(state);
     const task = this.find(session.taskId);
     this.lookForWorktree(session, task);
@@ -582,7 +583,7 @@ export class TaskService {
       } else if (state === 'done' || (state === 'idle' && session.putBack.worked)) {
         this.close(task.id);
       }
-    } else if (state === 'done' && !session.turn.ending) {
+    } else if (!wasOver && session.turn.over(session.startedWithPrompt)) {
       // A turn's end is when a running task may have been merged: its card goes to Done without waiting for the timer.
       void this.checkRound();
     }
@@ -662,9 +663,12 @@ export class TaskService {
     // Where the round found it: a move meanwhile (Discard, Put back) is not overwritten.
     const place = task.place;
     const passed = (await this.nothingToLose(task)) !== null;
-    if (this.sessionOf(task.id)) {
-      if (passed === this.merged.has(task.id)) return;
-      if (passed) this.merged.add(task.id);
+    const running = this.sessionOf(task.id);
+    if (running) {
+      // A session that went back to work while git was read may be adding to the branch: the next turn's end proves it.
+      const mark = passed && !inTurn(this.deps.status(running.id)?.state ?? null);
+      if (mark === this.merged.has(task.id)) return;
+      if (mark) this.merged.add(task.id);
       else this.merged.delete(task.id);
       this.deps.onChange(this.list());
       return;

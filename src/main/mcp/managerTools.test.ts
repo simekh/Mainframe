@@ -122,11 +122,12 @@ it("close_session passes a refusal on as an error, in the service's words", asyn
   expect(result.content[0].text).toBe(refusal);
 });
 
-it('close_session is for when the owner asks, and says it deletes nothing', () => {
+it('close_session is for when the owner asks, and says what a close of merged work removes', () => {
   const { tools } = setup();
   const description = tools.get('close_session')!.config.description;
   expect(description).toContain('Only when the owner asks for it');
-  expect(description).toContain('nothing is deleted');
+  expect(description).not.toContain('nothing is deleted');
+  expect(description).toContain('its worktree and branch are removed');
 });
 
 it("list_sessions takes no input and returns the reports as JSON, each with its task's card", async () => {
