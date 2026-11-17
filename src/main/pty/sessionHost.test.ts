@@ -111,6 +111,108 @@ it('reports status from OSC 7501 reports', () => {
   expect(log).toContain('status:working');
 });
 
+// Claude Code gives a reply 2 seconds from the start of its probe, but under load the query leaves long after that start,
+// behind its first screens. A reply in the pty before the query is read once the probe waits for it.
+describe('answerStatusEarly', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const PASTE_ON = '\x1b[?2004h';
+  const early = { ...spec, answerStatusEarly: true };
+  const replies = (log: string[]) => log.filter((l) => l === `write:${OSC7501_SUPPORT_REPLY}`).length;
+
+  it('answers from the moment the session turns bracketed paste on, again every 250 ms, until its query', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit(`x${PASTE_ON}`);
+    expect(replies(log)).toBe(1);
+    vi.advanceTimersByTime(500);
+    expect(replies(log)).toBe(3);
+    ptys[0].emit('\x1b]7501;?\x1b\\\x1b[c');
+    expect(replies(log)).toBe(4);
+    vi.advanceTimersByTime(5000);
+    expect(replies(log)).toBe(4);
+  });
+
+  it('answers nothing early for a session that does not ask for it', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', spec, listener);
+    ptys[0].emit(PASTE_ON);
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(0);
+  });
+
+  it('sees bracketed paste turned on across two chunks, and starts once', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit('\x1b[?20');
+    expect(replies(log)).toBe(0);
+    ptys[0].emit(`04h${PASTE_ON}`);
+    expect(replies(log)).toBe(1);
+    vi.advanceTimersByTime(250);
+    expect(replies(log)).toBe(2);
+  });
+
+  it('stops at the first report, a session that never asks', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit(PASTE_ON);
+    ptys[0].emit('\x1b]7501;state=idle\x07');
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(1);
+  });
+
+  it('answers nothing early once the session has asked or reported', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit('\x1b]7501;state=idle\x07');
+    ptys[0].emit(PASTE_ON);
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(0);
+  });
+
+  it('answers a query in the chunk that turns bracketed paste on just once, as it was asked', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit(`\x1b]7501;?\x1b\\\x1b[c${PASTE_ON}`);
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(1);
+  });
+
+  it('a pty that refuses a later answer ends the answers, with no error thrown from the timer', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit(PASTE_ON);
+    ptys[0].broken = true;
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+    ptys[0].broken = false;
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(1);
+  });
+
+  it('stops after 30 seconds without a query or a report', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('s1', early, listener);
+    ptys[0].emit(PASTE_ON);
+    vi.advanceTimersByTime(30_000);
+    const sent = replies(log);
+    vi.advanceTimersByTime(5000);
+    expect(replies(log)).toBe(sent);
+  });
+
+  it('stops when the session is killed, and when it exits', () => {
+    const { host, ptys, log, listener } = setup();
+    host.spawn('a', early, listener);
+    host.spawn('b', early, listener);
+    ptys[0].emit(PASTE_ON);
+    ptys[1].emit(PASTE_ON);
+    host.kill('a');
+    ptys[1].exit(0);
+    vi.advanceTimersByTime(1000);
+    expect(replies(log)).toBe(2);
+  });
+});
+
 // The exit first: a status of none for a session the renderer still shows as running reads as
 // "Starting…", and moves a card that needed the owner to Working on its way to Closed.
 it('on exit sends remaining output, reports the exit, then drops working status and forgets the session', () => {

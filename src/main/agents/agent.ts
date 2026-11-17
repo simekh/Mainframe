@@ -7,8 +7,11 @@ import type { SyncAnswer } from '../todo/todoSchema';
 /** How a prompt names the repo's instructions: the first mention in full, later ones short. */
 export interface Instructions { first: string; again: string; requires: string; integrates: string }
 
-/** What a launch adds to the session host's own environment. */
-export interface LaunchArgs { argv: string[]; env?: Record<string, string> }
+/**
+ * What a launch adds to the session host's own environment. `answerStatusEarly`: the agent's OSC 7501 query may get out
+ * after it has stopped waiting for the reply, so the session host answers before it asks (SessionHost.spawn says when).
+ */
+export interface LaunchArgs { argv: string[]; env?: Record<string, string>; answerStatusEarly?: boolean }
 
 /** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
 export interface TaskStart { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
