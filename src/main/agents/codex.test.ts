@@ -1,7 +1,10 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mac, win } from '../testing/lookups';
 import type { ManagerLaunch } from './agent';
-import { codexAgent, codexPlaces, codexReopenArgv, codexStartArgv, parseCodexVersion } from './codex';
+import { CODEX_CHAT_FILE, codexAgent, codexManagerArgv, codexPlaces, codexReopenArgv, codexStartArgv, parseCodexVersion } from './codex';
 import { opencodeAgent } from './opencode';
 
 describe('parseCodexVersion', () => {
@@ -82,7 +85,76 @@ it("Codex's shell variables are dropped, the user's CODEX_HOME is not", () => {
   expect(codexAgent.droppedEnv).not.toContain('CODEX_HOME');
 });
 
-it('the manager refuses until it runs on Codex', async () => {
-  await expect(codexAgent.managerLaunch({} as ManagerLaunch)).rejects.toThrow("The manager doesn't run on Codex yet.");
-  expect(codexAgent.managerChat('/any', 'saved')).toBeNull();
+describe('the manager on Codex', () => {
+  const ID = '01a1e9f7-dc3e-7483-81d3-5c390b1a5b42';
+  const pairs = [
+    'mcp_servers.mainframe.url="http://127.0.0.1:5/mcp"',
+    'mcp_servers.mainframe.bearer_token_env_var="MAINFRAME_MCP_TOKEN"',
+    'mcp_servers.mainframe.tool_timeout_sec=360',
+    'mcp_servers.mainframe.tools.list_sessions.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.sync_todo.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.close_session.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.start_task.approval_mode="prompt"',
+    'developer_instructions="Role.\\n\\nBefore your first answer in a chat, call list_sessions."',
+  ].flatMap((v) => ['-c', v]);
+  const base = { codexBin: 'codex', url: 'http://127.0.0.1:5/mcp', rolePrompt: 'Role.' };
+
+  it('sets every key, before the positionals', () => {
+    expect(codexManagerArgv({ ...base, resume: null })).toEqual(['codex', ...pairs]);
+    expect(codexManagerArgv({ ...base, resume: ID, prompt: 'Continue where you left off.' })).toEqual([
+      'codex', 'resume', ...pairs, ID, 'Continue where you left off.',
+    ]);
+  });
+
+  it('writes the role prompt as a TOML basic string', () => {
+    const argv = codexManagerArgv({ ...base, rolePrompt: 'a"b\\c\nd\x7fe', resume: null });
+    expect(argv.at(-1)).toBe('developer_instructions="a\\"b\\\\c\\nd\\u007fe\\n\\nBefore your first answer in a chat, call list_sessions."');
+  });
+
+  const launch = (o: Partial<ManagerLaunch>): ManagerLaunch => ({
+    bin: 'codex', nodeBin: null, env: {}, dir: '/d', projectDir: '/p', name: 'n',
+    mcp: { url: base.url, token: 's3cret-value' }, rolePrompt: 'Role.', chat: ID, resume: true, setting: {}, ...o,
+  });
+
+  it('passes the token in the environment only', async () => {
+    const { argv, env } = await codexAgent.managerLaunch(launch({}));
+    expect(env).toEqual({ MAINFRAME_MCP_TOKEN: 's3cret-value' });
+    expect(argv.some((a) => a.includes('s3cret-value'))).toBe(false);
+    expect(argv).toContain('resume');
+    expect(await codexAgent.managerLaunch(launch({ resume: false }))).toMatchObject({ argv: expect.not.arrayContaining(['resume']) });
+  });
+
+  describe('the chat record', () => {
+    const dir = () => mkdtempSync(join(tmpdir(), 'mainframe-codex-chat-'));
+
+    it('keeps the id noted, replaces it, and forgets it', () => {
+      const d = dir();
+      codexAgent.noteManagerChat?.(d, ID);
+      expect(codexAgent.managerChat(d, 'saved-ignored')).toBe(ID);
+      const other = '01a1e9f7-dc3e-7483-81d3-5c390b1a5b43';
+      codexAgent.noteManagerChat?.(d, other);
+      expect(codexAgent.managerChat(d, undefined)).toBe(other);
+      codexAgent.forgetManagerChat?.(d);
+      expect(codexAgent.managerChat(d, undefined)).toBeNull();
+      expect(() => codexAgent.forgetManagerChat?.(d)).not.toThrow();
+    });
+
+    it('makes the folder when it is missing', () => {
+      const d = join(dir(), 'new');
+      codexAgent.noteManagerChat?.(d, ID);
+      expect(codexAgent.managerChat(d, undefined)).toBe(ID);
+    });
+
+    it('ignores a value that is not a session id', () => {
+      const d = dir();
+      codexAgent.noteManagerChat?.(d, ID);
+      for (const bad of ['', '-x', 'not-a-uuid', `${ID} --x`]) {
+        codexAgent.noteManagerChat?.(d, bad);
+        expect(codexAgent.managerChat(d, undefined)).toBe(ID);
+      }
+      mkdirSync(d, { recursive: true });
+      writeFileSync(join(d, CODEX_CHAT_FILE), JSON.stringify({ sessionId: '-x' }));
+      expect(codexAgent.managerChat(d, undefined)).toBeNull();
+    });
+  });
 });

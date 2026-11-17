@@ -1,9 +1,12 @@
-import { posix, win32 } from 'node:path';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { join, posix, win32 } from 'node:path';
 import { MIN_CODEX_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import type { AgentAdapter } from './agent';
 import { makeCodexSync } from './codexSync';
+import { writeJsonAtomic } from '../tasks/taskStore';
+import { SYNC_TIMEOUT_MS } from '../todo/syncRun';
 import { agentsMdInstructions, mainframeWorktreeNote } from './opencode';
 
 /** Keys Codex sets in the shells it runs. CODEX_HOME is the user's own setting, so it stays. */
@@ -54,6 +57,41 @@ export function codexPlaces(lookup: ExecutableLookup): string[] {
 
 export const findCodex = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, codexPlaces, checkCodex);
 
+export const CODEX_TOKEN_ENV = 'MAINFRAME_MCP_TOKEN';
+export const CODEX_CHAT_FILE = 'codex-chat.json';
+export const CODEX_FIRST_CALL = 'Before your first answer in a chat, call list_sessions.';
+
+// The sync tool is slow, so the call waits a minute longer than the sync's own timeout.
+const TOOL_TIMEOUT_SEC = (SYNC_TIMEOUT_MS + 60_000) / 1000;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A TOML basic string: JSON's escapes, plus DEL, which JSON leaves bare and TOML forbids. */
+const tomlString = (text: string): string => JSON.stringify(text).replace(/\x7f/g, '\\u007f');
+
+/** The manager's Codex: Mainframe's server with its token from the environment, the tools that act asking first, and the role. */
+export function codexManagerArgv(o: { codexBin: string; url: string; rolePrompt: string; resume: string | null; prompt?: string }): string[] {
+  const server = 'mcp_servers.mainframe';
+  const settings = [
+    `${server}.url=${tomlString(o.url)}`,
+    `${server}.bearer_token_env_var=${tomlString(CODEX_TOKEN_ENV)}`,
+    `${server}.tool_timeout_sec=${TOOL_TIMEOUT_SEC}`,
+    ...['list_sessions', 'sync_todo', 'close_session'].map((tool) => `${server}.tools.${tool}.approval_mode="approve"`),
+    `${server}.tools.start_task.approval_mode="prompt"`,
+    `developer_instructions=${tomlString(`${o.rolePrompt}\n\n${CODEX_FIRST_CALL}`)}`,
+  ].flatMap((value) => ['-c', value]);
+  return [o.codexBin, ...(o.resume ? ['resume'] : []), ...settings, ...(o.resume ? [o.resume] : []), ...(o.prompt ? [o.prompt] : [])];
+}
+
+/** The chat Codex named in a Mainframe tool call; null when none was noted or the file holds anything but a session id. */
+function codexManagerChat(dir: string): string | null {
+  try {
+    const { sessionId } = JSON.parse(readFileSync(join(dir, CODEX_CHAT_FILE), 'utf8')) as { sessionId?: unknown };
+    return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? sessionId : null;
+  } catch {
+    return null;
+  }
+}
+
 export const codexAgent: AgentAdapter = {
   name: 'codex',
   envVar: 'MAINFRAME_CODEX_BIN',
@@ -75,7 +113,18 @@ export const codexAgent: AgentAdapter = {
   chatKept: () => true,
   began: (_taskDir, task) => task.began === true,
   forgetChat: () => {},
-  managerChat: () => null,
-  managerLaunch: () => Promise.reject(new Error("The manager doesn't run on Codex yet.")),
+  managerChat: (dir) => codexManagerChat(dir),
+  managerLaunch: (o) =>
+    Promise.resolve({
+      argv: codexManagerArgv({ codexBin: o.bin, url: o.mcp.url, rolePrompt: o.rolePrompt, resume: o.resume ? o.chat : null, prompt: o.prompt }),
+      env: { [CODEX_TOKEN_ENV]: o.mcp.token },
+    }),
+  // The id goes into a command line, so only a session id's shape is kept.
+  noteManagerChat: (dir, sessionId) => {
+    if (!SESSION_ID.test(sessionId)) return;
+    mkdirSync(dir, { recursive: true });
+    writeJsonAtomic(join(dir, CODEX_CHAT_FILE), { sessionId });
+  },
+  forgetManagerChat: (dir) => rmSync(join(dir, CODEX_CHAT_FILE), { force: true }),
   sync: makeCodexSync(),
 };

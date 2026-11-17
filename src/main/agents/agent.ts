@@ -109,5 +109,9 @@ export interface AgentAdapter {
   /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
   managerChat(dir: string, saved: string | undefined): string | null;
   managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;
+  /** An id the agent sent with a Mainframe tool call, kept as the manager chat to resume; only Codex has it. */
+  noteManagerChat?(dir: string, sessionId: string): void;
+  /** Forgets the chat `noteManagerChat` kept. */
+  forgetManagerChat?(dir: string): void;
   readonly sync: SyncAdapter;
 }
