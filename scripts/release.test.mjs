@@ -1,14 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cutRelease, nextVersion, unreleasedNotes } from './release.mjs';
+import { cutRelease, githubRepo, nextVersion, unreleasedNotes } from './release.mjs';
 
 const script = join(dirname(fileURLToPath(import.meta.url)), 'release.mjs');
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: 'pipe' }).trim();
-const which = (tool) => execFileSync(process.platform === 'win32' ? 'where' : 'which', [tool], { encoding: 'utf8' }).split(/\r?\n/)[0];
 
 describe('nextVersion', () => {
   it('starts at 0.1.0 without a tag', () => {
@@ -47,10 +46,28 @@ describe('unreleasedNotes and cutRelease', () => {
   });
 });
 
+describe('githubRepo', () => {
+  it('reads HOST/OWNER/REPO from https and ssh remote URLs', () => {
+    expect(githubRepo('https://github.com/acme/tool.git')).toBe('github.com/acme/tool');
+    expect(githubRepo('https://github.com/acme/tool')).toBe('github.com/acme/tool');
+    expect(githubRepo('https://me@github.com/acme/tool.git/')).toBe('github.com/acme/tool');
+    expect(githubRepo('git@github.com:acme/tool.git')).toBe('github.com/acme/tool');
+    expect(githubRepo('ssh://git@github.com/acme/tool.git')).toBe('github.com/acme/tool');
+    expect(githubRepo('ssh://git@github.com:22/acme/tool')).toBe('github.com/acme/tool');
+  });
+  it('is null for a remote that is not on github.com', () => {
+    expect(githubRepo('/tmp/origin.git')).toBeNull();
+    expect(githubRepo('C:\\repos\\origin.git')).toBeNull();
+    expect(githubRepo('https://gitlab.com/acme/tool.git')).toBeNull();
+    expect(githubRepo('git@notgithub.com:acme/tool.git')).toBeNull();
+    expect(githubRepo('https://github.com/acme')).toBeNull();
+  });
+});
+
 describe('release.mjs', () => {
-  let root, origin, dev, binDir;
-  const run = (dir, ...args) =>
-    spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir } });
+  // The remotes are local paths, so no run here reaches GitHub, whether or not gh is installed.
+  let root, origin, dev;
+  const run = (dir, ...args) => spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8' });
   const commit = (dir, file, text, msg) => {
     writeFileSync(join(dir, file), text);
     git('-C', dir, 'add', file);
@@ -65,10 +82,6 @@ describe('release.mjs', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'mainframe-release-'));
-    // A PATH with git but no gh.
-    binDir = join(root, 'bin');
-    mkdirSync(binDir);
-    symlinkSync(which('git'), join(binDir, 'git'));
     origin = join(root, 'origin.git');
     dev = join(root, 'dev');
     git('init', '--quiet', '--bare', '-b', 'trunk', origin);
@@ -106,6 +119,7 @@ describe('release.mjs', () => {
     git('-C', dev, 'push', '--quiet', 'origin', 'HEAD:trunk');
     const r = run(dev, '--yes');
     expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/no notes under "## Unreleased"/);
     expect(git('-C', origin, 'tag')).toBe('');
   });
 
@@ -113,6 +127,7 @@ describe('release.mjs', () => {
     writeFileSync(join(dev, 'CHANGELOG.md'), '# Changelog\n\n## Unreleased\n\nNew: edited.\n');
     const r = run(dev, '--yes');
     expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/uncommitted changes/);
     expect(git('-C', origin, 'tag')).toBe('');
   });
 
@@ -123,6 +138,7 @@ describe('release.mjs', () => {
     git('-C', other, 'push', '--quiet', 'origin', 'HEAD:trunk');
     const r = run(dev, '--yes');
     expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/1 commit\(s\) behind its upstream/);
     expect(git('-C', origin, 'tag')).toBe('');
   });
 
@@ -131,7 +147,32 @@ describe('release.mjs', () => {
     const before = git('-C', origin, 'rev-parse', 'trunk');
     const r = run(dev, '--yes');
     expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/1 commit\(s\) ahead of its upstream/);
     expect(git('-C', origin, 'rev-parse', 'trunk')).toBe(before);
+    expect(git('-C', origin, 'tag')).toBe('');
+  });
+
+  it('refuses an option it does not know, before doing anything', () => {
+    const r = run(dev, '--dry-run');
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Unknown option --dry-run/);
+    expect(git('-C', dev, 'tag')).toBe('');
+    expect(git('-C', dev, 'log', '--format=%s')).toBe('first');
+  });
+
+  it('refuses plainly when the upstream branch is not on the remote', () => {
+    git('-C', dev, 'config', 'branch.trunk.merge', 'refs/heads/gone');
+    const r = run(dev, '--yes');
+    expect(r.status).not.toBe(0);
+    expect(r.stderr.trim()).toBe('The upstream of trunk, gone, is not on origin. Set another with git branch --set-upstream-to.');
+    expect(git('-C', origin, 'tag')).toBe('');
+  });
+
+  it('counts a branch that tracks a local branch as having no upstream', () => {
+    git('-C', dev, 'checkout', '--quiet', '-b', 'foo', '--track', 'trunk');
+    const r = run(dev, '--yes');
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Branch foo has no upstream/);
     expect(git('-C', origin, 'tag')).toBe('');
   });
 });

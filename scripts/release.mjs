@@ -56,6 +56,15 @@ export function cutRelease(changelog, version, date) {
   return { changelog: lines.join('\n') };
 }
 
+/**
+ * The remote's repository as gh's `--repo` takes it, `github.com/OWNER/REPO`, from an https or ssh URL
+ * (`https://github.com/o/r.git`, `git@github.com:o/r.git`, `ssh://git@github.com/o/r`). Null when it is not on github.com.
+ */
+export function githubRepo(url) {
+  const match = /^(?:https?:\/\/|ssh:\/\/)?(?:[^@/]+@)?github\.com(?::\d+)?[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(url);
+  return match ? `github.com/${match[1]}/${match[2]}` : null;
+}
+
 /** `17 Nov 2026`, the date format the app's changelog parser expects. */
 function formatDate(now) {
   return `${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
@@ -94,17 +103,20 @@ function ghAvailable() {
 
 async function main() {
   const args = process.argv.slice(2);
+  const unknown = args.find((arg) => arg.startsWith('-') && arg !== '--yes');
+  if (unknown) throw new Error(`Unknown option ${unknown}. The only option is --yes.`);
   const yes = args.includes('--yes');
-  const explicit = args.find((arg) => !arg.startsWith('--'));
+  const explicit = args.find((arg) => !arg.startsWith('-'));
 
   const root = git(['rev-parse', '--show-toplevel']);
   process.chdir(root);
 
   const branch = gitOrEmpty(['symbolic-ref', '--short', 'HEAD']);
   if (!branch) throw new Error('HEAD is not on a branch.');
+  // `.` is a branch that tracks a local branch: there is nothing to push to.
   const remote = gitOrEmpty(['config', `branch.${branch}.remote`]);
   const mergeRef = gitOrEmpty(['config', `branch.${branch}.merge`]);
-  if (!remote || !mergeRef) {
+  if (!remote || remote === '.' || !mergeRef) {
     throw new Error(`Branch ${branch} has no upstream. Set one with git branch --set-upstream-to.`);
   }
   if (git(['status', '--porcelain', '--untracked-files=no'])) {
@@ -114,6 +126,10 @@ async function main() {
     git(['fetch', '--quiet', remote], { remote: true });
   } catch (error) {
     throw new Error(`Could not fetch ${remote}: ${String(error.stderr ?? error.message).trim()}`);
+  }
+  const upstreamName = mergeRef.replace(/^refs\/heads\//, '');
+  if (!gitOrEmpty(['rev-parse', '--verify', '--quiet', '@{upstream}'])) {
+    throw new Error(`The upstream of ${branch}, ${upstreamName}, is not on ${remote}. Set another with git branch --set-upstream-to.`);
   }
   const [behind, ahead] = git(['rev-list', '--left-right', '--count', '@{upstream}...HEAD']).split(/\s+/).map(Number);
   if (behind) throw new Error(`${branch} is ${behind} commit(s) behind its upstream. Pull first.`);
@@ -139,22 +155,24 @@ async function main() {
   }
 
   writeFileSync('CHANGELOG.md', cut.changelog);
-  git(['add', 'CHANGELOG.md']);
-  git(['commit', '--quiet', '-m', `Release ${version}`]);
+  git(['commit', '--quiet', '-m', `Release ${version}`, '--', 'CHANGELOG.md']);
   git(['tag', '-a', tag, '-m', `Mainframe ${version}`]);
+  // Atomic: the branch and the tag both land, or neither does.
   try {
-    git(['push', '--quiet', remote, `HEAD:${mergeRef}`, tag], { remote: true });
+    git(['push', '--quiet', '--atomic', remote, `HEAD:${mergeRef}`, tag], { remote: true });
   } catch (error) {
-    throw new Error(`Committed and tagged ${tag} locally, but the push failed: ${String(error.stderr ?? error.message).trim()}\nRun: git push ${remote} HEAD:${mergeRef} ${tag}`);
+    throw new Error(`Committed and tagged ${tag} locally, but the push failed: ${String(error.stderr ?? error.message).trim()}\nRun: git push --atomic ${remote} HEAD:${mergeRef} ${tag}`);
   }
-  console.log(`Released ${version}: pushed ${mergeRef.replace(/^refs\/heads\//, '')} and ${tag} to ${remote}.`);
+  console.log(`Released ${version}: pushed ${upstreamName} and ${tag} to ${remote}.`);
 
-  const url = gitOrEmpty(['remote', 'get-url', remote]);
-  if (!url.includes('github.com') || !ghAvailable()) {
+  const repo = githubRepo(gitOrEmpty(['remote', 'get-url', remote]));
+  if (!repo || !ghAvailable()) {
     console.log('Skipped the GitHub Release: the remote is not on GitHub, or gh is not installed.');
     return;
   }
-  const result = spawnSync('gh', ['release', 'create', tag, '--title', version, '--notes-file', '-'], {
+  // On the remote just pushed to, not gh's default repository, and for the tag just pushed: never one gh would create.
+  const ghArgs = ['release', 'create', tag, '--repo', repo, '--verify-tag', '--title', version, '--notes-file', '-'];
+  const result = spawnSync('gh', ghArgs, {
     input: unreleased,
     encoding: 'utf8',
   });

@@ -20,12 +20,12 @@ export async function runningVersion(dir: string): Promise<Version | null> {
   return newestRelease(lines(await runGit(dir, ['tag', '--merged', 'HEAD', '--list', 'v*'])));
 }
 
-/** The current branch's remote, else `origin` when there is one; null when neither. */
+/** The current branch's remote, else `origin` when there is one; null when neither. A branch that tracks a local branch (remote `.`) has none. */
 export async function releaseRemote(dir: string): Promise<string | null> {
   const branch = await readOrEmpty(dir, ['symbolic-ref', '--short', '-q', 'HEAD']);
   if (branch) {
     const configured = await readOrEmpty(dir, ['config', '--get', `branch.${branch}.remote`]);
-    if (configured) return configured;
+    if (configured && configured !== '.') return configured;
   }
   return lines(await runGit(dir, ['remote'])).includes('origin') ? 'origin' : null;
 }

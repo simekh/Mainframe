@@ -58,6 +58,12 @@ it('releaseRemote falls back to origin when the branch tracks nothing', async ()
   expect(await releaseRemote(user)).toBe('origin');
 });
 
+it('releaseRemote falls back to origin when the branch tracks a local branch', async () => {
+  const { user } = setup();
+  git(user, 'checkout', '-b', 'feature', '--track', 'stage');
+  expect(await releaseRemote(user)).toBe('origin');
+});
+
 it('remoteNewest sees a release pushed after the user cloned', async () => {
   const { maintainer, user } = setup();
   expect(await remoteNewest(user, 'origin')).toEqual([0, 2, 0]);
