@@ -11,7 +11,7 @@ interface ToolResult {
 }
 interface Registered {
   config: { description?: string; inputSchema?: { safeParse(value: unknown): { success: boolean; data?: unknown } } };
-  handler: (args?: unknown) => Promise<ToolResult>;
+  handler: (...args: unknown[]) => Promise<ToolResult>;
 }
 
 const VIEW = { id: 'task-1', title: 'Fix login', branch: 'worktree-fix-login' } as TaskView;
@@ -54,6 +54,7 @@ function setup(
   const started: unknown[] = [];
   const startedItems: unknown[] = [];
   const closed: string[] = [];
+  const noted: string[] = [];
   registerManagerTools(
     server,
     {
@@ -79,9 +80,10 @@ function setup(
         return overrides.startItem ? overrides.startItem(item, opts) : VIEW;
       },
     },
+    (sessionId) => noted.push(sessionId),
   );
   const call = (name: string, args?: unknown) => tools.get(name)!.handler(args);
-  return { tools, calls, started, startedItems, closed, call };
+  return { tools, calls, started, startedItems, closed, noted, call };
 }
 
 const json = (result: ToolResult) => {
@@ -332,4 +334,22 @@ it('start_task on a put-back card continues its task', async () => {
   const result = await call('start_task', { cardId: '#7' });
   expect(startedItems).toEqual([{ item: { kind: 'card', id: '#7' }, opts: { noQuestions: false, brief: '' } }]);
   expect(json(result)).toStrictEqual({ taskId: 'task-7', title: 'Fix the gate', branch: 'worktree-fix-the-gate' });
+});
+
+const withSession = (sessionId: unknown) => ({ mcpReq: { _meta: { sessionId } } });
+
+it('passes on the session id the context carries, whether it is the first argument or the second', async () => {
+  const { tools, noted } = setup();
+  await tools.get('list_sessions')!.handler(withSession('S1'));
+  await tools.get('close_session')!.handler({ taskId: 'task-1' }, withSession('S2'));
+  expect(noted).toEqual(['S1', 'S2']);
+});
+
+it('passes on nothing when there is no context, or its session id is not a string', async () => {
+  const { tools, noted, call } = setup();
+  await call('list_sessions');
+  await call('close_session', { taskId: 'task-1' });
+  await tools.get('list_sessions')!.handler(withSession(7));
+  await tools.get('close_session')!.handler({ taskId: 'task-1' }, { mcpReq: {} });
+  expect(noted).toEqual([]);
 });

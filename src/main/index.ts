@@ -342,7 +342,7 @@ async function start(
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
     // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.
-    const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo));
+    const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo, (id) => manager.noteToolCall(id)));
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,

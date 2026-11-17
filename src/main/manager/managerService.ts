@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentName, type AgentName, type ManagerView, type ProgramState } from '../../shared/types';
-import type { AgentInUse, LaunchArgs } from '../agents/agent';
+import type { AgentAdapter, AgentInUse, LaunchArgs } from '../agents/agent';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
 import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
 import { writeJsonAtomic } from '../tasks/taskStore';
@@ -46,6 +46,11 @@ interface Session {
   /** The record of its chat, as this session leaves it. */
   record: ManagerRecord;
   turn: TurnTracker;
+  adapter: AgentAdapter;
+  /** It resumed a chat the agent named, rather than starting one. */
+  resumed: boolean;
+  /** It has reported a state: its chat is one the agent still has. */
+  reported: boolean;
 }
 
 export class ManagerService {
@@ -120,9 +125,10 @@ export class ManagerService {
       agent: name,
       chats: { ...prior.chats, [name]: id },
     };
-    // Saved first: a start that cannot save it holds no session, so the next one tries again.
+    // Saved first: a start that cannot save it holds no session, so the next one tries again. Not every agent's launch makes the folder.
+    mkdirSync(this.dir, { recursive: true });
     writeJsonAtomic(this.recordFile, record);
-    this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn) };
+    this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn), adapter, resumed: chat !== null, reported: false };
     const view = this.view();
     this.deps.onChange(view);
     return view;
@@ -135,7 +141,19 @@ export class ManagerService {
 
   /** What the session's OSC 7501 reports say now, as they arrive; null once they are cleared. */
   noteStatus(sessionId: string, state: ProgramState | null): void {
-    if (this.session?.id === sessionId) this.session.turn.note(state);
+    if (this.session?.id !== sessionId) return;
+    this.session.turn.note(state);
+    if (state !== null) this.session.reported = true;
+  }
+
+  /** A tool call of the running manager, as its agent names its chat: kept, so the next start resumes it. Never throws into the call. */
+  noteToolCall(sessionId: string): void {
+    if (!this.session) return;
+    try {
+      this.session.adapter.noteManagerChat?.(this.dir, sessionId);
+    } catch (err) {
+      this.warn(`Could not keep the manager's chat ${sessionId} (${String(err)}); the next start begins a new one`);
+    }
   }
 
   onSessionExit(sessionId: string): void {
@@ -144,6 +162,8 @@ export class ManagerService {
     this.session = null;
     if (!session.turn.ending) this.markEnding(session);
     writeJsonAtomic(this.recordFile, session.record);
+    // A resumed chat that never reported is one the agent no longer has; a quit ends it before it can report.
+    if (session.resumed && !session.reported && !this.quitting) session.adapter.forgetManagerChat?.(this.dir);
     this.deps.onChange(this.view());
   }
 

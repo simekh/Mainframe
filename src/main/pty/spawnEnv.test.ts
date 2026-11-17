@@ -68,3 +68,7 @@ it("drops the markers OpenCode sets in its shells, and keeps its other settings"
     OPENCODE_CONFIG_DIR: '/x', ...TERMINAL_KEYS,
   });
 });
+
+it("keeps Mainframe's MCP token from the sessions", () => {
+  expect(buildSpawnEnv({ MAINFRAME_MCP_TOKEN: 's3cret', EDITOR: 'vi' }, 'darwin')).not.toHaveProperty('MAINFRAME_MCP_TOKEN');
+});

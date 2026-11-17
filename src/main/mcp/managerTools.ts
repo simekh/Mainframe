@@ -22,11 +22,19 @@ const ASKS_ABOUT = { tools: 'tools', lists: 'a list', model: 'the model' };
 const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
   `${branch} has ${commitsThatArent(ahead)} on ${base}. New worktrees start from ${base}, so this task won't have ${ahead === 1 ? 'it' : 'them'}.`;
 
+/** Passes on the session id Codex sends in each call's `_meta`; a call without one, or one given no context, is not noted. */
+function noteCall(ctx: unknown, onCall?: (sessionId: string) => void): void {
+  const sessionId = (ctx as { mcpReq?: { _meta?: { sessionId?: unknown } } } | undefined)?.mcpReq?._meta?.sessionId;
+  if (typeof sessionId === 'string') onCall?.(sessionId);
+}
+
 /** The tools the manager session has: to read the task sessions, to start one, to sync the Todo panel, and to close a session. */
 export function registerManagerTools(
   server: McpServer,
   tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck' | 'closeWhenTurnOver'>,
   todo: Pick<TodoService, 'sync' | 'startItem' | 'view'>,
+  /** Told the session id of every tool call that names one, so the manager's chat is known. */
+  onCall?: (sessionId: string) => void,
 ): void {
   server.registerTool(
     'list_sessions',
@@ -34,7 +42,10 @@ export function registerManagerTools(
       description:
         "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude', 'opencode' or 'codex') and that agent's session id (for Codex, Mainframe's own key: Codex resumes from the task's worktree), whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, merged: true once Mainframe found its branch merged with nothing uncommitted while it runs (its card is then in the board's Done lane), and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
     },
-    async () => text({ sessions: tasks.reports() }),
+    async (ctx) => {
+      noteCall(ctx, onCall);
+      return text({ sessions: tasks.reports() });
+    },
   );
 
   server.registerTool(
@@ -49,7 +60,8 @@ export function registerManagerTools(
         cardId: z.string().optional(),
       }),
     },
-    async ({ title, brief = '', noQuestions, cardId }) => {
+    async ({ title, brief = '', noQuestions, cardId }, ctx) => {
+      noteCall(ctx, onCall);
       try {
         const check = await tasks.startCheck();
         const quiet = noQuestions ?? false;
@@ -72,7 +84,8 @@ export function registerManagerTools(
       description:
         "Syncs the Todo panel: a background run reads the owner's to-do list through their connector, and Mainframe shows it. Returns the number of cards, what the owner must do in the Todo panel first (allow the tools that read the list, or pick the list), or why it couldn't. Only when the owner asks.",
     },
-    async () => {
+    async (ctx) => {
+      noteCall(ctx, onCall);
       // A run now would clear the question the owner is answering, and their Allow or Pick would find nothing to answer.
       const { ask } = todo.view();
       if (ask) {
@@ -97,7 +110,8 @@ export function registerManagerTools(
         "Closes a task's session, as the owner's Close session button does. The task goes to Paused with its worktree kept, or, once Mainframe finds its branch merged with nothing uncommitted, to Finished: its worktree and branch are removed, as only merged work is. The owner can continue it either way. Only when the owner asks for it. taskId is the one list_sessions gives. Refused while the session is working, waiting for the owner's answer, still starting or being put back: say so to the owner rather than try again. Returns the task's title, its last message, and merged: whether it goes to Finished.",
       inputSchema: z.object({ taskId: z.string() }),
     },
-    async ({ taskId }) => {
+    async ({ taskId }, ctx) => {
+      noteCall(ctx, onCall);
       try {
         return text({ taskId, ...tasks.closeWhenTurnOver(taskId) });
       } catch (err) {

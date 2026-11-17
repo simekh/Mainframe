@@ -85,3 +85,17 @@ it('close frees the port', async () => {
 
   await expect(post(url, bearer(token))).rejects.toMatchObject({ code: 'ECONNREFUSED' });
 });
+
+it("hands a tool call's session id to the tool, as Codex sends it in the call's _meta", async () => {
+  const seen: unknown[] = [];
+  const { url, token } = await start((server) => {
+    server.registerTool('ping', { description: 'Answers pong' }, async (ctx) => {
+      seen.push((ctx as { mcpReq: { _meta?: { sessionId?: unknown } } }).mcpReq._meta?.sessionId);
+      return { content: [{ type: 'text', text: 'pong' }] };
+    });
+  });
+  const call = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'ping', arguments: {}, _meta: { sessionId: 'S1' } } });
+  const response = await post(url, bearer(token), call);
+  expect(response.body).toContain('pong');
+  expect(seen).toEqual(['S1']);
+});

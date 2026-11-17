@@ -11,6 +11,8 @@ const DROPPED_KEYS = new Set([
   'INIT_CWD', 'NODE', 'COLOR', 'NODE_ENV',
   // Set by scripts/start.mjs for Mainframe itself, not for its sessions.
   'MAINFRAME_UPDATE_FILE', 'MAINFRAME_UPDATE_FAILED',
+  // The MCP token is for the one session that is handed it; the others would hold a key to the manager's tools.
+  'MAINFRAME_MCP_TOKEN',
 ]);
 
 function isDropped(key: string): boolean {

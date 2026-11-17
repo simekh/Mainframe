@@ -20,6 +20,7 @@ afterEach(() => {
 });
 
 const MCP = { url: 'http://127.0.0.1:5555/mcp', token: 'token-1' };
+const CODEX: AgentInUse = { adapter: ADAPTERS.codex, bin: 'codex', setting: {} };
 const U2 = '11111111-1111-4111-8111-111111111111';
 const CLAUDE: AgentInUse = { adapter: ADAPTERS.claude, bin: 'claude', setting: {} };
 /** OpenCode, whose agent list is the fixture's: its lookup runs no program. */
@@ -473,4 +474,81 @@ it('a start whose launch resolves after a quit or a close saves nothing and hold
   expect(t.service.sessionIds()).toEqual([]);
   expect(existsSync(t.file('manager.json'))).toBe(false);
   expect(t.changes).toEqual([]);
+});
+
+/** Whether the session's launch resumes the chat `U2`. */
+const resumes = (t: Setup, view: ManagerView) => {
+  const { argv } = t.service.launchSpec(view.session!.id);
+  return argv.includes('resume') && argv.includes(U2);
+};
+
+it("a Codex manager resumes the chat Codex named in a tool call, and starts a new one when none was named", async () => {
+  const t = setup();
+  t.use(CODEX);
+  const first = await t.service.start();
+  expect(t.service.launchSpec(first.session!.id).argv).not.toContain('resume');
+
+  t.service.noteToolCall(U2);
+  expect(JSON.parse(readFileSync(t.file('codex-chat.json'), 'utf8'))).toEqual({ sessionId: U2 });
+  t.service.onSessionExit(first.session!.id);
+
+  const second = await t.service.start();
+  expect(resumes(t, second)).toBe(true);
+});
+
+it('a resumed Codex manager that exits without a report forgets the chat; one that reported keeps it', async () => {
+  const t = setup();
+  t.use(CODEX);
+  const first = await t.service.start();
+  t.service.noteToolCall(U2);
+  t.service.onSessionExit(first.session!.id);
+
+  const gone = await t.service.start();
+  expect(resumes(t, gone)).toBe(true);
+  t.service.onSessionExit(gone.session!.id);
+  expect(existsSync(t.file('codex-chat.json'))).toBe(false);
+  const fresh = await t.service.start();
+  expect(t.service.launchSpec(fresh.session!.id).argv).not.toContain('resume');
+  t.service.noteToolCall(U2);
+  t.service.onSessionExit(fresh.session!.id);
+
+  const kept = await t.service.start();
+  t.service.noteStatus(kept.session!.id, 'idle');
+  t.service.onSessionExit(kept.session!.id);
+  expect(existsSync(t.file('codex-chat.json'))).toBe(true);
+});
+
+it('a resumed Codex manager whose exit follows the quit keeps the chat, even with no report', async () => {
+  const t = setup();
+  t.use(CODEX);
+  const first = await t.service.start();
+  t.service.noteToolCall(U2);
+  t.service.onSessionExit(first.session!.id);
+
+  const second = await t.service.start();
+  t.service.beginQuit();
+  t.service.onSessionExit(second.session!.id);
+  expect(existsSync(t.file('codex-chat.json'))).toBe(true);
+});
+
+it("an early exit of a resumed Claude Code manager leaves its session-start.json", async () => {
+  const t = setup();
+  const first = await started(t, 'idle');
+  t.service.onSessionExit(first.session!.id);
+  const second = await t.service.start();
+  t.service.onSessionExit(second.session!.id);
+  expect(existsSync(t.file(SESSION_START_FILE))).toBe(true);
+});
+
+it('a tool call with no manager running does nothing, and one whose chat cannot be kept is logged, not thrown', async () => {
+  const t = setup();
+  t.use(CODEX);
+  expect(() => t.service.noteToolCall(U2)).not.toThrow();
+  expect(existsSync(t.file('codex-chat.json'))).toBe(false);
+
+  const failing = { ...ADAPTERS.codex, noteManagerChat: () => { throw new Error('disk full'); } };
+  t.use({ ...CODEX, adapter: failing });
+  await t.service.start();
+  expect(() => t.service.noteToolCall(U2)).not.toThrow();
+  expect(t.warnings).toEqual([expect.stringContaining('disk full')]);
 });
