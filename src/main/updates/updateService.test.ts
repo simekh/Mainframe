@@ -65,6 +65,16 @@ describe('UpdateService.check', () => {
     });
   });
 
+  it('makes one click by hand after a one-click update that did not finish', async () => {
+    const { service } = make({ launcherFile: '/tmp/update', failure: 'npm install failed' });
+    await service.check();
+    expect((await service.view()).available?.how).toEqual({
+      kind: 'by-hand',
+      why: 'one-click-failed',
+      commands: ['git fetch origin tag v0.5.0', 'git merge --ff-only v0.5.0', 'npm install', 'npm start'],
+    });
+  });
+
   it('keeps what git says when that is by hand already', async () => {
     vi.mocked(howToUpdate).mockResolvedValue(BY_HAND);
     const { service } = make();
@@ -99,6 +109,26 @@ describe('UpdateService.check', () => {
     expect(await service.check()).toEqual({ kind: 'failed', why: 'could not reach origin' });
     expect((await service.view()).available?.latest).toBe('0.5.0');
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("says what git said, without the command line", async () => {
+    const err = Object.assign(new Error('Command failed: git --no-optional-locks -C /clone ls-remote origin\nfatal: no such remote\n'), {
+      code: 128,
+      stderr: 'fatal: no such remote\n',
+    });
+    vi.mocked(remoteNewest).mockRejectedValue(err);
+    expect(await make().service.check()).toEqual({ kind: 'failed', why: 'fatal: no such remote' });
+  });
+
+  it('says so plainly when the remote does not answer in time', async () => {
+    const err = Object.assign(new Error('Command failed: git --no-optional-locks -C /clone ls-remote origin\n'), {
+      killed: true,
+      signal: 'SIGTERM',
+      code: null,
+      stderr: '',
+    });
+    vi.mocked(remoteNewest).mockRejectedValue(err);
+    expect(await make().service.check()).toEqual({ kind: 'failed', why: "The remote didn't answer within 30 seconds." });
   });
 
   it('fails with its own words when the clone has no remote', async () => {

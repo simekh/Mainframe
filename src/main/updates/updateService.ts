@@ -10,6 +10,14 @@ const FIRST_CHECK_MS = 10_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const NO_REMOTE = 'This copy of Mainframe has no git remote to check.';
 
+/** Why a check failed, in plain words: git's own message without the command line, or that the remote timed out. */
+function plainWhy(err: unknown): string {
+  const { killed, stderr } = err as { killed?: boolean; stderr?: unknown };
+  if (killed) return "The remote didn't answer within 30 seconds.";
+  if (typeof stderr === 'string' && stderr.trim()) return stderr.trim();
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** Where a release comes from: the remote and its tag. */
 type Source = { remote: string; tag: string };
 
@@ -102,10 +110,15 @@ export class UpdateService {
     };
   }
 
-  /** What git allows, and by hand when start.mjs didn't start the app: then nothing would take the update. */
+  /**
+   * What git allows, and by hand when start.mjs didn't start the app (then nothing would take the update) or when its
+   * last one-click update didn't finish (another click would likely fail the same way).
+   */
   private async how({ remote, tag }: Source): Promise<UpdateHow> {
     const how = await howToUpdate(this.deps.dir, remote, tag);
-    return how.kind === 'one-click' && this.deps.launcherFile === undefined ? byHand(remote, tag, 'not-launcher') : how;
+    if (how.kind === 'by-hand') return how;
+    if (this.deps.launcherFile === undefined) return byHand(remote, tag, 'not-launcher');
+    return this.deps.failure ? byHand(remote, tag, 'one-click-failed') : how;
   }
 
   private async runCheck(): Promise<CheckResult> {
@@ -126,7 +139,7 @@ export class UpdateService {
       this.show({ latest: formatVersion(latest), notes: notesSince(changelog, current, latest), how }, source);
       return { kind: 'available' };
     } catch (err) {
-      return { kind: 'failed', why: err instanceof Error ? err.message : String(err) };
+      return { kind: 'failed', why: plainWhy(err) };
     }
   }
 

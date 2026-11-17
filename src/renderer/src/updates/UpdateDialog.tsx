@@ -11,12 +11,13 @@ const WHY: Record<ByHandWhy, () => JSX.Element> = {
       Mainframe wasn't started with <code>npm start</code>, so it can't restart itself.
     </>
   ),
+  'one-click-failed': () => "One click didn't work, so run these yourself:",
   uncommitted: () => 'This copy has changes of its own. Commit or set them aside, then:',
   'own-commits': () => "This copy's branch has commits of its own, so merge the release yourself:",
 };
 
 /** A release the app doesn't run yet: what it brings, then the Update button or the commands to run by hand. */
-function Release(props: { available: UpdateAvailable; version: string; installing: boolean; onInstall: () => void; onLater: () => void }) {
+function Release(props: { available: UpdateAvailable; current: string | null; installing: boolean; onInstall: () => void; onLater: () => void }) {
   const byHand = () => {
     const how = props.available.how;
     return how.kind === 'by-hand' ? how : undefined;
@@ -28,7 +29,7 @@ function Release(props: { available: UpdateAvailable; version: string; installin
   );
   return (
     <>
-      <p class="nt-sub">You have {props.version}.</p>
+      <p class="nt-sub">{props.current ? `You have ${props.current}.` : 'You have a version from before the first release.'}</p>
       <div class="update-notes" data-testid="update-notes">
         <Markdown text={props.available.notes} />
       </div>
@@ -149,7 +150,7 @@ export default function UpdateDialog() {
                     </p>
                   )}
                 </Show>
-                <Release available={release()} version={versionOf(updateView())} installing={installing()} onInstall={install} onLater={close} />
+                <Release available={release()} current={updateView()?.current ?? null} installing={installing()} onInstall={install} onLater={close} />
               </>
             )}
           </Match>

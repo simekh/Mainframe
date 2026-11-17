@@ -132,7 +132,7 @@ export interface TaskGitState {
   unsaved: string[];
 }
 
-export type ByHandWhy = 'not-launcher' | 'uncommitted' | 'own-commits';
+export type ByHandWhy = 'not-launcher' | 'one-click-failed' | 'uncommitted' | 'own-commits';
 
 /** How an update gets applied: by one click, or by commands the user runs themselves. */
 export type UpdateHow = { kind: 'one-click' } | { kind: 'by-hand'; why: ByHandWhy; commands: string[] };
