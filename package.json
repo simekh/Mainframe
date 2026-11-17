@@ -8,8 +8,10 @@
     "node-pty": true
   },
   "scripts": {
+    "predev": "npm install --include=dev --no-save --no-audit --no-fund",
     "dev": "node scripts/start.mjs dev",
     "build": "electron-vite build",
+    "prestart": "npm install --include=dev --no-save --no-audit --no-fund",
     "start": "node scripts/start.mjs preview",
     "release": "node scripts/release.mjs",
     "typecheck": "tsc --noEmit",

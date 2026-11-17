@@ -3,6 +3,9 @@
 Brainstormed with the owner on 2026-11-13 and 2026-11-16. Mockup of where things live:
 `docs/superpowers/mockups/2026-11-13-finished-tasks-placement.html` (option B was picked).
 
+Changed 2026-11-17: a running task's **Merged** card now sits in a **Done** lane rather than in Needs you, and the
+manager can close sessions. See [the Done lane design](2026-11-17-mainframe-done-lane-and-manager-close-design.md).
+
 ## Intent
 
 Today nothing ever leaves the board. Every task whose session ends lands in **Closed** and stays there, newest first,

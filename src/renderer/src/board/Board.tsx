@@ -10,11 +10,13 @@ import { laneOrder, type Lane } from './lanes';
 import TaskCard from './TaskCard';
 import { todoOf } from '../todo/todoStore';
 
-// A flex row of lanes.
-const LANES: Array<{ lane: Lane; name: string; empty: string }> = [
+// A flex row of lanes. Done is drawn only while it holds a card, last, so the others keep their places; in a narrow pane
+// they make room for it.
+const LANES: Array<{ lane: Lane; name: string; empty?: string }> = [
   { lane: 'needs-you', name: 'Needs you', empty: 'Nothing needs you' },
   { lane: 'working', name: 'Working', empty: 'Nothing running' },
   { lane: 'paused', name: 'Paused', empty: 'No paused tasks' },
+  { lane: 'done', name: 'Done' },
 ];
 
 /** The lanes of task cards. Cards that change place move there rather than jump. */
@@ -22,6 +24,7 @@ export default function Board() {
   const project = useProject();
   let root!: HTMLDivElement;
   const order = createMemo(() => laneOrder(tasksOf(project.dir).tasks, tasksStore.sessions, todoOf(project.dir)?.cards));
+  const shownLanes = createMemo(() => LANES.filter(({ lane }) => lane !== 'done' || order().done.length > 0));
   // The paused task whose Discard waits for the owner's confirm, with what it would lose once that is read. Kept here, not
   // on its card, which goes once the task does.
   const [discarding, setDiscarding] = createSignal<{
@@ -71,7 +74,7 @@ export default function Board() {
 
   return (
     <div class="lanes" ref={root}>
-      <For each={LANES}>
+      <For each={shownLanes()}>
         {({ lane, name, empty }) => (
           <section class="lane" data-testid="lane" data-lane={lane} data-empty={String(order()[lane].length === 0)}>
             <h3 class="lane-title">

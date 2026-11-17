@@ -81,6 +81,8 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Linux' && env.NARROWED != 'true' }}
         timeout-minutes: 5
         run: |
+          # A fresh clone has no packages: npm start's prestart installs them.
+          rm -rf node_modules
           set +e
           export MAINFRAME_DATA_DIR="$(mktemp -d)"
           timeout 90 xvfb-run -a npm start 2>&1 | tee start.log

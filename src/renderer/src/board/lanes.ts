@@ -2,7 +2,7 @@
 import type { ProgramKind, TaskView, TodoCard } from '../../../shared/types';
 import { onBoard, type SessionState } from '../taskModel';
 
-export type Lane = 'needs-you' | 'working' | 'paused';
+export type Lane = 'needs-you' | 'working' | 'paused' | 'done';
 export type Glyph = 'ask' | 'error' | 'spin' | 'start' | 'ready' | 'wait' | 'dot';
 export type Tone = 'warn' | 'error' | 'strong' | 'muted' | 'subtle' | 'accent' | 'success';
 
@@ -38,7 +38,15 @@ function standingOf(task: HasSession, s: SessionState | undefined): Standing {
   return s.status.state;
 }
 
-export const laneOf = (task: TaskView, s: SessionState | undefined): Lane => ROWS[standingOf(task, s)].lane;
+/**
+ * The table's lane, but Done for a running task the round found merged once its turn is over: its card says Merged and
+ * offers Finish. A question, a permission prompt or an error still needs the owner; a Put back's session closes itself.
+ */
+export function laneOf(task: TaskView, s: SessionState | undefined): Lane {
+  const standing = standingOf(task, s);
+  if (task.merged && !task.puttingBack && (standing === 'done' || standing === 'waiting')) return 'done';
+  return ROWS[standing].lane;
+}
 
 export const glyphOf = (task: HasSession, s: SessionState | undefined): Glyph => ROWS[standingOf(task, s)].glyph;
 
@@ -66,13 +74,12 @@ export function cardActivity(
   return { text: task.branch, kind: 'branch' };
 }
 
-/** What a card offers on its last row: Answer, Finish on a running task the round found merged, or a Paused card's three. */
+/** What a card offers on its last row: Answer, Finish on a Done card, or a Paused card's three. */
 export type CardAct = 'answer' | 'finish' | 'paused';
 
 /**
  * The card's last row, its label and what it offers; none in Working, where the session is busy, nor on a Paused card
- * while a Put back runs. Finish takes Answer's place only once the session's turn is over: a question, a permission
- * prompt or an error still needs the owner. A Put back's session never offers Finish: it closes itself.
+ * while a Put back runs. A Done card says Merged and offers Finish.
  */
 export function cardAsk(
   task: TaskView,
@@ -80,10 +87,7 @@ export function cardAsk(
   lane: Lane,
 ): { text: string; tone: Tone; act: CardAct } | null {
   if (lane === 'working' || (lane === 'paused' && task.puttingBack)) return null;
-  const standing = standingOf(task, s);
-  if (lane === 'needs-you' && task.merged && !task.puttingBack && (standing === 'done' || standing === 'waiting')) {
-    return { text: 'Merged', tone: 'success', act: 'finish' };
-  }
+  if (lane === 'done') return { text: 'Merged', tone: 'success', act: 'finish' };
   return { ...stateLabel(task, s), act: lane === 'paused' ? 'paused' : 'answer' };
 }
 
@@ -101,15 +105,15 @@ export function cardAge(task: TaskView, s: SessionState | undefined, now: number
  * Each lane's tasks in board order. Needs you follows the to-do list as `listed` has it now (the synced cards, in
  * order): tasks whose card is urgent, then the other tasks with a card, each by the card's place in the list, then
  * tasks without a card, oldest first. A card no longer on the list goes after those on it, by its place and urgency
- * when its task started. Ties go oldest first. Working goes oldest first and Paused newest first. A task off the board
- * (put back, finished or discarded) is in no lane.
+ * when its task started. Ties go oldest first. Working and Done go oldest first and Paused newest first. A task off the
+ * board (put back, finished or discarded) is in no lane.
  */
 export function laneOrder(
   tasks: TaskView[],
   sessions: Record<string, SessionState>,
   listed: readonly Pick<TodoCard, 'id' | 'urgent'>[] = [],
 ): Record<Lane, TaskView[]> {
-  const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], paused: [] };
+  const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], paused: [], done: [] };
   for (const task of tasks.filter(onBoard)) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
   const place = new Map(listed.map((card, at) => [card.id, { at, urgent: card.urgent }]));
   const rank = (t: TaskView) => {
@@ -122,6 +126,7 @@ export function laneOrder(
     return ra.group - rb.group || ra.at - rb.at || a.createdAt - b.createdAt;
   });
   lanes.working.sort((a, b) => a.createdAt - b.createdAt);
+  lanes.done.sort((a, b) => a.createdAt - b.createdAt);
   lanes.paused.sort((a, b) => b.createdAt - a.createdAt);
   return lanes;
 }

@@ -108,10 +108,14 @@ export async function opencodeChoices(o: { bin: string; dataDir: string; env: Re
   return { agents: primary.map((a, i) => ({ id: a.id, isDefault: i === 0 })), models };
 }
 
-/** What the manager may call without asking. Starting a task asks: OpenCode otherwise allows every tool. */
+/**
+ * What the manager may call without asking. A close does not ask: it is the owner's own Close session, which removes only
+ * a worktree whose work is all merged. Starting a task asks: OpenCode otherwise allows every tool.
+ */
 const MANAGER_RULES = [
   { action: 'mainframe_list_sessions', resource: '*', effect: 'allow' },
   { action: 'mainframe_sync_todo', resource: '*', effect: 'allow' },
+  { action: 'mainframe_close_session', resource: '*', effect: 'allow' },
   { action: 'mainframe_start_task', resource: '*', effect: 'ask' },
 ];
 
