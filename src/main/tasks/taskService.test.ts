@@ -1606,14 +1606,20 @@ function roundSetup(gitOverrides: Partial<GitQueries> = {}) {
   return { ...t, states, checked, removals, hooks };
 }
 
+/** A task started on `service` whose conversation began, unless told not to, with its session's id. */
+async function runningTask(t: ReturnType<typeof roundSetup>, title = NEW_TASK.title, service = t.service, begin = true) {
+  const view = await service.start({ ...NEW_TASK, title });
+  if (begin) t.sessionStarted(view.id, t.readState().find((r) => r.id === view.id)!.claudeSessionId);
+  return { view, sid: view.session!.id };
+}
+
 /** Starts a task on `service`, lets its conversation begin unless told not to, closes it and waits for its exit's round. */
 async function pausedTask(
   t: ReturnType<typeof roundSetup>,
   o: { title?: string; begin?: boolean; service?: TaskService } = {},
 ): Promise<TaskView> {
   const service = o.service ?? t.service;
-  const view = await service.start({ ...NEW_TASK, title: o.title ?? NEW_TASK.title });
-  if (o.begin !== false) t.sessionStarted(view.id, t.readState().find((r) => r.id === view.id)!.claudeSessionId);
+  const { view } = await runningTask(t, o.title, service, o.begin !== false);
   service.close(view.id);
   service.onSessionExit(view.session!.id);
   await service.checkRound();
@@ -2353,13 +2359,6 @@ it('a failed removal after a cut-short reopen only warns', async () => {
   expect(t.warnings.some((w) => w.includes('fatal: busy'))).toBe(true);
 });
 
-/** A started task whose conversation began, with its session's id. */
-async function runningTask(t: ReturnType<typeof roundSetup>, title = NEW_TASK.title, service = t.service) {
-  const view = await service.start({ ...NEW_TASK, title });
-  t.sessionStarted(view.id, t.readState().find((r) => r.id === view.id)!.claudeSessionId);
-  return { view, sid: view.session!.id };
-}
-
 /** What a session reports, as the session host keeps it and hands it to the service. */
 function say(t: ReturnType<typeof roundSetup>, sid: string, state: ProgramState, msg?: string, service = t.service) {
   t.statuses.set(sid, { id: sid, state, ...(msg !== undefined && { msg }), updatedAt: 1 });
@@ -2485,7 +2484,8 @@ describe('closeWhenTurnOver', () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     t.killed.length = 0;
-    void t.service.putBackCard(view.id);
+    // As the Todo panel's Put back runs it.
+    void t.service.whilePuttingBack(view.id, () => t.service.putBackCard(view.id));
 
     expect(() => t.service.closeWhenTurnOver(view.id)).toThrow('Fix login is being put back');
     expect(t.killed).toEqual([]);

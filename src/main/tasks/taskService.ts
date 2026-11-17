@@ -21,6 +21,9 @@ export const FINISH_CHECK_MS = 3 * 60_000;
 /** Where a task with no session is, as the manager is told it. */
 const WHERE: Record<TaskPlace | 'board', string> = { board: 'paused', putBack: 'put back', finished: 'finished', discarded: 'discarded' };
 
+/** What a session in a turn is doing, as the manager is told it; any other session whose turn is not over is starting. */
+const IN_TURN: Partial<Record<string, string>> = { working: 'working', blocked: "waiting for the owner's answer" };
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -535,11 +538,10 @@ export class TaskService {
     this.refuseWhilePuttingBack(task);
     const running = this.sessionOf(taskId);
     if (!running) throw new Error(`${task.title} has no session running: it is ${WHERE[task.place ?? 'board']}.`);
-    if (running.putBack) throw new Error(`${task.title} is being put back`);
     if (running.turn.ending) throw new Error(`${task.title}'s session is already closing.`);
     const status = this.deps.status(running.id);
     if (!running.turn.over(running.startedWithPrompt)) {
-      const what = status?.state === 'working' ? 'working' : status?.state === 'blocked' ? "waiting for the owner's answer" : 'still starting';
+      const what = IN_TURN[status?.state ?? ''] ?? 'still starting';
       throw new Error(`${task.title}'s session is ${what}; it can be closed once its turn is over.`);
     }
     const closed = { title: task.title, msg: status?.msg ?? null, merged: this.merged.has(task.id) };
