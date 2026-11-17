@@ -62,6 +62,17 @@ Mainframe remembers what it found in `settings.json` in its data folder. At ever
 
 To open more projects, use **File → Open Project…** (⌘O) on a Mac. Windows and Linux have the system's own title bar and no menu bar: there, use the **Open project** button at the bottom of the project list, or Ctrl+Shift+O. Mainframe remembers which projects are open.
 
+### Releasing
+
+Users hear about a new version when its `v<x.y.z>` tag reaches the remote they cloned from, and read its notes in the update dialog. If you maintain a fork, add one `New:` or `Fixed:` line to `CHANGELOG.md` under `## Unreleased` for each change users would notice, as it merges. Then, from a clean branch that matches its upstream:
+
+```sh
+npm run release            # picks the version: a minor bump if there is a New: line, else a patch bump
+npm run release -- 1.0.0   # or name the version yourself
+```
+
+It refuses when the notes are empty, when there are uncommitted changes, or when the branch is behind or ahead of its upstream (it only ever pushes its own commit and tag). It then shows the version and the notes and asks before it moves the notes to a `## <version> · <date>` section, commits `Release <version>`, tags it and pushes both to the branch's remote. When the remote is on GitHub and the [GitHub CLI](https://cli.github.com/) (`gh`) is installed, it also creates a GitHub Release with the same notes; otherwise it says it skipped that.
+
 ## Updating
 
 Mainframe looks for new releases on the remote you cloned it from. When there is one, an **Update available** pill shows in the window; click it to see what's new and update. Updating restarts Mainframe: your sessions stop and come back, as after Quit. To look right away, use **Mainframe → Check for Updates…** on a Mac, or the **Check for Updates…** button in Settings on any system.

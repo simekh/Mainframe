@@ -22,6 +22,12 @@ One Mainframe, one window, several projects open at the same time (Damela and Wo
 
 **Why:** the owner wants to work on several projects at once without juggling apps. On 2026-11-07 they chose one Mainframe with all projects in one window over a copy per project: one Dock icon, one Quit that ends and later restores every session, and one place that can show what every project needs from them. Each one-project assumption added now is one the multi-project branch has to find and take out.
 
+## Release notes → one line per change users would notice (since 2026-11-17)
+
+Each change users would notice adds one line under `## Unreleased` in `CHANGELOG.md` as it merges: `New: …` for something they can now do, `Fixed: …` for something that was wrong. One plain sentence, no card numbers, no code names. Changes nobody would notice (refactors, tests, tooling, docs) add nothing. `npm run release` turns the section into a release.
+
+**Why:** users read these lines in the update dialog and decide from them whether to update. A line written weeks later, from the git log, is a guess; written as the change merges, it's right.
+
 ## Keep code in proportion to what it does
 
 - **Task reviews judge proportion.** Each task review asks whether the code is the simplest thing that meets the requirement. A diff much larger than its requirement is an Important finding. The exception is when the size buys real safety, and the review then names what that safety is.
