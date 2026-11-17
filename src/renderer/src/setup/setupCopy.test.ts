@@ -218,7 +218,7 @@ describe('explanations', () => {
   });
 
   describe('no agent works', () => {
-    it('gives one agents block: why, each agent in turn, and the five buttons', () => {
+    it('gives one agents block: why, each agent in turn, and the buttons of each before Look again', () => {
       expect(blocks({ claude: missing })).toEqual([
         { check: 'agents', lines: [NONE, CLAUDE_NOWHERE, OPENCODE_NOWHERE, CODEX_NOWHERE, ASK], buttons: ALL_BUTTONS },
       ]);
@@ -419,10 +419,10 @@ describe('agentStep', () => {
     ]);
   });
 
-  it('asks for the default, and says the New task box can still pick the other, only with two ticked', () => {
+  it('asks for the default, and says the New task box can still pick another, only with two or more ticked', () => {
     const two = step(both, { ticked: ['claude', 'opencode'], defaultAgent: 'claude' });
     expect(two.showDefault).toBe(true);
-    expect(two.hint).toBe('You can still pick the other one for a single task in the New task box. All of this can be changed in Settings later.');
+    expect(two.hint).toBe('You can still pick another ticked agent for a single task in the New task box. All of this can be changed in Settings later.');
     const one = step(both, { ticked: ['opencode'], defaultAgent: 'opencode' });
     expect(one.showDefault).toBe(false);
     expect(one.hint).toBe('OpenCode runs everything: the manager, the Todo sync and your tasks. Settings can change this later.');

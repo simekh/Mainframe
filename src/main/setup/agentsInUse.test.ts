@@ -185,7 +185,7 @@ describe('AgentsInUse', () => {
     expect(env.saved()?.agents?.claude?.bin).toBeUndefined();
   });
 
-  it('view lists both agents with their checks, ticks and options', () => {
+  it('view lists every agent with its checks, ticks and options', () => {
     const settings: AppSettings = {
       defaultAgent: 'claude',
       agents: { claude: { enabled: true, bin: C }, opencode: { enabled: true, managerAgent: 'plan', syncModel: 'p/m' } },

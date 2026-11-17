@@ -83,7 +83,7 @@ export function buttonLabel(button: SetupButton, platform: NodeJS.Platform): str
       return platform === 'win32' ? 'Find opencode.exe…' : 'Find opencode…';
     case 'find-codex':
       return platform === 'win32' ? 'Find codex.exe…' : 'Find codex…';
-    // The agent is named: with no agent working, both links sit side by side.
+    // The agent is named: with no agent working, every agent's link sits side by side.
     case 'install-claude':
       return 'How to install Claude Code ↗';
     case 'install-opencode':
@@ -272,12 +272,12 @@ export function agentStep(view: SetupView, choice: AgentChoice): { rows: AgentRo
     if (check.state === 'found') return { name, works: true, ticked: choice.ticked.includes(name), version: check.version, buttons: [] };
     return { name, works: false, ticked: false, buttons: [`install-${name}`, ...(fromEnv ? [] : [`find-${name}` as const])] };
   });
-  const two = choice.ticked.length > 1;
+  const several = choice.ticked.length > 1;
   return {
     rows,
-    showDefault: two,
-    hint: two
-      ? 'You can still pick the other one for a single task in the New task box. All of this can be changed in Settings later.'
+    showDefault: several,
+    hint: several
+      ? 'You can still pick another ticked agent for a single task in the New task box. All of this can be changed in Settings later.'
       : `${AGENT_NAMES[choice.ticked[0]]} runs everything: the manager, the Todo sync and your tasks. Settings can change this later.`,
   };
 }
