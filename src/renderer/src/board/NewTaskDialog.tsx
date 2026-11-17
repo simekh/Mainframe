@@ -165,7 +165,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
           {(note) => (
             <div class="nt-codex-note" data-testid="new-task-codex-note">
               <p class="nt-hint">
-                Codex won't read this project's CLAUDE.md. Add this line at the top of <code>{note().configFile}</code>,
+                Codex won't read this project's CLAUDE.md. Add this line at the top of <code>{note()}</code>,
                 then start the task:
               </p>
               <div class="nt-codex-line">

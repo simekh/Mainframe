@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type CodexConfigNote,type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { FolderLeftError, type GitQueries } from '../git';
@@ -160,7 +160,7 @@ export class TaskService {
     return this.deps.git.startCheck(this.deps.projectDir);
   }
 
-  codexClaudeMdNote(): Promise<CodexConfigNote | null> {
+  codexClaudeMdNote(): Promise<string | null> {
     return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 

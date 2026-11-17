@@ -238,11 +238,12 @@ export async function sendAfterResize(send: (line: string) => Promise<void>, lin
 }
 
 /** Starts a task through the New task dialog; resolves with its id once its shell prompt shows. */
-export async function startTask(page: Page, title = 'Task', description = ''): Promise<string> {
+export async function startTask(page: Page, title = 'Task', description = '', agent?: string): Promise<string> {
   const before = await ids(page);
   await page.getByTestId('new-task').click();
   await page.getByTestId('new-task-title').fill(title);
   if (description) await page.getByTestId('new-task-description').fill(description);
+  if (agent) await page.getByTestId(`new-task-agent-${agent}`).check();
   await page.getByTestId('new-task-start').click();
   const added = async () => (await ids(page)).filter((id) => !before.includes(id));
   await expect.poll(added).toHaveLength(1);

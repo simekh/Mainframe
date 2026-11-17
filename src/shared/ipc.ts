@@ -14,7 +14,6 @@ import type {
   SettingsView,
   SetupView,
   StartCheck,
-  CodexConfigNote,
   StatusEvent,
   TaskView,
   TodoItemRef,
@@ -127,8 +126,8 @@ export interface MainframeApi {
   onShowProject(cb: (dir: string) => void): () => void;
   listTasks(dir: string): Promise<TaskView[]>;
   startCheck(dir: string): Promise<StartCheck | null>;
-  /** Set when Codex wouldn't read the project's CLAUDE.md; asked afresh each time. */
-  codexClaudeMdNote(dir: string): Promise<CodexConfigNote | null>;
+  /** The Codex config file to list CLAUDE.md in, when Codex wouldn't read the project's; asked afresh each time. */
+  codexClaudeMdNote(dir: string): Promise<string | null>;
   /** Without `agent`, the task runs on the default agent. */
   startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;

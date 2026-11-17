@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FolderLeftError, gitQueries, type GitQueries } from '../git';
 import { makeRepo } from '../testing/makeRepo';
-import type { AgentName, ChangedFile, CodexConfigNote, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
+import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
@@ -39,7 +39,7 @@ function fakeAgents() {
     defaultAgent() {
       return this.default;
     },
-    async codexClaudeMdNote(_projectDir: string): Promise<CodexConfigNote | null> {
+    async codexClaudeMdNote(_projectDir: string): Promise<string | null> {
       return null;
     },
   };
@@ -1122,8 +1122,8 @@ it('startCheck asks git about the project', async () => {
 it('codexClaudeMdNote asks the agents about the project', async () => {
   const { service, agents, projectDir } = setup();
   const asked: string[] = [];
-  agents.codexClaudeMdNote = async (dir) => (asked.push(dir), { configFile: '/c/config.toml' });
-  expect(await service.codexClaudeMdNote()).toEqual({ configFile: '/c/config.toml' });
+  agents.codexClaudeMdNote = async (dir) => (asked.push(dir), '/c/config.toml');
+  expect(await service.codexClaudeMdNote()).toEqual('/c/config.toml');
   expect(asked).toEqual([projectDir]);
 });
 

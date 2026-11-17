@@ -1,30 +1,16 @@
 import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { cleanUp, fakeCodex, launchApp, launchWithCodex, removeAfterTest } from './launch';
-import { card, cardIn, closeTask, fakeLogDir, git, ids, launches, report, repo, screen, sendLine } from './tasks';
+import { card, cardIn, closeTask, fakeLogDir, git, launches, report, repo, sendLine, startTask } from './tasks';
 
 test.afterEach(cleanUp);
-
-/** Starts a Codex task through the New task box; resolves with its id once its shell prompt shows. */
-async function startCodexTask(page: Page, title: string): Promise<string> {
-  const before = await ids(page);
-  await page.getByTestId('new-task').click();
-  await page.getByTestId('new-task-title').fill(title);
-  await page.getByTestId('new-task-agent-codex').check();
-  await page.getByTestId('new-task-start').click();
-  const added = async () => (await ids(page)).filter((id) => !before.includes(id));
-  await expect.poll(added).toHaveLength(1);
-  const [id] = await added();
-  await expect.poll(() => screen(page, id)).toContain('$');
-  return id;
-}
 
 test('a Codex task starts in its own worktree under .mainframe/worktrees', async () => {
   const main = repo();
   const { app, page, dataDir } = await launchWithCodex(main);
-  const id = await startCodexTask(page, 'Fix login');
+  const id = await startTask(page, 'Fix login', '', 'codex');
 
   const [first, ...rest] = launches(dataDir);
   expect(rest).toEqual([]);
@@ -39,7 +25,7 @@ test('a Codex task starts in its own worktree under .mainframe/worktrees', async
 
 test('a Codex task closed and reopened from its card runs `codex resume --last` in its worktree', async () => {
   const { app, page, dataDir } = await launchWithCodex(repo());
-  const id = await startCodexTask(page, 'Fix login');
+  const id = await startTask(page, 'Fix login', '', 'codex');
   // It began, and its turn is over, so the reopen resumes it and owes it no prompt.
   await sendLine(page, id, `${report('working')}; ${report('idle')}`);
   await expect(cardIn(page, 'needs-you', id)).toHaveCount(1);
@@ -56,7 +42,7 @@ test('a Codex task closed and reopened from its card runs `codex resume --last` 
 test('Quit mid-turn carries the Codex session on with resume --last and the carry-on prompt', async () => {
   const main = repo();
   const first = await launchWithCodex(main);
-  const id = await startCodexTask(first.page, 'Fix login');
+  const id = await startTask(first.page, 'Fix login', '', 'codex');
   await sendLine(first.page, id, report('working'));
   await expect(cardIn(first.page, 'working', id).getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
   await first.app.close();

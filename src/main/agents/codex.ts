@@ -53,7 +53,10 @@ export function codexPlaces(lookup: ExecutableLookup): string[] {
 
 export const findCodex = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, codexPlaces, checkCodex);
 
-const NO_SYNC = "The Todo sync doesn't run on Codex yet.";
+/** The Todo sync refuses until it runs on Codex. */
+const noSync = (): never => {
+  throw new Error("The Todo sync doesn't run on Codex yet.");
+};
 
 const codexSync: SyncAdapter = {
   words: {
@@ -62,13 +65,9 @@ const codexSync: SyncAdapter = {
     toolNames: '(as your tool list names them)',
     noConnector: '',
   },
-  prepare: () => {
-    throw new Error(NO_SYNC);
-  },
+  prepare: noSync,
   prompt: () => '',
-  readAnswer: () => {
-    throw new Error(NO_SYNC);
-  },
+  readAnswer: noSync,
   isToolName: () => false,
   afterRun: () => {},
 };

@@ -122,9 +122,6 @@ export interface SettingsView {
 /** OpenCode's lists for Settings: only each agent's id, the first primary one marked as OpenCode's default. */
 export interface OpencodeChoices { agents: { id: string; isDefault: boolean }[]; models: SyncModel[] }
 
-/** Codex wouldn't read the project's CLAUDE.md: the Codex config file where the user can list it. */
-export interface CodexConfigNote { configFile: string }
-
 export interface TaskGitState {
   /** gone: no local branch. no-commits: no commit was made on the branch, though it may have moved up to a newer base. merged: merging it into the base changes nothing. */
   branch: 'gone' | 'no-commits' | 'merged' | 'unmerged';

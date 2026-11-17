@@ -1,4 +1,4 @@
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type CodexConfigNote, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
@@ -136,14 +136,14 @@ export class AgentsInUse {
   }
 
   /**
-   * Set when Codex is found and would not read the project's CLAUDE.md, with the Codex config file where the user can
-   * list it. Asked afresh each time: nothing is cached, so the note goes once the user has added the line.
+   * The Codex config file where the user can list CLAUDE.md, when Codex is found and would not read the project's.
+   * Null otherwise. Asked afresh each time: nothing is cached, so the note goes once the user has added the line.
    */
-  async codexClaudeMdNote(projectDir: string): Promise<CodexConfigNote | null> {
+  async codexClaudeMdNote(projectDir: string): Promise<string | null> {
     const bin = this.bin('codex');
     if (bin === null) return null;
     const missed = await (this.deps.codexMissesClaudeMd ?? codexMissesClaudeMd)({ bin, projectDir, env: this.deps.env });
-    return missed ? { configFile: codexConfigFile(this.deps.env, process.platform) } : null;
+    return missed ? codexConfigFile(this.deps.env, process.platform) : null;
   }
 
   private save(next: AppSettings): void {

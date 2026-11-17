@@ -284,7 +284,7 @@ describe('AgentsInUse', () => {
 
     it('names the config file when the check says CLAUDE.md is missed, and is null when not', async () => {
       const missed = withCodex(true);
-      await expect(missed.a.codexClaudeMdNote('/p')).resolves.toEqual({ configFile: expect.stringMatching(/config\.toml$/) });
+      await expect(missed.a.codexClaudeMdNote('/p')).resolves.toMatch(/config\.toml$/);
       expect(missed.check).toHaveBeenCalledWith({ bin: '/bin/codex', projectDir: '/p', env: { CODEX_HOME: '/c' } });
       await expect(withCodex(false).a.codexClaudeMdNote('/p')).resolves.toBeNull();
     });
