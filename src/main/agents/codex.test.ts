@@ -82,14 +82,7 @@ it("Codex's shell variables are dropped, the user's CODEX_HOME is not", () => {
   expect(codexAgent.droppedEnv).not.toContain('CODEX_HOME');
 });
 
-it('the manager and the Todo sync refuse until they run on Codex', async () => {
+it('the manager refuses until it runs on Codex', async () => {
   await expect(codexAgent.managerLaunch({} as ManagerLaunch)).rejects.toThrow("The manager doesn't run on Codex yet.");
   expect(codexAgent.managerChat('/any', 'saved')).toBeNull();
-  const prepare = { bin: '/b/codex', nodeBin: null, dir: '/d', projectDir: '/p', env: {}, step: 'discover', tools: [], setting: {} } as unknown as Parameters<
-    typeof codexAgent.sync.prepare
-  >[0];
-  expect(() => codexAgent.sync.prepare(prepare)).toThrow("The Todo sync doesn't run on Codex yet.");
-  expect(() => codexAgent.sync.readAnswer('{}', [])).toThrow("The Todo sync doesn't run on Codex yet.");
-  expect(codexAgent.sync.isToolName('tracker_get_card')).toBe(false);
-  expect(codexAgent.sync.models).toBeUndefined();
 });

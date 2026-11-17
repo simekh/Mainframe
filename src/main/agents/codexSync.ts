@@ -1,4 +1,11 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
+import type { SyncAdapter, SyncWords } from './agent';
+import { isMcpToolName } from './claudeSync';
+import { runCodex, type Run } from './codexInstructions';
+import { agentsMdInstructions } from './opencode';
 import { jsonLines } from './opencodeSync';
 
 type Node = Record<string, unknown>;
@@ -60,4 +67,95 @@ export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
   // The strict schema makes the model print null for what it leaves out; SYNC_ANSWER wants those absent.
   if (isNode(printed)) printed = Object.fromEntries(Object.entries(printed).filter(([, v]) => v !== null));
   return parseSyncAnswer(printed);
+}
+
+/** Codex's `-c` takes TOML, and a dotted name can't be addressed by it: only these characters pass. */
+const passable = (name: string): boolean => /^[A-Za-z0-9_-]+$/.test(name);
+
+/** The names of the MCP servers Codex has for the project: `mcp list` reads the project's config from where it runs. */
+export async function listCodexServers(o: { bin: string; projectDir: string; env: Record<string, string>; run?: Run }): Promise<string[]> {
+  const { bin, projectDir, env, run = runCodex } = o;
+  try {
+    const stdout = await run([bin, 'mcp', 'list', '--json'], { cwd: projectDir, env });
+    let rows: unknown;
+    try {
+      rows = JSON.parse(stdout);
+    } catch {
+      // Not JSON.parse's own message, which quotes the output.
+      throw new Error('its answer was not JSON');
+    }
+    if (!Array.isArray(rows)) throw new Error('its answer held no list of servers');
+    return rows.map((row) => {
+      const name = isNode(row) ? row.name : undefined;
+      if (typeof name !== 'string') throw new Error('a server in its answer had no name');
+      return name;
+    });
+  } catch (err) {
+    throw new Error(`Codex could not list its MCP servers: ${(err as Error).message}`);
+  }
+}
+
+const toml = (key: string, value: string | string[]): string => `${key}=${JSON.stringify(value)}`;
+
+/**
+ * The run's `-c` values. Its own tools that act are switched off. Discover sees every server, but a call to any tool
+ * needs an approval that a `codex exec` can't give. A read leaves only the confirmed tools callable and the other
+ * servers off. Every listed server's name is checked, so a renamed one can't slip past.
+ */
+export function codexSyncConfig(step: SyncStep, tools: string[], servers: string[]): string[] {
+  for (const server of servers) {
+    if (!passable(server)) throw new Error(`Codex's MCP server "${server}" has a name Mainframe can't pass to Codex`);
+  }
+  const allowedOf = new Map<string, string[]>();
+  for (const name of step.kind === 'read' ? tools : []) {
+    const owners = servers.filter((s) => name.startsWith(`mcp__${codexNamespace(s)}__`));
+    if (owners.length !== 1) throw new Error(`Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`);
+    const tool = name.slice(`mcp__${codexNamespace(owners[0])}__`.length);
+    if (!passable(tool)) throw new Error(`Codex's MCP tool "${name}" has a name Mainframe can't pass to Codex`);
+    allowedOf.set(owners[0], [...(allowedOf.get(owners[0]) ?? []), tool]);
+  }
+  const config = ['features.shell_tool=false', toml('web_search', 'disabled'), 'features.multi_agent=false', 'features.apps=false', 'features.goals=false'];
+  for (const server of servers) {
+    const allowed = allowedOf.get(server);
+    const prefix = `mcp_servers.${server}`;
+    if (step.kind === 'read' && !allowed) {
+      config.push(`${prefix}.enabled=false`);
+      continue;
+    }
+    if (allowed) config.push(toml(`${prefix}.enabled_tools`, allowed));
+    config.push(toml(`${prefix}.default_tools_approval_mode`, 'prompt'));
+    for (const tool of allowed ?? []) config.push(toml(`${prefix}.tools.${tool}.approval_mode`, 'approve'));
+  }
+  return config;
+}
+
+/** Read-only, with nothing saved; the prompt comes on stdin (`-`). */
+export const codexSyncArgv = (o: { bin: string; projectDir: string; schemaFile: string; config: string[] }): string[] => [
+  o.bin, 'exec', '--json', '--ephemeral', '-s', 'read-only', '-C', o.projectDir, '--output-schema', o.schemaFile,
+  ...o.config.flatMap((c) => ['-c', c]),
+  '-',
+];
+
+/** Codex's sync. `run` lists the MCP servers; tests hand it a fake. */
+export function makeCodexSync({ run }: { run?: Run } = {}): SyncAdapter {
+  const words: SyncWords = {
+    sessions: 'coding agent sessions',
+    instructions: agentsMdInstructions,
+    toolNames: '(as mcp__<server>__<tool>, such as mcp__tracker__get_card)',
+    noConnector: "Mainframe looked in Codex's MCP servers: set your tracker up there (codex mcp add), then sync again.",
+  };
+  return {
+    words,
+    prepare: async ({ bin, dir, projectDir, env, step, tools }) => {
+      const servers = await listCodexServers({ bin, projectDir, env, run });
+      const config = codexSyncConfig(step, tools, servers);
+      const schemaFile = join(dir, 'codex-sync-schema.json');
+      writeFileSync(schemaFile, CODEX_SYNC_SCHEMA_JSON);
+      return { argv: codexSyncArgv({ bin, projectDir, schemaFile, config }), cwd: projectDir, env };
+    },
+    prompt: (step) => syncPrompt(step, words),
+    readAnswer: readCodexAnswer,
+    isToolName: isMcpToolName,
+    afterRun: () => {},
+  };
 }

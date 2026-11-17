@@ -2,7 +2,8 @@ import { posix, win32 } from 'node:path';
 import { MIN_CODEX_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter, SyncAdapter } from './agent';
+import type { AgentAdapter } from './agent';
+import { makeCodexSync } from './codexSync';
 import { agentsMdInstructions, mainframeWorktreeNote } from './opencode';
 
 /** Keys Codex sets in the shells it runs. CODEX_HOME is the user's own setting, so it stays. */
@@ -53,25 +54,6 @@ export function codexPlaces(lookup: ExecutableLookup): string[] {
 
 export const findCodex = (o: FindOptions): Promise<ProgramCheck> => findProgram(o, codexPlaces, checkCodex);
 
-/** The Todo sync refuses until it runs on Codex. */
-const noSync = (): never => {
-  throw new Error("The Todo sync doesn't run on Codex yet.");
-};
-
-const codexSync: SyncAdapter = {
-  words: {
-    sessions: 'coding agent sessions',
-    instructions: agentsMdInstructions,
-    toolNames: '(as your tool list names them)',
-    noConnector: '',
-  },
-  prepare: noSync,
-  prompt: () => '',
-  readAnswer: noSync,
-  isToolName: () => false,
-  afterRun: () => {},
-};
-
 export const codexAgent: AgentAdapter = {
   name: 'codex',
   envVar: 'MAINFRAME_CODEX_BIN',
@@ -95,5 +77,5 @@ export const codexAgent: AgentAdapter = {
   forgetChat: () => {},
   managerChat: () => null,
   managerLaunch: () => Promise.reject(new Error("The manager doesn't run on Codex yet.")),
-  sync: codexSync,
+  sync: makeCodexSync(),
 };

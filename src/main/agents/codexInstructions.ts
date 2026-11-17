@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-type Run = (argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>;
+export type Run =(argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>;
 
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const AGENTS_MD_HEADING = '# AGENTS.md instructions for ';
@@ -21,7 +21,7 @@ const userTexts = (items: unknown[]): string[] =>
   });
 
 /** Runs codex with no shell and resolves with stdout. What it prints holds the project's instructions, so it is never logged. */
-const runCodex: Run = async ([file, ...args], o) =>
+export const runCodex: Run = async ([file, ...args], o) =>
   (await execFileAsync(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: 10_000, maxBuffer: MAX_OUTPUT })).stdout;
 
 /**

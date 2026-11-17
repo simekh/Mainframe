@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { CODEX_SYNC_SCHEMA_JSON, codexNamespace, readCodexAnswer, strictJsonSchema } from './codexSync';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { syncPrompt, type SyncStep } from '../todo/syncRun';
+import type { AgentSetting, SyncAdapter } from './agent';
+import type { Run } from './codexInstructions';
+import { CODEX_SYNC_SCHEMA_JSON, codexNamespace, codexSyncArgv, codexSyncConfig, listCodexServers, makeCodexSync, readCodexAnswer, strictJsonSchema } from './codexSync';
 
 const jsonl = (...events: unknown[]) => events.map((e) => JSON.stringify(e)).join('\n');
 const message = (text: string) => ({ type: 'item.completed', item: { type: 'agent_message', text } });
@@ -101,5 +107,112 @@ describe('readCodexAnswer', () => {
   it('throws when the answer is not JSON or has the wrong shape', () => {
     expect(() => readCodexAnswer(jsonl(message('not json')), [])).toThrow("The sync run's answer wasn't JSON");
     expect(() => readCodexAnswer(jsonl(message('{"kind":"bogus"}')), [])).toThrow("The sync run's answer didn't have the shape Mainframe asked for");
+  });
+});
+
+describe('codexSyncConfig', () => {
+  const FEATURES = ['features.shell_tool=false', 'web_search="disabled"', 'features.multi_agent=false', 'features.apps=false', 'features.goals=false'];
+
+  it('lets discover see every server but approve nothing', () => {
+    expect(codexSyncConfig({ kind: 'discover' }, [], ['trk', 'my-trk'])).toEqual([
+      ...FEATURES,
+      'mcp_servers.trk.default_tools_approval_mode="prompt"',
+      'mcp_servers.my-trk.default_tools_approval_mode="prompt"',
+    ]);
+  });
+
+  it('lets a read call the confirmed tools alone', () => {
+    const tools = ['mcp__my_trk__get_card', 'mcp__my_trk__list_cards'];
+    expect(codexSyncConfig({ kind: 'read', list: null }, tools, ['trk', 'my-trk'])).toEqual([
+      ...FEATURES,
+      'mcp_servers.trk.enabled=false',
+      'mcp_servers.my-trk.enabled_tools=["get_card","list_cards"]',
+      'mcp_servers.my-trk.default_tools_approval_mode="prompt"',
+      'mcp_servers.my-trk.tools.get_card.approval_mode="approve"',
+      'mcp_servers.my-trk.tools.list_cards.approval_mode="approve"',
+    ]);
+  });
+
+  it("refuses a server name it can't pass, also in a read", () => {
+    const refusal = `Codex's MCP server "a.b" has a name Mainframe can't pass to Codex`;
+    expect(() => codexSyncConfig({ kind: 'discover' }, [], ['a.b'])).toThrow(refusal);
+    expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__trk__x'], ['trk', 'a.b'])).toThrow(refusal);
+  });
+
+  it('refuses a tool that matches no server or two', () => {
+    const refusal = (name: string) => `Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`;
+    expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__other__x'], ['trk'])).toThrow(refusal('mcp__other__x'));
+    expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__a_b__x'], ['a_b', 'a-b'])).toThrow(refusal('mcp__a_b__x'));
+  });
+
+  it("refuses a tool name it can't pass", () => {
+    expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__trk__a.b'], ['trk'])).toThrow(
+      `Codex's MCP tool "mcp__trk__a.b" has a name Mainframe can't pass to Codex`,
+    );
+  });
+});
+
+describe('codexSyncArgv', () => {
+  it('runs codex exec read-only in the project with the schema and every setting', () => {
+    expect(codexSyncArgv({ bin: '/b/codex', projectDir: '/p', schemaFile: '/d/s.json', config: ['a=1', 'b=2'] })).toEqual([
+      '/b/codex', 'exec', '--json', '--ephemeral', '-s', 'read-only', '-C', '/p', '--output-schema', '/d/s.json', '-c', 'a=1', '-c', 'b=2', '-',
+    ]);
+  });
+});
+
+describe('listCodexServers', () => {
+  const base = { bin: '/b/codex', projectDir: '/p', env: { A: '1' } };
+  const listing = (stdout: string) => vi.fn<Run>().mockResolvedValue(stdout);
+
+  it("runs `mcp list --json` in the project's folder and returns the names", async () => {
+    const run = listing('[{"name":"trk","enabled":true}]');
+    expect(await listCodexServers({ ...base, run })).toEqual(['trk']);
+    expect(run).toHaveBeenCalledWith(['/b/codex', 'mcp', 'list', '--json'], { cwd: '/p', env: { A: '1' } });
+  });
+
+  it.each(['not json', '{}', '[{"enabled":true}]'])('throws for the output %s', async (out) => {
+    await expect(listCodexServers({ ...base, run: listing(out) })).rejects.toThrow('Codex could not list its MCP servers: ');
+  });
+
+  it('throws when the run fails', async () => {
+    await expect(listCodexServers({ ...base, run: vi.fn<Run>().mockRejectedValue(new Error('boom')) })).rejects.toThrow('Codex could not list its MCP servers: boom');
+  });
+});
+
+describe('makeCodexSync', () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
+  const prepareOf = (sync: SyncAdapter, step: SyncStep, tools: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-sync-'));
+    dirs.push(dir);
+    return { dir, result: sync.prepare({ bin: '/b/codex', nodeBin: null, dir, projectDir: '/p', env: { A: '1' }, step, tools, setting: {} as AgentSetting }) };
+  };
+
+  it('prepares the run with the schema written next to it', async () => {
+    const sync = makeCodexSync({ run: vi.fn<Run>().mockResolvedValue('[{"name":"trk"}]') });
+    const { dir, result } = prepareOf(sync, { kind: 'discover' }, []);
+    const schemaFile = join(dir, 'codex-sync-schema.json');
+    expect(await result).toEqual({
+      argv: codexSyncArgv({ bin: '/b/codex', projectDir: '/p', schemaFile, config: codexSyncConfig({ kind: 'discover' }, [], ['trk']) }),
+      cwd: '/p',
+      env: { A: '1' },
+    });
+    expect(readFileSync(schemaFile, 'utf8')).toBe(CODEX_SYNC_SCHEMA_JSON);
+  });
+
+  it('rejects when the listing fails', async () => {
+    const sync = makeCodexSync({ run: vi.fn<Run>().mockRejectedValue(new Error('boom')) });
+    await expect(prepareOf(sync, { kind: 'discover' }, []).result).rejects.toThrow('Codex could not list its MCP servers: boom');
+  });
+
+  it('words the sync for Codex', () => {
+    const sync = makeCodexSync();
+    expect(sync.words.noConnector).toBe("Mainframe looked in Codex's MCP servers: set your tracker up there (codex mcp add), then sync again.");
+    expect(sync.words.toolNames).toBe('(as mcp__<server>__<tool>, such as mcp__tracker__get_card)');
+    expect(sync.prompt({ kind: 'discover' })).toBe(syncPrompt({ kind: 'discover' }, sync.words));
+    expect(sync.isToolName('mcp__trk__get_card')).toBe(true);
+    expect(sync.isToolName('get_card')).toBe(false);
+    expect(sync.models).toBeUndefined();
+    expect(sync.afterRun({ bin: '', dir: '', env: {}, stdout: '' })).toBeUndefined();
   });
 });
