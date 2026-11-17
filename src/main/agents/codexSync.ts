@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
@@ -108,9 +108,10 @@ export function codexSyncConfig(step: SyncStep, tools: string[], servers: string
   }
   const allowedOf = new Map<string, string[]>();
   for (const name of step.kind === 'read' ? tools : []) {
-    const owners = servers.filter((s) => name.startsWith(`mcp__${codexNamespace(s)}__`));
+    const prefixOf = (s: string) => `mcp__${codexNamespace(s)}__`;
+    const owners = servers.filter((s) => name.startsWith(prefixOf(s)));
     if (owners.length !== 1) throw new Error(`Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`);
-    const tool = name.slice(`mcp__${codexNamespace(owners[0])}__`.length);
+    const tool = name.slice(prefixOf(owners[0]).length);
     if (!passable(tool)) throw new Error(`Codex's MCP tool "${name}" has a name Mainframe can't pass to Codex`);
     allowedOf.set(owners[0], [...(allowedOf.get(owners[0]) ?? []), tool]);
   }
@@ -150,7 +151,12 @@ export function makeCodexSync({ run }: { run?: Run } = {}): SyncAdapter {
       const servers = await listCodexServers({ bin, projectDir, env, run });
       const config = codexSyncConfig(step, tools, servers);
       const schemaFile = join(dir, 'codex-sync-schema.json');
-      writeFileSync(schemaFile, CODEX_SYNC_SCHEMA_JSON);
+      try {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(schemaFile, CODEX_SYNC_SCHEMA_JSON);
+      } catch (err) {
+        throw new Error(`Could not write the sync's answer schema: ${(err as Error).message}`);
+      }
       return { argv: codexSyncArgv({ bin, projectDir, schemaFile, config }), cwd: projectDir, env };
     },
     prompt: (step) => syncPrompt(step, words),

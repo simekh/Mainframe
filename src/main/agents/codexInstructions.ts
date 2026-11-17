@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export type Run =(argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>;
+export type Run = (argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>;
 
 const MAX_OUTPUT = 16 * 1024 * 1024;
 const AGENTS_MD_HEADING = '# AGENTS.md instructions for ';

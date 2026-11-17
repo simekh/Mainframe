@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -198,6 +198,26 @@ describe('makeCodexSync', () => {
       env: { A: '1' },
     });
     expect(readFileSync(schemaFile, 'utf8')).toBe(CODEX_SYNC_SCHEMA_JSON);
+  });
+
+  it("makes the folder first, which a new project's first sync lacks", async () => {
+    const sync = makeCodexSync({ run: vi.fn<Run>().mockResolvedValue('[]') });
+    const parent = mkdtempSync(join(tmpdir(), 'codex-sync-'));
+    dirs.push(parent);
+    const dir = join(parent, 'todo', 'new-project');
+    await sync.prepare({ bin: '/b/codex', nodeBin: null, dir, projectDir: '/p', env: {}, step: { kind: 'discover' }, tools: [], setting: {} as AgentSetting });
+    expect(readFileSync(join(dir, 'codex-sync-schema.json'), 'utf8')).toBe(CODEX_SYNC_SCHEMA_JSON);
+  });
+
+  it('says so when the schema cannot be written', async () => {
+    const sync = makeCodexSync({ run: vi.fn<Run>().mockResolvedValue('[]') });
+    const parent = mkdtempSync(join(tmpdir(), 'codex-sync-'));
+    dirs.push(parent);
+    writeFileSync(join(parent, 'file'), '');
+    const dir = join(parent, 'file', 'sub');
+    await expect(
+      sync.prepare({ bin: '/b/codex', nodeBin: null, dir, projectDir: '/p', env: {}, step: { kind: 'discover' }, tools: [], setting: {} as AgentSetting }),
+    ).rejects.toThrow("Could not write the sync's answer schema: ");
   });
 
   it('rejects when the listing fails', async () => {
