@@ -31,7 +31,7 @@ on:
 # On a branch, a newer push, or the same narrowed run started again, ends the run it replaces: a full run takes
 # four macOS runners, and GitHub's free plan runs five at a time, so a run left going would hold up the next one.
 # Each run on the default branch is a group of its own, so every push there gets a result of its own: sessions
-# push to it minutes apart, and a shared group would cancel those runs or queue them one behind another.
+# push to it minutes apart, and a shared group would cancel a run, or replace a waiting one with the next.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.os }}-${{ inputs.e2e }}-${{ inputs.grep }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || '' }}
   cancel-in-progress: true
