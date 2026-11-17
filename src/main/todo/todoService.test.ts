@@ -1321,3 +1321,87 @@ it('a put-back sync that misses the card says nothing on a task that runs again'
 
   expect(t.taskCalls).toEqual([['putBackCard', 'task-7']]);
 });
+
+/** A Claude sync whose `prepare` the test settles: the way Codex's asks its agent before it can build its run. */
+function slowPrepare() {
+  let resolve!: (spec: ReturnType<typeof ADAPTERS.claude.sync.prepare>) => void;
+  let reject!: (err: Error) => void;
+  const promise = new Promise<ReturnType<typeof ADAPTERS.claude.sync.prepare>>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  const adapter = { ...ADAPTERS.claude, sync: { ...ADAPTERS.claude.sync, prepare: () => promise } };
+  return { agent: { adapter, bin: 'claude', setting: {} } as AgentInUse, resolve, reject };
+}
+const SPEC = { argv: ['-p'], cwd: '/work', env: ENV };
+
+it('a prepare that resolves later runs then, and the sync counts as running meanwhile', async () => {
+  const slow = slowPrepare();
+  const t = setup(undefined, slow.agent);
+
+  const pending = t.service.sync();
+  await flush();
+
+  expect(t.service.view().syncing).toBe(true);
+  expect(t.calls).toHaveLength(0);
+  slow.resolve(SPEC);
+  await flush();
+  expect(t.calls).toHaveLength(1);
+  expect(t.last().options).toMatchObject(SPEC);
+  t.last().answer(TOOLS_ANSWER);
+  expect(await pending).toEqual({ ask: 'tools' });
+  expect(t.service.view().syncing).toBe(false);
+});
+
+it('a second Sync while prepare runs joins it', async () => {
+  const slow = slowPrepare();
+  const t = setup(undefined, slow.agent);
+
+  const first = t.service.sync();
+  expect(t.service.sync()).toBe(first);
+  slow.resolve(SPEC);
+  await flush();
+
+  expect(t.calls).toHaveLength(1);
+});
+
+it('Stop or close while prepare runs ends the sync and no run starts', async () => {
+  for (const stop of ['cancel', 'close'] as const) {
+    const slow = slowPrepare();
+    const t = setup(undefined, slow.agent);
+
+    const pending = t.service.sync();
+    t.service[stop]();
+    slow.resolve(SPEC);
+
+    expect(await pending).toEqual({ error: SYNC_STOPPED });
+    await flush();
+    expect(t.calls).toHaveLength(0);
+    expect(t.service.view()).toMatchObject({ syncing: false, error: null });
+  }
+});
+
+it('a Stop after prepare resolved stops the run it started', async () => {
+  const slow = slowPrepare();
+  const t = setup(undefined, slow.agent);
+
+  const pending = t.service.sync();
+  slow.resolve(SPEC);
+  await flush();
+  t.service.cancel();
+
+  expect(t.last().cancelled).toBe(true);
+  expect(await pending).toEqual({ error: SYNC_STOPPED });
+});
+
+it('a prepare that rejects says why in the view', async () => {
+  const slow = slowPrepare();
+  const t = setup(undefined, slow.agent);
+
+  const pending = t.service.sync();
+  slow.reject(new Error('Codex could not list its MCP servers: x'));
+
+  expect(await pending).toEqual({ error: 'Codex could not list its MCP servers: x' });
+  expect(t.service.view()).toMatchObject({ syncing: false, error: 'Codex could not list its MCP servers: x' });
+  expect(t.calls).toHaveLength(0);
+});

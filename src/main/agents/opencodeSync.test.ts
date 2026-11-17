@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { SYNC_ANSWER_JSON } from '../todo/todoSchema';
-import { cheapestKnown } from './agent';
+import { cheapestKnown, type SyncRunSpec } from './agent';
 import { makeOpencodeAgent, opencodeAgent } from './opencode';
 import { isOpencodeToolName, readOpencodeAnswer, syncConfig } from './opencodeSync';
 
@@ -127,7 +127,8 @@ describe('prepare', () => {
       step: { kind: 'read', list: null },
       tools: TOOLS,
       setting,
-    });
+      // OpenCode's prepare is synchronous: the type allows a promise for other agents.
+    }) as SyncRunSpec;
     return { spec, dir, projectDir, config: JSON.parse(spec.env.OPENCODE_CONFIG_CONTENT) };
   };
 

@@ -38,7 +38,8 @@ export type SyncOutcome = { cards: number } | { ask: TodoAsk['kind'] } | { error
 interface Running {
   outcome: Promise<SyncOutcome>;
   settle(outcome: SyncOutcome): void;
-  cancel(): void;
+  /** Replaced once the run starts, when it had to wait for `prepare`. */
+  cancel: () => void;
   /** Whether it has gone on past LONG_SYNC_MS and the owner has not said to keep going. */
   long: boolean;
   stopTimer(): void;
@@ -349,9 +350,9 @@ export class TodoService {
   private launch({ adapter, bin, setting }: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
     const { nodeBin, projectDir, env } = this.deps;
     const tools = step.kind === 'read' ? (this.record.readTools?.tools ?? []) : [];
-    let spec: SyncRunSpec;
+    let prepared: SyncRunSpec | Promise<SyncRunSpec>;
     try {
-      spec = adapter.sync.prepare({ bin, nodeBin, dir: this.dir, projectDir, env, step, tools, setting });
+      prepared = adapter.sync.prepare({ bin, nodeBin, dir: this.dir, projectDir, env, step, tools, setting });
     } catch (err) {
       // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
       this.ask = null;
@@ -359,13 +360,30 @@ export class TodoService {
       this.changed();
       return Promise.resolve(refused);
     }
+    if (!(prepared instanceof Promise)) return this.startRun(adapter, bin, step, tools, prepared);
+
+    // A prepare that asks the agent first: the sync counts as running meanwhile, as while models are listed.
+    const preparing = this.begin(() => {});
+    prepared.then(
+      (spec) => {
+        if (this.running === preparing) void this.startRun(adapter, bin, step, tools, spec, preparing);
+      },
+      (err: Error) => this.end(preparing, () => this.refuse(err.message)),
+    );
+    return preparing.outcome;
+  }
+
+  /** Starts the run `spec` describes as the sync in progress: `waiting` when it already counts as running, else a new one. */
+  private startRun(adapter: AgentAdapter, bin: string, step: SyncStep, tools: string[], spec: SyncRunSpec, waiting?: Running): Promise<SyncOutcome> {
+    const { env } = this.deps;
     const { done, cancel } = (this.deps.run ?? runSync)({ ...spec, input: adapter.sync.prompt(step), timeoutMs: SYNC_TIMEOUT_MS });
 
     const setTimer = this.deps.setTimer ?? ((fn, ms) => {
       const id = setTimeout(fn, ms);
       return () => clearTimeout(id);
     });
-    const running = this.begin(cancel);
+    const running = waiting ?? this.begin(cancel);
+    running.cancel = cancel;
     running.stopTimer = setTimer(() => {
       if (this.running !== running) return;
       running.long = true;

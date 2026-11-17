@@ -53,8 +53,11 @@ export interface SyncRunSpec { argv: string[]; cwd: string; env: Record<string, 
 /** How one agent runs the Todo sync: the headless run that reads the owner's tracker. */
 export interface SyncAdapter {
   readonly words: SyncWords;
-  /** Writes what the run reads into `dir` (the project's Todo folder) and returns the run. Throws when it can't. */
-  prepare(o: { bin: string; nodeBin: string | null; dir: string; projectDir: string; env: Record<string, string>; step: SyncStep; tools: string[]; setting: AgentSetting }): SyncRunSpec;
+  /**
+   * Writes what the run reads into `dir` (the project's Todo folder) and returns the run. Throws when it can't. A
+   * promise is for a run that must ask the agent something first; it rejects with an Error whose message is for the panel.
+   */
+  prepare(o: { bin: string; nodeBin: string | null; dir: string; projectDir: string; env: Record<string, string>; step: SyncStep; tools: string[]; setting: AgentSetting }): SyncRunSpec | Promise<SyncRunSpec>;
   prompt(step: SyncStep): string;
   /** The run's answer from what it printed; throws an Error whose message is for the panel. */
   readAnswer(stdout: string, tools: string[]): SyncAnswer;
