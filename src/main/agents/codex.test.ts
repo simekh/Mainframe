@@ -42,6 +42,7 @@ describe('codexPlaces', () => {
 it('a task starts as `codex <prompt>` and reopens as `codex resume --last [prompt]`', () => {
   expect(codexStartArgv({ codexBin: '/b/codex', prompt: 'Do it' })).toEqual(['/b/codex', 'Do it']);
   expect(codexReopenArgv({ codexBin: '/b/codex' })).toEqual(['/b/codex', 'resume', '--last']);
+  expect(codexReopenArgv({ codexBin: '/b/codex', prompt: '' })).toEqual(['/b/codex', 'resume', '--last']);
   expect(codexReopenArgv({ codexBin: '/b/codex', prompt: 'Carry on' })).toEqual(['/b/codex', 'resume', '--last', 'Carry on']);
 });
 

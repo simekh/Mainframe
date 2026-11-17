@@ -27,7 +27,7 @@ export function codexStartArgv(o: { codexBin: string; prompt: string }): string[
 
 /** The worktree's latest Codex session, as Codex picks it from the folder it runs in. */
 export function codexReopenArgv(o: { codexBin: string; prompt?: string }): string[] {
-  return [o.codexBin, 'resume', '--last', ...(o.prompt === undefined ? [] : [o.prompt])];
+  return [o.codexBin, 'resume', '--last', ...(o.prompt ? [o.prompt] : [])];
 }
 
 // Only codex's own line counts, for the same reason as claude's; colour codes are stripped as for opencode.
