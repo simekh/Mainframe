@@ -108,9 +108,9 @@ export default function TaskCard(props: {
           <i aria-hidden="true" />
           <span>{project.name}</span>
         </span>
-        <Show when={props.task.agent === 'opencode'}>
+        <Show when={props.task.agent !== 'claude'}>
           <span class="agent-mark" data-testid="task-agent">
-            {AGENT_NAMES.opencode}
+            {AGENT_NAMES[props.task.agent]}
           </span>
         </Show>
         <span class="card-age" data-testid="task-age">
