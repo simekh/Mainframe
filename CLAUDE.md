@@ -24,7 +24,7 @@ One Mainframe, one window, several projects open at the same time (Damela and Wo
 
 ## Release notes → one line per change users would notice (since 2026-11-17)
 
-Each change users would notice adds one line under `## Unreleased` in `CHANGELOG.md` as it merges: `New: …` for something they can now do, `Fixed: …` for something that was wrong. One plain sentence, no card numbers, no code names. Changes nobody would notice (refactors, tests, tooling, docs) add nothing. `npm run release` turns the section into a release. After merging, check the line sits under `## Unreleased`: one added before a release and merged after it can land under that release's heading.
+Each change users would notice adds one line in `CHANGELOG.md` as it merges, directly under the `## Unreleased` heading and above any lines already there, so git places it by the heading and a release cut in between can't take it: `New: …` for something they can now do, `Fixed: …` for something that was wrong. One plain sentence, no card numbers, no code names. Changes nobody would notice (refactors, tests, tooling, docs) add nothing. `npm run release` turns the section into a release. After merging, check the line sits under `## Unreleased`: one added before a release and merged after it can land under that release's heading.
 
 **Why:** users read these lines in the update dialog and decide from them whether to update. A line written weeks later, from the git log, is a guess; written as the change merges, it's right.
 

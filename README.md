@@ -66,7 +66,7 @@ To open more projects, use **File → Open Project…** (⌘O) on a Mac. Windows
 
 Mainframe looks for new releases on the remote you cloned it from. When there is one, an **Update available** pill shows in the window; click it to see what's new and update. Updating restarts Mainframe: your sessions stop and come back, as after Quit. To look right away, use **Mainframe → Check for Updates…** on a Mac, or the **Check for Updates…** button in Settings on any system.
 
-One click works when Mainframe was started with `npm start` and your clone has no changes or commits of its own. Otherwise the dialog says why and shows the commands to run instead, with your remote and the release filled in. They look like this:
+One click works when Mainframe was started with `npm start` and your clone has no changes or commits of its own. Otherwise the dialog says why and shows the commands to run instead, with your remote and the release filled in. Quit Mainframe first, then run them in its folder; a second `npm start` while it runs only brings the open window forward. They look like this:
 
 ```sh
 git fetch <remote> tag v<version>
@@ -160,7 +160,7 @@ Mainframe adapts some code from Parallel Code; see [THIRD_PARTY_NOTICES.md](THIR
 
 ### Releasing
 
-Users hear about a new version when its `v<x.y.z>` tag reaches the remote they cloned from, and read its notes in the update dialog. If you maintain a fork, add one `New:` or `Fixed:` line to `CHANGELOG.md` under `## Unreleased` for each change users would notice, as it merges. Then, from a clean branch that matches its upstream:
+Users hear about a new version when its `v<x.y.z>` tag reaches the remote they cloned from, and read its notes in the update dialog. If you maintain a fork, add one `New:` or `Fixed:` line to `CHANGELOG.md` directly under the `## Unreleased` heading, above any lines already there, for each change users would notice, as it merges. Then, from a clean branch that matches its upstream:
 
 ```sh
 npm run release            # picks the version: a minor bump if there is a New: line, else a patch bump
