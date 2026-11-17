@@ -29,6 +29,8 @@ export function turnAtEnd(lastState: ProgramState | null, resumePending: boolean
 /** Where one `claude` process's turn is, from its OSC 7501 reports, until it is told to end. */
 export class TurnTracker {
   private lastState: ProgramState | null = null;
+  /** It has reported something other than idle: a prompt it was started with has taken. */
+  private hadTurn = false;
   /** Set by `end`: what the session reports on the way out is not what its turn was. */
   ending = false;
 
@@ -38,7 +40,18 @@ export class TurnTracker {
   note(state: ProgramState | null): void {
     if (this.ending) return;
     this.lastState = state;
+    if (state !== null && state !== 'idle') this.hadTurn = true;
     if (inTurn(state)) this.resumePending = false;
+  }
+
+  /**
+   * Its turn is over and it waits for the owner: done or error, or idle once a prompt it was started with has taken
+   * (the board's "Starting…" until then). Not once it is ending.
+   */
+  over(startedWithPrompt: boolean): boolean {
+    if (this.ending) return false;
+    const s = this.lastState;
+    return s === 'done' || s === 'error' || (s === 'idle' && (this.hadTurn || !startedWithPrompt));
   }
 
   /** Where its turn was as the end was decided, to record on its task or chat. */

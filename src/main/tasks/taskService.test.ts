@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FolderLeftError, gitQueries, type GitQueries } from '../git';
 import { makeRepo } from '../testing/makeRepo';
 import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
@@ -1173,6 +1173,7 @@ it('reports lists every task oldest first: a running one with its last state and
       running: true,
       state: 'blocked',
       msg: 'Run rm -rf build?',
+      merged: false,
       card: null,
       agent: 'claude',
     },
@@ -1189,6 +1190,7 @@ it('reports lists every task oldest first: a running one with its last state and
       running: false,
       state: null,
       msg: null,
+      merged: false,
       card: { number: '#128', url: 'https://tracker.example/c/128' },
       agent: 'claude',
     },
@@ -2349,6 +2351,159 @@ it('a failed removal after a cut-short reopen only warns', async () => {
   gate.release();
   await expect(reopening).resolves.toMatchObject({ session: null });
   expect(t.warnings.some((w) => w.includes('fatal: busy'))).toBe(true);
+});
+
+/** A started task whose conversation began, with its session's id. */
+async function runningTask(t: ReturnType<typeof roundSetup>, title = NEW_TASK.title, service = t.service) {
+  const view = await service.start({ ...NEW_TASK, title });
+  t.sessionStarted(view.id, t.readState().find((r) => r.id === view.id)!.claudeSessionId);
+  return { view, sid: view.session!.id };
+}
+
+/** What a session reports, as the session host keeps it and hands it to the service. */
+function say(t: ReturnType<typeof roundSetup>, sid: string, state: ProgramState, msg?: string, service = t.service) {
+  t.statuses.set(sid, { id: sid, state, ...(msg !== undefined && { msg }), updatedAt: 1 });
+  service.noteStatus(sid, state);
+}
+
+it('a session that reports done starts a round, so a merged task is marked without waiting for the timer', async () => {
+  const t = roundSetup();
+  const { view, sid } = await runningTask(t);
+  t.states.set(view.branch, MERGED);
+
+  say(t, sid, 'working');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(t.checked).toEqual([]);
+
+  say(t, sid, 'done');
+  await vi.waitFor(() => expect(t.service.list()[0].merged).toBe(true));
+});
+
+it('a burst of done reports starts one round and queues one more', async () => {
+  let fetches = 0;
+  const t = roundSetup({ fetchBase: async () => void fetches++ });
+  const running = [await runningTask(t, 'One'), await runningTask(t, 'Two'), await runningTask(t, 'Three')];
+
+  for (const { sid } of running) say(t, sid, 'done');
+  await t.service.checkRound();
+
+  expect(fetches).toBe(2);
+});
+
+it('reports say whether a running task is marked merged', async () => {
+  const t = roundSetup();
+  const merged = await runningTask(t, 'Merged');
+  await runningTask(t, 'Not merged');
+  t.states.set(merged.view.branch, MERGED);
+  await t.service.checkRound();
+
+  expect(t.service.reports().map((r) => [r.title, r.merged])).toEqual([['Merged', true], ['Not merged', false]]);
+});
+
+describe('closeWhenTurnOver', () => {
+  it('closes a session whose turn is over, as close does, and says what it closed', async () => {
+    const t = roundSetup();
+    const { view, sid } = await runningTask(t);
+    say(t, sid, 'working');
+    say(t, sid, 'done', 'All merged');
+
+    expect(t.service.closeWhenTurnOver(view.id)).toEqual({ title: 'Fix login', msg: 'All merged', merged: false });
+    expect(t.killed).toEqual([sid]);
+    expect(t.readState()[0]).toMatchObject({ open: false });
+  });
+
+  it('says merged for a task the round marked', async () => {
+    const t = roundSetup();
+    const { view, sid } = await runningTask(t);
+    t.states.set(view.branch, MERGED);
+    say(t, sid, 'working');
+    say(t, sid, 'idle');
+    await t.service.checkRound();
+
+    expect(t.service.closeWhenTurnOver(view.id)).toEqual({ title: 'Fix login', msg: null, merged: true });
+  });
+
+  it('closes a session that stopped with an error', async () => {
+    const t = roundSetup();
+    const { view, sid } = await runningTask(t);
+    say(t, sid, 'error');
+
+    expect(t.service.closeWhenTurnOver(view.id).title).toBe('Fix login');
+    expect(t.killed).toEqual([sid]);
+  });
+
+  it('refuses a session in a turn, or still starting, and leaves it running', async () => {
+    const t = roundSetup();
+    const { view, sid } = await runningTask(t);
+    const until = 'it can be closed once its turn is over.';
+
+    // No report yet, then idle before the opening prompt took: the board shows Starting….
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow(`Fix login's session is still starting; ${until}`);
+    say(t, sid, 'idle');
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow(`Fix login's session is still starting; ${until}`);
+    // The list the manager read said done; it is working again by the time it asks.
+    say(t, sid, 'done');
+    say(t, sid, 'working');
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow(`Fix login's session is working; ${until}`);
+    say(t, sid, 'blocked');
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow(`Fix login's session is waiting for the owner's answer; ${until}`);
+
+    expect(t.killed).toEqual([]);
+    expect(t.readState()[0]).toMatchObject({ open: true });
+  });
+
+  it('refuses a second close of a session already told to end, without a second kill', async () => {
+    const t = roundSetup();
+    const { view, sid } = await runningTask(t);
+    say(t, sid, 'done');
+    t.service.closeWhenTurnOver(view.id);
+
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow("Fix login's session is already closing.");
+    expect(t.killed).toEqual([sid]);
+  });
+
+  it('refuses a task with no session, saying where it is', async () => {
+    const t = roundSetup();
+    const paused = await pausedTask(t, { title: 'Paused' });
+    const putBack = await pausedTask(t, { title: 'Put back' });
+    t.service.markPutBack(putBack.id);
+    const discarded = await pausedTask(t, { title: 'Discarded' });
+    await t.service.discard(discarded.id);
+    const finished = await runningTask(t, 'Finished');
+    t.states.set(finished.view.branch, MERGED);
+    t.service.close(finished.view.id);
+    t.service.onSessionExit(finished.sid);
+    await t.service.checkRound();
+
+    expect(() => t.service.closeWhenTurnOver(paused.id)).toThrow('Paused has no session running: it is paused.');
+    expect(() => t.service.closeWhenTurnOver(putBack.id)).toThrow('Put back has no session running: it is put back.');
+    expect(() => t.service.closeWhenTurnOver(discarded.id)).toThrow('Discarded has no session running: it is discarded.');
+    expect(() => t.service.closeWhenTurnOver(finished.view.id)).toThrow('Finished has no session running: it is finished.');
+  });
+
+  it('refuses a task that is being put back', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    t.killed.length = 0;
+    void t.service.putBackCard(view.id);
+
+    expect(() => t.service.closeWhenTurnOver(view.id)).toThrow('Fix login is being put back');
+    expect(t.killed).toEqual([]);
+  });
+
+  it("does not know another open project's task, whose session keeps running", async () => {
+    const t = roundSetup();
+    const records = new TaskRecords(t.stateFile, 1000, () => {});
+    const otherDir = join(t.root, 'Other');
+    mkdirSync(otherDir);
+    const mine = t.make(records);
+    const other = t.make(records, otherDir);
+    const { view, sid } = await runningTask(t, 'Mine', mine);
+    say(t, sid, 'done', undefined, mine);
+
+    expect(() => other.closeWhenTurnOver(view.id)).toThrow(`Unknown task ${view.id}`);
+    expect(t.killed).toEqual([]);
+  });
 });
 
 describe('discard', () => {

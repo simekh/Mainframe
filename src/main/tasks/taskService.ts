@@ -18,6 +18,9 @@ const FOLDER_LEFT = 'Delete the folder git left behind, then Discard:';
 /** How often each open project checks its tasks for ones with nothing to lose, besides at each session's end. */
 export const FINISH_CHECK_MS = 3 * 60_000;
 
+/** Where a task with no session is, as the manager is told it. */
+const WHERE: Record<TaskPlace | 'board', string> = { board: 'paused', putBack: 'put back', finished: 'finished', discarded: 'discarded' };
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -60,6 +63,8 @@ export interface SessionReport {
   state: ProgramState | null;
   /** The `msg` of that report; null when it had none. */
   msg: string | null;
+  /** A running task the last round found had nothing to lose: its card is in the board's Done lane. */
+  merged: boolean;
   /** The card the task was started from; null for a task that has none. */
   card: Pick<TaskCardRef, 'number' | 'url'> | null;
   /** What kind of id `claudeSessionId` is. */
@@ -150,6 +155,7 @@ export class TaskService {
         running: running !== undefined,
         state: status?.state ?? null,
         msg: status?.msg ?? null,
+        merged: this.merged.has(task.id),
         card: task.card ? { number: task.card.number, url: task.card.url } : null,
         agent: agentOf(task),
       };
@@ -519,6 +525,28 @@ export class TaskService {
     this.deps.kill(running.id);
   }
 
+  /**
+   * Closes the task's session as `close` does, for the manager: only once its turn is over, as Mainframe finds it now
+   * and not as a list read a moment ago said. Says what it closed; throws, with a sentence the manager passes on, when
+   * the task has no session, is being put back, or its session is ending, in a turn or still starting.
+   */
+  closeWhenTurnOver(taskId: string): { title: string; msg: string | null; merged: boolean } {
+    const task = this.find(taskId);
+    this.refuseWhilePuttingBack(task);
+    const running = this.sessionOf(taskId);
+    if (!running) throw new Error(`${task.title} has no session running: it is ${WHERE[task.place ?? 'board']}.`);
+    if (running.putBack) throw new Error(`${task.title} is being put back`);
+    if (running.turn.ending) throw new Error(`${task.title}'s session is already closing.`);
+    const status = this.deps.status(running.id);
+    if (!running.turn.over(running.startedWithPrompt)) {
+      const what = status?.state === 'working' ? 'working' : status?.state === 'blocked' ? "waiting for the owner's answer" : 'still starting';
+      throw new Error(`${task.title}'s session is ${what}; it can be closed once its turn is over.`);
+    }
+    const closed = { title: task.title, msg: status?.msg ?? null, merged: this.merged.has(task.id) };
+    this.close(taskId);
+    return closed;
+  }
+
   /** The sessions it runs: one per open task. */
   sessionIds(): string[] {
     return [...this.sessions.keys()];
@@ -550,6 +578,9 @@ export class TaskService {
       } else if (state === 'done' || (state === 'idle' && session.putBack.worked)) {
         this.close(task.id);
       }
+    } else if (state === 'done' && !session.turn.ending) {
+      // A turn's end is when a running task may have been merged: its card goes to Done without waiting for the timer.
+      void this.checkRound();
     }
   }
 
