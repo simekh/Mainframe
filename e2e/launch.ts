@@ -58,6 +58,9 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
     BASH_SILENCE_DEPRECATION_WARNING: '1',
+    // Not from an `npm start` this run happens to be under: a test that needs one passes it.
+    MAINFRAME_UPDATE_FILE: undefined,
+    MAINFRAME_UPDATE_FAILED: undefined,
     ...env,
   };
   return Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));

@@ -9,6 +9,8 @@ const DROPPED_KEYS = new Set([
   ...Object.values(ADAPTERS).flatMap((a) => a.droppedEnv),
   // Added by launching through `npm start` (and NODE_ENV by Vite); the owner's shell never sets them.
   'INIT_CWD', 'NODE', 'COLOR', 'NODE_ENV',
+  // Set by scripts/start.mjs for Mainframe itself, not for its sessions.
+  'MAINFRAME_UPDATE_FILE', 'MAINFRAME_UPDATE_FAILED',
 ]);
 
 function isDropped(key: string): boolean {
