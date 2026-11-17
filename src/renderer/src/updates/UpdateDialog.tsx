@@ -11,9 +11,9 @@ const WHY: Record<ByHandWhy, () => JSX.Element> = {
       Mainframe wasn't started with <code>npm start</code>, so it can't restart itself.
     </>
   ),
-  'one-click-failed': () => "One click didn't work, so run these yourself:",
-  uncommitted: () => 'This copy has changes of its own. Commit or set them aside, then:',
-  'own-commits': () => "This copy's branch has commits of its own, so merge the release yourself:",
+  'one-click-failed': () => "One click didn't work, so run these yourself.",
+  uncommitted: () => 'This copy has changes of its own. Commit them or set them aside first.',
+  'own-commits': () => "This copy's branch has commits of its own, so merge the release yourself.",
 };
 
 /**
