@@ -16,6 +16,11 @@ export interface AppConfig {
   launcherFile?: string;
   /** MAINFRAME_UPDATE_FAILED: start.mjs says why the update it was asked for did not happen. */
   updateFailure?: string;
+  /**
+   * Whether the app checks for updates by itself: not in `npm run dev` (ELECTRON_RENDERER_URL set), which is someone
+   * working on Mainframe, nor in e2e unless a test names a clone.
+   */
+  autoCheck: boolean;
 }
 
 function readClaudeBin(env: NodeJS.ProcessEnv): string | undefined {
@@ -54,5 +59,6 @@ export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppC
     // Empty counts as unset: an empty failure would open the dialog with nothing to say.
     launcherFile: env.MAINFRAME_UPDATE_FILE || undefined,
     updateFailure: env.MAINFRAME_UPDATE_FAILED || undefined,
+    autoCheck: !env.ELECTRON_RENDERER_URL && (!e2e || Boolean(env.MAINFRAME_E2E_UPDATE_DIR)),
   };
 }

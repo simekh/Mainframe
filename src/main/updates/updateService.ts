@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
-import type { CheckResult, UpdateAvailable, UpdateView } from '../../shared/types';
-import { changelogAt, howToUpdate, releaseRemote, remoteNewest, runningVersion } from './updateGit';
+import type { CheckResult, UpdateAvailable, UpdateHow, UpdateView } from '../../shared/types';
+import { byHand, changelogAt, howToUpdate, releaseRemote, remoteNewest, runningVersion } from './updateGit';
 import { compareVersions, formatVersion, notesSince, type Version } from './versions';
 
 /** The exit code that asks start.mjs to update to the tag in its file, then start Mainframe again. */
@@ -9,6 +9,9 @@ export const UPDATE_EXIT_CODE = 75;
 const FIRST_CHECK_MS = 10_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const NO_REMOTE = 'This copy of Mainframe has no git remote to check.';
+
+/** Where a release comes from: the remote and its tag. */
+type Source = { remote: string; tag: string };
 
 export interface UpdateDeps {
   /** The Mainframe clone to check and update. */
@@ -25,11 +28,11 @@ export interface UpdateDeps {
 /** Checks the clone's remote for newer releases, now and then and when asked, and hands one to start.mjs. One per app. */
 export class UpdateService {
   /** The running release, read once: it changes only by an update, which restarts the app. Null on any failure. */
-  readonly running: Promise<Version | null>;
+  private readonly running: Promise<Version | null>;
   private current: Version | null = null;
   private available: UpdateAvailable | null = null;
   /** The remote and tag the known release came from, for install(). */
-  private source: { remote: string; tag: string } | null = null;
+  private source: Source | null = null;
   private checking: Promise<CheckResult> | null = null;
   private timers: ReturnType<typeof setTimeout>[] = [];
 
@@ -38,14 +41,15 @@ export class UpdateService {
       (v) => (this.current = v),
       () => null,
     );
+    // After an update that didn't finish, the page opens its dialog at once, and a check finds the commands to
+    // finish it by hand. It runs whether or not start() is called.
+    if (deps.failure) void this.check();
   }
 
-  view(): UpdateView {
-    return {
-      current: this.current && formatVersion(this.current),
-      available: this.available,
-      failure: this.deps.failure ?? null,
-    };
+  /** Waits for the running version, so a released clone never shows as unreleased. */
+  async view(): Promise<UpdateView> {
+    await this.running;
+    return this.snapshot();
   }
 
   /** Never rejects: a check that fails says why, and keeps the release it knew of. A check asked for during one joins it. */
@@ -61,22 +65,26 @@ export class UpdateService {
   async install(): Promise<void> {
     const { available, source } = this;
     if (!available || !source) throw new Error('There is no update to install.');
-    const how = await howToUpdate(this.deps.dir, source.remote, source.tag, this.deps.launcherFile !== undefined);
-    if (how.kind !== 'one-click' || this.deps.launcherFile === undefined) {
+    const { launcherFile } = this.deps;
+    const how = await this.how(source);
+    if (how.kind === 'by-hand' || launcherFile === undefined) {
       this.show({ ...available, how }, source);
       throw new Error('This update has to be made by hand.');
     }
-    await writeFile(this.deps.launcherFile, source.tag);
+    await writeFile(launcherFile, source.tag);
     this.deps.requestQuit();
   }
 
-  /** The automatic checks: the first shortly after start, then every 6 hours. */
+  /** The automatic checks: the first shortly after start, then every 6 hours. After an update that didn't finish, the constructor made the first. */
   start(): void {
     this.timers.push(
-      setTimeout(() => {
-        void this.check();
-        this.timers.push(setInterval(() => void this.check(), CHECK_EVERY_MS));
-      }, FIRST_CHECK_MS),
+      setTimeout(
+        () => {
+          void this.check();
+          this.timers.push(setInterval(() => void this.check(), CHECK_EVERY_MS));
+        },
+        this.deps.failure ? CHECK_EVERY_MS : FIRST_CHECK_MS,
+      ),
     );
   }
 
@@ -84,6 +92,20 @@ export class UpdateService {
     // clearTimeout clears an interval too.
     for (const timer of this.timers) clearTimeout(timer);
     this.timers = [];
+  }
+
+  private snapshot(): UpdateView {
+    return {
+      current: this.current && formatVersion(this.current),
+      available: this.available,
+      failure: this.deps.failure ?? null,
+    };
+  }
+
+  /** What git allows, and by hand when start.mjs didn't start the app: then nothing would take the update. */
+  private async how({ remote, tag }: Source): Promise<UpdateHow> {
+    const how = await howToUpdate(this.deps.dir, remote, tag);
+    return how.kind === 'one-click' && this.deps.launcherFile === undefined ? byHand(remote, tag, 'not-launcher') : how;
   }
 
   private async runCheck(): Promise<CheckResult> {
@@ -97,11 +119,11 @@ export class UpdateService {
         this.show(null, null);
         return { kind: 'up-to-date' };
       }
-      const tag = `v${formatVersion(latest)}`;
-      // changelogAt fetches the tag, which howToUpdate needs.
-      const changelog = await changelogAt(dir, remote, tag);
-      const how = await howToUpdate(dir, remote, tag, this.deps.launcherFile !== undefined);
-      this.show({ latest: formatVersion(latest), notes: notesSince(changelog, current, latest), how }, { remote, tag });
+      const source = { remote, tag: `v${formatVersion(latest)}` };
+      // changelogAt fetches the tag, which howToUpdate needs, and start.mjs then updates to.
+      const changelog = await changelogAt(dir, remote, source.tag);
+      const how = await this.how(source);
+      this.show({ latest: formatVersion(latest), notes: notesSince(changelog, current, latest), how }, source);
       return { kind: 'available' };
     } catch (err) {
       return { kind: 'failed', why: err instanceof Error ? err.message : String(err) };
@@ -109,11 +131,11 @@ export class UpdateService {
   }
 
   /** Tells the page only when what it shows changes. */
-  private show(available: UpdateAvailable | null, source: { remote: string; tag: string } | null): void {
-    const before = JSON.stringify(this.view());
+  private show(available: UpdateAvailable | null, source: Source | null): void {
+    const before = JSON.stringify(this.snapshot());
     this.available = available;
     this.source = source;
-    const view = this.view();
+    const view = this.snapshot();
     if (JSON.stringify(view) !== before) this.deps.onChange(view);
   }
 }

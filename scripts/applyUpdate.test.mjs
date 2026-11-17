@@ -32,7 +32,8 @@ function run(cmd, args) {
   return { status: npmStatus };
 }
 
-// A remote with releases v0.1.0 and v0.2.0, and a user's clone made at v0.1.0 that hasn't fetched v0.2.0.
+// A remote with releases v0.1.0 and v0.2.0, and a user's clone made at v0.1.0 that has fetched the v0.2.0 tag, as the
+// app's check does.
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'mainframe-update-'));
   const origin = join(root, 'origin.git');
@@ -47,6 +48,7 @@ beforeEach(() => {
   commit(dev, 'package-lock.json', '{"v":2}\n', 'second');
   git('-C', dev, 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0');
   git('-C', dev, 'push', '--quiet', 'origin', 'trunk', 'v0.2.0');
+  git('-C', user, 'fetch', '--quiet', 'origin', 'refs/tags/v0.2.0:refs/tags/v0.2.0');
   npmCalls = [];
   npmStatus = 0;
 });
@@ -57,7 +59,7 @@ const head = () => git('-C', user, 'rev-parse', 'HEAD');
 const release = () => git('-C', user, 'rev-parse', 'v0.2.0^{commit}');
 
 describe('applyUpdate', () => {
-  it('fetches the release, fast-forwards to it and runs npm install once', () => {
+  it('fast-forwards to the release and runs npm install once', () => {
     expect(applyUpdate(user, 'v0.2.0', run)).toEqual({ ok: true });
     expect(head()).toBe(release());
     expect(npmCalls).toEqual([['npm', ['install']]]);
@@ -76,6 +78,15 @@ describe('applyUpdate', () => {
     expect(applyUpdate(user, 'v0.2.0', run)).toEqual({ ok: true });
     expect(head()).toBe(release());
     expect(git('-C', user, 'status', '--porcelain', '--untracked-files=no')).toBe('');
+  });
+
+  it('changes nothing, not even the lockfile, when the clone lacks the tag', () => {
+    writeFileSync(join(user, 'package-lock.json'), '{"rewritten":true}\n');
+    const before = head();
+    expect(applyUpdate(user, 'v0.3.0', run)).toMatchObject({ ok: false, stage: 'merge' });
+    expect(head()).toBe(before);
+    expect(git('-C', user, 'status', '--porcelain', '--untracked-files=no')).toBe('M package-lock.json');
+    expect(npmCalls).toEqual([]);
   });
 
   it('changes nothing and skips npm when the branch has a commit of its own', () => {

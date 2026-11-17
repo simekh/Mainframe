@@ -2,7 +2,7 @@ import { createEffect, createResource, createSignal, For, Index, Show } from 'so
 import { AGENT_NAMES, AGENT_ORDER, type AgentName, type SettingsView, type SyncModel } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { checkLine } from '../setup/setupCopy';
-import { checkNow, updateView } from '../updates/updateStore';
+import { checkNow, updateView, versionOf } from '../updates/updateStore';
 import { defaultChoice, works } from './defaultChoice';
 import { closeSettings, settingsOpen, settingsView } from './settingsStore';
 
@@ -169,7 +169,7 @@ function MainframeSection() {
       </h3>
       <div class="settings-row" data-testid="settings-version-row">
         <span class="settings-key">Version</span>{' '}
-        <span class="settings-version">{updateView() ? (updateView()!.current ?? 'unreleased') : '…'}</span>
+        <span class="settings-version">{updateView() ? versionOf(updateView()) : '…'}</span>
         <button class="btn settings-check" type="button" data-testid="settings-check-updates" disabled={checking()} onClick={check}>
           {checking() ? 'Checking…' : 'Check for Updates…'}
         </button>

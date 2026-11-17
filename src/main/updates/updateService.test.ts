@@ -6,7 +6,11 @@ import type { UpdateHow } from '../../shared/types';
 import { changelogAt, howToUpdate, releaseRemote, remoteNewest, runningVersion } from './updateGit';
 import { UpdateService } from './updateService';
 
-vi.mock('./updateGit');
+// byHand only builds the commands, so it stays real.
+vi.mock('./updateGit', async (importOriginal) => {
+  const { byHand } = await importOriginal<typeof import('./updateGit')>();
+  return { byHand, changelogAt: vi.fn(), howToUpdate: vi.fn(), releaseRemote: vi.fn(), remoteNewest: vi.fn(), runningVersion: vi.fn() };
+});
 
 const CHANGELOG = '# Changelog\n\n## Unreleased\n\n## 0.5.0 · 17 Nov\n\n- New: reorder projects\n\n## 0.4.0 · 1 Nov\n\n- Old\n';
 const ONE_CLICK: UpdateHow = { kind: 'one-click' };
@@ -40,21 +44,32 @@ afterEach(() => {
 
 describe('UpdateService.check', () => {
   it('finds a newer release, with the notes since the running version, and says so once', async () => {
-    const { service, onChange } = make();
+    const { service, onChange } = make({ launcherFile: '/tmp/update' });
     expect(await service.check()).toEqual({ kind: 'available' });
-    const view = service.view();
+    const view = await service.view();
     expect(view.current).toBe('0.4.0');
     expect(view.available).toEqual({ latest: '0.5.0', notes: '## 0.5.0 · 17 Nov\n\n- New: reorder projects', how: ONE_CLICK });
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(view);
     expect(changelogAt).toHaveBeenCalledWith('/clone', 'origin', 'v0.5.0');
-    expect(howToUpdate).toHaveBeenCalledWith('/clone', 'origin', 'v0.5.0', false);
+    expect(howToUpdate).toHaveBeenCalledWith('/clone', 'origin', 'v0.5.0');
   });
 
-  it('asks how to update as a launched app when start.mjs named its file', async () => {
-    const { service } = make({ launcherFile: '/tmp/update' });
+  it('makes one click by hand when start.mjs did not start the app', async () => {
+    const { service } = make();
     await service.check();
-    expect(howToUpdate).toHaveBeenCalledWith('/clone', 'origin', 'v0.5.0', true);
+    expect((await service.view()).available?.how).toEqual({
+      kind: 'by-hand',
+      why: 'not-launcher',
+      commands: ['git fetch origin tag v0.5.0', 'git merge --ff-only v0.5.0', 'npm install', 'npm start'],
+    });
+  });
+
+  it('keeps what git says when that is by hand already', async () => {
+    vi.mocked(howToUpdate).mockResolvedValue(BY_HAND);
+    const { service } = make();
+    await service.check();
+    expect((await service.view()).available?.how).toEqual(BY_HAND);
   });
 
   it.each([
@@ -64,7 +79,7 @@ describe('UpdateService.check', () => {
     vi.mocked(runningVersion).mockResolvedValue([...running]);
     const { service, onChange } = make();
     expect(await service.check()).toEqual({ kind: 'up-to-date' });
-    expect(service.view().available).toBeNull();
+    expect((await service.view()).available).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -72,8 +87,9 @@ describe('UpdateService.check', () => {
     vi.mocked(runningVersion).mockResolvedValue(null);
     const { service } = make();
     expect(await service.check()).toEqual({ kind: 'available' });
-    expect(service.view().current).toBeNull();
-    expect(service.view().available?.notes).toContain('## 0.4.0');
+    const view = await service.view();
+    expect(view.current).toBeNull();
+    expect(view.available?.notes).toContain('## 0.4.0');
   });
 
   it('says why it failed, and keeps the release it knew of', async () => {
@@ -81,7 +97,7 @@ describe('UpdateService.check', () => {
     await service.check();
     vi.mocked(remoteNewest).mockRejectedValue(new Error('could not reach origin'));
     expect(await service.check()).toEqual({ kind: 'failed', why: 'could not reach origin' });
-    expect(service.view().available?.latest).toBe('0.5.0');
+    expect((await service.view()).available?.latest).toBe('0.5.0');
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
@@ -91,9 +107,20 @@ describe('UpdateService.check', () => {
     expect(await service.check()).toEqual({ kind: 'failed', why: 'This copy of Mainframe has no git remote to check.' });
   });
 
-  it('shows the failure start.mjs passed on', () => {
-    expect(make({ failure: 'git merge failed' }).service.view().failure).toBe('git merge failed');
-    expect(make().service.view().failure).toBeNull();
+  it('shows the failure start.mjs passed on, and checks at once for the commands to finish by hand', async () => {
+    const { service } = make({ failure: 'git merge failed' });
+    expect((await service.view()).failure).toBe('git merge failed');
+    await vi.waitFor(() => expect(remoteNewest).toHaveBeenCalledTimes(1));
+    expect((await make().service.view()).failure).toBeNull();
+    expect(remoteNewest).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the running version before it answers', async () => {
+    let read!: (v: [number, number, number]) => void;
+    vi.mocked(runningVersion).mockReturnValue(new Promise((resolve) => (read = resolve)));
+    const view = make().service.view();
+    read([0, 4, 0]);
+    expect((await view).current).toBe('0.4.0');
   });
 });
 
@@ -115,7 +142,7 @@ describe('UpdateService.install', () => {
     await expect(service.install()).rejects.toThrow();
     expect(existsSync(launcherFile)).toBe(false);
     expect(requestQuit).not.toHaveBeenCalled();
-    expect(service.view().available?.how).toEqual(BY_HAND);
+    expect((await service.view()).available?.how).toEqual(BY_HAND);
   });
 
   it('refuses when no release is known', async () => {
@@ -141,6 +168,19 @@ describe('UpdateService.start', () => {
     service.stop();
     await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
     expect(remoteNewest).toHaveBeenCalledTimes(2);
+  });
+
+  it('after an update that did not finish, checks at once, then every 6 hours', async () => {
+    vi.useFakeTimers();
+    const { service } = make({ failure: 'git merge failed' });
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(remoteNewest).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000 - 1);
+    expect(remoteNewest).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remoteNewest).toHaveBeenCalledTimes(2);
+    service.stop();
   });
 
   it('stops before the first check too', async () => {

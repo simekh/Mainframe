@@ -3,8 +3,24 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-function git(...args: string[]): void {
-  execFileSync('git', args, { stdio: 'pipe' });
+/** Runs git in `dir`. */
+export function git(dir: string, ...args: string[]): void {
+  execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
+}
+
+/** Writes `name` in `dir` and commits it. */
+export function commitFile(dir: string, name: string, content: string): void {
+  writeFileSync(join(dir, name), content);
+  git(dir, 'add', name);
+  git(dir, 'commit', '-m', `add ${name}`);
+}
+
+/** Clones `origin` to `dir`, with a committer set and signing off. */
+export function cloneRepo(origin: string, dir: string): void {
+  execFileSync('git', ['clone', origin, dir], { stdio: 'pipe' });
+  git(dir, 'config', 'user.name', 'Test');
+  git(dir, 'config', 'user.email', 'test@example.com');
+  git(dir, 'config', 'commit.gpgsign', 'false');
 }
 
 /**
@@ -15,15 +31,12 @@ export function makeRepo(): { origin: string; main: string } {
   const root = mkdtempSync(join(tmpdir(), 'mainframe-repo-'));
   const origin = join(root, 'origin.git');
   const main = join(root, 'main');
-  git('init', '--bare', '-b', 'stage', origin);
-  git('clone', origin, main);
-  git('-C', main, 'config', 'user.name', 'Test');
-  git('-C', main, 'config', 'user.email', 'test@example.com');
-  git('-C', main, 'config', 'commit.gpgsign', 'false');
+  execFileSync('git', ['init', '--bare', '-b', 'stage', origin], { stdio: 'pipe' });
+  cloneRepo(origin, main);
   writeFileSync(join(main, 'README.md'), 'hi\n');
-  git('-C', main, 'add', 'README.md');
-  git('-C', main, 'commit', '-m', 'initial');
-  git('-C', main, 'push', 'origin', 'stage');
-  git('-C', main, 'remote', 'set-head', 'origin', 'stage');
+  git(main, 'add', 'README.md');
+  git(main, 'commit', '-m', 'initial');
+  git(main, 'push', 'origin', 'stage');
+  git(main, 'remote', 'set-head', 'origin', 'stage');
   return { origin, main };
 }

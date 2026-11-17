@@ -40,7 +40,6 @@ import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
 import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
-import { formatVersion } from './updates/versions';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 import { APP_BACKGROUND, webPreferences } from './windowOptions';
 import { nextZoomLevel, readZoomLevel, writeZoomLevel, zoomFactorOf, type ZoomStep } from './zoom';
@@ -274,7 +273,7 @@ async function start(
       app.quit();
     },
   });
-  void updates.running.then((v) => app.setAboutPanelOptions({ applicationVersion: v ? formatVersion(v) : 'unreleased' }));
+  void updates.view().then((view) => app.setAboutPanelOptions({ applicationVersion: view.current ?? 'unreleased' }));
 
   // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
   // whichever of the two events below comes first does it, and the other changes nothing. It is set
@@ -430,9 +429,9 @@ async function start(
   }
   opening = false;
   allOpened();
-  // No automatic checks in `npm run dev`, which is someone working on Mainframe, nor in e2e unless a test names a clone.
-  // The calls still answer: Settings shows the version, and a check asked for runs. None once a quit has begun.
-  if (!quitting && !process.env.ELECTRON_RENDERER_URL && !(config.e2e && !config.updateDir)) updates.start();
+  // Without automatic checks the calls still answer: Settings shows the version, and a check asked for runs. None
+  // once a quit has begun.
+  if (!quitting && config.autoCheck) updates.start();
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));

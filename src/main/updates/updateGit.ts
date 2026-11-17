@@ -1,4 +1,4 @@
-import type { UpdateHow } from '../../shared/types';
+import type { ByHandWhy, UpdateHow } from '../../shared/types';
 import { NO_PROMPTS, runGit } from '../git';
 import { newestRelease, type Version } from './versions';
 
@@ -8,6 +8,13 @@ const NO_ASK = ['-c', 'credential.interactive=false'];
 
 const lines = (out: string): string[] => out.split('\n').filter(Boolean);
 
+/** A query's trimmed output; '' when git exits non-zero (a detached HEAD, a config key that is not set). */
+const readOrEmpty = (dir: string, args: string[]): Promise<string> =>
+  runGit(dir, args).then(
+    (out) => out.trim(),
+    () => '',
+  );
+
 /** The newest release tag merged into HEAD: what this clone runs, whatever it has committed since. Null without one. */
 export async function runningVersion(dir: string): Promise<Version | null> {
   return newestRelease(lines(await runGit(dir, ['tag', '--merged', 'HEAD', '--list', 'v*'])));
@@ -15,16 +22,9 @@ export async function runningVersion(dir: string): Promise<Version | null> {
 
 /** The current branch's remote, else `origin` when there is one; null when neither. */
 export async function releaseRemote(dir: string): Promise<string | null> {
-  const branch = await runGit(dir, ['symbolic-ref', '--short', '-q', 'HEAD']).then(
-    (out) => out.trim(),
-    () => '',
-  );
+  const branch = await readOrEmpty(dir, ['symbolic-ref', '--short', '-q', 'HEAD']);
   if (branch) {
-    // git config exits 1 for a key that is not set.
-    const configured = await runGit(dir, ['config', '--get', `branch.${branch}.remote`]).then(
-      (out) => out.trim(),
-      () => '',
-    );
+    const configured = await readOrEmpty(dir, ['config', '--get', `branch.${branch}.remote`]);
     if (configured) return configured;
   }
   return lines(await runGit(dir, ['remote'])).includes('origin') ? 'origin' : null;
@@ -55,22 +55,24 @@ export function onlyLockfileChanged(porcelain: string): boolean {
   return changed.length === 1 && changed[0].slice(3) === 'package-lock.json';
 }
 
-/**
- * Whether the app can update this clone to `tag` by itself. Own commits come first: they need a merge, not a
- * fast-forward. Assumes the tag is fetched already (changelogAt does it).
- */
-export async function howToUpdate(dir: string, remote: string, tag: string, launcher: boolean): Promise<UpdateHow> {
-  const byHand = (why: 'not-launcher' | 'uncommitted' | 'own-commits'): UpdateHow => ({
-    kind: 'by-hand',
-    why,
-    commands: [
-      `git fetch ${remote} tag ${tag}`,
-      why === 'own-commits' ? `git merge ${tag}` : `git merge --ff-only ${tag}`,
-      'npm install',
-      'npm start',
-    ],
-  });
+/** An update the user makes themselves: why one click can't, and the commands that do it. */
+export const byHand = (remote: string, tag: string, why: ByHandWhy): UpdateHow => ({
+  kind: 'by-hand',
+  why,
+  commands: [
+    `git fetch ${remote} tag ${tag}`,
+    why === 'own-commits' ? `git merge ${tag}` : `git merge --ff-only ${tag}`,
+    'npm install',
+    'npm start',
+  ],
+});
 
+/**
+ * Whether git lets this clone fast-forward to `tag` as it is. Own commits come first: they need a merge, not a
+ * fast-forward. Assumes the tag is fetched already (changelogAt does it). Whether the app can then restart itself is
+ * the caller's to judge.
+ */
+export async function howToUpdate(dir: string, remote: string, tag: string): Promise<UpdateHow> {
   const ownCommits = await runGit(dir, ['merge-base', '--is-ancestor', 'HEAD', `refs/tags/${tag}`]).then(
     () => false,
     (err: unknown) => {
@@ -79,9 +81,9 @@ export async function howToUpdate(dir: string, remote: string, tag: string, laun
       return true;
     },
   );
-  if (ownCommits) return byHand('own-commits');
+  if (ownCommits) return byHand(remote, tag, 'own-commits');
 
   const status = await runGit(dir, ['status', '--porcelain', '--untracked-files=no']);
-  if (lines(status).length > 0 && !onlyLockfileChanged(status)) return byHand('uncommitted');
-  return launcher ? { kind: 'one-click' } : byHand('not-launcher');
+  if (lines(status).length > 0 && !onlyLockfileChanged(status)) return byHand(remote, tag, 'uncommitted');
+  return { kind: 'one-click' };
 }

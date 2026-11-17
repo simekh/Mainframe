@@ -1,26 +1,15 @@
-import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it } from 'vitest';
-import { makeRepo } from '../testing/makeRepo';
-import { changelogAt, howToUpdate, onlyLockfileChanged, releaseRemote, remoteNewest, runningVersion } from './updateGit';
+import { cloneRepo, commitFile, git, makeRepo } from '../testing/makeRepo';
+import { byHand, changelogAt, howToUpdate, onlyLockfileChanged, releaseRemote, remoteNewest, runningVersion } from './updateGit';
 
 const cleanup: string[] = [];
 
 afterEach(() => {
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
-
-function git(dir: string, ...args: string[]): void {
-  execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
-}
-
-function commitFile(dir: string, name: string, content: string): void {
-  writeFileSync(join(dir, name), content);
-  git(dir, 'add', name);
-  git(dir, 'commit', '-m', `add ${name}`);
-}
 
 function release(maintainer: string, tag: string, changelog?: string): void {
   commitFile(maintainer, 'CHANGELOG.md', changelog ?? `## ${tag.slice(1)}\n\nNotes.\n`);
@@ -36,10 +25,7 @@ function setup(): { maintainer: string; user: string } {
   commitFile(main, 'package.json', '{}\n');
   release(main, 'v0.2.0');
   const user = join(dirname(origin), 'user');
-  execFileSync('git', ['clone', origin, user], { stdio: 'pipe' });
-  git(user, 'config', 'user.name', 'Test');
-  git(user, 'config', 'user.email', 'test@example.com');
-  git(user, 'config', 'commit.gpgsign', 'false');
+  cloneRepo(origin, user);
   return { maintainer: main, user };
 }
 
@@ -112,30 +98,33 @@ async function behind(): Promise<string> {
   return user;
 }
 
-it('howToUpdate is one click for a clean launcher, by hand when not launched by it', async () => {
+it('howToUpdate is one click for a clean clone', async () => {
   const user = await behind();
-  expect(await howToUpdate(user, 'origin', 'v0.3.0', true)).toEqual({ kind: 'one-click' });
-  expect(await howToUpdate(user, 'origin', 'v0.3.0', false)).toEqual({ kind: 'by-hand', why: 'not-launcher', commands: BY_HAND });
+  expect(await howToUpdate(user, 'origin', 'v0.3.0')).toEqual({ kind: 'one-click' });
+});
+
+it('byHand fast-forwards when the app was not started by npm start', () => {
+  expect(byHand('origin', 'v0.3.0', 'not-launcher')).toEqual({ kind: 'by-hand', why: 'not-launcher', commands: BY_HAND });
 });
 
 it('howToUpdate is by hand with uncommitted changes', async () => {
   const user = await behind();
   writeFileSync(join(user, 'README.md'), 'edited\n');
-  expect(await howToUpdate(user, 'origin', 'v0.3.0', true)).toEqual({ kind: 'by-hand', why: 'uncommitted', commands: BY_HAND });
+  expect(await howToUpdate(user, 'origin', 'v0.3.0')).toEqual({ kind: 'by-hand', why: 'uncommitted', commands: BY_HAND });
 });
 
 it('howToUpdate lets a lone package-lock.json change through, but not with package.json', async () => {
   const user = await behind();
   writeFileSync(join(user, 'package-lock.json'), '{"a":1}\n');
-  expect(await howToUpdate(user, 'origin', 'v0.3.0', true)).toEqual({ kind: 'one-click' });
+  expect(await howToUpdate(user, 'origin', 'v0.3.0')).toEqual({ kind: 'one-click' });
   writeFileSync(join(user, 'package.json'), '{"a":1}\n');
-  expect((await howToUpdate(user, 'origin', 'v0.3.0', true)) as { why: string }).toMatchObject({ why: 'uncommitted' });
+  expect((await howToUpdate(user, 'origin', 'v0.3.0')) as { why: string }).toMatchObject({ why: 'uncommitted' });
 });
 
 it('howToUpdate is by hand with a plain merge for commits of the user\'s own', async () => {
   const user = await behind();
   commitFile(user, 'mine.txt', 'mine');
-  const how = await howToUpdate(user, 'origin', 'v0.3.0', true);
+  const how = await howToUpdate(user, 'origin', 'v0.3.0');
   expect(how).toEqual({
     kind: 'by-hand',
     why: 'own-commits',

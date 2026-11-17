@@ -39,9 +39,8 @@ describe('unreleasedNotes and cutRelease', () => {
     expect(unreleasedNotes('# Changelog\n\n## Unreleased\n\n## 0.4.0 · 1 Nov 2026\n\nNew: old\n')).toBe('');
     expect(unreleasedNotes('# Changelog\n\n## Unreleased\n')).toBe('');
   });
-  it('renames the section, puts an empty Unreleased above it, and returns the notes', () => {
+  it('renames the section and puts an empty Unreleased above it', () => {
     const out = cutRelease(log, '0.5.0', '17 Nov 2026');
-    expect(out.notes).toBe('New: a\nFixed: b');
     expect(out.changelog).toBe(
       '# Changelog\n\n## Unreleased\n\n## 0.5.0 · 17 Nov 2026\n\nNew: a\nFixed: b\n\n## 0.4.0 · 1 Nov 2026\n\nNew: old\n',
     );

@@ -108,12 +108,9 @@ export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: Agent
   ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
 }
 
-/** The update calls take nothing from the page. The view waits for the running version, so it never shows a released clone as unreleased. */
+/** The update calls take nothing from the page. */
 export function registerUpdateIpc(updates: UpdateService): void {
-  ipcMain.handle(IPC.getUpdate, async () => {
-    await updates.running;
-    return updates.view();
-  });
+  ipcMain.handle(IPC.getUpdate, () => updates.view());
   ipcMain.handle(IPC.checkForUpdates, () => updates.check());
   ipcMain.handle(IPC.installUpdate, () => updates.install());
 }

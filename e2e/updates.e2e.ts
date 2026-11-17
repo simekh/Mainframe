@@ -1,16 +1,10 @@
-import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
-import { makeRepo } from '../src/main/testing/makeRepo';
+import { cloneRepo, commitFile, git, makeRepo } from '../src/main/testing/makeRepo';
 import { cleanUp, launchApp, removeAfterTest } from './launch';
 import { boxOf, projectPane as pane, repo, rowButton } from './tasks';
 
 test.afterEach(cleanUp);
-
-function git(dir: string, ...args: string[]): void {
-  execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
-}
 
 /**
  * A user's clone of a Mainframe whose maintainer released v0.1.0, then v0.2.0 with "New: thing" in its notes. The
@@ -22,14 +16,11 @@ function userClone(at: 'behind' | 'latest'): string {
   git(main, 'tag', 'v0.1.0');
   git(main, 'push', 'origin', 'v0.1.0');
   const user = join(dirname(origin), 'user');
-  const clone = () => execFileSync('git', ['clone', origin, user], { stdio: 'pipe' });
-  if (at === 'behind') clone();
-  writeFileSync(join(main, 'CHANGELOG.md'), '## Unreleased\n\n## 0.2.0 · 17 Nov\n\nNew: thing\n');
-  git(main, 'add', 'CHANGELOG.md');
-  git(main, 'commit', '-m', 'Release 0.2.0');
+  if (at === 'behind') cloneRepo(origin, user);
+  commitFile(main, 'CHANGELOG.md', '## Unreleased\n\n## 0.2.0 · 17 Nov\n\nNew: thing\n');
   git(main, 'tag', 'v0.2.0');
   git(main, 'push', 'origin', 'stage', 'v0.2.0');
-  if (at === 'latest') clone();
+  if (at === 'latest') cloneRepo(origin, user);
   return user;
 }
 
@@ -93,7 +84,18 @@ test("with the clone's remote gone, Check for Updates… says it couldn't check,
 
 test("after an update that didn't finish, the dialog is open at start and says why", async () => {
   const { app, page } = await launchApp(updateEnv(userClone('latest'), { MAINFRAME_UPDATE_FAILED: 'boom' }));
-  await expect(page.getByTestId('update-dialog')).toBeVisible();
-  await expect(page.getByTestId('update-dialog')).toContainText("The update didn't finish: boom");
+  const dialog = page.getByTestId('update-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#update-heading')).toHaveText("The update didn't finish");
+  await expect(dialog).toContainText("The update didn't finish: boom");
+  await app.close();
+});
+
+test("after an update that didn't finish, with the release still newer, the check at start fills in how to finish it", async () => {
+  const { app, page } = await launchApp(updateEnv(userClone('behind'), { MAINFRAME_UPDATE_FAILED: 'boom' }));
+  const dialog = page.getByTestId('update-dialog');
+  await expect(dialog.locator('#update-heading')).toHaveText('Mainframe 0.2.0 is available');
+  await expect(dialog).toContainText("The update didn't finish: boom");
+  await expect(dialog.getByTestId('update-commands')).toContainText('v0.2.0');
   await app.close();
 });

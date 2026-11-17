@@ -2,7 +2,7 @@ import { createEffect, createSignal, Match, Show, Switch, type JSX } from 'solid
 import type { ByHandWhy, UpdateAvailable } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import Markdown from '../todo/MarkdownView';
-import { closeUpdateDialog, updateFace, updateView } from './updateStore';
+import { closeUpdateDialog, updateFace, updateView, versionOf } from './updateStore';
 
 /** Why one click can't make the update, above the commands that do. Made each time: a node can be in one place only. */
 const WHY: Record<ByHandWhy, () => JSX.Element> = {
@@ -15,51 +15,55 @@ const WHY: Record<ByHandWhy, () => JSX.Element> = {
   'own-commits': () => "This copy's branch has commits of its own, so merge the release yourself:",
 };
 
-const versionOf = (current: string | null | undefined) => current ?? 'unreleased';
-
 /** A release the app doesn't run yet: what it brings, then the Update button or the commands to run by hand. */
-function Release(props: { available: UpdateAvailable; current: string | null; installing: boolean; onInstall: () => void; onLater: () => void }) {
-  const how = () => props.available.how;
+function Release(props: { available: UpdateAvailable; version: string; installing: boolean; onInstall: () => void; onLater: () => void }) {
   const byHand = () => {
-    const h = how();
-    return h.kind === 'by-hand' ? h : undefined;
+    const how = props.available.how;
+    return how.kind === 'by-hand' ? how : undefined;
   };
+  const later = () => (
+    <button class="btn" type="button" disabled={props.installing} onClick={() => props.onLater()}>
+      Later
+    </button>
+  );
   return (
     <>
-      <p class="nt-sub">You have {versionOf(props.current)}.</p>
+      <p class="nt-sub">You have {props.version}.</p>
       <div class="update-notes" data-testid="update-notes">
         <Markdown text={props.available.notes} />
       </div>
-      <Switch>
-        <Match when={byHand()}>
-          {(h) => (
+      <Show
+        when={byHand()}
+        fallback={
+          <>
+            <p class="nt-hint">Updating restarts Mainframe. Your sessions stop and come back, as after Quit.</p>
+            <div class="nt-actions">
+              {later()}
+              <button class="btn primary" type="button" disabled={props.installing} onClick={() => props.onInstall()}>
+                {props.installing ? 'Restarting…' : 'Update'}
+              </button>
+            </div>
+          </>
+        }
+      >
+        {(h) => (
+          <>
             <div class="update-by-hand">
               <p>{WHY[h().why]()}</p>
               <pre data-testid="update-commands">{h().commands.join('\n')}</pre>
             </div>
-          )}
-        </Match>
-        <Match when={how().kind === 'one-click'}>
-          <p class="nt-hint">Updating restarts Mainframe. Your sessions stop and come back, as after Quit.</p>
-        </Match>
-      </Switch>
-      <div class="nt-actions">
-        <button class="btn" type="button" disabled={props.installing} onClick={() => props.onLater()}>
-          Later
-        </button>
-        <Show when={how().kind === 'one-click'}>
-          <button class="btn primary" type="button" disabled={props.installing} onClick={() => props.onInstall()}>
-            {props.installing ? 'Restarting…' : 'Update'}
-          </button>
-        </Show>
-      </div>
+            <div class="nt-actions">{later()}</div>
+          </>
+        )}
+      </Show>
     </>
   );
 }
 
 /**
  * Mainframe's own updates, for the whole app: mounted once, shown while `updateFace()` names what to show. A face that
- * shows a release follows the update state as it changes, so a check that finds how to finish fills it in.
+ * shows a release follows the update state as it changes, so a check that finds how to finish an update that didn't
+ * fills it in.
  */
 export default function UpdateDialog() {
   let dialog!: HTMLDialogElement;
@@ -86,13 +90,22 @@ export default function UpdateDialog() {
     return face?.kind === 'failed' ? face : undefined;
   };
   const available = () => updateView()?.available ?? null;
-  const current = () => updateView()?.current ?? null;
+  const failure = () => updateView()?.failure ?? null;
   const closeButton = () => (
     <div class="nt-actions">
       <button class="btn" type="button" onClick={close}>
         Close
       </button>
     </div>
+  );
+  const failureLine = () => (
+    <Show when={failure()}>
+      {(why) => (
+        <p class="nt-error" role="alert">
+          The update didn't finish: {why()}
+        </p>
+      )}
+    </Show>
   );
 
   return (
@@ -108,10 +121,6 @@ export default function UpdateDialog() {
     >
       <div class="nt">
         <Switch>
-          <Match when={updateFace()?.kind === 'up-to-date'}>
-            <h2 id="update-heading">Mainframe is up to date ({versionOf(current())})</h2>
-            {closeButton()}
-          </Match>
           <Match when={failed()}>
             {(f) => (
               <>
@@ -123,33 +132,32 @@ export default function UpdateDialog() {
               </>
             )}
           </Match>
-          {/* A known release, or an update that didn't finish: with the release once a check has found it. */}
+          {/* A check found none newer, or one since has found none for the pill's release. */}
+          <Match when={updateFace()?.kind === 'up-to-date' || (updateFace() && !available() && !failure())}>
+            <h2 id="update-heading">Mainframe is up to date ({versionOf(updateView())})</h2>
+            {closeButton()}
+          </Match>
+          <Match when={updateFace() && available()}>
+            {(release) => (
+              <>
+                <h2 id="update-heading">Mainframe {release().latest} is available</h2>
+                {failureLine()}
+                <Show when={error()}>
+                  {(message) => (
+                    <p class="nt-error" role="alert">
+                      {message()}
+                    </p>
+                  )}
+                </Show>
+                <Release available={release()} version={versionOf(updateView())} installing={installing()} onInstall={install} onLater={close} />
+              </>
+            )}
+          </Match>
+          {/* An update that didn't finish, with no newer release found. */}
           <Match when={updateFace()}>
-            <h2 id="update-heading">
-              {/* Without a release here, a check since has found none newer. */}
-              {available()
-                ? `Mainframe ${available()!.latest} is available`
-                : updateFace()?.kind === 'unfinished'
-                  ? "The update didn't finish"
-                  : `Mainframe is up to date (${versionOf(current())})`}
-            </h2>
-            <Show when={updateFace()?.kind === 'unfinished' ? updateView()?.failure : undefined}>
-              {(failure) => (
-                <p class="nt-error" role="alert">
-                  The update didn't finish: {failure()}
-                </p>
-              )}
-            </Show>
-            <Show when={error()}>
-              {(message) => (
-                <p class="nt-error" role="alert">
-                  {message()}
-                </p>
-              )}
-            </Show>
-            <Show when={available()} fallback={closeButton()}>
-              {(release) => <Release available={release()} current={current()} installing={installing()} onInstall={install} onLater={close} />}
-            </Show>
+            <h2 id="update-heading">The update didn't finish</h2>
+            {failureLine()}
+            {closeButton()}
           </Match>
         </Switch>
       </div>

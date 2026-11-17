@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyUpdate, NO_PROMPTS, RELEASE_TAG } from './applyUpdate.mjs';
+import { applyUpdate, RELEASE_TAG } from './applyUpdate.mjs';
 import { sandboxFlags } from './sandboxFlags.mjs';
 
 /** The exit code by which the app asks for an update; UPDATE_EXIT_CODE in src/main/updates/updateService.ts. */
@@ -60,7 +60,28 @@ const child = spawnSync(process.execPath, [bin, command, ...flags, ...passOn], {
 });
 const tag = updateFile ? orNull(() => readFileSync(updateFile, 'utf8').trim()) : null;
 if (updateFile) rmSync(updateFile, { force: true });
-if (!updateFile || child.status !== UPDATE_EXIT_CODE) process.exit(child.status ?? 1);
+if (command === 'dev' || child.status !== UPDATE_EXIT_CODE) process.exit(child.status ?? 1);
+
+/** Updates this clone to `tag`; what went wrong ({ stage, message }), or null. */
+function update(tag) {
+  if (!tag || !RELEASE_TAG.test(tag)) {
+    return { stage: 'merge', message: 'Mainframe asked for an update but left no release to update to.' };
+  }
+  console.log(`Updating Mainframe to ${tag}…`);
+  const dir = fileURLToPath(new URL('..', import.meta.url));
+  const result = applyUpdate(dir, tag, (cmd, args) =>
+    cmd === 'npm'
+      ? // npm is npm.cmd on Windows, which Node runs only through a shell. A shell takes one command line (Node
+        // warns at a list of arguments); applyUpdate's are fixed words.
+        spawnSync([process.platform === 'win32' ? 'npm.cmd' : 'npm', ...args].join(' '), {
+          cwd: dir,
+          stdio: 'inherit',
+          shell: true,
+        })
+      : spawnSync(cmd, args, { stdio: 'inherit' }),
+  );
+  return result.ok ? null : result;
+}
 
 // With Mainframe closed, so Windows has no files locked: move to the release, then start it again through the
 // updated copy of this script. The app shows a failure at its next start; an empty value means none.
@@ -74,25 +95,3 @@ const again = spawnSync(process.execPath, [fileURLToPath(import.meta.url), 'prev
   env: { ...process.env, MAINFRAME_UPDATE_FAILED: failure?.message ?? '' },
 });
 process.exit(again.status ?? 1);
-
-/** Updates this clone to `tag`; what went wrong ({ stage, message }), or null. */
-function update(tag) {
-  if (!tag || !RELEASE_TAG.test(tag)) {
-    return { stage: 'fetch', message: 'Mainframe asked for an update but left no release to update to.' };
-  }
-  console.log(`Updating Mainframe to ${tag}…`);
-  const dir = fileURLToPath(new URL('..', import.meta.url));
-  const result = applyUpdate(dir, tag, (cmd, args) =>
-    cmd === 'npm'
-      ? // npm is npm.cmd on Windows, which Node runs only through a shell. A shell takes one command line (Node
-        // warns at a list of arguments); applyUpdate's are fixed words.
-        spawnSync([process.platform === 'win32' ? 'npm.cmd' : 'npm', ...args].join(' '), {
-          cwd: dir,
-          stdio: 'inherit',
-          shell: true,
-        })
-      : // git talks to the remote here: it fails rather than ask for a password, and gives up after 30 s.
-        spawnSync(cmd, args, { stdio: 'inherit', env: { ...process.env, ...NO_PROMPTS }, timeout: 30_000 }),
-  );
-  return result.ok ? null : result;
-}
