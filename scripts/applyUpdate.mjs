@@ -40,17 +40,18 @@ export function applyUpdate(dir, tag, run) {
   const remote = releaseRemote(dir);
   if (!remote) return { ok: false, stage: 'fetch', message: `this clone has no remote to fetch ${tag} from.` };
 
-  // `npm install` can rewrite the lockfile on its own; that alone doesn't stop an update.
-  const changed = read(dir, ['status', '--porcelain', '--untracked-files=no']).split('\n').filter(Boolean);
-  if (changed.length === 1 && changed[0].slice(3) === 'package-lock.json') {
-    if (!ok('git', ['-C', dir, 'checkout', '--', 'package-lock.json'])) {
-      return { ok: false, stage: 'merge', message: 'git could not restore package-lock.json. Nothing was changed.' };
-    }
-  }
-
   const fetch = ['-C', dir, '-c', 'credential.interactive=false', 'fetch', '--quiet', remote];
   if (!ok('git', [...fetch, `refs/tags/${tag}:refs/tags/${tag}`])) {
     return { ok: false, stage: 'fetch', message: `git could not fetch ${tag} from ${remote}. Nothing was changed.` };
+  }
+
+  // `npm install` can rewrite the lockfile on its own; that alone doesn't stop an update. Restored from HEAD, so a
+  // staged rewrite goes too. Only once the fetch worked, so a failed fetch leaves the file as it was.
+  const changed = read(dir, ['status', '--porcelain', '--untracked-files=no']).split('\n').filter(Boolean);
+  if (changed.length === 1 && changed[0].slice(3) === 'package-lock.json') {
+    if (!ok('git', ['-C', dir, 'checkout', 'HEAD', '--', 'package-lock.json'])) {
+      return { ok: false, stage: 'merge', message: 'git could not restore package-lock.json. Nothing was changed.' };
+    }
   }
   if (!ok('git', ['-C', dir, 'merge', '--ff-only', '--quiet', `refs/tags/${tag}`])) {
     return { ok: false, stage: 'merge', message: `git could not fast-forward to ${tag}. Nothing was changed.` };

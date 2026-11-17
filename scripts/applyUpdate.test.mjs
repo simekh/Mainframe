@@ -70,6 +70,14 @@ describe('applyUpdate', () => {
     expect(git('-C', user, 'status', '--porcelain', '--untracked-files=no')).toBe('');
   });
 
+  it('restores a staged lockfile change too', () => {
+    writeFileSync(join(user, 'package-lock.json'), '{"rewritten":true}\n');
+    git('-C', user, 'add', 'package-lock.json');
+    expect(applyUpdate(user, 'v0.2.0', run)).toEqual({ ok: true });
+    expect(head()).toBe(release());
+    expect(git('-C', user, 'status', '--porcelain', '--untracked-files=no')).toBe('');
+  });
+
   it('changes nothing and skips npm when the branch has a commit of its own', () => {
     commit(user, 'mine.txt', 'mine\n', 'my own');
     const before = head();
