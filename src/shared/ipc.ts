@@ -1,6 +1,7 @@
 import type {
   AgentChoice,
   AgentName,
+  CheckResult,
   ChangedFile,
   DiscardPreview,
   ClipboardPaste,
@@ -20,6 +21,7 @@ import type {
   TodoNote,
   TodoNoteDraft,
   TodoView,
+  UpdateView,
 } from './types';
 
 export const IPC = {
@@ -86,6 +88,11 @@ export const IPC = {
   setAgentOptions: 'settings:set-options',
   opencodeChoices: 'settings:opencode-choices',
   showSettings: 'settings:show',
+  getUpdate: 'updates:get',
+  updateChanged: 'updates:changed',
+  checkForUpdates: 'updates:check',
+  installUpdate: 'updates:install',
+  menuCheckForUpdates: 'updates:menu-check',
 } as const;
 
 /**
@@ -210,4 +217,14 @@ export interface MainframeApi {
   opencodeChoices(): Promise<OpencodeChoices>;
   /** Cmd+, or Ctrl+, from main: the page opens Settings unless the setup screen or another dialog shows. */
   onShowSettings(cb: () => void): () => void;
+  /** The update calls are the whole app's, like Settings. Answers once the running version is known. */
+  getUpdate(): Promise<UpdateView>;
+  /** Every change to the update state, with the whole view. */
+  onUpdate(cb: (view: UpdateView) => void): () => void;
+  /** Checks the clone's remote now; never rejects, a failure comes back with why. */
+  checkForUpdates(): Promise<CheckResult>;
+  /** Quits and lets start.mjs update and start Mainframe again; rejects when the update must be made by hand. */
+  installUpdate(): Promise<void>;
+  /** Check for Updates… in the Mac menu: the page checks and says the result. */
+  onCheckForUpdates(cb: () => void): () => void;
 }

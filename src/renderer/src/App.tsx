@@ -15,6 +15,9 @@ import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
+import UpdateDialog from './updates/UpdateDialog';
+import UpdatePill from './updates/UpdatePill';
+import { loadUpdate } from './updates/updateStore';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -115,9 +118,12 @@ export default function App() {
   // Where the window's part of the top row ends: the first pane's bar starts there.
   const [rowStart, setRowStart] = createSignal(0);
 
-  // Main answers the Settings calls once the projects have started, as the setup gives way to them.
+  // Main answers the Settings and update calls once the projects have started, as the setup gives way to them.
   createEffect(() => {
-    if (setupView() === null) void loadSettings();
+    if (setupView() === null) {
+      void loadSettings();
+      void loadUpdate();
+    }
   });
   // Says when another agent stands in for the saved default; its ✕ hides it until the next start.
   const [fallbackHidden, setFallbackHidden] = createSignal(false);
@@ -136,10 +142,12 @@ export default function App() {
           {/* The cog is the last pane's in the top row; with no pane there, it keeps the window's top-right corner. */}
           <Show when={projectsStore.layout.shown.length === 0}>
             <div class="settings-corner">
+              <UpdatePill />
               <SettingsButton />
             </div>
           </Show>
           <SettingsDialog />
+          <UpdateDialog />
           <Show when={fallback()}>
             {(view) => (
               <div class="default-fallback" data-testid="default-fallback" role="status">

@@ -22,7 +22,7 @@ import { loadConfig, type AppConfig } from './config';
 import { copyMenuItems, editMenuItems } from './contextMenu';
 import { DiffWindow } from './diff/diffWindow';
 import { gitQueries } from './git';
-import { registerIpc, registerSettingsIpc, registerSetupIpc, type Project } from './ipc';
+import { registerIpc, registerSettingsIpc, registerSetupIpc, registerUpdateIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { startMcpServer } from './mcp/mcpServer';
@@ -39,6 +39,7 @@ import { SetupFlow } from './setup/setupFlow';
 import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
+import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 import { APP_BACKGROUND, webPreferences } from './windowOptions';
 import { nextZoomLevel, readZoomLevel, writeZoomLevel, zoomFactorOf, type ZoomStep } from './zoom';
@@ -260,6 +261,20 @@ async function start(
     },
   });
 
+  // One for the app, not per project: updates are about Mainframe itself. An e2e run checks only a clone it names.
+  let updating = false;
+  const updates = new UpdateService({
+    dir: config.updateDir ?? app.getAppPath(),
+    launcherFile: config.launcherFile,
+    failure: config.updateFailure,
+    onChange: (view) => toWindow(IPC.updateChanged, view),
+    requestQuit: () => {
+      updating = true;
+      app.quit();
+    },
+  });
+  void updates.view().then((view) => app.setAboutPanelOptions({ applicationVersion: view.current ?? 'unreleased' }));
+
   // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
   // whichever of the two events below comes first does it, and the other changes nothing. It is set
   // up before the projects open: the window is up while they do, and a quit then must stop them.
@@ -267,6 +282,7 @@ async function start(
   const beginQuit = () => {
     if (quitting) return;
     quitting = true;
+    updates.stop();
     // Chromium keeps the renderer's latest localStorage writes (layout, widths, pins) in memory for a
     // while; on Windows a quit lost them. Writing them out now keeps them on every system.
     session.defaultSession.flushStorageData();
@@ -282,11 +298,13 @@ async function start(
     if (waited) return;
     event.preventDefault();
     // Quit again once Electron is done with this will-quit: an app.quit() made while it runs does nothing,
-    // and with no session running the wait is over at once.
+    // and with no session running the wait is over at once. An update ends with the code that has
+    // start.mjs take it, after the same wait, so its sessions are recorded and ended as on Quit.
     void host.whenAllEnded(QUIT_WAIT_MS).then(() =>
       setImmediate(() => {
         waited = true;
-        app.quit();
+        if (updating) app.exit(UPDATE_EXIT_CODE);
+        else app.quit();
       }),
     );
   });
@@ -372,13 +390,19 @@ async function start(
       dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
     }
   };
-  // The menu `launch` set, with Open Project… and Settings… enabled now.
+  // The menu `launch` set, with Open Project…, Settings… and Check for Updates… enabled now.
   if (onMac) {
     Menu.setApplicationMenu(
-      buildMenu({ zoom: zoom.step, openProject: () => void openPicked(), openSettings: () => toWindow(IPC.showSettings, null) }),
+      buildMenu({
+        zoom: zoom.step,
+        openProject: () => void openPicked(),
+        openSettings: () => toWindow(IPC.showSettings, null),
+        checkForUpdates: () => toWindow(IPC.menuCheckForUpdates, null),
+      }),
     );
   }
   registerSettingsIpc(agents, (name) => pickAgent(win, name));
+  registerUpdateIpc(updates);
   const diffWindow = new DiffWindow({
     parent: win,
     dataDir: config.dataDir,
@@ -405,6 +429,9 @@ async function start(
   }
   opening = false;
   allOpened();
+  // Without automatic checks the calls still answer: Settings shows the version, and a check asked for runs. None
+  // once a quit has begun.
+  if (!quitting && config.autoCheck) updates.start();
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));

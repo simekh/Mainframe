@@ -25,6 +25,7 @@ async function git(
   });
   return stdout;
 }
+export { git as runGit };
 
 export async function startCheck(projectDir: string): Promise<StartCheck | null> {
   try {
@@ -254,7 +255,7 @@ async function base(projectDir: string): Promise<string> {
  * (git, and helpers that read it), these say: no prompt on a terminal; an empty askpass program, so git runs none,
  * not core.askPass's nor SSH_ASKPASS's; no Git Credential Manager window; no askpass program from ssh.
  */
-const NO_PROMPTS: Record<string, string> = {
+export const NO_PROMPTS: Record<string, string> = {
   GIT_TERMINAL_PROMPT: '0',
   GIT_ASKPASS: '',
   GCM_INTERACTIVE: 'false',

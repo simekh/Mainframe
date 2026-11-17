@@ -5,7 +5,7 @@ import { loadConfig } from './config';
 describe('loadConfig', () => {
   it('uses the defaults, and sets no claude path of its own', () => {
     expect(loadConfig({}, '/data')).toEqual({
-      claudeBin: undefined, dataDir: resolve('/data'), inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false,
+      claudeBin: undefined, dataDir: resolve('/data'), inputBatchMs: 0, outputBatchMs: 8, logOsc: false, e2e: false, autoCheck: true,
     });
   });
 
@@ -15,7 +15,7 @@ describe('loadConfig', () => {
       MAINFRAME_INPUT_BATCH_MS: '8', MAINFRAME_OUTPUT_BATCH_MS: '0', MAINFRAME_LOG_OSC: '1', MAINFRAME_E2E: '1',
     }, '/data')).toEqual({
       claudeBin: '/x/claude', dataDir: resolve('/tmp/d'),
-      inputBatchMs: 8, outputBatchMs: 0, logOsc: true, e2e: true,
+      inputBatchMs: 8, outputBatchMs: 0, logOsc: true, e2e: true, autoCheck: false,
     });
   });
 
@@ -31,6 +31,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ MAINFRAME_CODEX_BIN: '' }, '/d')).toThrow(
       'MAINFRAME_CODEX_BIN must name the codex binary, got an empty value',
     );
+  });
+
+  it('reads the update settings, and the update folder only in e2e', () => {
+    const env = { MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_UPDATE_FILE: '/x/update', MAINFRAME_UPDATE_FAILED: 'it failed' };
+    expect(loadConfig(env, '/data')).toMatchObject({ updateDir: undefined, launcherFile: '/x/update', updateFailure: 'it failed' });
+    expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').updateDir).toBe('/x/clone');
+    expect(loadConfig({ MAINFRAME_UPDATE_FILE: '', MAINFRAME_UPDATE_FAILED: '' }, '/data')).toMatchObject({ launcherFile: undefined, updateFailure: undefined });
+  });
+
+  it('checks for updates by itself except in dev, and in e2e only with a clone named', () => {
+    expect(loadConfig({}, '/data').autoCheck).toBe(true);
+    expect(loadConfig({ ELECTRON_RENDERER_URL: 'http://localhost:5173' }, '/data').autoCheck).toBe(false);
+    expect(loadConfig({ MAINFRAME_E2E: '1' }, '/data').autoCheck).toBe(false);
+    expect(loadConfig({ MAINFRAME_E2E: '1', MAINFRAME_E2E_UPDATE_DIR: '/x/clone' }, '/data').autoCheck).toBe(true);
   });
 
   it('makes a relative data dir absolute', () => {

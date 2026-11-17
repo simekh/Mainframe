@@ -21,6 +21,7 @@ import { onBoard } from '../taskModel';
 import { focusTerminalOf, sessionOf, setPanelOpen, tasksOf } from '../tasksStore';
 import TodoPanel from '../todo/TodoPanel';
 import { clampTodoWidth, loadTodoPrefs, saveTodoPrefs } from '../todo/todoPrefs';
+import UpdatePill from '../updates/UpdatePill';
 import type { PanePlace } from './layout';
 import { ProjectContext } from './projectContext';
 import {
@@ -251,6 +252,7 @@ export default function ProjectPane(props: {
               <kbd>Tab</kbd>
               <span>Next that needs you</span>
             </button>
+            <UpdatePill />
             <SettingsButton />
           </Show>
         </div>
