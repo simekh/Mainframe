@@ -56,6 +56,7 @@ test('behind a release, one pill shows right before the cog, and its dialog has 
   await expect(dialog).toContainText('You have 0.1.0.');
   await expect(dialog).toContainText('New: thing');
   await expect(dialog).toContainText("wasn't started with npm start");
+  await expect(dialog).toContainText('Quit Mainframe first, then run these in its folder:');
   await expect(dialog.getByTestId('update-commands')).toContainText('v0.2.0');
   await expect(dialog.getByRole('button', { name: 'Update', exact: true })).toHaveCount(0);
   // Later closes it; the pill stays.
@@ -102,12 +103,14 @@ test("with the clone's remote gone, Check for Updates… says it couldn't check,
   await app.close();
 });
 
-test("after an update that didn't finish, the dialog is open at start and says why", async () => {
+test("after an update that didn't finish, the dialog is open at start and says why and what to run", async () => {
   const { app, page } = await launchApp(updateEnv(userClone('latest'), { MAINFRAME_UPDATE_FAILED: 'boom' }));
   const dialog = page.getByTestId('update-dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('#update-heading')).toHaveText("The update didn't finish");
   await expect(dialog).toContainText("The update didn't finish: boom");
+  await expect(dialog).toContainText('Quit Mainframe first, then run these in its folder:');
+  await expect(dialog.getByTestId('update-commands')).toHaveText('npm install\nnpm start');
   await app.close();
 });
 

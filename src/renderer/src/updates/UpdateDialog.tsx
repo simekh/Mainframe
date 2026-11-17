@@ -16,6 +16,19 @@ const WHY: Record<ByHandWhy, () => JSX.Element> = {
   'own-commits': () => "This copy's branch has commits of its own, so merge the release yourself:",
 };
 
+/**
+ * Commands to run by hand. Mainframe holds a single-instance lock, so a pasted `npm start` while it runs only focuses
+ * this window, and on Windows `npm install` can hit its locked files: it is quit first.
+ */
+function Commands(props: { commands: string[] }) {
+  return (
+    <>
+      <p>Quit Mainframe first, then run these in its folder:</p>
+      <pre data-testid="update-commands">{props.commands.join('\n')}</pre>
+    </>
+  );
+}
+
 /** A release the app doesn't run yet: what it brings, then the Update button or the commands to run by hand. */
 function Release(props: { available: UpdateAvailable; current: string | null; installing: boolean; onInstall: () => void; onLater: () => void }) {
   const byHand = () => {
@@ -51,7 +64,7 @@ function Release(props: { available: UpdateAvailable; current: string | null; in
           <>
             <div class="update-by-hand">
               <p>{WHY[h().why]()}</p>
-              <pre data-testid="update-commands">{h().commands.join('\n')}</pre>
+              <Commands commands={h().commands} />
             </div>
             <div class="nt-actions">{later()}</div>
           </>
@@ -154,10 +167,13 @@ export default function UpdateDialog() {
               </>
             )}
           </Match>
-          {/* An update that didn't finish, with no newer release found. */}
+          {/* An update that didn't finish, with no newer release found: the clone is on it, so its install is what's left. */}
           <Match when={updateFace()}>
             <h2 id="update-heading">The update didn't finish</h2>
             {failureLine()}
+            <div class="update-by-hand">
+              <Commands commands={['npm install', 'npm start']} />
+            </div>
             {closeButton()}
           </Match>
         </Switch>
