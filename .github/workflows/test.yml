@@ -28,6 +28,12 @@ on:
         type: string
         default: ''
 
+# A newer push, or the same narrowed run started again, ends the run it replaces: a full run takes four macOS
+# runners, and GitHub's free plan runs five at a time, so a run left going would hold up the next one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.os }}-${{ inputs.e2e }}-${{ inputs.grep }}
+  cancel-in-progress: true
+
 jobs:
   # Typecheck, unit tests and the Linux start checks, once per system; a narrowed run skips them.
   checks:
@@ -104,7 +110,8 @@ jobs:
         os: ${{ fromJSON((inputs.os == '' || inputs.os == 'all') && '["macos-latest","windows-latest","ubuntu-latest"]' || format('["{0}"]', inputs.os)) }}
         shard: ${{ fromJSON((inputs.e2e != '' || inputs.grep != '') && '["1/1"]' || '["1/3","2/3","3/3"]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # A narrowed run is one runner, which may still be given most of the suite.
+    timeout-minutes: 45
     env:
       E2E_FILES: ${{ inputs.e2e }}
       E2E_GREP: ${{ inputs.grep }}
@@ -160,7 +167,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
-          # Numbered by job: the shard's own name holds a / that an artifact's may not.
+          # The shard's own name holds a / that an artifact's may not, so the number is the job's place in the whole
+          # os x shard matrix, not the shard's.
           name: test-results-${{ matrix.os }}-${{ strategy.job-index }}
           path: test-results/
           if-no-files-found: ignore
