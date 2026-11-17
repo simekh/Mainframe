@@ -567,6 +567,8 @@ export class TaskService {
     session.turn.note(state);
     const task = this.find(session.taskId);
     this.lookForWorktree(session, task);
+    // New work may land on a merged branch: the card leaves Done until a round proves it again.
+    if (inTurn(state) && this.merged.delete(task.id)) this.deps.onChange(this.list());
     if (agentOf(task) === 'opencode' && !task.began && inTurn(state)) {
       task.began = true;
       // Saved, not sent: nothing the window shows has changed.
