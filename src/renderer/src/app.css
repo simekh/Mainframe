@@ -3358,6 +3358,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .nt-codex-line {
@@ -3373,7 +3374,6 @@ kbd {
 .nt-codex-line code {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
   user-select: text;
 }
 

@@ -161,7 +161,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             </p>
           )}
         </For>
-        <Show when={agent() === 'codex' && codexNote()}>
+        <Show when={agent() === 'codex' && !codexNote.loading && codexNote()}>
           {(note) => (
             <div class="nt-codex-note" data-testid="new-task-codex-note">
               <p class="nt-hint">
