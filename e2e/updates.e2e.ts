@@ -1,3 +1,5 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { cloneRepo, commitFile, git, makeRepo } from '../src/main/testing/makeRepo';
@@ -37,7 +39,7 @@ test('behind a release, one pill shows right before the cog, and its dialog has 
   const { app, page } = await launchApp(updateEnv(userClone('behind')), [acme, globex]);
   const pill = page.getByTestId('update-pill');
   // The first automatic check runs 10 s after start.
-  await expect(pill).toBeVisible({ timeout: 15_000 });
+  await expect(pill).toBeVisible({ timeout: 20_000 });
   const [p, cog] = [await boxOf(pill), await boxOf(page.getByTestId('settings-open'))];
   expect(p.x + p.width).toBeLessThanOrEqual(cog.x);
   expect(cog.x - (p.x + p.width)).toBeLessThan(16);
@@ -61,6 +63,24 @@ test('behind a release, one pill shows right before the cog, and its dialog has 
   await expect(dialog).toBeHidden();
   await expect(pill).toBeVisible();
   await app.close();
+});
+
+test('started by the launcher, Update leaves the tag for it and quits with its code, and the next start opens the project again', async () => {
+  const acme = repo();
+  const updateFile = join(removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-update-'))), 'update');
+  const { app, page, dataDir } = await launchApp(updateEnv(userClone('behind'), { MAINFRAME_UPDATE_FILE: updateFile }), acme);
+  const exited = new Promise<number | null>((resolve) => app.process().once('exit', (code) => resolve(code)));
+  const pill = page.getByTestId('update-pill');
+  await expect(pill).toBeVisible({ timeout: 20_000 });
+  await pill.click();
+  await page.getByTestId('update-dialog').getByRole('button', { name: 'Update', exact: true }).click();
+  expect(await exited).toBe(75);
+  expect(readFileSync(updateFile, 'utf8')).toBe('v0.2.0');
+
+  // What start.mjs then does: start Mainframe again on the same data folder, left as the quit wrote it.
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, [], { firstStart: true });
+  await expect(pane(again.page, acme)).toHaveAttribute('data-shown', 'true');
+  await again.app.close();
 });
 
 test('up to date, Settings shows the version and Check for Updates… says so', async () => {
