@@ -1,34 +1,44 @@
 # Mainframe
 
-Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs) and [OpenCode](https://opencode.ai) sessions side by side, across your projects, in one window.
+Mainframe is a desktop app that runs several [Claude Code](https://code.claude.com/docs), [OpenCode](https://opencode.ai) and [Codex](https://developers.openai.com/codex) sessions side by side, across your projects, in one window.
 
-- **A board of tasks.** Each task is a Claude Code or OpenCode session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running. A fourth lane, **Done**, shows while there are running tasks whose work Mainframe found merged.
+- **A board of tasks.** Each task is a Claude Code, OpenCode or Codex session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's and Codex's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running. A fourth lane, **Done**, shows while there are running tasks whose work Mainframe found merged.
 - **A manager.** Each project has one agent session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
 - **A Todo panel.** It reads your to-do list from your task tracker through a connector set up in your agent, so it works with any tracker you have one for: Trello, Linear, GitHub Issues and others. You start a task from a card.
 - **Several projects at once.** Show them one at a time, side by side, or in a grid. Quit ends every session, and the next start brings them back.
 
-Every session is a real `claude` or `opencode` process. It runs with your own login, settings and permissions.
+Every session is a real `claude`, `opencode` or `codex` process. It runs with your own login, settings and permissions.
 
 ## What you need
 
-Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions: a current system, the newest Node.js LTS and a current Claude Code or OpenCode.
+Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions: a current system, the newest Node.js LTS and a current Claude Code, OpenCode or Codex.
 
 | | macOS | Windows | Linux |
 |---|---|---|---|
 | [Node.js](https://nodejs.org/), the newest LTS (Claude Code's hooks run on it) | yes | yes | yes |
 | git on your PATH | yes | [Git for Windows](https://gitforwindows.org/), or any `git.exe` on PATH | yes |
-| [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH. At least one is needed, and you can have both | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode` | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe` | Claude Code: native installer or npm. OpenCode: `opencode` |
+| [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in, **or** [OpenCode](https://opencode.ai/) 2.1 or later, from its installer (`~/.opencode/bin`) or on PATH, **or** [Codex](https://developers.openai.com/codex) 0.169 or later, logged in, from its installer or on PATH. At least one is needed, and you can have more than one | Claude Code: native installer, Homebrew or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`), Homebrew's cask or PATH | Claude Code: native installer or WinGet; npm, see below. OpenCode: `opencode.exe`. Codex: its installer (`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`) or PATH; not npm, see below | Claude Code: native installer or npm. OpenCode: `opencode`. Codex: its installer (`~/.local/bin`) or PATH |
 | A compiler, to install the packages | no | no | yes, see below |
 
 Each project you open must be a git repository.
 
-The manager, the Todo sync and new tasks run on the default agent. The New task box starts on it and offers the other ticked agent as a choice for that task. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
+The manager, the Todo sync and new tasks run on the default agent. The New task box starts on it and offers the other ticked agents as a choice for that task. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
+
+A Codex task runs in the same kind of worktree too. On a project's first Codex task, Codex asks once whether you trust the folder. Codex follows the repo's `AGENTS.md`. To have it read `CLAUDE.md` when there is no `AGENTS.md`, add this line at the top of Codex's config, `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`):
+
+```toml
+project_doc_fallback_filenames = ["CLAUDE.md"]
+```
+
+The New task box shows a note with that line when Codex wouldn't read your project's `CLAUDE.md`. To use a particular `codex`, set `MAINFRAME_CODEX_BIN` to its path.
+
+A manager on Codex comes back in the chat where it last used one of Mainframe's tools. It asks you before it starts a task, so if you set Codex never to ask, it can't start one. Its role replaces your own `developer_instructions` in the manager; your tasks keep yours.
 
 On macOS and Linux, any Claude Code whose `claude` runs in your terminal works, and so does the native installer's `~/.local/bin/claude` when that folder isn't on your PATH.
 
-**On Windows**, Mainframe finds the native installer's `claude.exe` in `%USERPROFILE%\.local\bin`, even when that folder isn't on your PATH (the installer doesn't add it). Claude Code installed with npm puts a `claude.cmd` on your PATH, which Mainframe never runs: it uses the `claude.exe` in npm's package instead, once npm has put the real one in place. When it hasn't, the setup screen says so and suggests the native installer. No compiler is needed: node-pty comes ready-built for Windows.
+**On Windows**, Mainframe finds the native installer's `claude.exe` in `%USERPROFILE%\.local\bin`, even when that folder isn't on your PATH (the installer doesn't add it). Claude Code installed with npm puts a `claude.cmd` on your PATH, which Mainframe never runs: it uses the `claude.exe` in npm's package instead, once npm has put the real one in place. When it hasn't, the setup screen says so and suggests the native installer. Codex installed with npm puts a `codex.cmd` on your PATH, which Mainframe doesn't run either: use Codex's own installer, which puts `codex.exe` in `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`. No compiler is needed: node-pty comes ready-built for Windows.
 
-Each task's files sit inside your project, under `.claude\worktrees\<name>\` (Claude Code) or `.mainframe\worktrees\<name>\` (OpenCode), so in a deep repository their paths can pass Windows' 260-character limit. To let git use longer paths, run this once:
+Each task's files sit inside your project, under `.claude\worktrees\<name>\` (Claude Code) or `.mainframe\worktrees\<name>\` (OpenCode and Codex), so in a deep repository their paths can pass Windows' 260-character limit. To let git use longer paths, run this once:
 
 ```sh
 git config --global core.longpaths true
@@ -57,9 +67,9 @@ Each `npm start` (and `npm run dev`) runs `npm install` first: the first one ins
 
 On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
 
-At the first start, Mainframe opens a setup screen. It looks for `git`, `claude` and `opencode`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…** or **Find opencode…** (**Find claude.exe…** or **Find opencode.exe…** on Windows) to point it at a program it missed, **How to install** to open the install page, and **Look again** once you've fixed it. It asks which agents to use and which one is the default, then which project to start with: any folder that is a git repository.
+At the first start, Mainframe opens a setup screen. It looks for `git`, `claude`, `opencode` and `codex`, says what it found, and for anything it couldn't find it gives you a button: **Find claude…**, **Find opencode…** or **Find codex…** (**Find claude.exe…**, **Find opencode.exe…** or **Find codex.exe…** on Windows) to point it at a program it missed, **How to install** to open the install page, and **Look again** once you've fixed it. It asks which agents to use and which one is the default, then which project to start with: any folder that is a git repository.
 
-Mainframe remembers what it found in `settings.json` in its data folder. At every start it checks `git` and the ticked agents again. It shows the setup screen only when `git` or every ticked agent has moved or stopped working; when only the default agent has, another ticked agent stands in and a notice says so.
+Mainframe remembers what it found in `settings.json` in its data folder. At every start it checks `git` and the ticked agents again. It shows the setup screen only when `git` or every ticked agent has moved or stopped working; when only the default agent has, another ticked agent stands in and a notice says so. An agent you install after setup is ticked by itself once Mainframe finds it: it shows up as a choice in the New task box, and the default agent stays as it was.
 
 To open more projects, use **File → Open Project…** (⌘O) on a Mac. Windows and Linux have the system's own title bar and no menu bar: there, use the **Open project** button at the bottom of the project list, or Ctrl+Shift+O. Mainframe remembers which projects are open.
 
@@ -123,11 +133,11 @@ The Todo panel has two tabs, **To do** and **Finished**. Finished lists the proj
 
 ## Set up the Todo panel
 
-1. In your agent (Claude Code or OpenCode), add a connector (an MCP server) for your tracker, and check that a normal session of it in your project can read your board. For OpenCode, set the connector up in OpenCode's own config.
-2. In your project's instructions file (`CLAUDE.md` for Claude Code; `AGENTS.md` for OpenCode, which reads `CLAUDE.md` when there is no `AGENTS.md`), say which list is the to-do list. You can also say which cards are yours rather than an agent's, and which come first, for example: "Cards labelled *You* are mine; cards labelled *Urgent* come first."
+1. In your agent (Claude Code, OpenCode or Codex), add a connector (an MCP server) for your tracker, and check that a normal session of it in your project can read your board. For OpenCode, set the connector up in OpenCode's own config. For Codex, set it up with `codex mcp add`.
+2. In your project's instructions file (`CLAUDE.md` for Claude Code; `AGENTS.md` for OpenCode, which reads `CLAUDE.md` when there is no `AGENTS.md`; `AGENTS.md` for Codex, or `CLAUDE.md` with the config line above), say which list is the to-do list. You can also say which cards are yours rather than an agent's, and which come first, for example: "Cards labelled *You* are mine; cards labelled *Urgent* come first."
 3. Press **Sync** in the Todo panel. The first sync names the connector's tools it wants to read with. Allow them only if none of them can change your board.
 
-Each sync is a short background run of the default agent. It may use only the read tools you allowed, and it keeps no chat history. An OpenCode sync asks which model to run on the first time, and is never given a shell or the right to edit. A sync that runs over 2 minutes asks whether to go on, because large syncs can use a lot of tokens.
+Each sync is a short background run of the default agent. It may use only the read tools you allowed, and it keeps no chat history. An OpenCode sync asks which model to run on the first time, and is never given a shell or the right to edit. A Codex sync runs on your own Codex model, in Codex's read-only mode, and can call only the tools you allowed. One gap: while the first sync looks for its tools, it can't stop a tool you set to `approve` in your own Codex config, as no tool is meant to run then. If the sync used one anyway, Mainframe rejects that sync and names the tool. A sync that runs over 2 minutes asks whether to go on, because large syncs can use a lot of tokens.
 
 ## Settings
 
@@ -142,6 +152,7 @@ Set these as environment variables before `npm start`. In bash and zsh, put them
 | `MAINFRAME_DATA_DIR` | Where Mainframe keeps its state. By default `~/Library/Application Support/mainframe` on a Mac, `%APPDATA%\mainframe` on Windows, and `~/.config/mainframe` on Linux (`$XDG_CONFIG_HOME/mainframe` when that is set) |
 | `MAINFRAME_CLAUDE_BIN` | The `claude` file to run. Checked at every start, wins over the saved path, and is never saved. When it can't run, the setup screen says so and looks nowhere else |
 | `MAINFRAME_OPENCODE_BIN` | The `opencode` file to run. Checked at every start, and when it is set Mainframe looks nowhere else for OpenCode |
+| `MAINFRAME_CODEX_BIN` | The `codex` file to run. Checked at every start, and when it is set Mainframe looks nowhere else for Codex |
 | `MAINFRAME_LOG_OSC=1` | Prints the sessions' status reports to the terminal |
 
 ## Develop

@@ -27,18 +27,42 @@ wire_api = "responses"
 let counter = 0
 const sse = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`
 
-function answer(res) {
+// The manager's turn: Mainframe's tools are offered and the user has just spoken.
+// Then the model calls list_sessions once, so Codex sends Mainframe its chat id.
+function wantsToolCall(body) {
+  const tools = Array.isArray(body?.tools) ? body.tools : []
+  const offered = tools.some(
+    (t) =>
+      t?.type === 'namespace' &&
+      t.name === 'mcp__mainframe' &&
+      Array.isArray(t.tools) &&
+      t.tools.some((tool) => tool?.name === 'list_sessions')
+  )
+  const last = Array.isArray(body?.input) ? body.input.at(-1) : undefined
+  return offered && last?.role === 'user' && last?.type !== 'function_call_output'
+}
+
+function answer(res, toolCall) {
   const n = ++counter
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
   res.write(sse('response.created', { response: { id: `resp_${n}` } }))
   res.write(
     sse('response.output_item.done', {
-      item: {
-        type: 'message',
-        role: 'assistant',
-        id: `msg_${n}`,
-        content: [{ type: 'output_text', text: 'Done (fake model).' }]
-      }
+      item: toolCall
+        ? {
+            type: 'function_call',
+            id: `fc_${n}`,
+            call_id: `call_${n}`,
+            name: 'list_sessions',
+            namespace: 'mcp__mainframe',
+            arguments: '{}'
+          }
+        : {
+            type: 'message',
+            role: 'assistant',
+            id: `msg_${n}`,
+            content: [{ type: 'output_text', text: 'Done (fake model).' }]
+          }
     })
   )
   res.end(
@@ -68,16 +92,18 @@ const server = createServer((req, res) => {
     const chunks = []
     req.on('data', (c) => chunks.push(c))
     req.on('end', () => {
-      let hasTools = false
+      let body
       try {
-        const tools = JSON.parse(Buffer.concat(chunks).toString('utf8')).tools
-        hasTools = Array.isArray(tools) && tools.length > 0
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       } catch {
         // an unreadable body is treated as a side request
       }
-      console.log(`${new Date().toISOString()} POST /v1/responses${hasTools ? '' : ' (side request)'}`)
-      if (hasTools) setTimeout(() => answer(res), 2000)
-      else answer(res)
+      const hasTools = Array.isArray(body?.tools) && body.tools.length > 0
+      const toolCall = wantsToolCall(body)
+      const note = toolCall ? ' (calls list_sessions)' : hasTools ? '' : ' (side request)'
+      console.log(`${new Date().toISOString()} POST /v1/responses${note}`)
+      if (hasTools) setTimeout(() => answer(res, toolCall), 2000)
+      else answer(res, false)
     })
     return
   }
@@ -88,6 +114,6 @@ const server = createServer((req, res) => {
 
 server.listen(port, '127.0.0.1', () => {
   console.log(
-    `Fake Codex model on http://127.0.0.1:${port}. Start Mainframe with CODEX_HOME=${codexHome} npm start (quit your own Mainframe first, or add MAINFRAME_DATA_DIR=<another folder>). Codex will ask once whether to trust the project.`
+    `Fake Codex model on http://127.0.0.1:${port}. Start Mainframe with CODEX_HOME=${codexHome} npm start (quit your own Mainframe first, or add MAINFRAME_DATA_DIR=<another folder>). Codex will ask once whether to trust the project. To check the manager: make Codex the default agent in Settings, type a message in the manager (the model calls list_sessions, so Mainframe learns the chat), Quit, start Mainframe again the same way, and the manager comes back in the same chat.`
   )
 })
