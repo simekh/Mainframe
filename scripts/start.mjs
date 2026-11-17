@@ -4,8 +4,6 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { packagesInstalled } from './packagesInstalled.mjs';
 import { sandboxFlags } from './sandboxFlags.mjs';
 
 const [command, ...passOn] = process.argv.slice(2);
@@ -22,25 +20,6 @@ function orNull(read) {
     return read();
   } catch {
     return null;
-  }
-}
-
-// A fresh clone, or a pull that changed package-lock.json, gets its packages installed here rather than
-// failing on the first missing one.
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const readJson = (path) => orNull(() => JSON.parse(readFileSync(join(root, path), 'utf8')));
-if (!packagesInstalled(readJson('package-lock.json'), readJson('node_modules/.package-lock.json'))) {
-  // npm sets npm_execpath to its own script when it runs `npm start`; run directly, there is no npm to call.
-  const npm = process.env.npm_execpath;
-  if (!npm) {
-    console.error("Mainframe's packages aren't installed, or are out of date. Run `npm ci`, then start it again.");
-    process.exit(1);
-  }
-  console.log("Installing Mainframe's packages first (npm ci)…");
-  const install = spawnSync(process.execPath, [npm, 'ci'], { cwd: root, stdio: 'inherit' });
-  if (install.status !== 0) {
-    console.error('Installing the packages failed (see above). The README\'s "What you need" lists what it takes.');
-    process.exit(install.status ?? 1);
   }
 }
 

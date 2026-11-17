@@ -36,7 +36,7 @@ git config --global core.longpaths true
 
 **On Linux**, installing the packages compiles node-pty, so it needs a C++ compiler, `make` and Python 3 (`sudo apt install build-essential python3` on Ubuntu and Debian).
 
-Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after the packages are installed again:
+Ubuntu 24.04 and later block what Chromium's sandbox needs. There `npm start` (and `npm run dev`) starts Mainframe without the sandbox and says so. To keep the sandbox, run the two lines below in the `mainframe` folder after the first `npm start`: that start downloads Electron, and the `chrome-sandbox` file with it. Run them again whenever `npm start` says it started without the sandbox, as it will after a `git pull` brings a new Electron:
 
 ```sh
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
@@ -53,7 +53,7 @@ cd mainframe
 npm start
 ```
 
-The first `npm start` installs Mainframe's packages before it starts (with `npm ci`), and so does any `npm start` after a `git pull` that changed them.
+Each `npm start` (and `npm run dev`) runs `npm install` first: the first one installs Mainframe's packages, and later ones bring them up to date after a `git pull`, or take a moment when nothing changed.
 
 On Windows, if PowerShell says `npm.ps1 cannot be loaded because running scripts is disabled on this system`, its execution policy is blocking npm's launcher script: allow locally created scripts for your user once with `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, or type `npm.cmd` wherever this README says `npm`.
 
