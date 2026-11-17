@@ -13,7 +13,7 @@ const C = '/bin/claude';
 const O = '/bin/opencode';
 const found = (path: string): ProgramCheck => ({ state: 'found', path, version: '9.9.9' });
 const missing: ProgramCheck = { state: 'missing' };
-const both = { claude: found(C), opencode: found(O) };
+const both = { claude: found(C), opencode: found(O), codex: missing };
 
 /** The files on this computer, each with what it prints for `--version`. */
 const programs: Record<string, string> = {
@@ -51,12 +51,12 @@ function onDisk(
 
 describe('AgentsInUse', () => {
   it('runs on the saved default while it works', () => {
-    const a = agents({ defaultAgent: 'opencode' }, { claude: found(C), opencode: found(O) });
+    const a = agents({ defaultAgent: 'opencode' }, { claude: found(C), opencode: found(O), codex: missing });
     expect(a.defaultAgent()).toBe('opencode');
   });
 
   it('falls back to another ticked agent when the saved default does not work', () => {
-    const a = agents({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O) });
+    const a = agents({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O), codex: missing });
     expect(a.defaultAgent()).toBe('opencode');
   });
 
@@ -72,34 +72,34 @@ describe('AgentsInUse', () => {
 
   it('without node and no other ticked agent that works, it refuses to start with NODE_NEEDED', () => {
     expect(() => onDisk({ agents: { claude: { enabled: true }, opencode: { enabled: false } } }, both, { nodeBin: null })).toThrow(NODE_NEEDED);
-    expect(() => onDisk({}, { claude: found(C), opencode: missing }, { nodeBin: null })).toThrow(NODE_NEEDED);
+    expect(() => onDisk({}, { claude: found(C), opencode: missing, codex: missing }, { nodeBin: null })).toThrow(NODE_NEEDED);
   });
 
   it('ticked() leaves out an agent that is not found', () => {
-    const a = agents({ agents: { claude: { enabled: true }, opencode: { enabled: true } } }, { claude: missing, opencode: found(O) });
+    const a = agents({ agents: { claude: { enabled: true }, opencode: { enabled: true } } }, { claude: missing, opencode: found(O), codex: missing });
     expect(a.ticked()).toEqual(['opencode']);
   });
 
   it('bin() is the found path, ticked or not, and null otherwise', () => {
-    const a = agents({ agents: { opencode: { enabled: false } } }, { claude: found(C), opencode: found(O) });
+    const a = agents({ agents: { opencode: { enabled: false } } }, { claude: found(C), opencode: found(O), codex: missing });
     expect(a.ticked()).toEqual(['claude']);
     expect(a.bin('claude')).toBe(C);
     expect(a.bin('opencode')).toBe(O);
-    expect(agents({}, { claude: found(C), opencode: missing }).bin('opencode')).toBeNull();
+    expect(agents({}, { claude: found(C), opencode: missing, codex: missing }).bin('opencode')).toBeNull();
   });
 
   it('inUse() is the default agent with its adapter, path and setting', () => {
     const setting = { enabled: true, syncModel: 'm' };
-    const a = agents({ defaultAgent: 'opencode', agents: { opencode: setting } }, { claude: found(C), opencode: found(O) });
+    const a = agents({ defaultAgent: 'opencode', agents: { opencode: setting } }, { claude: found(C), opencode: found(O), codex: missing });
     expect(a.inUse()).toEqual({ adapter: ADAPTERS.opencode, bin: O, setting });
-    expect(agents({}, { claude: found(C), opencode: missing }).inUse()).toEqual({ adapter: ADAPTERS.claude, bin: C, setting: {} });
+    expect(agents({}, { claude: found(C), opencode: missing, codex: missing }).inUse()).toEqual({ adapter: ADAPTERS.claude, bin: C, setting: {} });
   });
 
   it('saveAgentSetting writes settings.json and inUse() sees it', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-agents-'));
     try {
       const settings: AppSettings = { defaultAgent: 'opencode', agents: { opencode: { enabled: true, syncModel: 'p/old' } }, welcomeSeen: true };
-      const a = new AgentsInUse({ dataDir, settings, checks: { claude: found(C), opencode: found(O) }, envBins: {}, ...deps, onChange: () => {} });
+      const a = new AgentsInUse({ dataDir, settings, checks: { claude: found(C), opencode: found(O), codex: missing }, envBins: {}, ...deps, onChange: () => {} });
 
       a.saveAgentSetting('opencode', { syncModel: 'p/new' });
 
@@ -118,14 +118,14 @@ describe('AgentsInUse', () => {
   });
 
   it("setTicked refuses an agent that doesn't work, the saved default and the last tick, and Claude Code without Node", () => {
-    const notFound = onDisk({ defaultAgent: 'opencode' }, { claude: missing, opencode: found(O) });
+    const notFound = onDisk({ defaultAgent: 'opencode' }, { claude: missing, opencode: found(O), codex: missing });
     expect(() => notFound.a.setTicked('claude', true)).toThrow("Claude Code doesn't work, so it can't be ticked");
 
     const savedDefault = onDisk({ defaultAgent: 'claude' }, both);
     expect(() => savedDefault.a.setTicked('claude', false)).toThrow('Make another agent the default first');
 
     // Claude Code is the saved default but missing, so OpenCode, which stands in, is the last one that works.
-    const last = onDisk({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O) });
+    const last = onDisk({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O), codex: missing });
     expect(() => last.a.setTicked('opencode', false)).toThrow('At least one agent must stay ticked');
 
     const noNode = onDisk({ defaultAgent: 'opencode', agents: { claude: { enabled: false } } }, both, { nodeBin: null });
@@ -160,7 +160,7 @@ describe('AgentsInUse', () => {
 
     const unticked = onDisk({ defaultAgent: 'claude', agents: { opencode: { enabled: false } } }, both);
     expect(() => unticked.a.setDefault('opencode')).toThrow('OpenCode must be ticked and work to be the default');
-    const notFound = onDisk({ defaultAgent: 'opencode' }, { claude: missing, opencode: found(O) });
+    const notFound = onDisk({ defaultAgent: 'opencode' }, { claude: missing, opencode: found(O), codex: missing });
     expect(() => notFound.a.setDefault('claude')).toThrow('Claude Code must be ticked and work to be the default');
     expect(unticked.saved()).toBeNull();
     expect(notFound.saved()).toBeNull();
@@ -190,11 +190,12 @@ describe('AgentsInUse', () => {
       defaultAgent: 'claude',
       agents: { claude: { enabled: true, bin: C }, opencode: { enabled: true, managerAgent: 'plan', syncModel: 'p/m' } },
     };
-    const a = new AgentsInUse({ dataDir: '/data', settings, checks: { claude: missing, opencode: found(O) }, envBins: { opencode: O }, ...deps, onChange: () => {} });
+    const a = new AgentsInUse({ dataDir: '/data', settings, checks: { claude: missing, opencode: found(O), codex: missing }, envBins: { opencode: O }, ...deps, onChange: () => {} });
     expect(a.view()).toEqual({
       agents: {
         claude: { check: missing, fromEnv: false, ticked: true },
         opencode: { check: found(O), fromEnv: true, ticked: true, managerAgent: 'plan', syncModel: 'p/m' },
+        codex: { check: missing, fromEnv: false, ticked: false },
       },
       defaultAgent: 'claude',
       runDefault: 'opencode',

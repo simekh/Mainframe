@@ -59,17 +59,20 @@ export const MIN_CLAUDE_VERSION = '2.1.295';
 /** The oldest OpenCode Mainframe works with. */
 export const MIN_OPENCODE_VERSION = '2.1.0';
 
-/** The agent CLIs a task can run on. */
-export type AgentName = 'claude' | 'opencode';
+/** The oldest Codex CLI Mainframe works with. */
+export const MIN_CODEX_VERSION = '0.169.0';
 
-export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode' };
+/** The agent CLIs a task can run on. */
+export type AgentName = 'claude' | 'opencode' | 'codex';
+
+export const AGENT_NAMES: Record<AgentName, string> = { claude: 'Claude Code', opencode: 'OpenCode', codex: 'Codex' };
 
 /** The order agents are listed and tried in. */
-export const AGENT_ORDER = ['claude', 'opencode'] as const satisfies readonly AgentName[];
+export const AGENT_ORDER = ['claude', 'opencode', 'codex'] as const satisfies readonly AgentName[];
 
 export const isAgentName = (value: unknown): value is AgentName => AGENT_ORDER.includes(value as AgentName);
 
-export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION };
+export const MIN_AGENT_VERSION: Record<AgentName, string> = { claude: MIN_CLAUDE_VERSION, opencode: MIN_OPENCODE_VERSION, codex: MIN_CODEX_VERSION };
 
 /** What looking for a program Mainframe needs (git, an agent) found. */
 type CheckState = 'found' | 'missing' | 'too-old' | 'broken';

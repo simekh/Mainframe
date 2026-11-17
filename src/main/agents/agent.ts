@@ -68,7 +68,7 @@ export const cheapestKnown = (models: SyncModel[]): string | null => models.find
 /** Everything Mainframe knows about one agent CLI. */
 export interface AgentAdapter {
   readonly name: AgentName;
-  /** MAINFRAME_CLAUDE_BIN or MAINFRAME_OPENCODE_BIN. */
+  /** MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN or MAINFRAME_CODEX_BIN. */
   readonly envVar: string;
   find(o: FindOptions): Promise<ProgramCheck>;
   check(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck>;

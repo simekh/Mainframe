@@ -5,7 +5,7 @@ import { newTaskAgents } from './newTaskAgents';
 const found: AgentView = { check: { state: 'found', path: '/bin/x', version: '2.1.300' }, fromEnv: false, ticked: true };
 
 const view = (claude: Partial<AgentView>, opencode: Partial<AgentView>, runDefault: 'claude' | 'opencode' = 'claude'): SettingsView => ({
-  agents: { claude: { ...found, ...claude }, opencode: { ...found, ...opencode } },
+  agents: { claude: { ...found, ...claude }, opencode: { ...found, ...opencode }, codex: { check: { state: 'missing' }, fromEnv: false, ticked: false } },
   defaultAgent: runDefault,
   runDefault,
 });

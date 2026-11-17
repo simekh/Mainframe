@@ -29,7 +29,7 @@ export class AgentsInUse {
       dataDir: string;
       settings: AppSettings;
       checks: Record<AgentName, ProgramCheck>;
-      /** The agents MAINFRAME_CLAUDE_BIN and MAINFRAME_OPENCODE_BIN name: nothing is saved about those. */
+      /** The agents MAINFRAME_CLAUDE_BIN, MAINFRAME_OPENCODE_BIN and MAINFRAME_CODEX_BIN name: nothing is saved about those. */
       envBins: Partial<Record<AgentName, string>>;
       run: VersionRunner;
       lookup: ExecutableLookup;
@@ -89,7 +89,7 @@ export class AgentsInUse {
       return { ...status[name], ...(managerAgent !== undefined && { managerAgent }), ...(syncModel !== undefined && { syncModel }) };
     };
     const inUse = this.defaultAgent();
-    return { agents: { claude: agentView('claude'), opencode: agentView('opencode') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
+    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
   }
 
   setTicked(name: AgentName, ticked: boolean): void {

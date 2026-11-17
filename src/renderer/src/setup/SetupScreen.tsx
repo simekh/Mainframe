@@ -20,13 +20,16 @@ type Unit = { key: string } & (
 const press: Record<SetupButton, () => void> = {
   'find-claude': () => void findAgent('claude'),
   'find-opencode': () => void findAgent('opencode'),
+  'find-codex': () => void findAgent('codex'),
   'install-claude': () => openLinkLogged('https://code.claude.com/docs/en/setup', 'setup'),
   'install-opencode': () => openLinkLogged('https://opencode.ai/', 'setup'),
+  'install-codex': () => openLinkLogged('https://developers.openai.com/codex/cli', 'setup'),
   'install-git': () => openLinkLogged('https://git-scm.com/downloads', 'setup'),
   'look-again': () => void lookAgain(),
   'choose-project': () => void chooseProject(),
   'use-claude': () => void useAgent('claude'),
   'use-opencode': () => void useAgent('opencode'),
+  'use-codex': () => void useAgent('codex'),
 };
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;

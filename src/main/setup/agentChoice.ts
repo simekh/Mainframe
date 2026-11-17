@@ -21,12 +21,12 @@ export function runDefault(settings: AppSettings, checks: Checks): AgentName | n
 /** The checks as this run can use them: without node an agent that needs it counts as missing. */
 export function usableChecks(checks: Checks, nodeBin: string | null): Checks {
   const usable = (name: AgentName): ProgramCheck => (nodeBin === null && ADAPTERS[name].needsNode ? { state: 'missing' } : checks[name]);
-  return { claude: usable('claude'), opencode: usable('opencode') };
+  return { claude: usable('claude'), opencode: usable('opencode'), codex: usable('codex') };
 }
 
 /** Each agent as the setup screen and Settings show it. */
 export function agentStatus(settings: AppSettings, checks: Checks, envBins: Partial<Record<AgentName, string>>): Record<AgentName, AgentStatus> {
   const ticked = tickedAgents(settings, checks);
   const status = (name: AgentName) => ({ check: checks[name], fromEnv: Boolean(envBins[name]), ticked: ticked.includes(name) });
-  return { claude: status('claude'), opencode: status('opencode') };
+  return { claude: status('claude'), opencode: status('opencode'), codex: status('codex') };
 }

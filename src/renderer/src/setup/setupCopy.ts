@@ -2,6 +2,7 @@ import {
   AGENT_NAMES,
   AGENT_ORDER,
   MIN_CLAUDE_VERSION,
+  MIN_CODEX_VERSION,
   MIN_OPENCODE_VERSION,
   type AgentChoice,
   type AgentName,
@@ -80,11 +81,15 @@ export function buttonLabel(button: SetupButton, platform: NodeJS.Platform): str
       return platform === 'win32' ? 'Find claude.exe…' : 'Find claude…';
     case 'find-opencode':
       return platform === 'win32' ? 'Find opencode.exe…' : 'Find opencode…';
+    case 'find-codex':
+      return platform === 'win32' ? 'Find codex.exe…' : 'Find codex…';
     // The agent is named: with no agent working, both links sit side by side.
     case 'install-claude':
       return 'How to install Claude Code ↗';
     case 'install-opencode':
       return 'How to install OpenCode ↗';
+    case 'install-codex':
+      return 'How to install Codex ↗';
     case 'install-git':
       return 'How to install git ↗';
     case 'look-again':
@@ -95,6 +100,8 @@ export function buttonLabel(button: SetupButton, platform: NodeJS.Platform): str
       return 'Use Claude Code';
     case 'use-opencode':
       return 'Use OpenCode';
+    case 'use-codex':
+      return 'Use Codex';
   }
 }
 
@@ -142,9 +149,18 @@ const AGENT_COPY: Record<AgentName, { envVar: string; min: string; nowhere(platf
         : "I looked on your PATH and in ~/.opencode/bin, and OpenCode wasn't in either.",
     update: 'Run opencode upgrade in a terminal',
   },
+  codex: {
+    envVar: 'MAINFRAME_CODEX_BIN',
+    min: MIN_CODEX_VERSION,
+    nowhere: (platform) =>
+      platform === 'win32'
+        ? "I looked on your PATH and in %LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin, and Codex wasn't in either."
+        : "I looked on your PATH and in ~/.local/bin, and Codex wasn't in either.",
+    update: 'Run codex update in a terminal',
+  },
 };
 
-const NO_AGENT = "I need a coding agent to run your tasks, Claude Code or OpenCode, and I couldn't use either.";
+const NO_AGENT = "I need a coding agent to run your tasks, Claude Code, OpenCode or Codex, and I couldn't use any of them.";
 const POINT_ME = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
 
 /** Why the agent can't be used, in its own lines. */
@@ -171,6 +187,9 @@ function agentReason(name: AgentName, check: Exclude<ProgramCheck, { state: 'fou
         lines.push(
           "If Claude Code came from npm, its launcher can't run on its own; Anthropic's native installer gives me a claude.exe I can use.",
         );
+      }
+      if (name === 'codex' && platform === 'win32') {
+        lines.push("If Codex came from npm, its launcher can't run on its own; Codex's own installer gives me a codex.exe I can use.");
       }
       return lines;
     }

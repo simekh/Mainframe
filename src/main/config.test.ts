@@ -26,6 +26,13 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads MAINFRAME_CODEX_BIN, and rejects an empty one with its own message', () => {
+    expect(loadConfig({ MAINFRAME_CODEX_BIN: '/x/codex' }, '/data').codexBin).toBe('/x/codex');
+    expect(() => loadConfig({ MAINFRAME_CODEX_BIN: '' }, '/d')).toThrow(
+      'MAINFRAME_CODEX_BIN must name the codex binary, got an empty value',
+    );
+  });
+
   it('makes a relative data dir absolute', () => {
     expect(loadConfig({ MAINFRAME_DATA_DIR: 'd' }, '/data').dataDir).toBe(resolve('d'));
   });

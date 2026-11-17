@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_CLAUDE_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type ProgramCheck, type SetupView } from '../../../shared/types';
+import { MIN_CLAUDE_VERSION, MIN_CODEX_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type ProgramCheck, type SetupView } from '../../../shared/types';
 import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type SetupButton } from './setupCopy';
 
 const found = (path: string, version: string): ProgramCheck => ({ state: 'found', path, version });
@@ -10,8 +10,10 @@ interface Over extends Partial<Omit<SetupView, 'agents'>> {
   claudeFromEnv?: boolean;
   opencode?: ProgramCheck;
   opencodeFromEnv?: boolean;
+  codex?: ProgramCheck;
+  codexFromEnv?: boolean;
   /** With nothing saved an agent is ticked when it is found; this says otherwise. */
-  ticked?: Partial<Record<'claude' | 'opencode', boolean>>;
+  ticked?: Partial<Record<'claude' | 'opencode' | 'codex', boolean>>;
 }
 
 /** A view where git and Claude Code are found and OpenCode is not; each test changes what it is about. */
@@ -21,6 +23,8 @@ const view = (over: Over = {}): SetupView => {
     claudeFromEnv = false,
     opencode = missing,
     opencodeFromEnv = false,
+    codex = missing,
+    codexFromEnv = false,
     ticked = {},
     ...rest
   } = over;
@@ -30,6 +34,7 @@ const view = (over: Over = {}): SetupView => {
     agents: {
       claude: { check: claude, fromEnv: claudeFromEnv, ticked: ticked.claude ?? claude.state === 'found' },
       opencode: { check: opencode, fromEnv: opencodeFromEnv, ticked: ticked.opencode ?? opencode.state === 'found' },
+      codex: { check: codex, fromEnv: codexFromEnv, ticked: ticked.codex ?? codex.state === 'found' },
     },
     lookedAgain: false,
     ask: null,
@@ -42,11 +47,12 @@ const buttonsOf = (over: Over) => blocks(over).map((b) => b.buttons);
 
 const NEW_TERMINAL =
   'Just installed it? A program installed after Mainframe started is often invisible to it: close Mainframe, open a new terminal and run npm start again.';
-const NONE = "I need a coding agent to run your tasks, Claude Code or OpenCode, and I couldn't use either.";
+const NONE = "I need a coding agent to run your tasks, Claude Code, OpenCode or Codex, and I couldn't use any of them.";
 const ASK = "If it's installed somewhere else, point me to it.\nIf it isn't, install it and I'll look again.";
 const CLAUDE_NOWHERE = "Hmm. I looked on your PATH and in ~/.local/bin, and Claude Code wasn't in either.";
 const OPENCODE_NOWHERE = "I looked on your PATH and in ~/.opencode/bin, and OpenCode wasn't in either.";
-const ALL_BUTTONS: SetupButton[] = ['find-claude', 'install-claude', 'find-opencode', 'install-opencode', 'look-again'];
+const CODEX_NOWHERE = "I looked on your PATH and in ~/.local/bin, and Codex wasn't in either.";
+const ALL_BUTTONS: SetupButton[] = ['find-claude', 'install-claude', 'find-opencode', 'install-opencode', 'find-codex', 'install-codex', 'look-again'];
 
 describe('checkLine', () => {
   it('says what a found git is', () => {
@@ -128,17 +134,21 @@ describe('buttonLabel', () => {
     expect(buttonLabel('find-claude', 'linux')).toBe('Find claude…');
     expect(buttonLabel('find-opencode', 'win32')).toBe('Find opencode.exe…');
     expect(buttonLabel('find-opencode', 'darwin')).toBe('Find opencode…');
+    expect(buttonLabel('find-codex', 'win32')).toBe('Find codex.exe…');
+    expect(buttonLabel('find-codex', 'darwin')).toBe('Find codex…');
   });
 
   it('labels the others the same everywhere', () => {
-    const labels: Record<Exclude<SetupButton, 'find-claude' | 'find-opencode'>, string> = {
+    const labels: Record<Exclude<SetupButton, 'find-claude' | 'find-opencode' | 'find-codex'>, string> = {
       'install-claude': 'How to install Claude Code ↗',
       'install-opencode': 'How to install OpenCode ↗',
+      'install-codex': 'How to install Codex ↗',
       'install-git': 'How to install git ↗',
       'look-again': 'Look again',
       'choose-project': 'Choose a folder…',
       'use-claude': 'Use Claude Code',
       'use-opencode': 'Use OpenCode',
+      'use-codex': 'Use Codex',
     };
     for (const [button, label] of Object.entries(labels)) {
       expect(buttonLabel(button as SetupButton, 'win32')).toBe(label);
@@ -210,7 +220,7 @@ describe('explanations', () => {
   describe('no agent works', () => {
     it('gives one agents block: why, each agent in turn, and the five buttons', () => {
       expect(blocks({ claude: missing })).toEqual([
-        { check: 'agents', lines: [NONE, CLAUDE_NOWHERE, OPENCODE_NOWHERE, ASK], buttons: ALL_BUTTONS },
+        { check: 'agents', lines: [NONE, CLAUDE_NOWHERE, OPENCODE_NOWHERE, CODEX_NOWHERE, ASK], buttons: ALL_BUTTONS },
       ]);
     });
 
@@ -219,15 +229,17 @@ describe('explanations', () => {
         NONE,
         "Hmm. I looked on your PATH, in %USERPROFILE%\\.local\\bin and in npm's global folder, and Claude Code wasn't in any of them.",
         "I looked on your PATH and in %USERPROFILE%\\.opencode\\bin, and OpenCode wasn't in either.",
+        "I looked on your PATH and in %LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin, and Codex wasn't in either.",
         ASK,
       ]);
     });
 
     it("after a file was picked that can't be run: says which file, in place of the places looked in", () => {
-      expect(blocks({ claude: { state: 'missing', path: '/opt/claude' }, opencode: { state: 'missing', path: '/opt/opencode' } })[0].lines).toEqual([
+      expect(blocks({ claude: { state: 'missing', path: '/opt/claude' }, opencode: { state: 'missing', path: '/opt/opencode' }, codex: { state: 'missing', path: '/opt/codex' } })[0].lines).toEqual([
         NONE,
         "/opt/claude isn't a program I can run.",
         "/opt/opencode isn't a program I can run.",
+        "/opt/codex isn't a program I can run.",
         ASK,
       ]);
     });
@@ -236,6 +248,7 @@ describe('explanations', () => {
       const result = blocks({
         claude: { state: 'too-old', path: '/opt/claude', version: '2.0.1' },
         opencode: { state: 'too-old', path: '/opt/opencode', version: '1.18.35' },
+        codex: { state: 'too-old', path: '/opt/codex', version: '0.100.0' },
       });
       expect(result).toEqual([
         {
@@ -244,6 +257,7 @@ describe('explanations', () => {
             NONE,
             `This Claude Code is v2.0.1, and I need v${MIN_CLAUDE_VERSION} or newer. Run claude update in a terminal, then I'll look again.`,
             `This OpenCode is v1.18.35, and I need v${MIN_OPENCODE_VERSION} or newer. Run opencode upgrade in a terminal, then I'll look again.`,
+            `This Codex is v0.100.0, and I need v${MIN_CODEX_VERSION} or newer. Run codex update in a terminal, then I'll look again.`,
           ],
           buttons: ALL_BUTTONS,
         },
@@ -251,17 +265,25 @@ describe('explanations', () => {
     });
 
     it("broken: says it didn't tell its version, and on Windows why an npm launcher doesn't work", () => {
-      const broken = { claude: { state: 'broken', path: '/opt/claude' }, opencode: { state: 'broken', path: '/opt/opencode' } } as const;
+      const broken = {
+        claude: { state: 'broken', path: '/opt/claude' },
+        opencode: { state: 'broken', path: '/opt/opencode' },
+        codex: { state: 'broken', path: '/opt/codex' },
+      } as const;
       expect(blocks(broken, 'darwin')[0].lines).toEqual([
         NONE,
         "/opt/claude is there, but it didn't tell me its version.",
         "/opt/opencode is there, but it didn't tell me its version.",
+        "/opt/codex is there, but it didn't tell me its version.",
       ]);
-      expect(blocks({ ...broken, claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' } }, 'win32')[0].lines).toEqual([
+      const npmLaunchers = { ...broken, claude: { state: 'broken', path: 'C:\\npm\\claude.cmd' }, codex: { state: 'broken', path: 'C:\\npm\\codex.cmd' } } as const;
+      expect(blocks(npmLaunchers, 'win32')[0].lines).toEqual([
         NONE,
         "C:\\npm\\claude.cmd is there, but it didn't tell me its version.",
         "If Claude Code came from npm, its launcher can't run on its own; Anthropic's native installer gives me a claude.exe I can use.",
         "/opt/opencode is there, but it didn't tell me its version.",
+        "C:\\npm\\codex.cmd is there, but it didn't tell me its version.",
+        "If Codex came from npm, its launcher can't run on its own; Codex's own installer gives me a codex.exe I can use.",
       ]);
     });
 
@@ -271,8 +293,8 @@ describe('explanations', () => {
       const fromEnv = (claude: ProgramCheck) => blocks({ claudeFromEnv: true, claude })[0];
       expect(fromEnv({ state: 'missing', path: '/opt/claude' })).toEqual({
         check: 'agents',
-        lines: [NONE, SET, "There's nothing there I can run.", CHANGE, OPENCODE_NOWHERE, ASK],
-        buttons: ['install-claude', 'find-opencode', 'install-opencode', 'look-again'],
+        lines: [NONE, SET, "There's nothing there I can run.", CHANGE, OPENCODE_NOWHERE, CODEX_NOWHERE, ASK],
+        buttons: ['install-claude', 'find-opencode', 'install-opencode', 'find-codex', 'install-codex', 'look-again'],
       });
       expect(fromEnv({ state: 'too-old', path: '/opt/claude', version: '2.0.1' }).lines.slice(1, 4)).toEqual([
         SET,
@@ -299,8 +321,13 @@ describe('explanations', () => {
       expect(blocks(moved)).toEqual([
         {
           check: 'agents',
-          lines: ["I couldn't use the coding agent that's switched on. Claude Code is here, but it's switched off: I can use it instead.", OPENCODE_NOWHERE, ASK],
-          buttons: ['use-claude', 'find-opencode', 'install-opencode', 'look-again'],
+          lines: [
+            "I couldn't use the coding agent that's switched on. Claude Code is here, but it's switched off: I can use it instead.",
+            OPENCODE_NOWHERE,
+            CODEX_NOWHERE,
+            ASK,
+          ],
+          buttons: ['use-claude', 'find-opencode', 'install-opencode', 'find-codex', 'install-codex', 'look-again'],
         },
       ]);
     });
@@ -343,7 +370,11 @@ describe('explanations', () => {
 
     it("is left out when nothing is missing: git that doesn't run, agents too old or broken", () => {
       expect(blocks({ lookedAgain: true, git: { state: 'broken', path: '/usr/bin/git' } })[0].lines).not.toContain(NEW_TERMINAL);
-      const oldOrBroken = { claude: { state: 'too-old', path: '/p', version: '2.0.1' }, opencode: { state: 'broken', path: '/q' } } as const;
+      const oldOrBroken = {
+        claude: { state: 'too-old', path: '/p', version: '2.0.1' },
+        opencode: { state: 'broken', path: '/q' },
+        codex: { state: 'broken', path: '/r' },
+      } as const;
       expect(blocks({ lookedAgain: true, ...oldOrBroken })[0].lines).not.toContain(NEW_TERMINAL);
     });
 
@@ -354,6 +385,8 @@ describe('explanations', () => {
         claude: { state: 'missing', path: '/opt/claude' },
         opencodeFromEnv: true,
         opencode: { state: 'missing', path: '/opt/opencode' },
+        codexFromEnv: true,
+        codex: { state: 'missing', path: '/opt/codex' },
       });
       expect(block.lines).not.toContain(NEW_TERMINAL);
     });
@@ -382,6 +415,7 @@ describe('agentStep', () => {
     expect(step(both, { ticked: ['claude', 'opencode'], defaultAgent: 'claude' }).rows).toEqual([
       { name: 'claude', works: true, ticked: true, version: '2.1.319', buttons: [] },
       { name: 'opencode', works: true, ticked: true, version: '2.2.7', buttons: [] },
+      { name: 'codex', works: false, ticked: false, buttons: ['install-codex', 'find-codex'] },
     ]);
   });
 

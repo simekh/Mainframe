@@ -9,6 +9,7 @@ const view = (o: { claude: [ProgramCheck, boolean]; opencode: [ProgramCheck, boo
   agents: {
     claude: { check: o.claude[0], fromEnv: false, ticked: o.claude[1] },
     opencode: { check: o.opencode[0], fromEnv: false, ticked: o.opencode[1] },
+    codex: { check: missing, fromEnv: false, ticked: false },
   },
   defaultAgent: o.defaultAgent,
   runDefault: o.runDefault,
