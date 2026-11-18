@@ -1,34 +1,21 @@
-import { posix, win32 } from 'node:path';
+import { ADAPTERS } from '../agents/adapters';
+import { pathFor, pathKey } from './findExecutable';
 
-// Keys that describe the terminal or Claude Code session the app was started from. A session
-// that inherits them misdetects its terminal or behaves as a nested Claude Code session.
-// Other CLAUDE_CODE_* keys are the owner's own settings and pass through.
+// Keys that describe the terminal the app was started from, which a session that inherits them misdetects.
 const DROPPED_KEYS = new Set([
   'TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'TERM_SESSION_ID', 'TERM_FEATURES', 'TERMINFO_DIRS',
   'ITERM_SESSION_ID', 'ITERM_PROFILE', 'LC_TERMINAL', 'LC_TERMINAL_VERSION', '__CFBundleIdentifier',
   'WT_SESSION', 'WT_PROFILE_ID',
-  'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_ENTRYPOINT',
-  'CLAUDE_CODE_EXECPATH', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
-  'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_CODE_SESSION_ID',
+  ...Object.values(ADAPTERS).flatMap((a) => a.droppedEnv),
   // Added by launching through `npm start` (and NODE_ENV by Vite); the owner's shell never sets them.
   'INIT_CWD', 'NODE', 'COLOR', 'NODE_ENV',
+  // Set by scripts/start.mjs for Mainframe itself, not for its sessions.
+  'MAINFRAME_UPDATE_FILE', 'MAINFRAME_UPDATE_FAILED',
 ]);
 
 function isDropped(key: string): boolean {
   return DROPPED_KEYS.has(key) || key.startsWith('ELECTRON_') || key.startsWith('npm_');
 }
-
-/**
- * The key a program's search path is under: PATH on POSIX; on Windows, whichever key spells it in
- * any case (the first, as `Path` is what Windows itself uses).
- */
-export function pathKey(env: Record<string, string | undefined>, platform: NodeJS.Platform): string | undefined {
-  if (platform !== 'win32') return env.PATH === undefined ? undefined : 'PATH';
-  return Object.keys(env).find((key) => key.toUpperCase() === 'PATH');
-}
-
-/** The path module for the platform's own paths: Windows' backslashes and `;`, or POSIX's. */
-export const pathFor = (platform: NodeJS.Platform) => (platform === 'win32' ? win32 : posix);
 
 // npm puts every node_modules/.bin up the tree and its node-gyp shim at the front of PATH.
 function cleanPath(path: string, platform: NodeJS.Platform): string {

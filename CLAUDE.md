@@ -22,6 +22,12 @@ One Mainframe, one window, several projects open at the same time (Damela and Wo
 
 **Why:** the owner wants to work on several projects at once without juggling apps. On 2026-11-07 they chose one Mainframe with all projects in one window over a copy per project: one Dock icon, one Quit that ends and later restores every session, and one place that can show what every project needs from them. Each one-project assumption added now is one the multi-project branch has to find and take out.
 
+## Release notes → one line per change users would notice (since 2026-11-17)
+
+Each change users would notice adds one line in `CHANGELOG.md` as it merges, directly under the `## Unreleased` heading and above any lines already there, so git places it by the heading and a release cut in between can't take it: `New: …` for something they can now do, `Fixed: …` for something that was wrong. One plain sentence, no card numbers, no code names. Changes nobody would notice (refactors, tests, tooling, docs) add nothing. `npm run release` turns the section into a release. After merging, check the line sits under `## Unreleased`: one added before a release and merged after it can land under that release's heading.
+
+**Why:** users read these lines in the update dialog and decide from them whether to update. A line written weeks later, from the git log, is a guess; written as the change merges, it's right.
+
 ## Keep code in proportion to what it does
 
 - **Task reviews judge proportion.** Each task review asks whether the code is the simplest thing that meets the requirement. A diff much larger than its requirement is an Important finding. The exception is when the size buys real safety, and the review then names what that safety is.
@@ -47,7 +53,17 @@ A branch without a plan (a fix, a config tweak) gets both once its work is done 
 
 - It reads the command text before the shell runs it. Write literal absolute paths (no `$VAR`, no `~`), run `git commit` and `git push` as separate commands, and run git directly (not through `bash -c`, `eval`, `xargs` or `sudo`).
 - A merge commit with changes of its own (a conflict resolution) needs a review. For a merge, commits already on `origin/main` pass.
+- It covers a `diag-*` branch's push too. The owner's standing waiver (2026-11-13) lets such a branch be pushed without the runs: record its tip in both files and push. It holds only while the branch stays throwaway: never merged, nor cherry-picked from; real fixes go on their own branch and get both runs.
 - The registration has `"onFailure": "block"`: a gate that crashes or times out blocks the command.
 - This file and `.claude/hooks` are in git (re-included in `.gitignore` past the owner's global ignore). `.claude/settings.local.json` stays local: it registers the gate, which needs this machine's `.git/claude-*` records. Another machine registers it the same way, as a PreToolUse hook on `Bash` that runs the script with `"onFailure": "block"`.
 - When this folder is on a branch without the script, the registration blocks the Bash commands that mention push, merge or pull. A merge that brings the script in runs as one command from a branch that has it: `git -C <repo> checkout main && git -C <repo> merge <branch>`.
 - The script is an identical copy of Damela's, Word²'s and SmasHit's: change all four together. Tests: `bash .claude/hooks/code-review-gate.test.sh` (throwaway repo); run them after any change.
+
+## Troubleshooting Windows or Linux: a narrowed CI run (since 2026-11-13)
+
+This Mac can't run Windows, so a Windows-only failure is checked on CI. Don't wait on a full run of all three systems to see one test: run only that system and those tests by hand (how: the comment at the top of `.github/workflows/test.yml`).
+
+- Find your run with `gh run list --workflow test.yml --event workflow_dispatch --branch <branch> -L 1`, a few seconds after starting it: the run appears a moment later, and other sessions start runs too. Check its start time, then `gh run watch <id> --exit-status`.
+- Put throwaway diagnostics (logging, probe tests) on a branch named `diag-*`: pushing it runs nothing, so only the narrowed run you start goes, and it needs no reviews (the gate's standing waiver above). Never open a pull request from it (that runs everything); delete it once CI has answered.
+
+**Why:** on 2026-11-13 three Windows-only failures took a full CI run (10-12 minutes) per attempt to diagnose. The owner asked for quicker loops; a Windows VM on this Mac was weighed and left for later.

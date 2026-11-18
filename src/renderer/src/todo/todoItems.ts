@@ -1,4 +1,4 @@
-import type { TaskView, TodoCard, TodoItemRef, TodoNote, TodoSource, TodoView } from '../../../shared/types';
+import { isEnded, type TaskView, type TodoCard, type TodoItemRef, type TodoNote, type TodoSource, type TodoView } from '../../../shared/types';
 
 /** One row of the Todo panel's list: a synced card or one of the owner's notes. */
 export interface TodoItem {
@@ -11,26 +11,34 @@ export interface TodoItem {
   number: string | null;
   labels: string[];
   forOwner: boolean;
-  /** Start; Reopen of the closed task that has this card; none for a card for the owner that has no task. */
-  action: { kind: 'start' } | { kind: 'reopen'; taskId: string } | null;
+  /**
+   * Start; Reopen of the card's task while it is Paused on the board; Continue of its task, or a note's, that was put
+   * back or finished; none for a card for the owner that has no task.
+   */
+  action: { kind: 'start' } | { kind: 'reopen'; taskId: string } | { kind: 'continue'; taskId: string } | null;
   card: TodoCard | null;
   note: TodoNote | null;
 }
 
 /**
- * The list as the panel shows it: the cards in the source's order, then the notes. A card has one task for good. It is
- * hidden while that task is open, even when a sync brings it back before the task has moved it: Start would refuse it.
- * A task matches its card on the card's id alone: the source's name is each sync's own answer.
+ * The list as the panel shows it: the cards in the source's order, then the notes. A card has one task for good,
+ * discarded ones aside: a discarded attempt is given up, so its card starts afresh. It is hidden while that task is
+ * open, even when a sync brings it back before the task has moved it: Start would refuse it. A task matches its card on
+ * the card's id alone: the source's name is each sync's own answer.
  */
 export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
   const taskOf = new Map<string, TaskView>();
-  for (const t of tasks) if (t.card !== null) taskOf.set(t.card.id, t);
+  for (const t of tasks) if (t.card !== null && t.place !== 'discarded') taskOf.set(t.card.id, t);
   const cards = view.cards.flatMap((card): TodoItem[] => {
     const task = taskOf.get(card.id);
     if (task?.session) return [];
-    // A card marked for the owner has no Start in the list, though its task, once closed, can be reopened. The owner
-    // starts it from its ticket.
-    const action: TodoItem['action'] = task ? { kind: 'reopen', taskId: task.id } : card.forOwner ? null : { kind: 'start' };
+    // A card marked for the owner has no Start in the list, though its task, once closed, can be reopened or continued.
+    // The owner starts it from its ticket.
+    const action: TodoItem['action'] = task
+      ? { kind: task.place === null ? 'reopen' : 'continue', taskId: task.id }
+      : card.forOwner
+        ? null
+        : { kind: 'start' };
     const { id, title, description, number, labels, forOwner } = card;
     return [{ key: `card:${id}`, kind: 'card', id, title, body: description, number, labels, forOwner, action, card, note: null }];
   });
@@ -44,7 +52,7 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
       number: null,
       labels: [],
       forOwner: false,
-      action: { kind: 'start' },
+      action: note.taskId === undefined ? { kind: 'start' } : { kind: 'continue', taskId: note.taskId },
       card: null,
       note,
     }),
@@ -56,8 +64,8 @@ export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
 export const visibleItems = (items: TodoItem[], hideMine: boolean): TodoItem[] =>
   hideMine ? items.filter((item) => !item.forOwner) : items;
 
-/** Whether the item's ticket has a Start: any item that does not offer Reopen, a card for the owner with no task too. */
-export const startsFromTicket = (item: TodoItem): boolean => item.action?.kind !== 'reopen';
+/** Whether the item's ticket has a Start: any item that offers neither Reopen nor Continue, a card for the owner with no task too. */
+export const startsFromTicket = (item: TodoItem): boolean => item.action === null || item.action.kind === 'start';
 
 /** What a ticket's Start hands the Todo panel: the choice of no questions, a note's edits, and the owner's own start of their card. */
 export interface StartOptions {
@@ -68,6 +76,31 @@ export interface StartOptions {
 
 /** The task a Reopen would reopen, for an item's `action`. */
 export const reopenTaskId = (action: TodoItem['action']): string | null => (action?.kind === 'reopen' ? action.taskId : null);
+
+/**
+ * The Finished tab's tasks: the finished and discarded ones, the newest first, whose title or card number holds the
+ * query, in any case and with or without a leading `#`.
+ */
+export function finishedTasks(tasks: TaskView[], query: string): TaskView[] {
+  const bare = (s: string) => s.toLowerCase().replace(/^#/, '');
+  const q = bare(query.trim());
+  return tasks
+    .filter((t) => isEnded(t.place))
+    .filter((t) => t.title.toLowerCase().includes(q) || (t.card?.number != null && bare(t.card.number).includes(q)))
+    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
+}
+
+/** Each locale's day-and-short-month format, made once: the Finished tab formats a date for every row. */
+const dayMonth = new Map<string | undefined, Intl.DateTimeFormat>();
+
+/** A Finished row's line: where the task went and when, day and short month in `locale` (the system's by default). */
+export function endedLine(task: TaskView, locale?: string): string {
+  const what = task.place === 'discarded' ? 'Discarded' : 'Finished';
+  let format = dayMonth.get(locale);
+  if (!format) dayMonth.set(locale, (format = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })));
+  const when = task.endedAt === null ? '' : ` ${format.format(task.endedAt)}`;
+  return `${what}${when}${task.card === null ? ' · no card' : ''}`;
+}
 
 /** Where in its service the list is: the board or project, and the list. The service's name goes before it. */
 export function sourcePlace(source: TodoSource): string {

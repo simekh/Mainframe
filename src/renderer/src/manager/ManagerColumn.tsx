@@ -36,6 +36,8 @@ export default function ManagerColumn(props: {
   /** Folded or off, it stays mounted, so its terminal keeps its output and its size. */
   state: PanelState;
   onOpenChange(open: boolean): void;
+  /** Open under the floating Todo panel: its strip brings it up rather than folding it. */
+  behind: boolean;
 }) {
   const project = useProject();
   const status = createMemo(() => managerStateOf(project.dir));
@@ -48,7 +50,7 @@ export default function ManagerColumn(props: {
     props.onPinnedChange(!props.pinned);
     props.onOpenChange(true);
   };
-  const handOff = createFoldHandOff('Fold the manager', () => props.state === 'open', (open) =>
+  const handOff = createFoldHandOff('Fold the manager', () => props.state === 'open' && !props.behind, (open) =>
     props.onOpenChange(open),
   );
 

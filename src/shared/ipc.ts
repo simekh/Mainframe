@@ -1,11 +1,18 @@
 import type {
+  AgentChoice,
+  AgentName,
+  CheckResult,
   ChangedFile,
+  DiscardPreview,
   ClipboardPaste,
+  DiffView,
   ManagerView,
+  OpencodeChoices,
   PtyDataEvent,
   ProjectView,
   PtyExitEvent,
   RendererConfig,
+  SettingsView,
   SetupView,
   StartCheck,
   StatusEvent,
@@ -14,6 +21,7 @@ import type {
   TodoNote,
   TodoNoteDraft,
   TodoView,
+  UpdateView,
 } from './types';
 
 export const IPC = {
@@ -21,19 +29,29 @@ export const IPC = {
   getSetup: 'setup:get',
   setupChanged: 'setup:changed',
   setupLookAgain: 'setup:look-again',
-  setupFindClaude: 'setup:find-claude',
+  setupFindAgent: 'setup:find-agent',
+  setupUseAgent: 'setup:use-agent',
   setupChooseProject: 'setup:choose-project',
   listProjects: 'projects:list',
   openProject: 'projects:open',
   closeProject: 'projects:close',
+  moveProject: 'projects:move',
   projectsChanged: 'projects:changed',
   showProject: 'projects:show',
   listTasks: 'tasks:list',
   startCheck: 'tasks:start-check',
+  codexClaudeMdNote: 'tasks:codex-claude-md-note',
   startTask: 'tasks:start',
   reopenTask: 'tasks:reopen',
   closeTask: 'tasks:close',
+  discardPreview: 'tasks:discard-preview',
+  discardTask: 'tasks:discard',
+  continueTask: 'tasks:continue',
   changedFiles: 'tasks:changed-files',
+  openDiff: 'diff:open',
+  getDiff: 'diff:get',
+  closeDiff: 'diff:close',
+  diffChanged: 'diff:changed',
   tasksChanged: 'tasks:changed',
   getManager: 'manager:get',
   restartManager: 'manager:restart',
@@ -42,12 +60,15 @@ export const IPC = {
   todoChanged: 'todo:changed',
   syncTodo: 'todo:sync',
   cancelTodoSync: 'todo:cancel-sync',
+  keepTodoSync: 'todo:keep-sync',
   confirmTodoTools: 'todo:confirm-tools',
   pickTodoList: 'todo:pick-list',
+  pickTodoModel: 'todo:pick-model',
   resetTodoSource: 'todo:reset-source',
   saveTodoNote: 'todo:save-note',
   deleteTodoNote: 'todo:delete-note',
   startTodoItem: 'todo:start-item',
+  putBackTask: 'todo:put-back',
   spawn: 'pty:spawn',
   write: 'pty:write',
   resize: 'pty:resize',
@@ -59,6 +80,19 @@ export const IPC = {
   resolvePaste: 'clipboard:resolve-paste',
   copyText: 'clipboard:copy-text',
   openLink: 'shell:open-link',
+  getSettings: 'settings:get',
+  settingsChanged: 'settings:changed',
+  setAgentTicked: 'settings:set-ticked',
+  setDefaultAgent: 'settings:set-default',
+  settingsFindAgent: 'settings:find-agent',
+  setAgentOptions: 'settings:set-options',
+  opencodeChoices: 'settings:opencode-choices',
+  showSettings: 'settings:show',
+  getUpdate: 'updates:get',
+  updateChanged: 'updates:changed',
+  checkForUpdates: 'updates:check',
+  installUpdate: 'updates:install',
+  menuCheckForUpdates: 'updates:menu-check',
 } as const;
 
 /**
@@ -71,7 +105,7 @@ export interface MainframeApi {
   platform: NodeJS.Platform;
   getConfig(): Promise<RendererConfig>;
   /**
-   * The setup screen to show, once main has checked git and claude: null when none is needed, which
+   * The setup screen to show, once main has checked git and the agents: null when none is needed, which
    * also means the projects have started. The project calls below are answered only from then on.
    */
   getSetup(): Promise<SetupView | null>;
@@ -79,27 +113,46 @@ export interface MainframeApi {
   onSetup(cb: (view: SetupView | null) => void): () => void;
   /** Checks again what was not found. Rejects when Mainframe can't start, and main then says why and ends the app. */
   setupLookAgain(): Promise<void>;
-  /** Asks for a claude file, and uses it if it works. Not offered when MAINFRAME_CLAUDE_BIN names the claude. */
-  setupFindClaude(): Promise<void>;
-  /** Asks for the first project's folder and starts Mainframe on it. */
-  setupChooseProject(): Promise<void>;
-  /** The open projects, in the order the owner opened them. */
+  /** Asks for the agent's program file, and uses it if it works. Not offered while the agent's env var names it. */
+  setupFindAgent(name: AgentName): Promise<void>;
+  /** At a later start whose ticked agents don't work: ticks this found agent, makes it the default, and starts. */
+  setupUseAgent(name: AgentName): Promise<void>;
+  /** Asks for the first project's folder and starts Mainframe on it with this choice of agents; rejects a choice that can't be used. */
+  setupChooseProject(choice: AgentChoice): Promise<void>;
+  /** The open projects, in the order the list shows them. */
   listProjects(): Promise<ProjectView[]>;
   /** Asks for a folder and opens it as a project; main says why when it can't. */
   openProject(): Promise<void>;
   /** Ends the project's sessions as Quit does, so they come back when it opens again. */
   closeProject(dir: string): Promise<void>;
+  /** Puts the open project at `to` in the list; the new list comes back through `onProjects`. */
+  moveProject(dir: string, to: number): Promise<void>;
   /** Every change to the open projects, with the whole list. */
   onProjects(cb: (projects: ProjectView[]) => void): () => void;
   /** A project the owner just opened, or picked again while it was open, to bring on screen. */
   onShowProject(cb: (dir: string) => void): () => void;
   listTasks(dir: string): Promise<TaskView[]>;
   startCheck(dir: string): Promise<StartCheck | null>;
-  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean }): Promise<TaskView>;
+  /** The Codex config file to list CLAUDE.md in, when Codex wouldn't read the project's; asked afresh each time. */
+  codexClaudeMdNote(dir: string): Promise<string | null>;
+  /** Without `agent`, the task runs on the default agent. */
+  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;
   closeTask(dir: string, taskId: string): void;
+  /** What a Discard of the paused task would lose. */
+  discardPreview(dir: string, taskId: string): Promise<DiscardPreview>;
+  /** Removes a paused task's worktree and branch, forced, and moves it to Discarded; rejects with why it couldn't. */
+  discardTask(dir: string, taskId: string): Promise<void>;
+  /** Brings a put-back, finished or discarded task back to the board, on its branch. */
+  continueTask(dir: string, taskId: string): Promise<TaskView>;
   /** What the task changed in its worktree since it left origin/HEAD; null without a worktree. */
   changedFiles(dir: string, taskId: string): Promise<ChangedFile[] | null>;
+  /** Opens the diff window on the task's changes, scrolled to `path`; reads them afresh each time. */
+  openDiff(dir: string, taskId: string, path: string): Promise<void>;
+  /** The diff window's current view; null before the first open. */
+  getDiff(): Promise<DiffView | null>;
+  onDiff(cb: (view: DiffView) => void): () => void;
+  closeDiff(): void;
   /** Every change to a project's tasks, with its whole list. */
   onTasks(cb: (e: { dir: string; tasks: TaskView[] }) => void): () => void;
   getManager(dir: string): Promise<ManagerView>;
@@ -114,10 +167,13 @@ export interface MainframeApi {
   syncTodo(dir: string): Promise<void>;
   /** Stops the project's running sync, which leaves the list and the view's error as they were; a later sync starts afresh. */
   cancelTodoSync(dir: string): Promise<void>;
+  keepTodoSync(dir: string): Promise<void>;
   /** Allows the tools the sync asked about to read the list, and syncs again. */
   confirmTodoTools(dir: string): Promise<void>;
   /** Picks the list the sync asked about, by its index in the ask, and syncs again. */
   pickTodoList(dir: string, index: number): Promise<void>;
+  /** Picks the model the sync asked about, by its id, saves it for every project, and syncs again. */
+  pickTodoModel(dir: string, id: string): Promise<void>;
   /** Forgets the allowed tools and the picked list; the cards and notes stay. */
   resetTodoSource(dir: string): Promise<void>;
   /** Adds a note, or changes the one with `id`. */
@@ -128,6 +184,11 @@ export interface MainframeApi {
    * starts only with `ownersCard`, which only the ticket's Start anyway sets: the owner chose it.
    */
   startTodoItem(dir: string, req: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }): Promise<TaskView>;
+  /**
+   * Puts a paused task back on the to-do list. A card's task has its agent move the card first, so this resolves only
+   * once that session has ended; rejects with why it couldn't.
+   */
+  putBackTask(dir: string, taskId: string): Promise<void>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;
@@ -143,4 +204,27 @@ export interface MainframeApi {
   onData(cb: (e: PtyDataEvent) => void): () => void;
   onExit(cb: (e: PtyExitEvent) => void): () => void;
   onStatus(cb: (e: StatusEvent) => void): () => void;
+  /** The Settings calls are the whole app's, for every open project at once; each rejects with why when it can't. */
+  getSettings(): Promise<SettingsView>;
+  /** Every saved change to Settings, with the whole view. */
+  onSettings(cb: (view: SettingsView) => void): () => void;
+  setAgentTicked(name: AgentName, ticked: boolean): Promise<void>;
+  setDefaultAgent(name: AgentName): Promise<void>;
+  /** Asks for the agent's program file, and uses it if it works. Not offered while the agent's env var names it. */
+  settingsFindAgent(name: AgentName): Promise<void>;
+  /** `managerAgent: null` goes back to OpenCode's own default. */
+  setAgentOptions(name: AgentName, patch: { managerAgent?: string | null; syncModel?: string }): Promise<void>;
+  opencodeChoices(): Promise<OpencodeChoices>;
+  /** Cmd+, or Ctrl+, from main: the page opens Settings unless the setup screen or another dialog shows. */
+  onShowSettings(cb: () => void): () => void;
+  /** The update calls are the whole app's, like Settings. Answers once the running version is known. */
+  getUpdate(): Promise<UpdateView>;
+  /** Every change to the update state, with the whole view. */
+  onUpdate(cb: (view: UpdateView) => void): () => void;
+  /** Checks the clone's remote now; never rejects, a failure comes back with why. */
+  checkForUpdates(): Promise<CheckResult>;
+  /** Quits and lets start.mjs update and start Mainframe again; rejects when the update must be made by hand. */
+  installUpdate(): Promise<void>;
+  /** Check for Updates… in the Mac menu: the page checks and says the result. */
+  onCheckForUpdates(cb: () => void): () => void;
 }

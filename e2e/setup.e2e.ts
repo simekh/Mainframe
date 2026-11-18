@@ -1,80 +1,12 @@
-import { copyFileSync, mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
-import os from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { findExecutable } from '../src/main/pty/findExecutable';
-import { localFiles } from '../src/main/pty/sessionHost';
-import { pathKey } from '../src/main/pty/spawnEnv';
-import { readSettings } from '../src/main/setup/settings';
 import { MIN_CLAUDE_VERSION } from '../src/shared/types';
-import { cleanUp, fakeClaude, launchApp, removeAfterTest } from './launch';
-import { answerDialogs, openedLinks, projectPane, repo } from './tasks';
+import { cleanUp, fakeClaude, launchApp } from './launch';
+import { answerDialogs, claudeFile, computer, openedLinks, projectPane, repo, savedSettings } from './tasks';
 
 test.afterEach(cleanUp);
 
-const claudeFile = process.platform === 'win32' ? 'claude.exe' : 'claude';
-
-/** The git on the developer's own PATH, which the stand-in computers are given. */
-function systemGit(): string {
-  const found = findExecutable('git', {
-    env: process.env as Record<string, string>,
-    cwd: process.cwd(),
-    platform: process.platform,
-    files: localFiles,
-  });
-  if (found === null) throw new Error('the setup tests need git on PATH');
-  return found;
-}
-
-/**
- * A computer with nothing but node, and git unless `o.git` is false: the app's PATH holds only those,
- * and HOME, USERPROFILE and APPDATA name an empty folder (on Windows one with the AppData\Roaming
- * Electron needs), so no claude of the developer's can be found and `MAINFRAME_CLAUDE_BIN` is unset.
- * On POSIX PATH is a folder of links, as the stand-in for claude is a script that runs `node`; on
- * Windows it is node's own folder and Git's own folder.
- */
-function computer(o: { git?: boolean } = {}) {
-  const home = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-home-')));
-  let dirs: string[];
-  if (process.platform === 'win32') {
-    // Electron on Windows crashes at launch (exit 0x80000003) when USERPROFILE names a folder with no
-    // AppData\Roaming in it. CI run 3: with only that folder in it, Electron launched; with an empty one,
-    // one holding only AppData\Local, or C:\Users\Public (no AppData at all), it crashed.
-    mkdirSync(join(home, 'AppData', 'Roaming'), { recursive: true });
-    dirs = [dirname(process.execPath), ...(o.git === false ? [] : [dirname(systemGit())])];
-  } else {
-    const bin = removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-bin-')));
-    symlinkSync(process.execPath, join(bin, 'node'));
-    if (o.git !== false) symlinkSync(systemGit(), join(bin, 'git'));
-    dirs = [bin];
-  }
-  const env: Record<string, string | undefined> = {
-    MAINFRAME_CLAUDE_BIN: undefined,
-    // Windows spells it `Path` in process.env, and the app must get one key, not two.
-    [pathKey(process.env, process.platform) ?? 'PATH']: dirs.join(delimiter),
-    HOME: home,
-    USERPROFILE: home,
-    APPDATA: home,
-  };
-  return {
-    env,
-    home,
-    /** Puts a copy of the stand-in where the native installer puts claude, and returns its path. */
-    installClaude(): string {
-      const file = join(home, '.local', 'bin', claudeFile);
-      mkdirSync(dirname(file), { recursive: true });
-      copyFileSync(fakeClaude, file);
-      return file;
-    },
-  };
-}
-
 const dialogCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { dialogCalls?: number }).dialogCalls);
-
-const savedSettings = (dataDir: string) =>
-  readSettings(dataDir, (msg) => {
-    throw new Error(msg);
-  });
 
 /** One of the setup screen's parts: a check or a button. */
 const setupItem = (page: Page, name: string) => page.getByTestId(`setup-${name}`);
@@ -117,12 +49,12 @@ test('a first start welcomes you, finds everything and asks for the first projec
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: claude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true, bin: claude } } });
   expect(await openProjectMenuItem(app)).toEqual(process.platform === 'darwin' ? { enabled: true } : null);
   await app.close();
 });
 
-test('claude missing: Find claude… checks the file and saves it', async () => {
+test('no agent works: Find claude… checks the file and saves it', async () => {
   const pc = computer();
   const project = repo();
   const { app, page, dataDir } = await launchApp(pc.env, undefined, { firstStart: true });
@@ -132,6 +64,7 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
   await expect(setupItem(page, 'claude')).toContainText('not found');
   await expect(setupItem(page, 'find-claude')).toBeVisible();
   await expect(setupItem(page, 'install-claude')).toBeVisible();
+  await expect(setupItem(page, 'install-opencode')).toBeVisible();
   await expect(setupItem(page, 'look-again')).toBeVisible();
   await expect(setupItem(page, 'choose-project')).toHaveCount(0);
 
@@ -143,13 +76,13 @@ test('claude missing: Find claude… checks the file and saves it', async () => 
 
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'found');
   await expect(setupItem(page, 'claude')).toContainText(`${fakeClaude} · v2.1.999`);
-  expect(savedSettings(dataDir)).toEqual({ claudeBin: fakeClaude });
+  expect(savedSettings(dataDir)).toEqual({ agents: { claude: { bin: fakeClaude } } });
 
   await answerDialogs(app, project);
   await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: fakeClaude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true, bin: fakeClaude } } });
   await app.close();
 });
 
@@ -166,7 +99,8 @@ test('a claude too old says to update', async () => {
   await expect(page.getByTestId('setup')).toContainText(update);
   await expect(setupItem(page, 'look-again')).toBeVisible();
   await expect(setupItem(page, 'find-claude')).toBeVisible();
-  await expect(setupItem(page, 'install-claude')).toHaveCount(0);
+  // With no agent working, the agents block offers every agent's link.
+  await expect(setupItem(page, 'install-opencode')).toBeVisible();
 
   await setupItem(page, 'look-again').click();
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'looking');
@@ -204,7 +138,7 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   const pc = computer();
   const project = repo();
   const gone = join(pc.home, 'elsewhere', claudeFile);
-  const { app, page, dataDir } = await launchApp(pc.env, project, { settings: { welcomeSeen: true, claudeBin: gone } });
+  const { app, page, dataDir } = await launchApp(pc.env, project, { settings: { welcomeSeen: true, agents: { claude: { bin: gone } } } });
 
   await expect(page.getByText('Something moved since last time, so I had another look around.')).toBeVisible();
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
@@ -217,11 +151,11 @@ test("a later start whose claude has moved comes back with 'Something moved'", a
   await boardShows(page, project);
   await expect(page.getByTestId('new-task')).toBeVisible();
   await expect(page.getByTestId('setup')).toHaveCount(0);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, claudeBin: claude });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, agents: { claude: { bin: claude } } });
   await app.close();
 });
 
-test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
+test('with MAINFRAME_CLAUDE_BIN set, its path is not saved', async () => {
   const pc = computer();
   const project = repo();
   const env = { ...pc.env, MAINFRAME_CLAUDE_BIN: fakeClaude };
@@ -235,11 +169,11 @@ test('with MAINFRAME_CLAUDE_BIN set nothing is saved', async () => {
   await setupItem(page, 'choose-project').click();
 
   await boardShows(page, project);
-  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true });
+  expect(savedSettings(dataDir)).toEqual({ welcomeSeen: true, defaultAgent: 'claude', agents: { claude: { enabled: true } } });
   await app.close();
 });
 
-test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and nothing is saved', async () => {
+test('with MAINFRAME_CLAUDE_BIN naming nothing, Find claude… is not offered and nothing is saved', async () => {
   const pc = computer();
   pc.installClaude();
   // A claude is findable, but the variable names the only place looked at.
@@ -249,7 +183,7 @@ test('with MAINFRAME_CLAUDE_BIN naming nothing, only Look again is offered and n
   await expect(setupItem(page, 'claude')).toHaveAttribute('data-state', 'missing');
   await expect(page.getByTestId('setup')).toContainText(`MAINFRAME_CLAUDE_BIN is set to ${nowhere}`);
   await expect(setupItem(page, 'look-again')).toBeVisible();
-  for (const other of ['find-claude', 'install-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
+  for (const other of ['find-claude', 'choose-project']) await expect(setupItem(page, other)).toHaveCount(0);
   expect(savedSettings(dataDir)).toEqual({});
   await app.close();
 });

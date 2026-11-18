@@ -1,0 +1,51 @@
+<style>
+  .w { width:100%; background:#080c10; border-radius:12px; height:360px; position:relative; overflow:hidden; font:13px/1.4 Inter, system-ui, sans-serif; color:#f0f4f7; margin-bottom:16px; }
+  .lights { position:absolute; top:16px; left:14px; display:flex; gap:7px; }
+  .lights i { width:11px; height:11px; border-radius:50%; background:#394752; display:block; }
+  .top { position:absolute; top:0; left:0; right:0; height:46px; display:flex; align-items:center; padding:6px 8px 4px 80px; gap:6px; }
+  .tb { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 8px; border-radius:6px; color:#a0afbd; }
+  .tb svg { width:15px; height:15px; }
+  .bar { flex:1; display:flex; align-items:center; gap:14px; margin-left:16px; color:#a0afbd; }
+  .bar .chip { color:#f0f4f7; background:#10161c; border:1px solid #29343d; border-radius:6px; padding:3px 8px; }
+  .bar .r { margin-left:auto; display:flex; align-items:center; gap:6px; }
+  kbd { border:1px solid #394752; border-radius:4px; padding:0 5px; font:11px 'JetBrains Mono', monospace; color:#c5ced7; }
+  .cog { width:30px; height:30px; display:grid; place-items:center; border-radius:6px; color:#a0afbd; outline:2px solid #67d9ed; outline-offset:-2px; margin-left:6px; }
+  .cog svg { width:15px; height:15px; }
+  .rail { position:absolute; top:46px; left:8px; bottom:8px; width:160px; background:#0e141a; border:1px solid #29343d; border-radius:12px; }
+  .rh { height:46px; display:flex; align-items:center; padding:6px 16px 4px; font:600 13px Sora, Inter, sans-serif; }
+  .pane { position:absolute; top:46px; bottom:8px; background:#10161c; border:1px solid #29343d; border-radius:12px; }
+  .bar2 { position:absolute; top:0; height:46px; display:flex; align-items:center; gap:14px; color:#a0afbd; }
+</style>
+
+<h2>The cog at the far right of the top row</h2>
+<p class="subtitle">After "Next that needs you", outlined in cyan. With two projects side by side, it sits at the end of the right-hand project's bar: there is always one cog, in the window's top-right corner.</p>
+
+<div class="label">One project on screen</div>
+<div class="w">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="top">
+    <span class="tb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/></svg>Projects</span>
+    <div class="bar"><span class="chip">Damela</span><span>Todo</span><span>Manager</span>
+      <span class="r"><kbd>Ctrl</kbd><kbd>Tab</kbd> Next that needs you
+        <span class="cog" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+      </span>
+    </div>
+  </div>
+  <div class="rail"><div class="rh">Projects</div></div>
+  <div class="pane" style="left:176px; right:8px"></div>
+</div>
+
+<div class="label">Two projects side by side</div>
+<div class="w">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="top" style="right:auto"><span class="tb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M6 2.75v10.5"/></svg>Projects</span></div>
+  <div class="bar2" style="left:200px; right:52%"><span class="chip" style="color:#f0f4f7;background:#10161c;border:1px solid #29343d;border-radius:6px;padding:3px 8px">Damela</span><span>Todo</span><span>Manager</span></div>
+  <div class="bar2" style="left:52%; right:8px"><span class="chip" style="color:#f0f4f7;background:#10161c;border:1px solid #29343d;border-radius:6px;padding:3px 8px">Word2</span><span>Todo</span><span>Manager</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:6px"><kbd>Ctrl</kbd><kbd>Tab</kbd> Next that needs you
+      <span class="cog" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+    </span>
+  </div>
+  <div class="rail"><div class="rh">Projects</div></div>
+  <div class="pane" style="left:176px; right:calc(48% + 4px)"></div>
+  <div class="pane" style="left:52%; right:8px"></div>
+</div>

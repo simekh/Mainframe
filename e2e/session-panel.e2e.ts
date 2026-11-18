@@ -8,7 +8,7 @@ import {
 
 test.afterEach(cleanUp);
 
-const CLOSED_NOTE = 'Closed. Reopen continues this chat.';
+const PAUSED_NOTE = 'Paused. Reopen continues this chat.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
 
@@ -36,7 +36,7 @@ test('the header shows the task, project and branch, with Close session and then
 
   await page.getByTestId('close-session').click();
   await expect(panel.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'dot');
-  await expect(state.locator('.label')).toHaveText('Closed');
+  await expect(state.locator('.label')).toHaveText('Paused');
   await expect(state.locator('.age')).toHaveText('just now');
   await expect(page.getByTestId('close-session')).toHaveCount(0);
   await expect(page.getByTestId('panel-reopen')).toHaveText('Reopen');
@@ -53,19 +53,19 @@ test('a task closed during this run keeps its terminal; one closed before it sho
   const first = await launchApp();
   const id = await startTask(first.page, 'Fix login');
   await first.page.getByTestId('close-session').click();
-  await expect(cardIn(first.page, 'closed', id)).toBeVisible();
+  await expect(cardIn(first.page, 'paused', id)).toBeVisible();
   await expect.poll(() => screen(first.page, id)).toContain('[Process exited]');
   await expect(first.page.locator('.well > .terminal:not(.terminal--hidden)')).toBeVisible();
-  await expect(first.page.getByText(CLOSED_NOTE)).toHaveCount(0);
+  await expect(first.page.getByText(PAUSED_NOTE)).toHaveCount(0);
   await first.app.close();
 
   const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: first.dataDir });
   await card(page, id).click();
   await expect(page.getByTestId('panel-title')).toHaveText('Fix login');
-  await expect(page.getByText(CLOSED_NOTE)).toBeVisible();
+  await expect(page.getByText(PAUSED_NOTE)).toBeVisible();
 
   await page.getByTestId('panel-reopen').click();
-  await expect(page.getByText(CLOSED_NOTE)).toHaveCount(0);
+  await expect(page.getByText(PAUSED_NOTE)).toHaveCount(0);
   await expect.poll(() => screen(page, id)).toContain('$');
   await app.close();
 });
@@ -76,14 +76,13 @@ test('changed files lists what the task changed in its worktree', async () => {
   await startTask(page, 'Fix login');
   const files = page.getByTestId('changed-files');
   const heading = files.locator('.pane-heading');
-  // fake-claude makes no worktree: git finds none yet while the session runs.
+  // fake-claude has made the worktree, as `claude -w fix-login` does, and nothing has changed in it yet.
   await expect(files).toHaveAttribute('data-count', '0');
   await expect(heading.locator('.label')).toHaveText('No changes yet');
   await expect(heading).toBeDisabled();
 
-  // What `claude -w fix-login` would do, then a commit and an untracked file.
+  // A commit and an untracked file in it.
   const worktree = join(main, '.claude', 'worktrees', 'fix-login');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-fix-login', worktree, 'origin/stage');
   writeFileSync(join(worktree, 'a.txt'), 'a\n');
   git('-C', worktree, 'add', 'a.txt');
   git('-C', worktree, 'commit', '-m', 'a');
@@ -119,9 +118,8 @@ test('switching tasks resizes no terminal off screen, and none whose panel looks
   const { app, page } = await launchApp({}, main);
   const files = page.getByTestId('changed-files');
   const a = await startTask(page, 'Alpha');
-  // Three changed files in Alpha's worktree, as `claude -w alpha` and its edits would leave them.
+  // Three changed files in the worktree fake-claude made for Alpha, as its edits would leave them.
   const worktree = join(main, '.claude', 'worktrees', 'alpha');
-  git('-C', main, 'worktree', 'add', '-b', 'worktree-alpha', worktree, 'origin/stage');
   for (const name of ['a.txt', 'b.txt', 'c.txt']) writeFileSync(join(worktree, name), `${name}\n`);
   await expect(files).toHaveAttribute('data-count', '3', { timeout: 12_000 });
   await settled(page);

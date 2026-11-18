@@ -185,6 +185,158 @@ test('a click in the list focuses a project and leaves the others on screen; Cmd
   await app.close();
 });
 
+/** The open projects, top to bottom, as the list shows them. */
+const listOrder = (page: Page) =>
+  page.getByTestId('rail-project').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-project')));
+
+test('Alt+Up and Alt+Down on a row move its project in the list, Cmd+1 follows, and a restart keeps the order', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  await row(page, a).getByTestId('rail-show').focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect.poll(() => listOrder(page)).toEqual([b, a, c]);
+  await expect(row(page, a).getByTestId('rail-show')).toBeFocused();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect.poll(() => listOrder(page)).toEqual([b, c, a]);
+  // Already last: nothing moves.
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect.poll(() => listOrder(page)).toEqual([b, a, c]);
+  await expect.poll(() => openProjects(dataDir)).toEqual([b, a, c]);
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect(pane(page, b)).toHaveAttribute('data-shown', 'true');
+  await app.close();
+
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, openProjects(dataDir));
+  await expect.poll(() => listOrder(again.page)).toEqual([b, a, c]);
+  await again.app.close();
+});
+
+test('dragging a row moves its project in the list; a short press is still a click, and a drag focuses nothing', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  const drag = async (dir: string, dy: number) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    const [x, y] = [r.x + 20, r.y + r.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
+
+  // c to the top: the focus stays on a.
+  const rowStep = (await boxOf(row(page, b))).y - (await boxOf(row(page, a))).y;
+  await drag(c, -2 * rowStep);
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+  await expect(row(page, a)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => openProjects(dataDir)).toEqual([c, a, b]);
+
+  // A 2 px wobble is a click: it focuses b and moves nothing.
+  await drag(b, 2);
+  await expect(row(page, b)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+
+  // The row's own buttons still work, and don't start a drag.
+  await (await rowButton(page, c, 'rail-beside')).click();
+  await expect(pane(page, c)).toHaveAttribute('data-shown', 'true');
+  await expect.poll(() => listOrder(page)).toEqual([c, a, b]);
+  await app.close();
+});
+
+test("a row's Show beside button, on, stays blue under the pointer", async () => {
+  const [a, b] = [repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b]);
+  const beside = await rowButton(page, b, 'rail-beside');
+  await beside.click();
+  await expect(beside).toHaveAttribute('aria-pressed', 'true');
+  await beside.hover();
+  const [color, accent] = await beside.evaluate((button) => {
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--accent)';
+    document.body.append(probe);
+    const colors = [getComputedStyle(button).color, getComputedStyle(probe).color];
+    probe.remove();
+    return colors;
+  });
+  expect(color).toBe(accent);
+  await app.close();
+});
+
+test('a drag lets go of the row, moving nothing, when the list goes, a project closes, or the button is up', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page, dataDir } = await launchApp({}, [a, b, c]);
+  const dragging = page.locator('[data-testid=rail-project][data-dragging=true]');
+  const press = async (dir: string, dy: number) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    const [x, y] = [r.x + 20, r.y + r.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + dy, { steps: 4 });
+    return { x, y };
+  };
+  const rowStep = (await boxOf(row(page, b))).y - (await boxOf(row(page, a))).y;
+
+  // Turned off mid-drag, from the keyboard: letting go afterwards moves nothing.
+  await press(a, 2 * rowStep);
+  await expect(dragging).toHaveCount(1);
+  await page.getByTestId('projects-toggle').focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('project-rail')).toHaveCount(0);
+  await page.mouse.up();
+  await page.getByTestId('projects-toggle').click();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+
+  // A move reported with no button held (its pointerup went astray) ends the drag.
+  const at = await press(b, 2);
+  await page.evaluate(({ x, y }) => window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, buttons: 0 })), {
+    x: at.x,
+    y: at.y + rowStep,
+  });
+  await expect(dragging).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+
+  // A project that closes mid-drag lets go of the row: c, on its way to the top, stays where it is.
+  await press(c, -2 * rowStep);
+  await expect(dragging).toHaveCount(1);
+  await row(page, a).getByTestId('rail-show').focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(row(page, a).getByTestId('rail-close')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.getByTestId('rail-close-confirm').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('rail-project')).toHaveCount(2);
+  await expect(dragging).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => openProjects(dataDir)).toEqual([b, c]);
+  await expect.poll(() => listOrder(page)).toEqual([b, c]);
+  await app.close();
+});
+
+test('a new press on a row lets go of an earlier one whose pointerup went astray', async () => {
+  const [a, b, c] = [repo(), repo(), repo()];
+  const { app, page } = await launchApp({}, [a, b, c]);
+  const centre = async (dir: string) => {
+    const r = await boxOf(row(page, dir).getByTestId('rail-show'));
+    return { x: r.x + 20, y: r.y + r.height / 2 };
+  };
+  const [onA, onB] = [await centre(a), await centre(b)];
+  await page.mouse.move(onA.x, onA.y);
+  await page.mouse.down();
+  // The next press the window hears of is on b: a's pointerup never came.
+  await row(page, b).getByTestId('rail-show').dispatchEvent('pointerdown', { button: 0, buttons: 1, clientX: onB.x, clientY: onB.y });
+  // Back in the window, the pointer is on b at once.
+  await page.mouse.move(onB.x, onB.y);
+  // Only b's press is left, and it hasn't moved: a stays put.
+  await expect(page.locator('[data-testid=rail-project][data-dragging=true]')).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => listOrder(page)).toEqual([a, b, c]);
+  await app.close();
+});
+
 test("Cmd+W (Ctrl+Shift+W on Windows and Linux) takes the focused project's pane off screen and leaves it open; the last one stays", async () => {
   const [a, b, c] = [repo(), repo(), repo()];
   const { app, page, dataDir } = await launchApp({}, [a, b, c]);

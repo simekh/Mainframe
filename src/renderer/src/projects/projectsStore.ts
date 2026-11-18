@@ -10,9 +10,10 @@ import {
 import { getTerminal } from '../terminal/registry';
 import { forgetTodo, loadTodo } from '../todo/todoStore';
 import { fitLayout, focusOn, loadLayout, managerShown, saveLayout, toggleBeside, toggleManager, type Layout } from './layout';
+import { moved } from './railOrder';
 
 const [store, setStore] = createStore<{
-  /** The open projects, in the order the owner opened them. */
+  /** The open projects, in the order the list shows them. */
   projects: ProjectView[];
   /** Whether the first list has come in, so the window never shows "no project" before it has asked. */
   loaded: boolean;
@@ -151,6 +152,17 @@ export function closeFocusedPane(): void {
 
 /** Main asks for the folder and says itself why one can't open. */
 export const openProject = () => window.mainframe.openProject();
+
+/**
+ * Puts the project at `to` in the list, shown at once so the row doesn't jump back while main
+ * remembers it; main's new list then says the same.
+ */
+export function moveProjectTo(dir: string, to: number): void {
+  const from = store.projects.findIndex((p) => p.dir === dir);
+  if (from < 0 || to < 0 || to >= store.projects.length || to === from) return;
+  setStore('projects', moved(store.projects, from, to));
+  window.mainframe.moveProject(dir, to).catch((err: unknown) => console.error(`[projects] could not move ${dir}: ${errorMessage(err)}`));
+}
 
 export function closeProject(dir: string): void {
   window.mainframe.closeProject(dir).catch((err: unknown) => console.error(`[projects] could not close ${dir}: ${errorMessage(err)}`));

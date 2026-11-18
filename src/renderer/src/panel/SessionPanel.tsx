@@ -1,6 +1,6 @@
 import { For, Show } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
-import type { RendererConfig, TaskView } from '../../../shared/types';
+import { AGENT_NAMES, type RendererConfig, type TaskView } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { cardAge, glyphOf, stateLabel } from '../board/lanes';
 import StatusGlyph from '../board/StatusGlyph';
@@ -83,6 +83,11 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
                   <i aria-hidden="true" />
                   <span>{project.name}</span>
                 </span>
+                <Show when={task().agent !== 'claude'}>
+                  <span class="agent-mark" data-testid="task-agent">
+                    {AGENT_NAMES[task().agent]}
+                  </span>
+                </Show>
                 <span class="p-branch">
                   <svg
                     viewBox="0 0 12 12"
@@ -139,9 +144,9 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
             </For>
           )}
         </Show>
-        {/* Closed before this start: no terminal holds its last output. */}
+        {/* Paused before this start: no terminal holds its last output. */}
         <Show when={props.task && !props.task.session && !terminalOf(project.dir, props.task.id)}>
-          <p class="closed-note">Closed. Reopen continues this chat.</p>
+          <p class="paused-note">Paused. Reopen continues this chat.</p>
         </Show>
       </div>
     </div>

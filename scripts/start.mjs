@@ -1,10 +1,18 @@
 // `npm start` and `npm run dev`: electron-vite's preview or dev, with Chromium's sandbox off only where
-// Linux blocks it. Arguments after the command go on to electron-vite.
+// Linux blocks it. Arguments after the command go on to electron-vite. `npm start` also applies an update the
+// app asks for, then starts Mainframe again.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { readFileSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { applyUpdate, RELEASE_TAG } from './applyUpdate.mjs';
 import { sandboxFlags } from './sandboxFlags.mjs';
+
+/** The exit code by which the app asks for an update; UPDATE_EXIT_CODE in src/main/updates/updateService.ts. */
+const UPDATE_EXIT_CODE = 75;
 
 const [command, ...passOn] = process.argv.slice(2);
 if (command !== 'preview' && command !== 'dev') {
@@ -24,8 +32,15 @@ function orNull(read) {
 }
 
 // Electron has no install script: it downloads its binary the first time it is required. electron-vite
-// and the sandbox helper below both need that binary on disk, so a fresh clone gets it here.
-require('electron');
+// and the sandbox helper below both need that binary on disk, so a fresh clone gets it here. It is missing
+// only when npm skipped the prestart/predev install (`ignore-scripts`, or another package manager).
+try {
+  require('electron');
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND') throw error;
+  console.error("Mainframe's packages aren't installed. Run `npm install`, then start it again.");
+  process.exit(1);
+}
 
 const restriction = orNull(() => readFileSync('/proc/sys/kernel/apparmor_restrict_unprivileged_userns', 'utf8'));
 const helper = orNull(() => {
@@ -41,5 +56,49 @@ if (flags.length > 0) {
 // electron-vite's `exports` don't expose its bin, so it is found through its package.json.
 const packagePath = require.resolve('electron-vite/package.json');
 const bin = join(dirname(packagePath), JSON.parse(readFileSync(packagePath, 'utf8')).bin['electron-vite']);
-const child = spawnSync(process.execPath, [bin, command, ...flags, ...passOn], { stdio: 'inherit' });
-process.exit(child.status ?? 1);
+
+// Only `npm start` updates: the app leaves the release tag in this file and exits with UPDATE_EXIT_CODE. A fresh
+// path each run, so a file left over from an earlier one is never read. `npm run dev` gets none, never even an
+// inherited one.
+const updateFile = command === 'preview' ? join(tmpdir(), `mainframe-update-${randomUUID()}`) : '';
+const child = spawnSync(process.execPath, [bin, command, ...flags, ...passOn], {
+  stdio: 'inherit',
+  env: { ...process.env, MAINFRAME_UPDATE_FILE: updateFile },
+});
+const tag = updateFile ? orNull(() => readFileSync(updateFile, 'utf8').trim()) : null;
+if (updateFile) rmSync(updateFile, { force: true });
+if (command === 'dev' || child.status !== UPDATE_EXIT_CODE) process.exit(child.status ?? 1);
+
+/** Updates this clone to `tag`; what went wrong ({ stage, message }), or null. */
+function update(tag) {
+  if (!tag || !RELEASE_TAG.test(tag)) {
+    return { stage: 'merge', message: 'Mainframe asked for an update but left no release to update to.' };
+  }
+  console.log(`Updating Mainframe to ${tag}…`);
+  const dir = fileURLToPath(new URL('..', import.meta.url));
+  const result = applyUpdate(dir, tag, (cmd, args) =>
+    cmd === 'npm'
+      ? // npm is npm.cmd on Windows, which Node runs only through a shell. A shell takes one command line (Node
+        // warns at a list of arguments); applyUpdate's are fixed words.
+        spawnSync([process.platform === 'win32' ? 'npm.cmd' : 'npm', ...args].join(' '), {
+          cwd: dir,
+          stdio: 'inherit',
+          shell: true,
+        })
+      : spawnSync(cmd, args, { stdio: 'inherit' }),
+  );
+  return result.ok ? null : result;
+}
+
+// With Mainframe closed, so Windows has no files locked: move to the release, then start it again through the
+// updated copy of this script. The app shows a failure at its next start; an empty value means none.
+const failure = update(tag);
+if (failure) {
+  console.error(`The update didn't finish: ${failure.message}`);
+  if (failure.stage === 'install') console.error('To finish by hand, run `npm install`, then `npm start`.');
+}
+const again = spawnSync(process.execPath, [fileURLToPath(import.meta.url), 'preview', ...passOn], {
+  stdio: 'inherit',
+  env: { ...process.env, MAINFRAME_UPDATE_FAILED: failure?.message ?? '' },
+});
+process.exit(again.status ?? 1);

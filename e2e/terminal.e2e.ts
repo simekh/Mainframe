@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
@@ -251,6 +252,25 @@ test('on Windows and Linux, Ctrl+Shift+C and Ctrl+C copy the selection, Ctrl+C w
   await app.close();
 });
 
+// Which programs get the key is programCopy's unit tests'; this is the way from a copy to the session.
+test('a copy with nothing selected sends a program that keeps its own selection its copy key', async () => {
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  const keys = async () => (await screen(page, a)).split('^[[99;6u').length - 1;
+
+  // The mouse captured and the kitty question asked, as Claude Code's fullscreen mode does. The copy
+  // waits for the reader to be reading: before, the terminal has nothing to hand the copy to.
+  // The tests' own Node, not the session's PATH's; forward slashes, as Git Bash takes them on Windows.
+  const [node, reader] = [process.execPath, join(__dirname, 'raw-reader.cjs')].map((p) => p.replace(/\\/g, '/'));
+  await run(page, `printf '\\e[?1000h\\e[?u'; '${node}' '${reader}'`);
+  await expect.poll(() => screen(page, a)).toMatch(/^raw-reader-ready$/m);
+  // On the Mac, Playwright's Cmd+C runs Chromium's Copy, as the Edit menu does (its DOM copy event);
+  // Windows and Linux copy with the terminal's own Ctrl+Shift+C.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+Shift+C');
+  await expect.poll(keys).toBe(1);
+  await app.close();
+});
+
 test('quitting leaves no session process behind', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
@@ -272,7 +292,7 @@ test('Close session ends the process and keeps the task, and the other tasks kee
   await expect(card(page, b)).toHaveAttribute('data-selected', 'true');
   await page.getByTestId('close-session').click();
 
-  await expect(cardIn(page, 'closed', b).getByTestId('task-ask')).toHaveText('Closed');
+  await expect(cardIn(page, 'paused', b).getByTestId('task-ask')).toHaveText('Paused');
   await expect.poll(() => screen(page, b)).toContain('[Process exited]');
   await expect.poll(() => isProcessRunning(bPid)).toBe(false);
   expect(await ids(page)).toEqual([a, b, c]);

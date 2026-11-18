@@ -10,3 +10,8 @@ export function editMenuItems(params: { isEditable: boolean; editFlags: { canCop
   if (!params.isEditable) return null;
   return [{ role: 'copy', enabled: params.editFlags.canCopy }, { role: 'paste' }];
 }
+
+/** Copy alone, for the read-only diff page: only when text is selected, as there is nothing to paste into. */
+export function copyMenuItems(params: { selectionText: string }): MenuItemConstructorOptions[] | null {
+  return params.selectionText ? [{ role: 'copy' }] : null;
+}

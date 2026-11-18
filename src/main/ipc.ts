@@ -1,20 +1,39 @@
+import { basename } from 'node:path';
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import type { RendererConfig, TodoItemRef, TodoNoteDraft } from '../shared/types';
+import { isAgentName, type AgentChoice, type AgentName, type DiffView, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
 import type { SessionHost } from './pty/sessionHost';
+import type { AgentSettingPatch, AgentsInUse } from './setup/agentsInUse';
 import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
 import type { TodoService } from './todo/todoService';
+import type { UpdateService } from './updates/updateService';
+
+/** The page's choice of agents, with only names in AGENT_ORDER; anything else is refused. */
+function agentChoice(raw: unknown): AgentChoice {
+  const { ticked, defaultAgent } = (raw ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(ticked) || !ticked.every(isAgentName) || !isAgentName(defaultAgent)) throw new Error("That choice of agents can't be used");
+  return { ticked, defaultAgent };
+}
 
 export interface ClipboardDeps {
   /** Electron's clipboard: a paste reads it, and a terminal's copy keys write it. */
   clipboard: ClipboardReader & { writeText(text: string): Promise<void> };
   writeFile: (path: string, data: Buffer) => Promise<void>;
   newImagePath: () => string;
+}
+
+/** The one diff window, which shows a task of any open project. */
+export interface DiffWindowControl {
+  /** Taken at the click, so a slower read for an earlier one can be told apart. */
+  nextSeq(): number;
+  show(view: DiffView): void;
+  current(): DiffView | null;
+  close(): void;
 }
 
 /** An open project: its tasks, its manager and its to-do list. */
@@ -44,7 +63,7 @@ export function registerSetupIpc(
     return flow.view();
   });
   // The screen would wait for an answer that never comes, so a failure is told and ends the app; the page's invoke still rejects.
-  const action = (run: () => Promise<void>) => async () => {
+  const action = async (run: () => Promise<void>) => {
     try {
       await run();
     } catch (err) {
@@ -52,9 +71,48 @@ export function registerSetupIpc(
       throw err;
     }
   };
-  ipcMain.handle(IPC.setupLookAgain, action(() => flow.lookAgain()));
-  ipcMain.handle(IPC.setupFindClaude, action(() => flow.findClaude()));
-  ipcMain.handle(IPC.setupChooseProject, action(() => flow.chooseProject()));
+  ipcMain.handle(IPC.setupLookAgain, () => action(() => flow.lookAgain()));
+  ipcMain.handle(IPC.setupFindAgent, (_e, name: unknown) => (isAgentName(name) ? action(() => flow.findAgent(name)) : undefined));
+  ipcMain.handle(IPC.setupUseAgent, (_e, name: unknown) => (isAgentName(name) ? action(() => flow.useAgent(name)) : undefined));
+  ipcMain.handle(IPC.setupChooseProject, (_e, choice: unknown) => action(() => flow.chooseProject(agentChoice(choice))));
+}
+
+/** The Settings calls: the whole app's, naming no project. Each saves through `agents`, which tells the page. */
+export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: AgentName) => Promise<string | undefined>): void {
+  const agentOf = (name: unknown): AgentName => {
+    if (!isAgentName(name)) throw new Error(`There is no agent ${String(name)}`);
+    return name;
+  };
+  ipcMain.handle(IPC.getSettings, () => agents.view());
+  ipcMain.handle(IPC.setAgentTicked, (_e, name: unknown, ticked: unknown) => agents.setTicked(agentOf(name), ticked === true));
+  ipcMain.handle(IPC.setDefaultAgent, (_e, name: unknown) => agents.setDefault(agentOf(name)));
+  // Not offered while the agent's env var names it: that path wins. One picker at a time: a call while one is open joins it.
+  let finding: Promise<void> | null = null;
+  ipcMain.handle(IPC.settingsFindAgent, (_e, name: unknown) => {
+    const agent = agentOf(name);
+    if (agents.view().agents[agent].fromEnv) return;
+    finding ??= (async () => {
+      const path = await pickAgent(agent);
+      if (path !== undefined) await agents.find(agent, path);
+    })().finally(() => (finding = null));
+    return finding;
+  });
+  ipcMain.handle(IPC.setAgentOptions, (_e, name: unknown, raw: unknown) => {
+    // Only these two, each as its type: anything else the page sends is left out.
+    const { managerAgent, syncModel } = (raw ?? {}) as Record<string, unknown>;
+    const patch: AgentSettingPatch = {};
+    if (managerAgent === null || typeof managerAgent === 'string') patch.managerAgent = managerAgent;
+    if (typeof syncModel === 'string') patch.syncModel = syncModel;
+    agents.saveAgentSetting(agentOf(name), patch);
+  });
+  ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
+}
+
+/** The update calls take nothing from the page. */
+export function registerUpdateIpc(updates: UpdateService): void {
+  ipcMain.handle(IPC.getUpdate, () => updates.view());
+  ipcMain.handle(IPC.checkForUpdates, () => updates.check());
+  ipcMain.handle(IPC.installUpdate, () => updates.install());
 }
 
 export function registerIpc(
@@ -65,10 +123,12 @@ export function registerIpc(
   openPicked: () => Promise<void>,
   host: SessionHost,
   clipboardDeps: ClipboardDeps,
+  diff: DiffWindowControl,
 ): void {
   ipcMain.handle(IPC.listProjects, () => projects.list());
   ipcMain.handle(IPC.openProject, () => openPicked());
   ipcMain.handle(IPC.closeProject, (_e, dir: string) => projects.close(dir));
+  ipcMain.handle(IPC.moveProject, (_e, dir: string, to: number) => projects.move(dir, to));
 
   const projectOf = (dir: string): Project => {
     const project = projects.get(dir);
@@ -82,14 +142,25 @@ export function registerIpc(
   // Rejections reach the renderer's invoke, which shows them.
   ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
   ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
-  // Only these three: a card reaches `start` through the Todo service alone, which checks it against the synced list.
+  ipcMain.handle(IPC.codexClaudeMdNote, (_e, dir: string) => tasksOf(dir).codexClaudeMdNote());
+  // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,
-    (_e, dir: string, { title, description, noQuestions }: { title: string; description: string; noQuestions: boolean }) =>
-      tasksOf(dir).start({ title, description, noQuestions }),
+    (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: unknown }) =>
+      tasksOf(dir).start({ title, description, noQuestions, ...(isAgentName(agent) && { agent }) }),
   );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
+  ipcMain.handle(IPC.discardPreview, (_e, dir: string, taskId: string) => tasksOf(dir).discardPreview(taskId));
+  ipcMain.handle(IPC.discardTask, (_e, dir: string, taskId: string) => tasksOf(dir).discard(taskId));
+  ipcMain.handle(IPC.continueTask, (_e, dir: string, taskId: string) => tasksOf(dir).continueTask(taskId));
   ipcMain.handle(IPC.changedFiles, (_e, dir: string, taskId: string) => tasksOf(dir).changedFiles(taskId));
+  ipcMain.handle(IPC.openDiff, async (_e, dir: string, taskId: string, path: string) => {
+    const seq = diff.nextSeq();
+    const { taskTitle, result } = await tasksOf(dir).diff(taskId, path);
+    diff.show({ seq, projectName: basename(dir), taskTitle, focus: path, result });
+  });
+  ipcMain.handle(IPC.getDiff, () => diff.current());
+  ipcMain.on(IPC.closeDiff, () => diff.close());
   ipcMain.on(IPC.closeTask, (_e, dir: string, taskId: string) => {
     try {
       tasksOf(dir).close(taskId);
@@ -108,11 +179,15 @@ export function registerIpc(
   });
   // Not `close()`, which refuses every later sync.
   ipcMain.handle(IPC.cancelTodoSync, (_e, dir: string) => todoOf(dir).cancel());
+  ipcMain.handle(IPC.keepTodoSync, (_e, dir: string) => todoOf(dir).keepSyncing());
   ipcMain.handle(IPC.confirmTodoTools, async (_e, dir: string) => {
     await todoOf(dir).confirmTools();
   });
   ipcMain.handle(IPC.pickTodoList, async (_e, dir: string, index: number) => {
     await todoOf(dir).pickList(index);
+  });
+  ipcMain.handle(IPC.pickTodoModel, async (_e, dir: string, id: string) => {
+    await todoOf(dir).pickModel(id);
   });
   ipcMain.handle(IPC.resetTodoSource, (_e, dir: string) => todoOf(dir).resetSource());
   ipcMain.handle(IPC.saveTodoNote, (_e, dir: string, note: TodoNoteDraft) => todoOf(dir).saveNote(note));
@@ -122,11 +197,16 @@ export function registerIpc(
     (_e, dir: string, { item, noQuestions, ownersCard }: { item: TodoItemRef; noQuestions: boolean; ownersCard?: boolean }) =>
       todoOf(dir).startItem(item, { noQuestions, ownersCard }),
   );
+  ipcMain.handle(IPC.putBackTask, (_e, dir: string, taskId: string) => todoOf(dir).putBack(taskId));
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
-  const sessionEnded = (owner: TaskService | ManagerService, sessionId: string) => {
+  const sessionEnded = (
+    owner: { onSessionExit(sessionId: string, exit?: { exitCode: number; signal: number | null }): void },
+    sessionId: string,
+    exit?: { exitCode: number; signal: number | null },
+  ) => {
     try {
-      owner.onSessionExit(sessionId);
+      owner.onSessionExit(sessionId, exit);
     } catch (err) {
       console.error(`[sessions] could not record the end of session ${sessionId}`, err);
     }
@@ -149,12 +229,13 @@ export function registerIpc(
       host.spawn(sessionId, { ...owner.launchSpec(sessionId), cols, rows }, {
         onData: (data) => send(IPC.data, { sessionId, data }),
         onStatus: (status) => {
-          owner.noteStatus(sessionId, status?.state ?? null);
+          // The state first: a task list the report changes (a merged mark cleared) is never drawn with the old state.
           send(IPC.status, { sessionId, status });
+          owner.noteStatus(sessionId, status?.state ?? null);
         },
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });
-          sessionEnded(owner, sessionId);
+          sessionEnded(owner, sessionId, { exitCode, signal });
         },
       });
     } catch (err) {

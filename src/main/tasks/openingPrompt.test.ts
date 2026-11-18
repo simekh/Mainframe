@@ -7,11 +7,28 @@ const tail =
   'checkout, for example to merge, call ExitWorktree with action "keep" first.';
 
 const brief = "This task is your brief: read it, plan, then start. Follow this repo's CLAUDE.md, and ask me when you need me.\n\n";
-const t = { title: 'Fix login', branch: 'worktree-fix-login', noQuestions: false };
+const t = {
+  title: 'Fix login',
+  branch: 'worktree-fix-login',
+  noQuestions: false,
+  agent: 'claude' as const,
+  projectDir: '/p',
+  worktreePath: '/p/.claude/worktrees/fix-login',
+};
 
 it('gives the brief, the description and the worktree note', () => {
   expect(openingPrompt({ ...t, description: 'The button does nothing.\nOnly on iOS.' })).toBe(
     brief + 'Task: Fix login\n\nThe button does nothing.\nOnly on iOS.\n\n' + tail,
+  );
+});
+
+it('a continuing prompt says the earlier conversation is gone', () => {
+  expect(openingPrompt({ ...t, description: 'Only on iOS.', continuing: true })).toBe(
+    brief +
+      'Task: Fix login\n\n' +
+      'This continues an earlier task of the same name. Its conversation is gone; any of its work that was merged is in the default branch.\n\n' +
+      'Only on iOS.\n\n' +
+      tail,
   );
 });
 
@@ -76,4 +93,28 @@ it('passes on no-questions mode', () => {
       "When the work is done and reviewed as this repo's CLAUDE.md requires, finish the branch without asking me, even where your workflow would ask how: " +
       'merge it, unless this CLAUDE.md integrates work another way, such as a pull request.',
   );
+});
+
+it('an OpenCode prompt names AGENTS.md and the main checkout, and no Claude Code worktree tools', () => {
+  const card = { sourceKind: 'Tracker', number: '#1', url: null, labels: [] };
+  const prompt = openingPrompt({ ...t, agent: 'opencode', description: 'x', card, noQuestions: true });
+  expect(prompt).toContain(
+    "Mainframe started you in this task's own worktree, /p/.claude/worktrees/fix-login, on branch worktree-fix-login. " +
+      'The main checkout is /p: when you need it, for example to merge, run git there with git -C /p.',
+  );
+  expect(prompt).toContain("Follow this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md), and ask me");
+  expect(prompt).toContain('as those instructions require');
+  expect(prompt).toContain('unless those instructions integrate work another way');
+  expect(prompt).toContain('the way those instructions say');
+  expect(prompt).not.toContain('CLAUDE.md,');
+  expect(prompt.match(/CLAUDE\.md/g)).toHaveLength(1);
+  expect(prompt).not.toContain('EnterWorktree');
+  expect(prompt).not.toContain('ExitWorktree');
+});
+
+it("a Codex prompt names its Mainframe worktree and this repo's instructions", () => {
+  const prompt = openingPrompt({ ...t, agent: 'codex', branch: 'worktree-s', worktreePath: '/p/.mainframe/worktrees/s', description: 'x' });
+  expect(prompt).toContain("Mainframe started you in this task's own worktree, /p/.mainframe/worktrees/s, on branch worktree-s.");
+  expect(prompt).toContain("this repo's instructions (its AGENTS.md, or its CLAUDE.md when it has no AGENTS.md)");
+  expect(prompt).not.toContain('EnterWorktree');
 });

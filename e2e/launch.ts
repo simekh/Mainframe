@@ -31,8 +31,29 @@ export async function cleanUp(): Promise<void> {
 /** The stand-in for `claude`: `e2e/fake-claude.cjs`, on Windows the .exe the global setup built from it. */
 export const fakeClaude = process.env.FAKE_CLAUDE_EXE ?? join(root, 'e2e', 'fake-claude.cjs');
 
+/** The stand-in for `opencode`: `e2e/fake-opencode.cjs`, on Windows a copy of the .exe named `fake-opencode.exe`. */
+export const fakeOpencode = process.env.FAKE_OPENCODE_EXE ?? join(root, 'e2e', 'fake-opencode.cjs');
+
 /**
- * The app's environment in a test: the stand-in as `claude`, logging to the data folder. A variable
+ * `launchApp` with the stand-in as `opencode` beside the one as `claude`. Found, and with no tick saved, it counts as
+ * ticked, so the New task box offers it.
+ */
+export const launchWithOpencode = (projects: string | string[], env: Record<string, string> = {}, settings?: AppSettings) =>
+  launchApp({ MAINFRAME_OPENCODE_BIN: fakeOpencode, ...env }, projects, { settings });
+
+/** The stand-in for `codex`: `e2e/fake-codex.cjs`, on Windows a copy of the .exe named `fake-codex.exe`. */
+export const fakeCodex = process.env.FAKE_CODEX_EXE ?? join(root, 'e2e', 'fake-codex.cjs');
+
+/**
+ * `launchApp` with the stand-in as `codex` beside the one as `claude`. Found, and with no tick saved, it counts as
+ * ticked, so the New task box offers it.
+ */
+export const launchWithCodex = (projects: string | string[], env: Record<string, string> = {}, settings?: AppSettings) =>
+  launchApp({ MAINFRAME_CODEX_BIN: fakeCodex, ...env }, projects, { settings });
+
+/**
+ * The app's environment in a test: the stand-in as `claude`, logging to the data folder, and an `opencode`
+ * and a `codex` that aren't there, so no OpenCode or Codex on the machine shows in the New task box unless a test names one. A variable
  * `env` gives as `undefined` is left out, even one set here.
  */
 function appEnv(dataDir: string, env: Record<string, string | undefined>): Record<string, string> {
@@ -42,10 +63,15 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     ...process.env,
     MAINFRAME_E2E: '1',
     MAINFRAME_CLAUDE_BIN: fakeClaude,
+    MAINFRAME_OPENCODE_BIN: join(dataDir, 'no-opencode'),
+    MAINFRAME_CODEX_BIN: join(dataDir, 'no-codex'),
     MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
     BASH_SILENCE_DEPRECATION_WARNING: '1',
+    // Not from an `npm start` this run happens to be under: a test that needs one passes it.
+    MAINFRAME_UPDATE_FILE: undefined,
+    MAINFRAME_UPDATE_FAILED: undefined,
     ...env,
   };
   return Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));
@@ -93,11 +119,28 @@ export async function launchApp(
  */
 export async function setWindowWidth(app: ElectronApplication, page: Page, width: number): Promise<void> {
   await app.evaluate(({ BrowserWindow }, w) => {
-    const [win] = BrowserWindow.getAllWindows();
+    // Mainframe's window, not the diff window above it.
+    const win = BrowserWindow.getAllWindows().find((w) => w.getParentWindow() === null)!;
     // The page's size, not the window's: on Windows the window's frame is wider than the page.
     win.setContentSize(w, win.getContentSize()[1]);
   }, width);
   await page.waitForFunction((w) => window.innerWidth === w, width);
+}
+
+/**
+ * Presses Cmd (Ctrl off the Mac) and `keyCode` down in Mainframe's window, or with `inDiff` the diff window.
+ * Sent through Electron, not Playwright: keys Playwright presses reach the page without passing the window's
+ * `before-input-event`, which catches the window's own keys.
+ */
+export async function pressWindowKey(app: ElectronApplication, keyCode: string, inDiff = false): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, { keyCode, inDiff }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => (w.getParentWindow() === null) !== inDiff)!;
+      const mod = process.platform === 'darwin' ? 'meta' : 'control';
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers: [mod] });
+    },
+    { keyCode, inDiff },
+  );
 }
 
 // What `require('electron')` gives Node: the path of the Electron binary.

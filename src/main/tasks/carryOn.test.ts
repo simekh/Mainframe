@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { ProgramState } from '../../shared/types';
-import { resumePromptFor, turnAtEnd } from './carryOn';
+import { resumePromptFor, turnAtEnd, TurnTracker } from './carryOn';
 
 // In a turn the session ends owing it, and only a blocked one asks again; out of one it owes the turn
 // only if a resume prompt it was given never took, and askAgain is left as the last turn set it.
@@ -39,4 +39,29 @@ it('sends nothing to a session that was not in a turn, whatever askAgain says', 
   expect(resumePromptFor({})).toBeUndefined();
   expect(resumePromptFor({ midTurn: false })).toBeUndefined();
   expect(resumePromptFor({ midTurn: false, askAgain: true })).toBeUndefined();
+});
+
+it('a turn is over on done or error, and on idle once it had a turn or had no prompt to take', () => {
+  const over = (states: (ProgramState | null)[], startedWithPrompt = true) => {
+    const turn = new TurnTracker(false);
+    for (const s of states) turn.note(s);
+    return turn.over(startedWithPrompt);
+  };
+  expect(over(['working', 'done'])).toBe(true);
+  expect(over(['working', 'error'])).toBe(true);
+  expect(over(['working', 'idle'])).toBe(true);
+  expect(over(['idle'], false)).toBe(true);
+  expect(over([])).toBe(false);
+  // The opening prompt has not taken yet.
+  expect(over(['idle'])).toBe(false);
+  expect(over(['working'])).toBe(false);
+  expect(over(['done', 'blocked'])).toBe(false);
+  expect(over(['done', null])).toBe(false);
+});
+
+it('a turn told to end is not over: it is already ending', () => {
+  const turn = new TurnTracker(false);
+  turn.note('done');
+  turn.end();
+  expect(turn.over(true)).toBe(false);
 });

@@ -1,8 +1,7 @@
 import { execFile } from 'node:child_process';
-import { posix, win32 } from 'node:path';
 import { promisify } from 'node:util';
-import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
-import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
+import type { ProgramCheck } from '../../shared/types';
+import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,11 +20,6 @@ export function runVersion(env: Record<string, string>): VersionRunner {
   };
 }
 
-// Only claude's own line counts, so a wrong file picked by hand that prints some other version isn't taken for claude.
-export function parseClaudeVersion(stdout: string): string | null {
-  return /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(stdout.trim())?.[1] ?? null;
-}
-
 export function isAtLeast(version: string, min: string): boolean {
   const have = version.split('.').map(Number);
   const need = min.split('.').map(Number);
@@ -36,52 +30,42 @@ export function isAtLeast(version: string, min: string): boolean {
   return true;
 }
 
-/**
- * Where claude may be, after a saved path: PATH, the native installer's file, and on Windows npm's
- * real executable (npm's `claude.cmd` is a launcher script Mainframe never runs). That executable
- * is in the package beside `claude.cmd`, in the global folder of whichever npm prefix is on PATH
- * (a version manager's, say), or else of the default one in %APPDATA%. On macOS and Linux npm's
- * `claude` sits beside `node`, which is on PATH, so PATH covers it.
- */
-export function claudePlaces(lookup: ExecutableLookup): string[] {
-  const { env } = lookup;
-  const places = [findExecutable('claude', lookup)];
-  if (lookup.platform === 'win32') {
-    if (env.USERPROFILE) places.push(win32.join(env.USERPROFILE, '.local', 'bin', 'claude.exe'));
-    // On Windows a file is executable when it is there, so this asks whether claude.cmd is.
-    const npmFolders = searchDirs(lookup).filter((dir) => lookup.files.isExecutableFile(win32.join(dir, 'claude.cmd')));
-    if (env.APPDATA) npmFolders.push(win32.join(env.APPDATA, 'npm'));
-    for (const dir of npmFolders) places.push(win32.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'));
-  } else if (env.HOME) {
-    places.push(posix.join(env.HOME, '.local', 'bin', 'claude'));
-  }
-  return [...new Set(places.filter((place) => place !== null))];
-}
-
-export async function checkClaude(path: string, run: VersionRunner, files: ExecutableFiles): Promise<ProgramCheck> {
+export async function checkProgram(
+  path: string,
+  parse: (stdout: string) => string | null,
+  min: string,
+  run: VersionRunner,
+  files: ExecutableFiles,
+): Promise<ProgramCheck> {
   if (!files.isExecutableFile(path)) return { state: 'missing', path };
   const stdout = await run(path, ['--version']);
-  const version = stdout === null ? null : parseClaudeVersion(stdout);
+  const version = stdout === null ? null : parse(stdout);
   if (version === null) return { state: 'broken', path };
-  return { state: isAtLeast(version, MIN_CLAUDE_VERSION) ? 'found' : 'too-old', path, version };
+  return { state: isAtLeast(version, min) ? 'found' : 'too-old', path, version };
 }
 
+export type FindOptions = { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner };
+
 /**
- * `fromEnv` (MAINFRAME_CLAUDE_BIN) is the only place looked at when set. Otherwise the saved paths in
- * order, then `claudePlaces`, and the first that works wins; an old claude on PATH doesn't hide a
- * current one beside it. When none works, the failure that helps most: too old, then broken, then missing.
+ * `fromEnv` (the agent's MAINFRAME_*_BIN) is the only place looked at when set. Otherwise the saved paths in order,
+ * then `places`, and the first that works wins; an old one on PATH doesn't hide a current one beside it. When none
+ * works, the failure that helps most: too old, then broken, then missing.
  */
-export async function findClaude(o: { fromEnv?: string; saved?: string[]; lookup: ExecutableLookup; run: VersionRunner }): Promise<ProgramCheck> {
-  // An empty fromEnv counts as unset (config already throws on an empty MAINFRAME_CLAUDE_BIN). Looked
-  // up as sessions look it up, so the absolute path that is checked is the one they will run.
-  if (o.fromEnv) return checkClaude(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
+export async function findProgram(
+  o: FindOptions,
+  places: (lookup: ExecutableLookup) => string[],
+  check: (path: string, run: VersionRunner, files: ExecutableFiles) => Promise<ProgramCheck>,
+): Promise<ProgramCheck> {
+  // An empty fromEnv counts as unset (config already throws on an empty one). Looked up as sessions look it up,
+  // so the absolute path that is checked is the one they will run.
+  if (o.fromEnv) return check(findExecutable(o.fromEnv, o.lookup) ?? o.fromEnv, o.run, o.lookup.files);
   const failures: ProgramCheck[] = [];
-  for (const path of new Set([...(o.saved ?? []), ...claudePlaces(o.lookup)])) {
-    const check = await checkClaude(path, o.run, o.lookup.files);
-    if (check.state === 'found') return check;
-    failures.push(check);
+  for (const path of new Set([...(o.saved ?? []), ...places(o.lookup)])) {
+    const result = await check(path, o.run, o.lookup.files);
+    if (result.state === 'found') return result;
+    failures.push(result);
   }
-  return failures.find((check) => check.state === 'too-old') ?? failures.find((check) => check.state === 'broken') ?? { state: 'missing' };
+  return failures.find((f) => f.state === 'too-old') ?? failures.find((f) => f.state === 'broken') ?? { state: 'missing' };
 }
 
 export async function checkGit(lookup: ExecutableLookup, run: VersionRunner): Promise<ProgramCheck> {

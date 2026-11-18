@@ -41,6 +41,7 @@ export const TODO_NOTE = z.object({
   id: z.string(),
   title: z.string(),
   text: z.string(),
+  taskId: z.string().optional(),
 }) satisfies z.ZodType<TodoNote>;
 
 export const TASK_CARD_REF = z.object({
@@ -64,6 +65,13 @@ export const SYNC_ANSWER = z.object({
   cards: z.array(TODO_CARD).optional(),
 });
 export type SyncAnswer = z.infer<typeof SYNC_ANSWER>;
+
+/** A run's printed answer checked against SYNC_ANSWER; throws an Error whose message is for the panel. */
+export function parseSyncAnswer(value: unknown): SyncAnswer {
+  const answer = SYNC_ANSWER.safeParse(value);
+  if (!answer.success) throw new Error("The sync run's answer didn't have the shape Mainframe asked for");
+  return answer.data;
+}
 
 // Without the "$schema" key, which names a draft the CLI cannot resolve: it refuses the schema ("no schema with key or
 // ref https://json-schema.org/draft/2020-12/schema"). The rest, such as "additionalProperties": false, it takes.

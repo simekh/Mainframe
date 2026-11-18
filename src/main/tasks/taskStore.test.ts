@@ -133,10 +133,33 @@ it('midTurn and askAgain load as saved, and a task kept before them loads withou
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
 
+it('loadTasks keeps place and endedAt, and loads records without them', () => {
+  const file = join(folder(), 'state.json');
+  const tasks = [TASK, { ...TASK, id: 't2', place: 'finished' as const, endedAt: 5 }, { ...TASK, id: 't3', place: 'putBack' as const }];
+  saveTasks(file, tasks);
+  const warnings: string[] = [];
+  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual(tasks);
+  expect(warnings).toEqual([]);
+  // A place that is none of the three is a bad file, set aside as the others are.
+  writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ ...TASK, place: 'gone' }] }));
+  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual([]);
+  expect(warnings).toHaveLength(1);
+});
+
 it("keeps a task's card", () => {
   const file = join(folder(), 'state.json');
   const card = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
   const tasks = [TASK, { ...TASK, id: 't2', card }, { ...TASK, id: 't3', card: { ...card, number: null, url: null, labels: [], urgent: false } }];
+  saveTasks(file, tasks);
+  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
+});
+
+it('old records load as Claude tasks, and an agent loads as saved', () => {
+  const file = join(folder(), 'state.json');
+  // A version 1 file from before tasks named their agent.
+  writeFileSync(file, JSON.stringify({ version: 1, tasks: [TASK] }));
+  const tasks = [TASK, { ...TASK, id: 't2', agent: 'claude' as const }, { ...TASK, id: 't3', agent: 'opencode' as const, began: true }];
+  expect(loadTasks(file, 1000, () => {})).toEqual([TASK]);
   saveTasks(file, tasks);
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
@@ -154,6 +177,8 @@ it.each([
   ['a task whose noQuestions is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, noQuestions: 'no' }] })],
   ['a task whose midTurn is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: 'yes' }] })],
   ['a task whose askAgain is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: true, askAgain: 1 }] })],
+  ['an unknown agent', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'gemini' }] })],
+  ['a task whose began is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'opencode', began: 'yes' }] })],
   ['a task whose card is null', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: null }] })],
   ['a task whose card lacks a field', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, position: undefined } }] })],
   ['a task whose card has labels that are not a list', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, labels: 'UI' } }] })],

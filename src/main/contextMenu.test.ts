@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { editMenuItems } from './contextMenu';
+import { copyMenuItems, editMenuItems } from './contextMenu';
+
+describe('copyMenuItems', () => {
+  it('offers Copy only with a selection', () => {
+    expect(copyMenuItems({ selectionText: '' })).toBeNull();
+    expect(copyMenuItems({ selectionText: 'x' })).toEqual([{ role: 'copy' }]);
+  });
+});
 
 describe('editMenuItems', () => {
   it('is null for what is not editable, so no menu shows', () => {

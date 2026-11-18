@@ -14,7 +14,11 @@ export interface RegisteredProject {
   manager: ProjectSessions;
   /** Once registered: brings back its open tasks and starts its manager. */
   start(): void;
-  /** As its close or the app's quit begins: stops the sync run, whose answer must not be written once the owner has closed the project or the app has quit, and refuses any later one. */
+  /**
+   * As its close or the app's quit begins: stops the sync run, whose answer must not be written once the owner has
+   * closed the project or the app has quit, and refuses any later one; and stops its timer of finish checks, so no
+   * round starts for a project that is closing.
+   */
   cancelSync(): void;
   /** Once its sessions have ended: lets go of what else it holds. */
   release(): Promise<void>;
@@ -37,7 +41,7 @@ export interface ProjectRegistryDeps<P> {
 const CLOSE_TIMEOUT_MS = 5000;
 const POLL_MS = 25;
 
-/** The open projects, in the order the owner opened them, as `projects.json` keeps them. */
+/** The open projects, in the order the list shows them, as `projects.json` keeps them. */
 export class ProjectRegistry<P extends RegisteredProject> {
   private readonly projects = new Map<string, P>();
   private readonly opening = new Map<string, Promise<void>>();
@@ -83,6 +87,19 @@ export class ProjectRegistry<P extends RegisteredProject> {
     const closing = this.end(dir, project).finally(() => this.closing.delete(dir));
     this.closing.set(dir, closing);
     await closing;
+  }
+
+  /** Puts the open project at `to` in the list, as far as the list goes; one that isn't open stays out. */
+  move(dir: string, to: number): void {
+    const dirs = [...this.projects.keys()];
+    const from = dirs.indexOf(dir);
+    const at = Math.min(Math.max(to, 0), dirs.length - 1);
+    if (from < 0 || at === from) return;
+    const entries = [...this.projects];
+    entries.splice(at, 0, ...entries.splice(from, 1));
+    this.projects.clear();
+    for (const [key, project] of entries) this.projects.set(key, project);
+    this.changed();
   }
 
   beginQuit(): void {

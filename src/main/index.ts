@@ -3,30 +3,47 @@ import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { basename, join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu, session, shell, type OpenDialogOptions } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  Menu,
+  session,
+  shell,
+  type ContextMenuParams,
+  type MenuItemConstructorOptions,
+  type OpenDialogOptions,
+} from 'electron';
 import { IPC } from '../shared/ipc';
+import { AGENT_NAMES, type AgentName, type ProgramCheck } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
-import { editMenuItems } from './contextMenu';
+import { copyMenuItems, editMenuItems } from './contextMenu';
+import { DiffWindow } from './diff/diffWindow';
 import { gitQueries } from './git';
-import { registerIpc, registerSetupIpc, type Project } from './ipc';
+import { registerIpc, registerSettingsIpc, registerSetupIpc, registerUpdateIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
-import { mcpConfigJson, startMcpServer } from './mcp/mcpServer';
+import { startMcpServer } from './mcp/mcpServer';
 import { buildMenu } from './menu';
 import { ProjectRegistry } from './projectRegistry';
 import { findExecutable, type ExecutableLookup } from './pty/findExecutable';
 import { spawnNodePty } from './pty/nodePty';
 import { buildSpawnEnv } from './pty/spawnEnv';
 import { localFiles, SessionHost } from './pty/sessionHost';
+import { AgentsInUse } from './setup/agentsInUse';
 import { runVersion } from './setup/programChecks';
+import type { AppSettings } from './setup/settings';
 import { SetupFlow } from './setup/setupFlow';
-import { TaskService } from './tasks/taskService';
+import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
-import { isDevToolsKey } from './windowKeys';
+import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
+import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
+import { APP_BACKGROUND, webPreferences } from './windowOptions';
+import { nextZoomLevel, readZoomLevel, writeZoomLevel, zoomFactorOf, type ZoomStep } from './zoom';
 
-const APP_BACKGROUND = '#080c10'; // Parallel Code's --bg; matches app.css
 const onMac = process.platform === 'darwin';
 /** How long a quit waits for the sessions it has hung up on to end. */
 const QUIT_WAIT_MS = 2000;
@@ -50,7 +67,30 @@ function readConfig(): AppConfig | Error {
   }
 }
 
-function createWindow(e2e: boolean): BrowserWindow {
+/** The windows' zoom: one level for them all, kept in the data folder for the next launch. */
+function windowZoom(dataDir: string) {
+  let level = readZoomLevel(dataDir, console.warn);
+  return {
+    level: () => level,
+    factor: () => zoomFactorOf(level),
+    step: (step: ZoomStep) => {
+      // A held key repeats: at a limit, or 0 on a reset, there is nothing to set or save.
+      const next = nextZoomLevel(level, step);
+      if (next === level) return;
+      level = next;
+      // Each window is set: the built app's pages are files, and a file page's zoom stays its own window's.
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.setZoomLevel(level);
+      try {
+        writeZoomLevel(dataDir, level);
+      } catch (err) {
+        console.warn(`Could not save the zoom level (${String(err)})`);
+      }
+    },
+  };
+}
+type WindowZoom = ReturnType<typeof windowZoom>;
+
+function createWindow(e2e: boolean, zoom: WindowZoom): BrowserWindow {
   const win = new BrowserWindow({
     title: 'Mainframe',
     width: 1400,
@@ -65,37 +105,58 @@ function createWindow(e2e: boolean): BrowserWindow {
     // On the Mac the window buttons sit at the left of the page's top row, which is the window's title bar.
     // Windows and Linux keep the system's own title bar, with its buttons.
     titleBarStyle: onMac ? 'hiddenInset' : 'default',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      // Keep output parsing and terminal replies running while the window is hidden.
-      backgroundThrottling: false,
-    },
+    webPreferences: webPreferences(zoom.factor()),
   });
+  prepareWebContents(win, editMenuItems, zoom);
+  loadPage(win);
+  return win;
+}
+
+/** What a window's page may do, alike in both windows; `menuItems` is its right-click menu off the Mac. */
+function prepareWebContents(
+  win: BrowserWindow,
+  menuItems: (params: ContextMenuParams) => MenuItemConstructorOptions[] | null,
+  zoom: WindowZoom,
+): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
-  // With no menu off the Mac, DevTools are Ctrl+Shift+I there; the Mac keeps its View menu's.
-  if (!onMac) {
-    win.webContents.on('before-input-event', (event, input) => {
-      if (!isDevToolsKey(input)) return;
+  // The window opened at the zoom of its making; a zoom key pressed while its page loaded did not hold.
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomLevel(zoom.level()));
+  // Caught here, before a focused terminal gets the key. Zoom on every platform: + is Shift+= on many layouts,
+  // which a menu's Cmd+Plus misses, and the catch keeps the Mac's View menu from zooming a second time.
+  // With no menu off the Mac, DevTools are Ctrl+Shift+I there and Settings Ctrl+,; the Mac keeps its menus'
+  // View ▸ DevTools and Mainframe ▸ Settings… (Cmd+,).
+  win.webContents.on('before-input-event', (event, input) => {
+    const step = zoomKey(input, onMac);
+    if (step) {
+      event.preventDefault();
+      zoom.step(step);
+    } else if (!onMac && isDevToolsKey(input)) {
       event.preventDefault();
       win.webContents.toggleDevTools();
-    });
-    // A right-click on something editable gets Copy and Paste there; the Mac gets no menu. In a
-    // terminal xterm has already focused its textarea and filled it with the selection, so the roles'
-    // DOM copy and paste reach the terminal's own handlers, as the Mac's Edit menu does.
+    } else if (!onMac && isSettingsKey(input)) {
+      event.preventDefault();
+      // Settings show in Mainframe's window, also when the key comes from the diff window above it.
+      sendTo(win.getParentWindow() ?? win, IPC.showSettings, null);
+    }
+  });
+  if (!onMac) {
+    // A right-click gets the window's menu there; the Mac gets none. In Mainframe's, a right-click on
+    // something editable gets Copy and Paste. In a terminal xterm has already focused its textarea and
+    // filled it with the selection, so the roles' DOM copy and paste reach the terminal's own handlers,
+    // as the Mac's Edit menu does.
     win.webContents.on('context-menu', (_e, params) => {
-      const items = editMenuItems(params);
+      const items = menuItems(params);
       if (items) Menu.buildFromTemplate(items).popup({ window: win });
     });
   }
+}
 
+/** The renderer's page; `view` picks the diff window's instead of Mainframe's. */
+function loadPage(win: BrowserWindow, view?: 'diff'): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(__dirname, '../renderer/index.html'));
-  return win;
+  if (devUrl) void win.loadURL(view ? `${devUrl}?view=${view}` : devUrl);
+  else void win.loadFile(join(__dirname, '../renderer/index.html'), view && { query: { view } });
 }
 
 /** One path from a dialog on the window; undefined when the user cancels. Looked up at each call, so an e2e run can answer it. */
@@ -116,11 +177,11 @@ const pickProjectFolder = (win: BrowserWindow) =>
 /**
  * On Windows only `.exe` files are offered: Mainframe runs nothing else there. A symlink is kept as
  * picked (macOS would give its target, and the target of a Homebrew one changes at every upgrade),
- * and hidden folders, where a package manager may have put claude, are shown (macOS and Windows).
+ * and hidden folders, where a package manager may have put the agent, are shown (macOS and Windows).
  */
-const pickClaude = (win: BrowserWindow) =>
+const pickAgent = (win: BrowserWindow, name: AgentName) =>
   pickPath(win, {
-    title: 'Find Claude Code',
+    title: `Find ${AGENT_NAMES[name]}`,
     buttonLabel: 'Use this',
     properties: ['openFile', 'noResolveAliases', 'showHiddenFiles'],
     filters: process.platform === 'win32' ? [{ name: 'Programs', extensions: ['exe'] }] : undefined,
@@ -134,19 +195,12 @@ const lookupIn = (env: Record<string, string>): ExecutableLookup => ({
 });
 
 /**
- * The environment every session and sync run gets, and where node is in it, looked up once at
- * start. Node not found, Mainframe can't start: the hooks it writes for Claude Code run node, with
- * no shell. Claude is the setup's to find; the projects start with the path it settles on.
+ * The environment every session and sync run gets, and where node is in it (null when it isn't), looked up once at
+ * start. The agents are the setup's to find; the projects start with what it settles on.
  */
-function findPrograms(): { env: Record<string, string>; nodeBin: string } {
+function findPrograms(): { env: Record<string, string>; nodeBin: string | null } {
   const env = buildSpawnEnv(process.env, process.platform);
-  const nodeBin = findExecutable('node', lookupIn(env));
-  if (nodeBin === null) {
-    throw new Error(
-      'Mainframe needs Node.js, and found no node on PATH. Install the current Node.js LTS, then run npm start again from a new terminal.',
-    );
-  }
-  return { env, nodeBin };
+  return { env, nodeBin: findExecutable('node', lookupIn(env)) };
 }
 
 /** Sends to the window, unless it has gone: exits and setup answers keep arriving while the app quits. */
@@ -166,14 +220,16 @@ function onQuitBegins(win: BrowserWindow, onBegin: () => void): void {
 }
 
 /**
- * Starts the projects in the window, once the setup has a claude that works. Throws when Mainframe
- * can't start; a project that can't open is said and left out.
+ * Starts the projects in the window, once the setup has an agent that works. `agents` is shared by every project.
+ * Throws when Mainframe can't start; a project that can't open is said and left out.
  */
 async function start(
   config: AppConfig,
-  programs: ReturnType<typeof findPrograms> & { claudeBin: string },
+  programs: ReturnType<typeof findPrograms>,
+  agents: AgentsInUse,
   projectDirs: string[],
   win: BrowserWindow,
+  zoom: WindowZoom,
 ): Promise<void> {
   // Pasted images get one file each; empty the folder at start so they don't pile up.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
@@ -205,6 +261,20 @@ async function start(
     },
   });
 
+  // One for the app, not per project: updates are about Mainframe itself. An e2e run checks only a clone it names.
+  let updating = false;
+  const updates = new UpdateService({
+    dir: config.updateDir ?? app.getAppPath(),
+    launcherFile: config.launcherFile,
+    failure: config.updateFailure,
+    onChange: (view) => toWindow(IPC.updateChanged, view),
+    requestQuit: () => {
+      updating = true;
+      app.quit();
+    },
+  });
+  void updates.view().then((view) => app.setAboutPanelOptions({ applicationVersion: view.current ?? 'unreleased' }));
+
   // beginQuit can't be undone, so it runs here only, once quitting is under way, and at most once:
   // whichever of the two events below comes first does it, and the other changes nothing. It is set
   // up before the projects open: the window is up while they do, and a quit then must stop them.
@@ -212,6 +282,7 @@ async function start(
   const beginQuit = () => {
     if (quitting) return;
     quitting = true;
+    updates.stop();
     // Chromium keeps the renderer's latest localStorage writes (layout, widths, pins) in memory for a
     // while; on Windows a quit lost them. Writing them out now keeps them on every system.
     session.defaultSession.flushStorageData();
@@ -227,11 +298,13 @@ async function start(
     if (waited) return;
     event.preventDefault();
     // Quit again once Electron is done with this will-quit: an app.quit() made while it runs does nothing,
-    // and with no session running the wait is over at once.
+    // and with no session running the wait is over at once. An update ends with the code that has
+    // start.mjs take it, after the same wait, so its sessions are recorded and ended as on Quit.
     void host.whenAllEnded(QUIT_WAIT_MS).then(() =>
       setImmediate(() => {
         waited = true;
-        app.quit();
+        if (updating) app.exit(UPDATE_EXIT_CODE);
+        else app.quit();
       }),
     );
   });
@@ -245,34 +318,42 @@ async function start(
       projectDir: dir,
       dataDir: config.dataDir,
       records,
-      claudeBin: programs.claudeBin,
+      agents,
       nodeBin: programs.nodeBin,
       platform: process.platform,
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),
       status: (sessionId) => host.status(sessionId),
-      onChange: (tasks) => send(IPC.tasksChanged, { dir, tasks }),
+      onChange: (tasks) => {
+        send(IPC.tasksChanged, { dir, tasks });
+        // A put-back task's note goes once the task is anywhere else. No change comes before the project's to-do list is made.
+        todo.tasksChanged(tasks);
+      },
     });
     const todo = new TodoService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: programs.claudeBin,
       nodeBin: programs.nodeBin,
       // The sync run gets what sessions get: it must find the owner's connectors as they do.
       env: programs.env,
-      startTask: (req) => service.start(req),
+      agent: () => agents.inUse(),
+      saveAgentSetting: (name, patch) => agents.saveAgentSetting(name, patch),
+      tasks: service,
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
     });
-    // The manager's tools, on this project's tasks and to-do list. Its mcp.json carries this run's port and token to it.
-    const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo));
+    // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.
+    const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo, (id) => manager.noteToolCall(id)));
     const manager = new ManagerService({
       projectDir: dir,
       dataDir: config.dataDir,
-      claudeBin: programs.claudeBin,
       nodeBin: programs.nodeBin,
-      mcpConfig: mcpConfigJson(mcp.url, mcp.token),
+      env: programs.env,
+      mcp: { url: mcp.url, token: mcp.token },
+      agent: () => agents.inUse(),
       onChange: (view) => send(IPC.managerChanged, { dir, view }),
     });
+    // This project's own check for finished tasks, stopped as it closes or the app quits.
+    let finishCheck: ReturnType<typeof setInterval> | undefined;
     const project: Project = {
       service,
       manager,
@@ -281,13 +362,13 @@ async function start(
         // A list asked for before this finishes gets the tasks as they are; the changes follow.
         service.restore().catch((err: unknown) => console.error(`[tasks] could not restore the tasks of ${dir}`, err));
         // Logged, never thrown: the tasks run on without the manager.
-        try {
-          manager.start();
-        } catch (err) {
-          console.error(`[manager] could not start the manager of ${dir}`, err);
-        }
+        manager.start().catch((err: unknown) => console.error(`[manager] could not start the manager of ${dir}`, err));
+        finishCheck = setInterval(() => void service.checkRound(), FINISH_CHECK_MS);
       },
-      cancelSync: () => todo.close(),
+      cancelSync: () => {
+        clearInterval(finishCheck);
+        todo.close();
+      },
       release: () => mcp.close(),
     };
     return project;
@@ -309,8 +390,31 @@ async function start(
       dialog.showErrorBox('Mainframe could not open the project', messageOf(err));
     }
   };
-  // The menu `launch` set, with Open Project… enabled now.
-  if (onMac) Menu.setApplicationMenu(buildMenu(() => void openPicked()));
+  // The menu `launch` set, with Open Project…, Settings… and Check for Updates… enabled now.
+  if (onMac) {
+    Menu.setApplicationMenu(
+      buildMenu({
+        zoom: zoom.step,
+        openProject: () => void openPicked(),
+        openSettings: () => toWindow(IPC.showSettings, null),
+        checkForUpdates: () => toWindow(IPC.menuCheckForUpdates, null),
+      }),
+    );
+  }
+  registerSettingsIpc(agents, (name) => pickAgent(win, name));
+  registerUpdateIpc(updates);
+  const diffWindow = new DiffWindow({
+    parent: win,
+    dataDir: config.dataDir,
+    hidden: config.e2e && onMac,
+    prepare: (w) => {
+      prepareWebContents(w, copyMenuItems, zoom);
+      loadPage(w, 'diff');
+    },
+    warn: console.warn,
+  });
+  // Closed first, so it never keeps the app running: `window-all-closed` ends it once both have gone.
+  win.on('close', () => diffWindow.close());
   // Before the projects open, so no call the page makes about one finds no handler.
   registerIpc(
     toWindow,
@@ -318,13 +422,16 @@ async function start(
     openPicked,
     host,
     { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
+    diffWindow,
   );
-
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
   opening = false;
   allOpened();
+  // Without automatic checks the calls still answer: Settings shows the version, and a check asked for runs. None
+  // once a quit has begun.
+  if (!quitting && config.autoCheck) updates.start();
 }
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -337,18 +444,19 @@ function failStart(err: unknown): void {
 
 /**
  * Start-up, in order: the window opens first, so the setup can show in it; the setup then checks
- * git and claude and starts the projects once both work, asking for what it can't find. A quit
+ * git and the agents and starts the projects once git and an agent work, asking for what it can't find. A quit
  * before that starts no project. Throws when Mainframe can't start.
  */
 async function launch(config: AppConfig): Promise<void> {
   const programs = findPrograms();
   // Set before the window, which would get Electron's default menu: its Ctrl+W (Cmd+W on the Mac) would
-  // close the window, which quits Mainframe and ends every session, and it would bring reload and zoom.
-  // The Mac's own menu is there from the first moment, with Open Project… disabled until `start` sets it
-  // again with the projects to open into. Windows and Linux get no menu, so no menu bar: Open Project… is
-  // the project list's button there.
-  Menu.setApplicationMenu(onMac ? buildMenu() : null);
-  const win = createWindow(config.e2e);
+  // close the window, which quits Mainframe and ends every session, and it would bring reload and its own
+  // zoom, which forgets its level at quit. The Mac's own menu is there from the first moment, with Open
+  // Project… disabled until `start` sets it again with the projects to open into. Windows and Linux get no
+  // menu, so no menu bar: Open Project… is the project list's button there.
+  const zoom = windowZoom(config.dataDir);
+  Menu.setApplicationMenu(onMac ? buildMenu({ zoom: zoom.step }) : null);
+  const win = createWindow(config.e2e, zoom);
   // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {
     if (win.isDestroyed()) return;
@@ -363,16 +471,32 @@ async function launch(config: AppConfig): Promise<void> {
     quitting = true;
   };
   onQuitBegins(win, quitBegins);
+  const envBins = { claude: config.claudeBin, opencode: config.opencodeBin, codex: config.codexBin };
+  const lookup = lookupIn(programs.env);
+  const run = runVersion(programs.env);
+  // After start the settings are AgentsInUse's alone: the flow writes them no more.
+  const agentsFrom = (found: { settings: AppSettings; checks: Record<AgentName, ProgramCheck> }) =>
+    new AgentsInUse({
+      dataDir: config.dataDir,
+      ...found,
+      envBins,
+      run,
+      lookup,
+      nodeBin: programs.nodeBin,
+      env: programs.env,
+      onChange: (view) => sendTo(win, IPC.settingsChanged, view),
+    });
   const flow = new SetupFlow({
     dataDir: config.dataDir,
-    envClaudeBin: config.claudeBin,
-    lookup: lookupIn(programs.env),
-    run: runVersion(programs.env),
-    pickClaude: () => pickClaude(win),
+    envBins,
+    lookup,
+    run,
+    nodeBin: programs.nodeBin,
+    pickAgent: (name) => pickAgent(win, name),
     pickFolder: () => pickProjectFolder(win),
     onChange: (view) => sendTo(win, IPC.setupChanged, view),
-    start: async (claudeBin, dirs) => {
-      if (!quitting) await start(config, { ...programs, claudeBin }, dirs, win);
+    start: async (found, dirs) => {
+      if (!quitting) await start(config, programs, agentsFrom(found), dirs, win, zoom);
     },
     warn: console.warn,
   });

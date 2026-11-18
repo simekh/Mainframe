@@ -1,40 +1,35 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncAdapter, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
-import {
-  isMcpToolName,
-  readSyncAnswer,
-  runClaude,
-  SYNC_STOPPED,
-  SYNC_TIMEOUT_MS,
-  syncArgv,
-  syncPrompt,
-  syncSettings,
-  type SyncStep,
-} from './syncRun';
+import { LONG_SYNC_MS, runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
 import { emptyTodo, loadTodo, NewerTodoError, saveTodo, type TodoRecord } from './todoFile';
 import type { SyncAnswer } from './todoSchema';
 
 const TODO_FILE = 'todo.json';
-const SETTINGS_FILE = 'sync-settings.json';
 const UNASKED = "The sync run answered something Mainframe didn't ask for";
+const PUT_BACK_FAILED = 'Put back: the card is not on the to-do list';
 
 export interface TodoServiceDeps {
   projectDir: string;
   dataDir: string;
-  claudeBin: string;
-  /** What the sync's PreToolUse guard runs: a real program path, as claudeBin is. */
-  nodeBin: string;
-  env: NodeJS.ProcessEnv;
-  startTask: TaskService['start'];
+  /** What an agent's sync guard may run: a real program path; null when no node was found. */
+  nodeBin: string | null;
+  env: Record<string, string>;
+  /** The agent the next sync runs on: asked at each sync, so a change in Settings takes effect at the next one. */
+  agent(): AgentInUse;
+  /** Saves an agent's setting for every project, so the next `agent()` has it. */
+  saveAgentSetting(name: AgentName, patch: Partial<AgentSetting>): void;
+  tasks: Pick<TaskService, 'start' | 'list' | 'continueTask' | 'putBackCard' | 'markPutBack' | 'returnToBoard' | 'whilePuttingBack'>;
   onChange(view: TodoView): void;
-  run?: typeof runClaude;
+  run?: typeof runSync;
   newId?: () => string;
   now?: () => number;
   warn?: (msg: string) => void;
+  /** Calls `fn` after `ms`; the function it returns cancels that. */
+  setTimer?: (fn: () => void, ms: number) => () => void;
 }
 
 export type SyncOutcome = { cards: number } | { ask: TodoAsk['kind'] } | { error: string };
@@ -43,7 +38,11 @@ export type SyncOutcome = { cards: number } | { ask: TodoAsk['kind'] } | { error
 interface Running {
   outcome: Promise<SyncOutcome>;
   settle(outcome: SyncOutcome): void;
-  cancel(): void;
+  /** Replaced once the run starts, when it had to wait for `prepare`. */
+  cancel: () => void;
+  /** Whether it has gone on past LONG_SYNC_MS and the owner has not said to keep going. */
+  long: boolean;
+  stopTimer(): void;
 }
 
 /** One project's to-do list: the synced cards, the owner's notes, and the sync run that fills the cards. */
@@ -60,6 +59,8 @@ export class TodoService {
   private closed = false;
   // What the sync last said: not kept in the file, so a restart starts without them.
   private ask: TodoAsk | null = null;
+  /** The agent whose sync asked about tools or a model: the names in that ask are its own. Set with every such ask. */
+  private askedBy: AgentName | null = null;
   private error: string | null = null;
 
   constructor(private readonly deps: TodoServiceDeps) {
@@ -84,26 +85,41 @@ export class TodoService {
       cards,
       notes,
       syncing: this.running !== null,
+      longSync: this.running?.long ?? false,
       error: this.error,
       ask: this.ask,
       setUp: readTools !== undefined || pickedList !== undefined,
     };
   }
 
-  /** Reads the list with a background run. A call while one runs gets that run's outcome. */
+  /**
+   * Reads the list with a background run. A call while one runs gets that run's outcome. Tools confirmed on another
+   * agent are not this one's names, so the run finds the connector again.
+   */
   sync(): Promise<SyncOutcome> {
     if (this.closed) return Promise.reject(new Error('The project is closing'));
     if (this.running) return this.running.outcome;
     if (this.newer) return Promise.reject(new Error(this.newer));
+    const agent = this.deps.agent();
     const { readTools, pickedList } = this.record;
-    return this.launch(readTools ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' });
+    const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
+    const step: SyncStep = confirmed ? { kind: 'read', list: pickedList ?? null } : { kind: 'discover' };
+    const { models } = agent.adapter.sync;
+    return models ? this.withModel(agent, models, step) : this.launch(agent, step);
+  }
+
+  /** Keeps the model the sync asked about as the one it runs on, in settings.json, then syncs. */
+  async pickModel(id: string): Promise<SyncOutcome> {
+    if (this.ask?.kind !== 'model' || !this.ask.models.some((m) => m.id === id)) throw new Error('No such model; sync again');
+    this.deps.saveAgentSetting(this.askedBy!, { syncModel: id });
+    return this.sync();
   }
 
   /** Keeps the tools the sync asked about as the ones it may read with, then syncs. */
   async confirmTools(): Promise<SyncOutcome> {
     if (this.ask?.kind !== 'tools') throw new Error('Nothing to allow; sync again');
     const { connector, tools } = this.ask;
-    this.save({ ...this.record, readTools: { connector, tools } });
+    this.save({ ...this.record, readTools: { connector, tools, agent: this.askedBy! } });
     return this.sync();
   }
 
@@ -128,8 +144,10 @@ export class TodoService {
     this.writable();
     const title = note.title.trim();
     if (!title) throw new Error('A todo needs a title');
-    const saved = { id: note.id ?? this.newId(), title, text: note.text };
     const { notes } = this.record;
+    // An edit from the panel names no task: the note keeps the one it has.
+    const taskId = note.taskId ?? notes.find((n) => n.id === note.id)?.taskId;
+    const saved: TodoNote = { id: note.id ?? this.newId(), title, text: note.text, ...(taskId !== undefined && { taskId }) };
     if (note.id === undefined) {
       this.save({ ...this.record, notes: [...notes, saved] });
     } else {
@@ -140,18 +158,98 @@ export class TodoService {
     return saved;
   }
 
+  /** Deletes a note; a put-back task's note sends its task back to Paused on the board, so it never goes missing. */
   deleteNote(id: string): void {
     this.writable();
-    if (!this.record.notes.some((n) => n.id === id)) return;
+    const note = this.record.notes.find((n) => n.id === id);
+    if (!note) return;
+    if (note.taskId !== undefined) this.deps.tasks.returnToBoard(note.taskId);
+    this.removeNote(id);
+  }
+
+  /**
+   * With each change to the project's tasks: a put-back task's note lasts only while its task is put back. Once a round
+   * finishes it, or a Continue or a Reopen brings it back to the board, the Finished tab or the board shows it, and the
+   * note goes. A task the list doesn't show keeps its note. Never throws: a failure only warns.
+   */
+  tasksChanged(tasks: TaskView[]): void {
+    const moved = new Set(tasks.filter((t) => t.place !== 'putBack').map((t) => t.id));
+    const notes = this.record.notes.filter((n) => n.taskId === undefined || !moved.has(n.taskId));
+    if (notes.length === this.record.notes.length) return;
+    try {
+      this.save({ ...this.record, notes });
+      this.changed();
+    } catch (err) {
+      (this.deps.warn ?? console.warn)(`Could not drop the notes of tasks no longer put back: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private removeNote(id: string): void {
     this.save({ ...this.record, notes: this.record.notes.filter((n) => n.id !== id) });
     this.changed();
+  }
+
+  /**
+   * Takes a Paused task off the board and back onto the to-do list, keeping its branch. A note's task comes back as a
+   * note linked to it. A card's task has its own agent move the card back, then the list is synced: the task is put
+   * back once the card is on it, and stays Paused with Put back's failure line when it is not. A session that errs
+   * gives Put back up. A Put back that fails says why on the task's card while it is still Paused.
+   */
+  async putBack(taskId: string): Promise<void> {
+    const task = this.viewOf(taskId);
+    if (!task) throw new Error(`Unknown task ${taskId}`);
+    if (task.place !== null) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
+    if (task.session !== null || task.closedAt === null) throw new Error(`Close ${task.title} before putting it back`);
+    // A second Put back meanwhile is refused here, before it can touch the task.
+    await this.deps.tasks.whilePuttingBack(taskId, async () => {
+      try {
+        await this.putBackPaused(task);
+      } catch (err) {
+        // Paused, or marked put back without its note: back on the board with the reason.
+        this.returnIfPaused(taskId, `Put back: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
+    });
+  }
+
+  /** Back on the board with Put back's failure line, unless the task runs again: its session must not carry the line. */
+  private returnIfPaused(taskId: string, problem: string): void {
+    const now = this.viewOf(taskId);
+    if (now && now.session === null && now.closedAt !== null) this.deps.tasks.returnToBoard(taskId, problem);
+  }
+
+  private async putBackPaused(task: TaskView): Promise<void> {
+    const { id: taskId, card } = task;
+    if (!card) {
+      this.writable();
+      // Marked first: a task the service won't move (a reopen or a round got to it) gets no note.
+      if (!this.deps.tasks.markPutBack(taskId)) throw new Error(`Close ${task.title} before putting it back`);
+      // Without its note the task could be found nowhere: a failed write returns it to the board, in `putBack`.
+      this.saveNote({ title: task.title, text: task.description, taskId });
+      return;
+    }
+
+    // An error leaves an ordinary task on the board, which the owner deals with: no sync, no move.
+    if (!(await this.deps.tasks.putBackCard(taskId))) return;
+    let listed = false;
+    try {
+      // A run already under way read the list before the card moved.
+      if (this.running) await this.running.outcome;
+      const outcome = await this.sync();
+      listed = 'cards' in outcome && this.record.cards.some((c) => c.id === card.id);
+    } catch {
+      // Not listed: the project is closing, or the file is a newer Mainframe's.
+    }
+    if (listed) this.deps.tasks.markPutBack(taskId);
+    else this.returnIfPaused(taskId, PUT_BACK_FAILED);
   }
 
   /**
    * Starts a task from a card or a note. A card is found by its id, or when none has that id, by its number as the
    * list shows it, with or without a leading #: a card whose id matches comes before one whose number does. A card
    * marked for the owner starts only with `ownersCard`, which only the ticket's Start anyway sets: the manager's tools
-   * never do. A note leaves the list once its task has started.
+   * never do. A note leaves the list once its task has started. A card whose task was put back or finished, and a
+   * put-back task's note, continue that task instead.
    */
   async startItem(item: TodoItemRef, opts: { noQuestions: boolean; brief?: string; ownersCard?: boolean }): Promise<TaskView> {
     if (item.kind === 'card') {
@@ -164,7 +262,10 @@ export class TodoService {
       if (card.forOwner && !opts.ownersCard) {
         throw new Error(`${card.number ?? card.title} is marked as the owner's; the owner starts it from its ticket with Start anyway`);
       }
-      return this.deps.startTask({
+      // A card has one task for good, discarded ones aside.
+      const own = this.deps.tasks.list().find((t) => t.card?.id === card.id && t.place !== 'discarded');
+      if (own?.place === 'putBack' || own?.place === 'finished') return this.deps.tasks.continueTask(own.id);
+      return this.deps.tasks.start({
         title: card.title,
         description: opts.brief ?? '',
         noQuestions: opts.noQuestions,
@@ -175,9 +276,22 @@ export class TodoService {
     this.writable();
     const note = this.record.notes.find((n) => n.id === item.id);
     if (!note) throw new Error(`No todo ${item.id}`);
-    const task = await this.deps.startTask({ title: note.title, description: note.text, noQuestions: opts.noQuestions });
-    this.deleteNote(note.id);
+    if (note.taskId !== undefined) {
+      const task = await this.deps.tasks.continueTask(note.taskId);
+      // A Continue that started nothing (the task is busy) keeps the note, the task's only way back.
+      if (task.place === null) this.removeNote(note.id);
+      return task;
+    }
+    const task = await this.deps.tasks.start({ title: note.title, description: note.text, noQuestions: opts.noQuestions });
+    this.removeNote(note.id);
     return task;
+  }
+
+  /** The owner chose to go on past the long-sync line: it stays hidden for the rest of this run. */
+  keepSyncing(): void {
+    if (!this.running?.long) return;
+    this.running.long = false;
+    this.changed();
   }
 
   /** Stops a running sync: its callers get the stopped outcome, the view shows no error, and nothing the run answers is kept. */
@@ -194,43 +308,111 @@ export class TodoService {
     this.cancel();
   }
 
-  private launch(step: SyncStep): Promise<SyncOutcome> {
-    const settingsPath = join(this.dir, SETTINGS_FILE);
-    try {
-      mkdirSync(this.dir, { recursive: true });
-      writeFileSync(settingsPath, syncSettings(this.deps.nodeBin, step.kind === 'read' ? (this.record.readTools?.tools ?? []) : []));
-    } catch (err) {
-      // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
-      this.ask = null;
-      const refused = this.refuse(`Could not write the sync's settings: ${(err as Error).message}`);
-      this.changed();
-      return Promise.resolve(refused);
-    }
-    const { done, cancel } = (this.deps.run ?? runClaude)({
-      argv: syncArgv(this.deps.claudeBin, settingsPath),
-      cwd: this.deps.projectDir,
-      env: this.deps.env,
-      input: syncPrompt(step),
-      timeoutMs: SYNC_TIMEOUT_MS,
-    });
+  /**
+   * Lists the agent's models before the run, and asks the owner for one when the saved model is not among them (none
+   * saved yet, or its provider since removed). While it lists, the sync counts as running: a second Sync joins it and
+   * Stop ends it.
+   */
+  private withModel(agent: AgentInUse, list: NonNullable<SyncAdapter['models']>, step: SyncStep): Promise<SyncOutcome> {
+    const { adapter, bin, setting } = agent;
+    const listing = this.begin(() => {});
 
+    list({ bin, dir: this.dir, env: this.deps.env }).then(
+      (models) => {
+        if (this.running !== listing) return;
+        if (models.some((m) => m.id === setting.syncModel)) {
+          this.running = null;
+          void this.launch(agent, step).then(listing.settle);
+          return;
+        }
+        this.end(listing, () => {
+          this.ask = { kind: 'model', models, suggested: cheapestKnown(models) };
+          this.askedBy = adapter.name;
+          return { ask: 'model' };
+        });
+      },
+      (err: Error) => this.end(listing, () => this.refuse(err.message)),
+    );
+    return listing.outcome;
+  }
+
+  /** Makes a run the sync in progress, with no ask or error shown; its outcome settles when `end` ends it. */
+  private begin(cancel: () => void): Running {
     let settle!: Running['settle'];
     const outcome = new Promise<SyncOutcome>((resolve) => (settle = resolve));
-    const running: Running = { outcome, settle, cancel };
+    const running: Running = { outcome, settle, cancel, long: false, stopTimer: () => {} };
     this.running = running;
     this.ask = this.error = null;
     this.changed();
+    return running;
+  }
+
+  private launch({ adapter, bin, setting }: AgentInUse, step: SyncStep): Promise<SyncOutcome> {
+    const { nodeBin, projectDir, env } = this.deps;
+    const tools = step.kind === 'read' ? (this.record.readTools?.tools ?? []) : [];
+    let prepared: SyncRunSpec | Promise<SyncRunSpec>;
+    try {
+      prepared = adapter.sync.prepare({ bin, nodeBin, dir: this.dir, projectDir, env, step, tools, setting });
+    } catch (err) {
+      // Said in the view, as a run that fails is: Sync is pressed from the panel, which only logs a call main refuses.
+      this.ask = null;
+      const refused = this.refuse((err as Error).message);
+      this.changed();
+      return Promise.resolve(refused);
+    }
+    if (!(prepared instanceof Promise)) return this.startRun(adapter, bin, step, tools, prepared);
+
+    // A prepare that asks the agent first: the sync counts as running meanwhile, as while models are listed.
+    const preparing = this.begin(() => {});
+    prepared.then(
+      (spec) => {
+        if (this.running !== preparing) return;
+        try {
+          void this.startRun(adapter, bin, step, tools, spec, preparing);
+        } catch (err) {
+          this.end(preparing, () => this.refuse((err as Error).message));
+        }
+      },
+      (err: Error) => this.end(preparing, () => this.refuse(err.message)),
+    );
+    return preparing.outcome;
+  }
+
+  /** Starts the run `spec` describes as the sync in progress: `waiting` when it already counts as running, else a new one. */
+  private startRun(adapter: AgentAdapter, bin: string, step: SyncStep, tools: string[], spec: SyncRunSpec, waiting?: Running): Promise<SyncOutcome> {
+    const { env } = this.deps;
+    const { done, cancel } = (this.deps.run ?? runSync)({ ...spec, input: adapter.sync.prompt(step), timeoutMs: SYNC_TIMEOUT_MS });
+
+    const setTimer = this.deps.setTimer ?? ((fn, ms) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    });
+    const running = waiting ?? this.begin(cancel);
+    if (waiting) waiting.cancel = cancel;
+    running.stopTimer = setTimer(() => {
+      if (this.running !== running) return;
+      running.long = true;
+      this.changed();
+    }, LONG_SYNC_MS);
 
     done.then(
-      (stdout) => this.end(running, () => this.apply(step, readSyncAnswer(stdout))),
-      (err: Error) => this.end(running, () => this.refuse(err.message)),
+      (stdout) => {
+        adapter.sync.afterRun({ bin, dir: this.dir, env, stdout });
+        this.end(running, () => this.apply(adapter, step, adapter.sync.readAnswer(stdout, tools)));
+      },
+      (err: Error & { stdout?: string }) => {
+        // A stopped run still had what it printed until then.
+        if (err.stdout !== undefined) adapter.sync.afterRun({ bin, dir: this.dir, env, stdout: err.stdout });
+        this.end(running, () => this.refuse(err.message));
+      },
     );
-    return outcome;
+    return running.outcome;
   }
 
   /** Ends `running` with what `compute` makes of its answer, unless it was stopped or replaced meanwhile. */
   private end(running: Running, compute: () => SyncOutcome): void {
     if (this.running !== running) return;
+    running.stopTimer();
     this.running = null;
     let outcome: SyncOutcome;
     try {
@@ -242,16 +424,21 @@ export class TodoService {
     running.settle(outcome);
   }
 
-  /** What the answer of a run for `step` changes: the cards, an ask for the owner, or an error. */
-  private apply(step: SyncStep, answer: SyncAnswer): SyncOutcome {
-    if (answer.kind === 'none') return this.refuse(answer.message ?? 'The sync run found nothing to read, and did not say why');
+  /** What the answer of `adapter`'s run for `step` changes: the cards, an ask for the owner, or an error. */
+  private apply(adapter: AgentAdapter, step: SyncStep, answer: SyncAnswer): SyncOutcome {
+    if (answer.kind === 'none') {
+      const message = answer.message ?? 'The sync run found nothing to read, and did not say why';
+      const { noConnector } = adapter.sync.words;
+      return this.refuse(step.kind === 'discover' && noConnector !== '' ? `${message} ${noConnector}` : message);
+    }
 
     if (step.kind === 'discover') {
       const { connector, readTools } = answer;
       if (answer.kind !== 'tools' || !connector || !readTools?.length) return this.refuse(UNASKED);
-      const notMcp = readTools.filter((name) => !isMcpToolName(name));
-      if (notMcp.length > 0) return this.refuse(`The sync named tools that aren't a connector's: ${notMcp.join(', ')}`);
+      const notTools = readTools.filter((name) => !adapter.sync.isToolName(name));
+      if (notTools.length > 0) return this.refuse(`The sync named tools that aren't a connector's: ${notTools.join(', ')}`);
       this.ask = { kind: 'tools', connector, tools: readTools };
+      this.askedBy = adapter.name;
       return { ask: 'tools' };
     }
 
@@ -269,7 +456,15 @@ export class TodoService {
       seen.add(id);
     }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
+    // A put-back task is seen only through its card: once the card is off the list, the task goes back to the board.
+    for (const task of this.deps.tasks.list()) {
+      if (task.place === 'putBack' && task.card && !seen.has(task.card.id)) this.deps.tasks.returnToBoard(task.id);
+    }
     return { cards: cards.length };
+  }
+
+  private viewOf(taskId: string): TaskView | undefined {
+    return this.deps.tasks.list().find((t) => t.id === taskId);
   }
 
   private refuse(error: string): { error: string } {

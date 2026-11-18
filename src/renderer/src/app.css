@@ -243,6 +243,19 @@ html[data-platform='darwin'] .top-row {
   background: var(--island);
 }
 
+/* A row being dragged lifts over the others, which give it room; the whole list shows the grip. */
+.rail-list[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.rail-item[data-dragging='true'] {
+  position: relative;
+  z-index: 1;
+  border-color: var(--island-border);
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
 .rail-name {
   flex: 1;
   min-width: 0;
@@ -319,7 +332,13 @@ html[data-platform='darwin'] .top-row {
   color: var(--fg);
 }
 
+/* On: blue, under the pointer too, with hover's tint in blue as the top row's open toggles have it. */
 .rail-act[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.rail-act[aria-pressed='true']:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
 
@@ -455,7 +474,8 @@ html[data-platform='darwin'] .setup-titlebar {
 
 .setup-check {
   display: grid;
-  grid-template-columns: 10ch minmax(0, 1fr);
+  /* "› opencode" and a space. */
+  grid-template-columns: 11ch minmax(0, 1fr);
 }
 
 .setup-name {
@@ -485,12 +505,127 @@ html[data-platform='darwin'] .setup-titlebar {
   color: var(--error);
 }
 
+/* A failing agent while another works: no problem, so no red. Written after the red, which it overrides. */
+.setup-check[data-quiet] .setup-status {
+  color: var(--fg-subtle);
+}
+
 .setup-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   font-family: var(--font-ui);
   user-select: none;
+}
+
+/* The agents step: one row per agent, its tick box first. A ticked one is outlined in the accent; one that doesn't
+   work fades, keeping its buttons. */
+.setup-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.setup-agent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--fg);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.setup-agent[data-ticked='true'] {
+  border-color: var(--accent);
+}
+
+.setup-agent[data-works='false'] .setup-agent-name {
+  opacity: 0.55;
+}
+
+.setup-agent-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup-tick {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+}
+
+.setup-tick:checked {
+  background: var(--accent);
+}
+
+.setup-tick:checked::after {
+  content: '✓';
+  color: var(--accent-text);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.setup-tick:disabled:not(:checked) {
+  border-color: var(--border);
+}
+
+.setup-tick:focus-visible {
+  outline-offset: 2px;
+}
+
+.setup-agent-version,
+.setup-agent-actions {
+  margin-left: auto;
+}
+
+.setup-agent-version {
+  color: var(--fg-subtle);
+  font: 12px var(--font-mono);
+}
+
+.setup-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The default: a two-way choice, the picked one filled. */
+.setup-default {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.setup-default > button {
+  padding: 6px 14px;
+  color: var(--fg-muted);
+}
+
+.setup-default > button:hover:not([aria-checked='true']) {
+  background: var(--hover);
+}
+
+.setup-default > button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 /* --- The panes: the open projects, side by side or in a grid ---------------------------------- */
@@ -623,8 +758,8 @@ html[data-platform='darwin'] .setup-titlebar {
 /* --- The Todo panel: the project's to-do list, at its pane's far left ------------------------ */
 
 /* An island like the manager's column, at the owner's width. Pinned or floating, it is on the session panel's floating
-   layer, above the floating manager's: the manager slides away under it, and the session panel's float, after it,
-   still covers it, unless it holds a ticket (the raised rule below). Its header is measured against its own width. */
+   layer, above the floating manager's unless the owner used the manager last, and the session panel's float, after
+   it, still covers it, unless it holds a ticket (the raised rule below). Its header is measured against its own width. */
 .todo-panel {
   container-type: inline-size;
   margin: 0 0 8px 8px;
@@ -636,8 +771,8 @@ html[data-platform='darwin'] .setup-titlebar {
   z-index: 6;
 }
 
-/* The tab strip is the island's title bar, laid out as the manager's: its one tab sits on the manager's
-   title line, and Quick Add and Sync just left of the fold button. */
+/* The tab strip is the island's title bar, laid out as the manager's: its tabs sit on the manager's title line, and
+   To do's Quick Add and Sync just left of the fold button. */
 .todo-tabs {
   flex: none;
   display: flex;
@@ -649,23 +784,66 @@ html[data-platform='darwin'] .setup-titlebar {
   padding: 6px 0 4px 16px;
 }
 
-/* The tab on show, marked under its name without moving it off that line. */
-.todo-tab {
-  position: relative;
-  margin: 0;
-  font: 600 17px/1.3 var(--font-display);
-  letter-spacing: -0.025em;
+/* It clips rather than run under Quick Add, should a count ever outgrow the room; the padding keeps the mark under the
+   tab on show inside it. */
+.todo-tablist {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: -8px;
+  padding-bottom: 8px;
+  overflow: hidden;
 }
 
-.todo-tab::after {
+/* What a tab shows, under the title bar: the column the panel's own children made before the tabs. */
+.todo-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Named and counted as the board's lanes are, so both fit beside the buttons at the panel's narrowest. The one on show
+   is full-strength and marked under its name without moving it off that line; the other steps back. */
+.todo-tab {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--fg-subtle);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.todo-tab:hover {
+  color: var(--fg-muted);
+}
+
+.todo-tab[aria-selected='true'] {
+  color: var(--fg);
+}
+
+.todo-tab[aria-selected='true']::after {
   content: '';
   position: absolute;
   right: 0;
-  bottom: -5px;
+  bottom: -7px;
   left: 0;
   height: 2px;
   border-radius: 1px;
   background: var(--accent);
+}
+
+/* As a lane's count: quiet figures beside the name. */
+.todo-tab-count {
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Quick Add leads the two, outlined in dashes as the Todo mark is: what it adds is Mainframe's own. Written over
@@ -676,18 +854,44 @@ html[data-platform='darwin'] .setup-titlebar {
   border-color: var(--border);
 }
 
-/* The header's room toward the panel's narrowest (spec §7): with its word, Sync needs a panel of about 312 px, so
-   below about 315 it drops the word, its name stays, and it is a square as the fold button and the pin beside it are.
-   Written over .btn, which comes later. */
-@container (max-width: 312px) {
+.btn.todo-add svg {
+  display: none;
+}
+
+/* The header's room: beside the two tabs, Quick Add and Sync keep their words only in a wide panel. Narrower, each is
+   a square as the fold button and the pin beside it are, its name kept (Quick Add's a plus sign, as in New task). Written
+   over .btn, which comes later. */
+@container (max-width: 420px) {
+  .btn.todo-add,
   .btn.todo-sync {
     width: 28px;
     padding: 0;
     justify-content: center;
   }
 
+  .btn.todo-add svg {
+    display: block;
+  }
+
+  .todo-add span,
   .todo-sync span {
     display: none;
+  }
+}
+
+/* Toward the panel's narrowest the tabs and buttons close up, so a three-digit count fits with room to spare. */
+@container (max-width: 300px) {
+  .todo-tabs {
+    gap: 4px;
+  }
+
+  .todo-tablist {
+    gap: 6px;
+  }
+
+  .todo-tab {
+    gap: 3px;
+    font-size: 12px;
   }
 }
 
@@ -716,6 +920,31 @@ html[data-platform='darwin'] .setup-titlebar {
 
 .todo-source-name + .todo-synced {
   margin-left: auto;
+}
+
+/* A sync past two minutes: a warning tint, as the ask's is accent, since the owner's tokens are what it spends. */
+.todo-long-sync {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 8px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--fg-muted);
+}
+
+.todo-long-sync p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.todo-long-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* What Sync needs the owner to say before it goes on. The one place the panel asks for trust, so
@@ -790,6 +1019,80 @@ html[data-platform='darwin'] .setup-titlebar {
 .todo-pick-board {
   color: var(--fg-subtle);
   font-weight: 400;
+}
+
+/* The models, cheapest first: a choice of one, so a row is picked rather than pressed, and only the button runs. */
+/* A user's OpenCode can list hundreds of models: the ask shrinks to the panel and its list scrolls, so the button under
+   it stays in view. */
+.todo-model-ask {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.todo-models {
+  align-self: stretch;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.todo-model {
+  align-items: center;
+}
+
+.todo-model[aria-checked='true'] {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* A radio's dot: a ring, filled once picked. */
+.todo-model-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--fg-subtle);
+  border-radius: 50%;
+}
+
+.todo-model[aria-checked='true'] .todo-model-dot {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 2.5px, transparent 3px);
+}
+
+/* The name, with the provider's id under it, quieter. */
+.todo-model-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-model-title,
+.todo-model-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-model-id {
+  color: var(--fg-subtle);
+  font-size: 0.85em;
+  font-weight: 400;
+}
+
+/* Prices line up down the list, so the cheapest is plain to see. */
+.todo-model-price {
+  flex: none;
+  color: var(--fg-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-model-price.unknown {
+  font-style: italic;
 }
 
 /* It can name the Todo file by its full path. */
@@ -971,6 +1274,100 @@ html[data-platform='darwin'] .setup-titlebar {
   border: 1px dashed var(--border);
   background: none;
   color: var(--fg-subtle);
+}
+
+/* The Finished tab's search is the row under its title: a bare field on the line, whose divider takes the focus
+   colour while it is typed in. */
+.finished-bar {
+  gap: 8px;
+  cursor: text;
+}
+
+.finished-bar:focus-within {
+  border-bottom-color: var(--border-focus);
+}
+
+.finished-bar svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--fg-subtle);
+}
+
+.finished-search {
+  flex: 1;
+  min-width: 0;
+  height: 19px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+.finished-search::placeholder {
+  color: var(--fg-subtle);
+}
+
+/* What is behind, so quieter than what is ahead: the rows have no fill until hovered, the title and its line on the
+   left and Continue at the right, on the title's line. */
+.finished-row {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  border-radius: var(--radius-md);
+}
+
+.finished-row:hover {
+  background: color-mix(in srgb, var(--fg) 4.5%, transparent);
+}
+
+.finished-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finished-title {
+  color: var(--fg-muted);
+  font-weight: 500;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.finished-meta {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* A discarded attempt was given up: its line says so in the warning's tone, as nothing else on the row does. */
+.finished-row[data-place='discarded'] .finished-meta {
+  color: color-mix(in srgb, var(--warning) 70%, var(--fg-subtle));
+}
+
+.finished-error {
+  color: var(--error);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.finished-row .card-act {
+  margin-top: -3px;
+}
+
+.finished-empty {
+  flex: none;
+  max-width: 36ch;
+  margin: 0;
+  padding: 4px 4px 0;
+  color: var(--fg-subtle);
+  text-wrap: pretty;
 }
 
 /* Quiet, at the panel's foot: it undoes an allow or a pick that was wrong. */
@@ -1497,6 +1894,74 @@ kbd {
   gap: 6px;
 }
 
+/* An icon alone, in the toggles' quiet style: Settings' cog, the last thing in the window's top row. */
+.tb-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.tb-icon:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.tb-icon > svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* With no pane in the top row, the cog keeps the window's top-right corner, where the last pane's bar would end. */
+.settings-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 4px 0;
+}
+
+/* Update available: the one thing in the row that isn't always there, so it alone wears the accent, as a pill that
+   reads as news rather than a control. It sits right before the cog. */
+.tb-update {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tb-update:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.tb-update:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.tb-update > svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* Its own icon, not one in the state glyph an off Manager button shows. */
 .tb-toggle > svg {
   width: 14px;
@@ -1521,8 +1986,15 @@ kbd {
 /* The words go; the state glyph stays. */
 @container (max-width: 560px) {
   .tb-jump span,
+  .tb-update span,
   .tb-toggle > span:not(.glyph) {
     display: none;
+  }
+
+  .tb-update {
+    width: 24px;
+    padding: 0;
+    justify-content: center;
   }
 }
 
@@ -1791,6 +2263,17 @@ kbd {
   background: var(--project);
 }
 
+/* Names the agent on a task's card and panel header; a Claude Code task carries none. */
+.agent-mark {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .card-age {
   flex: none;
   margin-left: auto;
@@ -1812,8 +2295,14 @@ kbd {
 }
 
 /* A state, not output: the interface font. */
-.card-activity.busy {
+.card-activity.busy,
+.card-activity.problem {
   font-family: var(--font-ui);
+}
+
+/* Why Put back left the task here: the owner's to act on. */
+.card-activity.problem {
+  color: var(--warning);
 }
 
 .card-ask {
@@ -1856,6 +2345,10 @@ kbd {
   color: var(--accent);
 }
 
+.tone-success {
+  color: var(--success);
+}
+
 /* Primary by full-strength text, not colour. */
 .card-act {
   position: relative;
@@ -1873,6 +2366,77 @@ kbd {
 
 .card-act:hover {
   background: color-mix(in srgb, var(--fg) 11%, transparent);
+}
+
+/* The Paused card's other actions, quieter than Reopen beside it: a square of the same height. */
+.card-more {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: -4px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.card-more svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card-more:hover,
+.card:has(.card-menu:popover-open) .card-more {
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg);
+}
+
+/* In the top layer, under its button's right edge, or above it where the window ends. */
+.card-menu {
+  inset: auto;
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
+  margin: 4px 0;
+  padding: 4px;
+  width: max-content;
+  max-width: 240px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+.card-menu:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 10px 7px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  text-align: left;
+}
+
+.card-menu-item:hover {
+  background: var(--hover);
+}
+
+.card-menu-hint {
+  color: var(--fg-subtle);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Destroys work: the error colour, on its name only. */
+.card-menu-item.danger {
+  color: var(--error);
 }
 
 /* A card changing lanes flies as a copy above the board: each lane's list clips what leaves it.
@@ -2068,7 +2632,7 @@ kbd {
   right: 8px;
 }
 
-/* A layer under the Todo panel, so it slides away and back under that panel: on one layer, the Todo panel, first in
+/* A layer under the Todo panel, unless the owner used the manager last (below): on one layer, the Todo panel, first in
    the page, would paint under the manager. Its place is right of the Todo panel's while that is on (the pinned panel,
    or its strip). */
 .manager-column:is([data-pinned='false'], [data-open='false']) {
@@ -2084,10 +2648,21 @@ kbd {
   left: calc(8px + var(--left-room, 0px));
 }
 
-/* Over the floating manager (a layer above it). */
+/* Floating, right of its strip and of the manager's while that shows, so it never covers a strip: the pane sets how
+   far. Over the manager, a layer above it. */
 .todo-panel[data-pinned='false'] {
-  left: calc(16px + var(--strip-w));
+  left: var(--float-left);
   box-shadow: 24px 0 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Where the floating Todo panel lies over the manager and the owner used the manager last, the pane says so, and the
+   manager is on top, over the panel's ticket too; the session panel's float, after both in the page, still covers it. */
+.pane-body[data-front='manager'] > .manager-column {
+  z-index: 5;
+}
+
+.pane-body[data-front='manager'] > .todo-panel {
+  z-index: 4;
 }
 
 .todo-panel[data-pinned='true'][data-open='false'] {
@@ -2104,6 +2679,20 @@ kbd {
 .todo-panel[data-open='false'] {
   transform: translateX(calc(-100% - 16px - var(--strip-w)));
   visibility: hidden;
+}
+
+/* The manager slides out of sight at its own left edge, into its strip, never under the Todo panel and out past it:
+   cut there as it moves, by as much as it has moved. Its shadow and resize edge reach past its other sides. Cut, it is
+   a layer of its own, so pinned it is a layer above the board: the half of its resize edge over the board stays in
+   reach. */
+.manager-column {
+  z-index: 1;
+  clip-path: inset(-100px -100px -100px 0);
+}
+
+/* Folded, nothing of it is left, its shadow neither. */
+.manager-column[data-open='false'] {
+  clip-path: inset(-100px 0 -100px calc(100% + 16px + var(--strip-w)));
 }
 
 /* On the Mac the top row is a window drag region, and macOS hit-tests it natively whatever lies above it: the pane
@@ -2461,7 +3050,9 @@ kbd {
   margin-left: auto;
 }
 
-.p-files .diff {
+/* LineCounts, in the panel and in the diff window. */
+.p-files .diff,
+.diff-page .diff {
   display: inline-flex;
   gap: 6px;
   font-family: var(--font-mono);
@@ -2469,11 +3060,13 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.p-files .add {
+.p-files .add,
+.diff-page .add {
   color: color-mix(in srgb, var(--success) 75%, var(--fg-muted));
 }
 
-.p-files .rem {
+.p-files .rem,
+.diff-page .rem {
   color: color-mix(in srgb, var(--error) 65%, var(--fg-muted));
 }
 
@@ -2489,10 +3082,17 @@ kbd {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
-.file-list li {
+/* Each row opens the diff window at its file. */
+.file-list .file-row {
   display: flex;
   gap: 10px;
+  width: 100%;
   min-width: 0;
+  text-align: left;
+}
+
+.file-list .file-row:hover .path {
+  color: var(--fg);
 }
 
 .file-list .st {
@@ -2576,6 +3176,18 @@ kbd {
   opacity: 0.4;
 }
 
+/* A filled button that destroys work: Discard's confirm. */
+.btn.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--accent-text);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error) 85%, var(--fg));
+  border-color: color-mix(in srgb, var(--error) 85%, var(--fg));
+}
+
 /* The terminal panel, the session panel's and the manager's; it takes the height the rest leaves,
    and sits 8px in from the panel's edge on every side, the bottom too. */
 .well,
@@ -2598,7 +3210,7 @@ kbd {
   box-shadow: 0 0 0 1px var(--border-focus);
 }
 
-.closed-note {
+.paused-note {
   position: absolute;
   inset: 0;
   display: grid;
@@ -2688,7 +3300,8 @@ kbd {
   gap: 6px;
 }
 
-.field > label {
+.field > label,
+.field > .field-label {
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -2755,6 +3368,65 @@ kbd {
   font-size: 12px;
 }
 
+/* The agent pick: quiet radios on one line, set like the checkbox below them. */
+.nt-agents {
+  display: flex;
+  gap: 18px;
+}
+
+.nt-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nt-agent input {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+/* Quiet notes under the agent choice: why an agent isn't offered, or what Codex needs first. */
+.nt-hint {
+  margin: 0;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+/* Codex won't read CLAUDE.md: the hint, then the line to add set apart in an input-like well,
+   with its Copy button at the well's end. */
+.nt-codex-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.nt-codex-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 5px 5px 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.nt-codex-line code {
+  flex: 1;
+  min-width: 0;
+  user-select: text;
+}
+
+.nt-codex-line .btn {
+  height: 24px;
+  padding: 0 8px;
+  min-width: 58px;
+  justify-content: center;
+  font-size: 12px;
+}
+
 .nt-warn,
 .nt-error,
 .manager-error,
@@ -2799,6 +3471,349 @@ kbd {
   font-size: 12px;
 }
 
+/* --- Discard dialog: what would be lost, as a list along an error-coloured rule ------------- */
+
+.discard-safe {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.discard-loss {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--error) 55%, transparent);
+  user-select: text;
+}
+
+.discard-loss h3 {
+  margin: 6px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.discard-loss h3:first-child {
+  margin-top: 0;
+}
+
+.discard-loss ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.discard-loss li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 12px/20px var(--font-mono);
+  color: var(--fg);
+}
+
+/* --- Update dialog: a release's notes along an accent rule, or the commands to run by hand --- */
+
+.update-dialog .nt h2 {
+  overflow-wrap: anywhere;
+}
+
+/* The notes take what room they need, up to a scroll: several missed releases can be long. */
+.update-notes {
+  max-height: min(320px, 45vh);
+  overflow-y: auto;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  user-select: text;
+}
+
+/* Each release's heading, `0.5.0 · 17 Nov`, as a quiet line over its notes, not a second title. */
+.update-notes .md :is(h3, h4) {
+  margin: 14px 0 4px;
+  color: var(--fg-muted);
+  font: 500 12px/1.4 var(--font-mono);
+}
+
+.update-notes .md > :first-child {
+  margin-top: 0;
+}
+
+.update-by-hand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+}
+
+.update-by-hand p {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.update-by-hand code {
+  color: var(--warning);
+  font: 12px var(--font-mono);
+}
+
+/* To copy into a terminal: selectable, and a line per command as it would be typed. */
+.update-by-hand pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: 12px/1.7 var(--font-mono);
+  user-select: text;
+}
+
+/* --- Settings: the New task box, holding a list of titled sections --------------------------- */
+
+.settings-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  padding: 14px 12px 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-head h2 {
+  margin: 0;
+  font: 600 17px/1.3 var(--font-display);
+  letter-spacing: -0.025em;
+}
+
+.settings-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: var(--radius-sm);
+  color: var(--fg-subtle);
+}
+
+.settings-close:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.settings-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-section {
+  padding: 14px 20px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-title {
+  margin: 0 0 10px;
+  color: var(--fg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin: 4px 0;
+}
+
+.settings-agent-name {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 118px;
+  font-weight: 500;
+}
+
+.settings-agent-name input {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.settings-agent[data-works='false'] .settings-agent-name {
+  color: var(--fg-subtle);
+}
+
+.settings-version {
+  flex: none;
+  color: var(--success);
+  font: 12px var(--font-mono);
+}
+
+.settings-why {
+  flex: none;
+  color: var(--fg-subtle);
+}
+
+/* The path gives way first, from its start, so the file's name stays in sight. */
+.settings-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  color: var(--fg-subtle);
+  font: 12px var(--font-mono);
+}
+
+/* As in .file-list .path: the text keeps its own direction, so a leading `/` stays at the start. */
+.settings-path > span {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.settings-find,
+.settings-check {
+  margin-left: auto;
+}
+
+.settings-default {
+  margin-top: 12px;
+}
+
+/* The label column that the hints under the choices line up with. */
+.settings-key {
+  flex: none;
+  width: 140px;
+  color: var(--fg-muted);
+}
+
+.settings-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.settings-seg button {
+  padding: 5px 12px;
+  color: var(--fg-muted);
+}
+
+.settings-seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+/* The saved default that doesn't work: listed, so the stand-in can replace it, but not choosable. */
+.settings-seg button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-seg button:hover:not([aria-checked='true'], :disabled) {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.settings-seg button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.settings-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 340px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font: 13px var(--font-ui);
+  accent-color: var(--accent);
+}
+
+.settings-select:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.settings-hint,
+.settings-quiet {
+  margin: 2px 0 0;
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+.settings-hint {
+  padding-left: 150px;
+}
+
+.settings-error {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--error) 9%, transparent);
+  color: var(--error);
+  user-select: text;
+}
+
+/* Another agent stands in for the saved default: a quiet note at the window's bottom right, until its ✕. */
+.default-fallback {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 10px 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.default-fallback button {
+  flex: none;
+  padding: 0 4px;
+  color: var(--fg-subtle);
+}
+
+.default-fallback button:hover {
+  color: var(--fg);
+}
+
+@media (max-width: 520px) {
+  .settings-hint {
+    padding-left: 0;
+  }
+
+  .settings-key {
+    width: auto;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   /* Out at once; hidden only once it has slid away. Each slides pinned too, as it folds and opens. */
   .side-panel,
@@ -2806,6 +3821,7 @@ kbd {
   .todo-panel {
     transition:
       transform 220ms var(--ease-out),
+      clip-path 220ms var(--ease-out),
       visibility 0s linear 0s;
   }
 
@@ -2814,6 +3830,7 @@ kbd {
   .todo-panel[data-open='false'] {
     transition:
       transform 220ms var(--ease-out),
+      clip-path 220ms var(--ease-out),
       visibility 0s linear 220ms;
   }
 
@@ -2825,10 +3842,13 @@ kbd {
 
   .card,
   .card-act,
+  .card-more,
+  .card-menu-item,
   .btn,
   .tb-btn,
   .tb-jump,
   .tb-toggle,
+  .tb-update,
   .panel-pin,
   .panel-fold,
   .panel-strip,
@@ -2850,6 +3870,25 @@ kbd {
 
   .pane-heading svg {
     transition: transform 140ms var(--ease-out);
+  }
+
+  /* The pill arrives once, with a ring that spreads from it and fades: the news of a release, told once. */
+  .tb-update {
+    animation: update-arrive 1.6s var(--ease-out) 1;
+  }
+
+  /* Only during a drag: as it ends, each row takes its new place in the list at once, with nothing to slide back. */
+  .rail-list[data-dragging='true'] .rail-item:not([data-dragging='true']) {
+    transition: transform 140ms var(--ease-out);
+  }
+}
+
+@keyframes update-arrive {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent);
   }
 }
 

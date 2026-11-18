@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, on, Show, Switch } from 'solid-js';
 import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import { needsYouCount } from '../tasksStore';
 import {
@@ -6,6 +6,7 @@ import {
   focusProject,
   isFocused,
   isShown,
+  moveProjectTo,
   offScreenNeedsYou,
   openProject,
   projectsStore,
@@ -14,19 +15,103 @@ import {
   setRailState,
   toggleBesideProject,
 } from './projectsStore';
+import { dropIndex, shiftOf } from './railOrder';
 
 // The buttons don't take focus on click, so typing stays in the terminal.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
 
+/** How far a press on a row moves before it is a drag and no longer a click. */
+const DRAG_THRESHOLD = 4;
+
+/** A row being dragged: where it was and where it would land, how far it has moved, and how far the others slide. */
+interface Drag {
+  dir: string;
+  from: number;
+  to: number;
+  dy: number;
+  slot: number;
+}
+
+/** Swallows the click that ends a drag, wherever the pointer was let go, so it focuses nothing. */
+function swallowClick(): void {
+  const swallow = (e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  window.addEventListener('click', swallow, { capture: true, once: true });
+  // A drag let go off any element gets no click, and the next real one must not be lost.
+  setTimeout(() => window.removeEventListener('click', swallow, { capture: true }));
+}
+
 /**
  * The open projects, an island at the window's left under the top row, there while Projects has it on. A click
  * focuses a project, on screen in the focused one's place if it was off it; Show beside adds it to the ones on screen.
- * Each says how many of its sessions need the owner, so one off screen still shows when it waits on them. Folded, the
+ * Each says how many of its sessions need the owner, so one off screen still shows when it waits on them. A row dragged
+ * up or down, or moved with Alt+Up and Alt+Down, puts its project in a new place in the list. Folded, the
  * list is a strip in its place that counts the sessions waiting in the projects off screen, and opens it again.
  */
 export default function ProjectRail() {
   /** The project whose close waits for the owner to confirm it. */
   const [confirming, setConfirming] = createSignal<string | null>(null);
+  const [drag, setDrag] = createSignal<Drag | null>(null);
+  /** Ends the press under way, if any, without moving its project. */
+  let letGo: (() => void) | undefined;
+  // The list going, or a project opening or closing, leaves nothing the drag measured true.
+  createEffect(on([railState, () => projectsStore.projects.map((p) => p.dir).join('\n')], () => letGo?.(), { defer: true }));
+
+  /**
+   * A press on a row, past the threshold, drags it along the list, kept within it; the others slide to make room, and
+   * letting go moves the project there. Not from the row's own buttons, nor from its close question.
+   */
+  const pressRow = (e: PointerEvent & { currentTarget: HTMLLIElement }, dir: string) => {
+    if (e.button !== 0 || (e.target as Element).closest('.rail-act, .rail-confirm')) return;
+    // One whose pointerup went astray.
+    letGo?.();
+    const list = e.currentTarget.parentElement!;
+    const startY = e.clientY;
+    // Only once the press is a drag: a plain click needs none of it.
+    const measure = () => {
+      const from = projectsStore.projects.findIndex((p) => p.dir === dir);
+      const rows = [...list.children].map((el) => el.getBoundingClientRect());
+      const own = rows[from];
+      return {
+        from,
+        mids: rows.map((r) => r.top + r.height / 2),
+        slot: own.height + (parseFloat(getComputedStyle(list).rowGap) || 0),
+        min: rows[0].top - own.top,
+        max: rows[rows.length - 1].bottom - own.bottom,
+      };
+    };
+    let measured: ReturnType<typeof measure> | undefined;
+    // On the window, not captured: a capture would take the click of a short press away from the row's button.
+    const move = (ev: PointerEvent) => {
+      // Its pointerup went astray.
+      if ((ev.buttons & 1) === 0) return stop();
+      if (measured === undefined && Math.abs(ev.clientY - startY) < DRAG_THRESHOLD) return;
+      measured ??= measure();
+      const { from, mids, slot, min, max } = measured;
+      const dy = Math.min(Math.max(ev.clientY - startY, min), max);
+      setDrag({ dir, from, to: dropIndex(mids, from, mids[from] + dy), dy, slot });
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', drop);
+      window.removeEventListener('pointercancel', stop);
+      letGo = undefined;
+      setDrag(null);
+    };
+    const drop = () => {
+      const done = drag();
+      stop();
+      if (done === null) return;
+      swallowClick();
+      moveProjectTo(done.dir, done.to);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', drop);
+    window.addEventListener('pointercancel', stop);
+    letGo = stop;
+  };
   const several = () => projectsStore.layout.shown.length > 1;
   // Only the strip shows it.
   const waiting = createMemo(() => (railState() === 'folded' ? offScreenNeedsYou() : 0));
@@ -85,12 +170,18 @@ export default function ProjectRail() {
             <FoldButton points="left" testId="rail-fold" handOff={handOff} />
           </header>
 
-          <ul class="rail-list">
+          <ul class="rail-list" data-dragging={String(drag() !== null)}>
             <For each={projectsStore.projects}>
-              {(project) => {
+              {(project, index) => {
                 const count = createMemo(() => needsYouCount(project.dir));
                 // On screen beside others, so its button takes it off; the last one on screen stays.
                 const beside = () => isShown(project.dir) && several();
+                const dragged = () => drag()?.dir === project.dir;
+                const offset = () => {
+                  const d = drag();
+                  if (d === null) return 0;
+                  return dragged() ? d.dy : shiftOf(index(), d.from, d.to) * d.slot;
+                };
                 return (
                   <li
                     class="rail-item"
@@ -98,6 +189,9 @@ export default function ProjectRail() {
                     data-project={project.dir}
                     data-shown={String(isShown(project.dir))}
                     data-focused={String(isFocused(project.dir))}
+                    data-dragging={String(dragged())}
+                    style={{ transform: offset() === 0 ? undefined : `translateY(${offset()}px)` }}
+                    onPointerDown={(e) => pressRow(e, project.dir)}
                   >
                     <Show
                       when={confirming() === project.dir}
@@ -110,6 +204,15 @@ export default function ProjectRail() {
                             aria-current={isFocused(project.dir) ? 'true' : undefined}
                             onMouseDown={keepFocus}
                             onClick={() => focusProject(project.dir)}
+                            onKeyDown={(e) => {
+                              const step = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+                              if (step === undefined || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                              e.preventDefault();
+                              const button = e.currentTarget;
+                              moveProjectTo(project.dir, index() + step);
+                              // Moving its row drops the focus from it.
+                              queueMicrotask(() => button.focus());
+                            }}
                           >
                             <i aria-hidden="true" />
                             <span class="rail-label">{project.name}</span>

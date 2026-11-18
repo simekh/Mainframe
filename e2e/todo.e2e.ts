@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
@@ -7,7 +7,7 @@ import { IPC } from '../src/shared/ipc';
 import { cleanUp, launchApp, removeAfterTest, setWindowWidth } from './launch';
 import {
   box, card, cardIn, closeTask, edgesWhile, expectSlide, expectStripAt, heldSyncs, holdSyncs, ids, isOnTop, launches, middle,
-  openedLinks, projectPane as pane, railRow, releaseSyncs, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus,
+  openedLinks, projectPane as pane, railRow, releaseSyncs, repo, repoAhead, stoppedSyncs, syncLaunches, syncReply, terminalHasFocus,
   todoDir,
 } from './tasks';
 
@@ -242,6 +242,33 @@ test('Stop ends a running sync quietly: the list stays, a reply from the stopped
   await expect(items).toHaveCount(2);
   await expect(page.getByTestId('todo-sync')).toHaveText('Sync');
   expect(syncLaunches(dataDir)).toHaveLength(4);
+  await app.close();
+});
+
+test("a sync past two minutes says so, and the line's Stop ends the run", async () => {
+  const dir = folder();
+  const { app, page, dataDir } = await launchApp({}, dir);
+  await syncFirstTime(page, dataDir);
+  holdSyncs(dataDir);
+  await page.getByTestId('todo-sync').click();
+  await expect.poll(() => heldSyncs(dataDir)).toBe(1);
+
+  // Main's own timer waits the real two minutes: main sends the view it would send then.
+  const view = await page.evaluate((dir) => window.mainframe.getTodo(dir), dir);
+  expect(view.syncing).toBe(true);
+  await app.evaluate(
+    ({ BrowserWindow }, { channel, dir, view }) => BrowserWindow.getAllWindows()[0].webContents.send(channel, { dir, view }),
+    { channel: IPC.todoChanged, dir, view: { ...view, longSync: true } },
+  );
+  const line = page.getByTestId('todo-long-sync');
+  await expect(line.locator('p')).toHaveText('Still syncing (2 min). Large syncs can use a lot of tokens.', { useInnerText: true });
+  await expect(line.getByTestId('todo-keep-going')).toBeVisible();
+
+  await line.getByTestId('todo-long-stop').click();
+  await expect.poll(() => stoppedSyncs(dataDir)).toBe(1);
+  await expect(page.getByTestId('todo-sync')).toHaveText('Sync');
+  await expect(line).toHaveCount(0);
+  releaseSyncs(dataDir);
   await app.close();
 });
 
@@ -488,7 +515,7 @@ test("a strip whose panel is off leaves no gap, and the pinned session panel's w
   expectStripAt(todoStrip, 'left', pane.x + 8);
   expect((await box(page, 'manager-strip')).x).toBeGreaterThanOrEqual(todoStrip.x + todoStrip.width);
   await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - 2 * STRIP_WIDTH - BOARD_ROOM.pinned));
-  // Out over the manager's strip, the floating panel starts under the top row as the strip does: none of it shows above.
+  // Out right of the strips, the floating panel starts under the top row as they do: none of it shows above.
   expect((await box(page, 'todo-panel')).y).toBe((await box(page, 'manager-strip')).y);
 
   // Off, the Todo panel's strip goes, and the manager's moves into its place.
@@ -496,6 +523,65 @@ test("a strip whose panel is off leaves no gap, and the pinned session panel's w
   await expect(page.getByTestId('todo-strip')).toHaveCount(0);
   expectStripAt(await box(page, 'manager-strip'), 'left', pane.x + 8);
   await expect(edge).toHaveAttribute('aria-valuemax', String(Math.round(pane.width) - STRIP_WIDTH - BOARD_ROOM.pinned));
+  await app.close();
+});
+
+test('floating together, the Todo panel and the manager sit right of both strips, the one used last on top; the strip of the one under brings it up, and a press in it does too', async () => {
+  const { app, page } = await launchApp({}, folder());
+  await setWindowWidth(app, page, 1600);
+  const todo = page.getByTestId('todo-panel');
+  const manager = page.getByTestId('manager-column');
+  const todoStrip = page.getByTestId('todo-strip');
+  const managerStrip = page.getByTestId('manager-strip');
+  await page.getByTestId('manager-pin').click();
+  await expect(manager).toHaveAttribute('data-pinned', 'false');
+  await page.getByTestId('todo-toggle').click();
+  await expect(todo).toHaveAttribute('data-pinned', 'false');
+  await slidIn(todo);
+  await slidIn(manager);
+
+  // Both strips stay in reach, and both panels float right of them, one over the other.
+  expect(await isOnTop(todoStrip)).toBe(true);
+  expect(await isOnTop(managerStrip)).toBe(true);
+  const [t, m, s] = [await box(page, 'todo-panel'), await box(page, 'manager-column'), await box(page, 'manager-strip')];
+  expect(t.x).toBeGreaterThanOrEqual(s.x + s.width);
+  expect(Math.abs(t.x - m.x)).toBeLessThanOrEqual(1);
+  // The Todo panel, opened last, is on top; the manager's strip says it shows the manager, not that it folds it.
+  expect(await isOnTop(todo)).toBe(true);
+  await expect(managerStrip).toHaveAccessibleName(/^Show manager/);
+
+  // Its strip brings the manager up, still open, and the Todo panel stays open under it.
+  await managerStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  await expect(todo).toHaveAttribute('data-open', 'true');
+  expect(await isOnTop(manager)).toBe(true);
+  await expect(page.getByTestId('manager-fold')).toBeFocused();
+  await expect(managerStrip).toHaveAccessibleName('Fold the manager');
+  await expect(todoStrip).toHaveAccessibleName('Show Todo');
+
+  // And the Todo panel's strip brings it back up.
+  await todoStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  expect(await isOnTop(todo)).toBe(true);
+
+  // A press on the part of the manager the Todo panel leaves uncovered brings the manager up too.
+  await page.mouse.click(t.x + t.width + 20, middle(m));
+  expect(await isOnTop(manager)).toBe(true);
+  await expect(todo).toHaveAttribute('data-open', 'true');
+
+  // Pinned, the Todo panel lies over no manager: the manager opened last (Cmd+1), right of it, leaves its ticket on top.
+  await todoStrip.click();
+  await page.getByTestId('todo-pin').click();
+  await expect(todo).toHaveAttribute('data-pinned', 'true');
+  await managerStrip.click();
+  await expect(manager).toHaveAttribute('data-open', 'false');
+  await page.getByTestId('todo-add-note').click();
+  const ticket = page.getByTestId('ticket-panel');
+  await expect(ticket).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+1');
+  await expect(manager).toHaveAttribute('data-open', 'true');
+  await slidIn(manager);
+  expect(await isOnTop(ticket)).toBe(true);
   await app.close();
 });
 
@@ -528,7 +614,7 @@ test('Start on a card starts its task at once: under Working, selected; its prom
   await expect(ticket.getByLabel('Title')).toHaveValue('Half a thought');
   await ticket.getByTestId('ticket-close').click();
 
-  // Closed, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
+  // Paused, it comes back with Reopen and no Start; its ticket offers Reopen too, which continues the task.
   await closeTask(page, id);
   await expect(items).toHaveCount(2);
   await expect(search.getByTestId('todo-start')).toHaveCount(0);
@@ -789,23 +875,47 @@ test('a note is added, edited, kept across a restart, and started as a task, whi
   await first.page.getByTestId('todo-toggle').click();
 
   // Quick Add sits in the panel's top bar, between its name and Sync, and the fold button and the pin after them, apart
-  // and on one line even at the panel's narrowest, where Sync drops its word (spec §7). Its hover says that what it
-  // adds stays in Mainframe.
-  await expect(first.page.getByTestId('todo-add-note')).toHaveText('Quick Add');
-  await expect(first.page.getByTestId('todo-add-note')).toHaveAttribute(
+  // and on one line at any width (spec §7). Only a panel over 420 px wide has room for Quick Add's and Sync's words;
+  // narrower, from the 320 px it opens at down to its narrowest, each is a square that keeps its name. Its hover says
+  // that what it adds stays in Mainframe.
+  const addNote = first.page.getByTestId('todo-add-note');
+  const syncWord = first.page.getByTestId('todo-sync').locator('span');
+  await expect(addNote).toHaveAccessibleName('Quick Add');
+  await expect(addNote.locator('span')).toBeHidden();
+  await expect(syncWord).toBeHidden();
+  await expect(addNote).toHaveAttribute(
     'title',
     "Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it.",
   );
   const edge = first.page.getByTestId('todo-resize');
   await edge.focus();
-  // One step narrower than its 320 px, Sync's word doesn't run into the fold button.
-  await first.page.keyboard.press('ArrowLeft');
-  await expect(edge).toHaveAttribute('aria-valuenow', '304');
+  for (let i = 0; i < 8; i++) await first.page.keyboard.press('ArrowRight');
+  await expect(edge).toHaveAttribute('aria-valuenow', '448');
+  await expect(addNote.locator('span')).toBeVisible();
+  await expect(addNote.locator('span')).toHaveText('Quick Add');
+  await expect(syncWord).toBeVisible();
+  // Worded, Sync doesn't run into the fold button.
   const worded = await box(first.page, 'todo-sync');
   expect(worded.x + worded.width).toBeLessThan((await box(first.page, 'todo-fold')).x);
-  for (let i = 0; i < 2; i++) await first.page.keyboard.press('ArrowLeft');
+  for (let i = 0; i < 11; i++) await first.page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '280');
-  const name = (await first.page.getByRole('heading', { name: 'Todo', level: 2 }).boundingBox())!;
+  await expect(syncWord).toBeHidden();
+  // The two tabs fit whole, with room to spare for a system that rounds glyphs wider, even with a three-digit count:
+  // it is written in for the measure, and Solid's own text node is put back after it. The room is from the tabs' end
+  // to Quick Add, past the header's 4 px gap.
+  const tablist = first.page.getByRole('tablist', { name: 'Todo' });
+  const spare = await tablist.evaluate((el) => {
+    const count = el.querySelector('.todo-tab-count')!;
+    const own = [...count.childNodes];
+    count.textContent = '128';
+    const tabsEnd = el.getBoundingClientRect().left + el.scrollWidth;
+    const room = el.parentElement!.querySelector('.todo-add')!.getBoundingClientRect().left - tabsEnd - 4;
+    count.replaceChildren(...own);
+    return room;
+  });
+  expect(spare).toBeGreaterThanOrEqual(4);
+  // The tab named last, where the tabs end, on their line.
+  const name = await box(first.page, 'todo-tab-finished');
   const add = await box(first.page, 'todo-add-note');
   const sync = await box(first.page, 'todo-sync');
   const fold = await box(first.page, 'todo-fold');
@@ -986,7 +1096,7 @@ test("a card for the owner has no Start in the list; its ticket says it is marke
   await expect(ticket).toHaveCount(0);
   await expect(owner).toHaveCount(0);
 
-  // Closed, it comes back greyed with Reopen, in the list and in its ticket, and still no Start.
+  // Paused, it comes back greyed with Reopen, in the list and in its ticket, and still no Start.
   await closeTask(page, id);
   await expect(owner.getByTestId('todo-reopen')).toHaveAccessibleName('Reopen Decide on the refund window');
   await expect(owner.getByTestId('todo-start')).toHaveCount(0);
@@ -1124,5 +1234,157 @@ test("a card's description shows its Markdown in the ticket, never as HTML, and 
   await expect(page.getByTestId('todo-panel').locator('img')).toHaveCount(0);
   await expect(ticket.locator('img')).toHaveCount(0);
   expect(await page.evaluate(() => (globalThis as { __pwned?: unknown }).__pwned)).toBeUndefined();
+  await app.close();
+});
+
+/** A task record as main keeps it in `state.json`, off the board in `place` since `endedAt`. */
+function endedRecord(main: string, o: { id: string; chat: string; slug: string; title: string; place: string; endedAt: number; number?: string }) {
+  return {
+    id: o.id,
+    projectDir: main,
+    title: o.title,
+    description: '',
+    slug: o.slug,
+    name: o.title,
+    claudeSessionId: o.chat,
+    worktreePath: join(main, '.claude', 'worktrees', o.slug),
+    branch: `worktree-${o.slug}`,
+    createdAt: o.endedAt - 3_600_000,
+    closedAt: o.endedAt,
+    open: false,
+    agent: 'claude',
+    place: o.place,
+    endedAt: o.endedAt,
+    ...(o.number && {
+      card: { sourceKind: 'Tracker', id: `c${o.number}`, number: `#${o.number}`, url: null, labels: [], position: 0, urgent: false },
+    }),
+  };
+}
+
+/** Day and short month in the app's own locale, as the Finished tab writes them. */
+const shortDate = (page: Page, at: number) =>
+  page.evaluate((t) => new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(t), at);
+
+test('the Finished tab lists a finished task, and Continue brings it back to the board in its worktree', async () => {
+  const main = repo();
+  const dataDir = removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-e2e-')));
+  const finishedAt = Date.UTC(2026, 10, 11, 12);
+  const discardedAt = Date.UTC(2026, 10, 9, 12);
+  const finished = endedRecord(main, { id: 't-fin', chat: '6f1c2a4e-0b8d-4c3e-9a51-2d7e8f90ab12', slug: 'stripe-webhooks', title: 'Stripe webhooks', place: 'finished', endedAt: finishedAt, number: '112' });
+  const discarded = endedRecord(main, { id: 't-dis', chat: '0d4b7e21-5a3c-4f8e-b6d2-9c1e3a5f7b80', slug: 'name-check', title: 'Name check on signup', place: 'discarded', endedAt: discardedAt });
+  writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ version: 1, tasks: [discarded, finished] }));
+  // What SessionStart recorded of the finished task's chat, which Continue resumes.
+  mkdirSync(join(dataDir, 'tasks', finished.id), { recursive: true });
+  writeFileSync(join(dataDir, 'tasks', finished.id, 'session-start.json'), JSON.stringify({ session_id: finished.claudeSessionId, source: 'resume' }));
+
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, main);
+  await page.getByTestId('todo-toggle').click();
+  // To do is the tab on show, with Quick Add and Sync; Finished counts its tasks.
+  const toDo = page.getByRole('tab', { name: 'To do' });
+  const finishedTab = page.getByTestId('todo-tab-finished');
+  await expect(toDo).toHaveAttribute('aria-selected', 'true');
+  await expect(finishedTab).toHaveText('Finished 2');
+  await expect(page.getByTestId('todo-add-note')).toBeVisible();
+  await expect(page.getByTestId('task-card')).toHaveCount(0);
+
+  await finishedTab.click();
+  await expect(finishedTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('todo-add-note')).toHaveCount(0);
+  await expect(page.getByTestId('todo-sync')).toHaveCount(0);
+  const rows = page.getByTestId('finished-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('#112 Stripe webhooks');
+  await expect(rows.nth(0)).toContainText(`Finished ${await shortDate(page, finishedAt)}`);
+  await expect(rows.nth(0)).not.toContainText('no card');
+  await expect(rows.nth(1)).toContainText('Name check on signup');
+  await expect(rows.nth(1)).toContainText(`Discarded ${await shortDate(page, discardedAt)} · no card`);
+
+  // The search filters on the title and the card number.
+  const search = page.getByTestId('finished-search');
+  await search.fill('#112');
+  await expect(rows).toHaveCount(1);
+  await search.fill('SIGNUP');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Name check on signup');
+  await search.fill('');
+  await expect(rows).toHaveCount(2);
+
+  await rows.nth(0).getByRole('button', { name: 'Continue Stripe webhooks' }).click();
+  await expect.poll(() => launches(dataDir).length).toBe(1);
+  const args = launches(dataDir)[0].args;
+  expect(args.slice(args.indexOf('--worktree'), args.indexOf('--worktree') + 2)).toEqual(['--worktree', 'stripe-webhooks']);
+  expect(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2)).toEqual(['--resume', finished.claudeSessionId]);
+  await expect(cardIn(page, 'working', finished.id)).toHaveAttribute('data-selected', 'true');
+  await expect(rows).toHaveCount(1);
+  await expect(finishedTab).toHaveText('Finished 1');
+  await app.close();
+});
+
+test('a Continue from the Finished tab that is refused keeps the task selected before it, and says why on its row', async () => {
+  const main = repo();
+  const dataDir = removeAfterTest(mkdtempSync(join(tmpdir(), 'mainframe-e2e-')));
+  const endedAt = Date.UTC(2026, 10, 9, 12);
+  // The card's first task was discarded, and a task started afresh from it since keeps the card.
+  const discarded = endedRecord(main, { id: 't-dis', chat: '0d4b7e21-5a3c-4f8e-b6d2-9c1e3a5f7b80', slug: 'stripe-webhooks', title: 'Stripe webhooks', place: 'discarded', endedAt, number: '112' });
+  const again = { ...endedRecord(main, { id: 't-again', chat: '6f1c2a4e-0b8d-4c3e-9a51-2d7e8f90ab12', slug: 'stripe-webhooks-2', title: 'Stripe webhooks again', place: '', endedAt, number: '112' }), place: undefined, endedAt: undefined };
+  writeFileSync(join(dataDir, 'state.json'), JSON.stringify({ version: 1, tasks: [discarded, again] }));
+
+  const { app, page } = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, main);
+  const paused = cardIn(page, 'paused', again.id);
+  await paused.locator('.card-title').click();
+  await expect(paused).toHaveAttribute('data-selected', 'true');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-tab-finished').click();
+  const row = page.getByTestId('finished-row');
+  await row.getByRole('button', { name: 'Continue Stripe webhooks' }).click();
+
+  await expect(row.locator('.finished-error')).toContainText('already has the task "Stripe webhooks again"');
+  await expect(paused).toHaveAttribute('data-selected', 'true');
+  await app.close();
+});
+
+test("Put back on a note's task brings its note back, and Continue on it continues the task", async () => {
+  const { app, page, dataDir } = await launchApp({}, repo());
+  const ticket = page.getByTestId('ticket-panel');
+  await page.getByTestId('todo-toggle').click();
+  await page.getByTestId('todo-add-note').click();
+  await ticket.getByLabel('Title').fill('Tidy the flags');
+  await ticket.getByLabel('Text').fill('Remove the old flags.');
+  await ticket.getByTestId('note-save').click();
+  const items = page.getByTestId('todo-item');
+  await items.first().getByTestId('todo-start').click();
+  await expect.poll(() => ids(page)).toHaveLength(1);
+  const [id] = await ids(page);
+  await expect(items).toHaveCount(0);
+  await expect.poll(() => launches(dataDir).length).toBe(1);
+
+  await closeTask(page, id);
+  const paused = cardIn(page, 'paused', id);
+  await expect(paused).toHaveCount(1);
+  await paused.getByTestId('card-more').click();
+  await page.getByTestId('put-back').click();
+  await expect(card(page, id)).toHaveCount(0);
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText('Tidy the flags');
+  await expect(items.first().getByTestId('todo-start')).toHaveCount(0);
+  await expect(items.first().getByTestId('todo-reopen')).toHaveCount(0);
+  const continueButton = items.first().getByTestId('todo-continue');
+  await expect(continueButton).toHaveAccessibleName('Continue Tidy the flags');
+
+  // Its ticket offers Continue in place of Start, and its delete says where the task goes.
+  await items.first().click();
+  await expect(ticket.getByTestId('ticket-start')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-no-questions')).toHaveCount(0);
+  await expect(ticket.getByTestId('ticket-continue')).toBeVisible();
+  await expect(ticket.getByTestId('note-delete')).toHaveAttribute('title', 'Delete this todo; its task goes back to Paused on the board');
+  await ticket.getByTestId('ticket-close').click();
+
+  await continueButton.click();
+  await expect.poll(() => launches(dataDir).length).toBe(2);
+  const args = launches(dataDir)[1].args;
+  expect(args).toContain('--resume');
+  expect(args).toContain('--worktree');
+  await expect(cardIn(page, 'working', id)).toHaveAttribute('data-selected', 'true');
+  await expect(items).toHaveCount(0);
   await app.close();
 });

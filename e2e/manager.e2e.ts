@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
-import { ROLE_PROMPT } from '../src/main/manager/rolePrompt';
+import { ADAPTERS } from '../src/main/agents/adapters';
+import { rolePrompt } from '../src/main/manager/rolePrompt';
 import { cleanUp, launchApp, setWindowWidth } from './launch';
 import {
-  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, ids, isOnTop, launches, managerDir,
-  managerLaunches, managerScreen, managerTermSize, mcpCall, report, repo, ROW_HEIGHT, run, screen, sendAfterResize, sendLine,
-  sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
+  appRegion, box, card, cardIn, edgesWhile, expectInOneRow, expectSlide, expectStripAt, framesWhile, ids, isOnTop, launches,
+  managerDir, managerLaunches, managerScreen, managerTermSize, mcpCall, middle, report, repo, ROW_HEIGHT, run, screen,
+  sendAfterResize, sendLine, sendManagerLine, sessionIdOf, settled, startTask, terminalHasFocus, termSize, UUID,
 } from './tasks';
 
 test.afterEach(cleanUp);
@@ -25,7 +26,7 @@ const filesOf = (dataDir: string) => ({
 /** The manager's launch that resumes the conversation `id`, with `prompt` after the role prompt. */
 const resumeArgs = (dataDir: string, id: string, ...prompt: string[]) => [
   '--resume', id, '--mcp-config', filesOf(dataDir).mcp, '--settings', filesOf(dataDir).settings,
-  '--append-system-prompt', ROLE_PROMPT, ...prompt,
+  '--append-system-prompt', rolePrompt(ADAPTERS.claude.instructions), ...prompt,
 ];
 
 const focusInManager = (page: Page) =>
@@ -66,11 +67,11 @@ test("the manager starts with the app in the main checkout, with Mainframe's too
   expect(realpathSync(cwd)).toBe(realpathSync(main));
   expect(args).toEqual([
     '-n', 'main-manager', '--session-id', expect.stringMatching(UUID), '--mcp-config', mcp, '--settings', settings,
-    '--append-system-prompt', ROLE_PROMPT,
+    '--append-system-prompt', rolePrompt(ADAPTERS.claude.instructions),
   ]);
 
   const { hooks, permissions } = JSON.parse(readFileSync(settings, 'utf8'));
-  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo'] });
+  expect(permissions).toEqual({ allow: ['mcp__mainframe__list_sessions', 'mcp__mainframe__sync_todo', 'mcp__mainframe__close_session'] });
   expect(hooks.SessionStart[0].hooks[0].args).toContain(join(managerDir(dataDir), 'session-start.json'));
 
   // Windows has no owner-only mode bits (spec §10.2).
@@ -101,7 +102,7 @@ test("the manager's tools answer only with the token, and start_task starts a ta
   expect((await mcpCall(dataDir, 'tools/list', {}, { token: 'not-the-token' })).status).toBe(401);
   const listed = await mcpCall(dataDir, 'tools/list', {});
   expect(listed.status).toBe(200);
-  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task', 'sync_todo']);
+  expect(listed.body!.result!.tools!.map((tool) => tool.name)).toEqual(['list_sessions', 'start_task', 'sync_todo', 'close_session']);
 
   // New task selects the task it starts; the manager's start leaves the selection, and the focus, where they are.
   const alpha = await startTask(page, 'Alpha');
@@ -120,6 +121,28 @@ test("the manager's tools answer only with the token, and start_task starts a ta
     expect.objectContaining({ taskId: alpha, title: 'Alpha', running: true, state: 'blocked', msg: 'approve Bash: ls' }),
     expect.objectContaining({ taskId, title: 'From the manager', running: true, state: null }),
   ]);
+  await app.close();
+});
+
+test('close_session closes a session that finished its turn, and refuses one that is working', async () => {
+  const { app, page, dataDir } = await launchApp();
+  await expect.poll(() => managerScreen(page)).toContain('$');
+  const alpha = await startTask(page, 'Alpha');
+  const beta = await startTask(page, 'Beta');
+  await sendLine(page, alpha, report('working'));
+  // "All done", base64 as the report carries it.
+  await sendLine(page, alpha, report('done:msg=QWxsIGRvbmU='));
+  await sendLine(page, beta, report('working'));
+  await expect(cardIn(page, 'needs-you', alpha)).toHaveCount(1);
+  await expect(cardIn(page, 'working', beta)).toHaveCount(1);
+
+  expect(await callTool(dataDir, 'close_session', { taskId: alpha })).toEqual({ taskId: alpha, title: 'Alpha', msg: 'All done', merged: false });
+  await expect(cardIn(page, 'paused', alpha)).toHaveCount(1);
+
+  const refused = await mcpCall(dataDir, 'tools/call', { name: 'close_session', arguments: { taskId: beta } });
+  expect(refused.body!.result!.isError).toBe(true);
+  expect(refused.body!.result!.content![0].text).toContain("Beta's session is working");
+  await expect(cardIn(page, 'working', beta)).toHaveCount(1);
   await app.close();
 });
 
@@ -301,6 +324,17 @@ test('beside a pinned Todo panel that gives way to it, the pinned manager folds 
   expect(await widthNow()).toBe(open.width);
   await settled(page);
   expect(await managerTermSize(page)).toEqual(size);
+
+  // It slides out of sight at its own left edge: on no frame, folding or opening, does it show in the gap left of the
+  // Todo panel or in the one between them, as it would sliding under that panel to the pane's edge.
+  const todo = await box(page, 'todo-panel');
+  const gaps = [(await box(page, 'project-pane')).x + 4, todo.x + todo.width + 4].map((x) => ({ x, y: middle(todo) }));
+  const shownIn = async (act: () => Promise<void>) =>
+    (await framesWhile(page, 'manager-column', act, gaps)).some((frame) => frame.shownAt);
+  expect(await shownIn(() => page.getByTestId('manager-fold').click())).toBe(false);
+  await expect(column).toBeHidden();
+  expect(await shownIn(() => page.getByTestId('manager-strip').click())).toBe(false);
+  await expect(column).toBeVisible();
 
   // Off is nothing at all: its room goes to the Todo panel, and it goes at once, on no frame right of where it stood.
   const going = await edgesWhile(page, 'manager-column', 'left', () => page.getByTestId('manager-toggle').click());

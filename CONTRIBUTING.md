@@ -23,8 +23,12 @@ You need the newest Node.js LTS, git, and Claude Code installed and logged in. S
 ```sh
 git clone https://github.com/simekh/Mainframe.git
 cd Mainframe
-npm install
 npm run dev
+```
+
+`npm run dev` and `npm start` run `npm install` first, so the packages are always up to date. For `npm test` before either, run `npm install` once.
+
+```sh
 ```
 
 ## Checks to run

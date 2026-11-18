@@ -1,0 +1,105 @@
+<style>
+  .mf { background:#080c10; color:#f0f4f7; font:12px/1.4 Inter,-apple-system,system-ui,sans-serif; border-radius:8px; padding:10px; }
+  .mf .bar { display:flex; gap:10px; align-items:center; color:#a0afbd; margin-bottom:8px; font-size:11px; }
+  .mf .bar b { color:#8fbddd; }
+  .mf .row { display:flex; gap:8px; align-items:stretch; }
+  .mf .lane { flex:1; background:#10161c; border:1px solid #29343d; border-radius:8px; padding:8px; min-width:0; }
+  .mf .lane h4 { margin:0 0 6px; font-size:11px; color:#c5ced7; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  .mf .lane h4 .n { color:#a0afbd; font-weight:400; margin-left:4px; }
+  .mf .card { background:#161e26; border:1px solid #2b3741; border-radius:6px; padding:6px 7px; margin-bottom:6px; }
+  .mf .card .t { font-weight:600; font-size:11.5px; }
+  .mf .card .m { color:#a0afbd; font-size:10.5px; font-family:'JetBrains Mono',Menlo,monospace; }
+  .mf .acts { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
+  .mf .btn { border:1px solid #394752; border-radius:4px; padding:1px 6px; font-size:10.5px; color:#f0f4f7; }
+  .mf .btn.p { border-color:#67d9ed; color:#67d9ed; }
+  .mf .btn.d { color:#f08f8a; border-color:#5a3a3a; }
+  .mf .side { width:34%; background:#10161c; border:1px solid #29343d; border-radius:8px; padding:8px; }
+  .mf .tabs { display:flex; gap:12px; border-bottom:1px solid #2b3741; margin-bottom:6px; padding-bottom:4px; font-size:11px; color:#a0afbd; }
+  .mf .tabs .on { color:#67d9ed; border-bottom:2px solid #67d9ed; padding-bottom:2px; }
+  .mf .hist { display:flex; justify-content:space-between; align-items:center; padding:5px 2px; border-bottom:1px solid #1b252f; gap:6px; }
+  .mf .hist .t { font-size:11.5px; }
+  .mf .hist .m { color:#a0afbd; font-size:10.5px; }
+  .mf .search { background:#0c1218; border:1px solid #2b3741; border-radius:4px; padding:3px 6px; color:#a0afbd; font-size:10.5px; margin-bottom:6px; }
+  .mf .link { color:#67d9ed; font-size:10.5px; font-weight:400; }
+  .mf .fold { width:64px; flex:none; background:#10161c; border:1px dashed #394752; border-radius:8px; padding:8px 4px; text-align:center; color:#a0afbd; font-size:10.5px; }
+  .mf .muted { color:#a0afbd; font-size:10.5px; padding:4px 0; }
+</style>
+
+<h2>Where should finished tasks live?</h2>
+<p class="subtitle">In all three, the old "Closed" lane only holds unfinished tasks, renamed <b>Paused</b>. Finished (merged) tasks leave the board on their own. The difference is where you find them again to <b>Continue</b>.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Behind a "History" link on the Paused lane</h3>
+      <p>The board stays three lanes. Clicking History swaps the lane's content for a searchable list; "Back" returns to Paused. Out of sight until you want it.</p>
+      <div class="mf" style="margin-top:8px">
+        <div class="bar"><b>Damela</b> · board</div>
+        <div class="row">
+          <div class="lane"><h4><span>Needs you<span class="n">1</span></span></h4>
+            <div class="card"><div class="t">#131 Price list export</div><div class="m">Finished its turn</div><div class="acts"><span class="btn">Answer</span></div></div></div>
+          <div class="lane"><h4><span>Working<span class="n">2</span></span></h4>
+            <div class="card"><div class="t">#128 Login rate limit</div><div class="m">Working</div></div>
+            <div class="card"><div class="t">Fix flaky e2e</div><div class="m">Working</div></div></div>
+          <div class="lane"><h4><span>Paused<span class="n">1</span></span><span class="link">History 42 →</span></h4>
+            <div class="card"><div class="t">#119 Onboarding copy</div><div class="m">worktree-onboarding · 3 commits</div>
+              <div class="acts"><span class="btn p">Reopen</span><span class="btn">Put back</span><span class="btn d">Discard</span></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>A "Finished" tab in the Todo panel</h3>
+      <p>The side panel becomes <i>To do · Finished</i>: what's ahead and what's behind, next to each other. "Put back" sends a card left into To do; Continue sends a finished one back onto the board.</p>
+      <div class="mf" style="margin-top:8px">
+        <div class="bar"><b>Damela</b> · board + Todo panel</div>
+        <div class="row">
+          <div class="lane"><h4><span>Needs you<span class="n">1</span></span></h4>
+            <div class="card"><div class="t">#131 Price list export</div><div class="m">Finished its turn</div></div></div>
+          <div class="lane"><h4><span>Working<span class="n">2</span></span></h4>
+            <div class="card"><div class="t">#128 Login rate limit</div><div class="m">Working</div></div></div>
+          <div class="lane"><h4><span>Paused<span class="n">1</span></span></h4>
+            <div class="card"><div class="t">#119 Onboarding copy</div><div class="m">3 commits</div>
+              <div class="acts"><span class="btn p">Reopen</span><span class="btn">Put back</span><span class="btn d">Discard</span></div></div></div>
+          <div class="side">
+            <div class="tabs"><span>To do 14</span><span class="on">Finished 42</span></div>
+            <div class="search">Search finished tasks…</div>
+            <div class="hist"><div><div class="t">#112 Stripe webhooks</div><div class="m">merged 11 Nov</div></div><span class="btn p">Continue</span></div>
+            <div class="hist"><div><div class="t">Name check on signup</div><div class="m">merged 9 Nov · no card</div></div><span class="btn p">Continue</span></div>
+            <div class="hist"><div><div class="t">#104 Menu editor</div><div class="m">merged 2 Nov</div></div><span class="btn p">Continue</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>A fourth lane, "Finished", folded by default</h3>
+      <p>A thin strip at the board's right edge with a count. Click to unfold it into a full lane with search. Always visible, but takes a sliver of width in every pane.</p>
+      <div class="mf" style="margin-top:8px">
+        <div class="bar"><b>Damela</b> · board</div>
+        <div class="row">
+          <div class="lane"><h4><span>Needs you<span class="n">1</span></span></h4>
+            <div class="card"><div class="t">#131 Price list export</div><div class="m">Finished its turn</div></div></div>
+          <div class="lane"><h4><span>Working<span class="n">2</span></span></h4>
+            <div class="card"><div class="t">#128 Login rate limit</div><div class="m">Working</div></div></div>
+          <div class="lane"><h4><span>Paused<span class="n">1</span></span></h4>
+            <div class="card"><div class="t">#119 Onboarding copy</div><div class="m">3 commits</div>
+              <div class="acts"><span class="btn p">Reopen</span><span class="btn">Put back</span><span class="btn d">Discard</span></div></div></div>
+          <div class="fold">Finished<br><b style="color:#f0f4f7;font-size:14px">42</b><br>›</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:18px">
+  <h3>And the name for unfinished tasks?</h3>
+  <p class="subtitle">I'd pick <b>Paused</b>: it says "coming back to this". "Stopped" is taken (it's the label for a session that errored), "Unfinished" is accurate but reads like a judgement, "On hold" is fine too.</p>
+</div>

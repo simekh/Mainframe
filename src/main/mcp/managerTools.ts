@@ -12,35 +12,46 @@ const failure = (err: unknown) => ({ content: [{ type: 'text' as const, text: er
 const NEEDS_OWNER = {
   tools: 'Allow the tools that read the to-do list, in the Todo panel',
   lists: 'Pick the to-do list, in the Todo panel',
+  model: 'Pick the model the sync runs on, in the Todo panel',
 };
 
 /** What the Todo panel's question is about, to name it to the manager. */
-const ASKS_ABOUT = { tools: 'tools', lists: 'a list' };
+const ASKS_ABOUT = { tools: 'tools', lists: 'a list', model: 'the model' };
 
 /** What the new-task dialog warns of, as a sentence; the dialog's own "Push … first" is for the owner to act on. */
 const aheadWarning = ({ ahead, branch, base }: StartCheck) =>
   `${branch} has ${commitsThatArent(ahead)} on ${base}. New worktrees start from ${base}, so this task won't have ${ahead === 1 ? 'it' : 'them'}.`;
 
-/** The tools the manager session has: to read the task sessions, to start one, and to sync the Todo panel. */
+/** The tools the manager session has: to read the task sessions, to start one, to sync the Todo panel, and to close a session. */
 export function registerManagerTools(
   server: McpServer,
-  tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck'>,
+  tasks: Pick<TaskService, 'reports' | 'start' | 'startCheck' | 'closeWhenTurnOver'>,
   todo: Pick<TodoService, 'sync' | 'startItem' | 'view'>,
+  /** Told the session id of every tool call that names one, so the manager's chat is known. */
+  onCall?: (sessionId: string) => void,
 ): void {
+  // The session id Codex sends in each call's `_meta`; a call without one, or one given no context, is not noted.
+  const noteCall = (ctx: unknown): void => {
+    const sessionId = (ctx as { mcpReq?: { _meta?: { sessionId?: unknown } } } | undefined)?.mcpReq?._meta?.sessionId;
+    if (typeof sessionId === 'string') onCall?.(sessionId);
+  };
   server.registerTool(
     'list_sessions',
     {
       description:
-        "Every task session Mainframe runs for this project, with its title, branch, worktree, Claude session id, whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, and the card it was started from (number and URL; null for none). Read a task's worktree and its git history to say what it is doing.",
+        "Every task session Mainframe runs for this project, with its title, branch, worktree, agent ('claude', 'opencode' or 'codex') and that agent's session id (for Codex, Mainframe's own key: Codex resumes from the task's worktree), whether it runs, its last reported state (working, idle, blocked, done, error; null before the first report) and message, merged: true once Mainframe found its branch merged with nothing uncommitted while it runs (its card is then in the board's Done lane), and the card it was started from (number and URL; null for none), and where it is: null on the board, putBack, finished or discarded, with endedAt. Read a task's worktree and its git history to say what it is doing.",
     },
-    async () => text({ sessions: tasks.reports() }),
+    async (ctx) => {
+      noteCall(ctx);
+      return text({ sessions: tasks.reports() });
+    },
   );
 
   server.registerTool(
     'start_task',
     {
       description:
-        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task (not needed with cardId); the brief, if any, is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added, if anything. A card marked as the owner's never starts from here: the owner starts it from its ticket.",
+        "Starts a task session in a worktree of its own; it shows on the board under Working. Only when the owner asks for it. The title names the task (not needed with cardId); the brief, if any, is what the session starts from. noQuestions: the owner said not to ask them questions. With cardId (a synced card's id, or its number as the Todo list shows it, such as #131), the task starts from that card: it takes the card's title, and the brief is what the owner added, if anything. A card marked as the owner's never starts from here: the owner starts it from its ticket. A card whose task was put back or finished continues that task.",
       inputSchema: z.object({
         title: z.string().min(1).max(200).optional(),
         brief: z.string().max(20000).optional(),
@@ -48,7 +59,8 @@ export function registerManagerTools(
         cardId: z.string().optional(),
       }),
     },
-    async ({ title, brief = '', noQuestions, cardId }) => {
+    async ({ title, brief = '', noQuestions, cardId }, ctx) => {
+      noteCall(ctx);
       try {
         const check = await tasks.startCheck();
         const quiet = noQuestions ?? false;
@@ -71,7 +83,8 @@ export function registerManagerTools(
       description:
         "Syncs the Todo panel: a background run reads the owner's to-do list through their connector, and Mainframe shows it. Returns the number of cards, what the owner must do in the Todo panel first (allow the tools that read the list, or pick the list), or why it couldn't. Only when the owner asks.",
     },
-    async () => {
+    async (ctx) => {
+      noteCall(ctx);
       // A run now would clear the question the owner is answering, and their Allow or Pick would find nothing to answer.
       const { ask } = todo.view();
       if (ask) {
@@ -83,6 +96,23 @@ export function registerManagerTools(
         if ('error' in outcome) return failure(outcome.error);
         if ('ask' in outcome) return text({ needsOwner: NEEDS_OWNER[outcome.ask] });
         return text({ cards: outcome.cards });
+      } catch (err) {
+        return failure(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'close_session',
+    {
+      description:
+        "Closes a task's session, as the owner's Close session button does. The task goes to Paused with its worktree kept, or, once Mainframe finds its branch merged with nothing uncommitted, to Finished: its worktree and branch are removed, as only merged work is. The owner can continue it either way. Only when the owner asks for it. taskId is the one list_sessions gives. Refused while the session is working, waiting for the owner's answer, still starting or being put back: say so to the owner rather than try again. Returns the task's title, its last message, and merged: whether it goes to Finished.",
+      inputSchema: z.object({ taskId: z.string() }),
+    },
+    async ({ taskId }, ctx) => {
+      noteCall(ctx);
+      try {
+        return text({ taskId, ...tasks.closeWhenTurnOver(taskId) });
       } catch (err) {
         return failure(err);
       }

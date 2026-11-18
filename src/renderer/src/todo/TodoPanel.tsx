@@ -1,32 +1,98 @@
-import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, createUniqueId, For, Match, onCleanup, Show, Switch } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
-import type { StartCheck } from '../../../shared/types';
+import type { StartCheck, SyncModel } from '../../../shared/types';
 import { now } from '../board/ageClock';
 import { aheadOf } from '../board/StartCheckWarning';
 import { errorMessage } from '../bridgeError';
 import { openLinkLogged } from '../openLink';
-import { stripShows, STRIP_WIDTH, type PanelState } from '../panel/panelPrefs';
+import { stripShows, type PanelState } from '../panel/panelPrefs';
 import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
+import FinishedList from './FinishedList';
 import TicketPanel from './TicketPanel';
 import {
-  reopenTaskId, sourcePlace, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
+  finishedTasks, reopenTaskId, sourcePlace, startsFromTicket, syncedLine, todoItems, visibleItems, type StartOptions, type TodoItem,
 } from './todoItems';
-import { loadHideMine, saveHideMine, TODO_WIDTH } from './todoPrefs';
-import { cancelTodoSync, confirmTodoTools, keepNoteDraft, pickTodoList, resetTodoSource, syncTodo, todoOf } from './todoStore';
+import { loadHideMine, loadTodoTab, saveHideMine, saveTodoTab, TODO_WIDTH, type TodoTab } from './todoPrefs';
+import {
+  cancelTodoSync, confirmTodoTools, keepNoteDraft, keepTodoSync, pickTodoList, pickTodoModel, resetTodoSource, syncTodo, todoOf,
+} from './todoStore';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
+
+const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+const priceLine = (price: SyncModel['price']) => (price ? `${usd(price.input)} / ${usd(price.output)}` : 'price unknown');
+
+/** The models the sync can run on, cheapest first: the suggested one starts picked, and nothing runs until the button. */
+function ModelAsk(props: { dir: string; models: SyncModel[]; suggested: string | null }) {
+  const [picked, setPicked] = createSignal<string | null>(null);
+  // A later ask may not hold the earlier pick: it then starts from its own suggestion.
+  const chosen = () => {
+    const id = picked();
+    return id !== null && props.models.some((m) => m.id === id) ? id : props.suggested;
+  };
+  return (
+    <div class="todo-ask todo-model-ask">
+      <p>Pick the model the sync runs on. Cheapest first, with the price per million tokens in and out.</p>
+      <div class="todo-models" role="radiogroup" aria-label="Sync model">
+        <For each={props.models}>
+          {(model) => (
+            <button
+              class="todo-pick todo-model"
+              data-testid="todo-model"
+              role="radio"
+              aria-checked={chosen() === model.id ? 'true' : 'false'}
+              onMouseDown={keepFocus}
+              onClick={() => setPicked(model.id)}
+            >
+              <span class="todo-model-dot" aria-hidden="true" />
+              {/* Two providers can offer one model by one name: the id tells them apart. */}
+              <span class="todo-model-name">
+                <span class="todo-model-title">{model.name}</span>
+                <span class="todo-model-id">{model.id}</span>
+              </span>
+              <span class="todo-model-price" classList={{ unknown: !model.price }}>
+                {priceLine(model.price)}
+              </span>
+            </button>
+          )}
+        </For>
+      </div>
+      <button
+        class="btn primary"
+        data-testid="todo-pick-model"
+        disabled={chosen() === null}
+        onMouseDown={keepFocus}
+        onClick={() => {
+          const id = chosen();
+          if (id !== null) pickTodoModel(props.dir, id);
+        }}
+      >
+        Use this and sync
+      </button>
+    </div>
+  );
+}
 
 function SyncIcon() {
   return (
     <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M11.5 7A4.5 4.5 0 0 1 3.6 9.9M2.5 7a4.5 4.5 0 0 1 7.9-2.9" />
       <path d="M10.6 1.6v2.6H8M3.4 12.4V9.8H6" />
+    </svg>
+  );
+}
+
+/** New task's plus sign: all Quick Add shows of itself where the header is narrow. */
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" />
     </svg>
   );
 }
@@ -42,8 +108,9 @@ function StopIcon() {
 /**
  * The project's to-do list, at its pane's far left: the synced cards and the owner's notes, with Sync and what it
  * asks of the owner, and the ticket of the item open. Pinned and open, it takes the pane's left edge and the manager
- * sits right of it; unpinned, it floats over the manager beside its strip, as that floats over the board. Folded,
- * pinned or not, it slides away and leaves its strip at the pane's edge.
+ * sits right of it; unpinned, it floats over the manager right of the strips, as that floats over the board, and under
+ * it while the manager is the one used last. Folded, pinned or not, it slides away and leaves its strip at the pane's
+ * edge.
  */
 export default function TodoPanel(props: {
   /** The width it shows; the edge reports where a drag or a key takes it. */
@@ -57,6 +124,10 @@ export default function TodoPanel(props: {
   /** Folded, its strip is all that shows; off, nothing does. */
   state: PanelState;
   onOpenChange(open: boolean): void;
+  /** Open under the manager: its strip brings it up rather than folding it. */
+  behind: boolean;
+  /** How far from the pane's left edge it floats: right of its strip, and of the manager's while that shows. */
+  floatLeft: number;
   /** The open ticket: an item's key, or `'new-note'`. The pane closes it too. */
   ticket: string | null;
   onTicketChange(ticket: string | null): void;
@@ -69,6 +140,18 @@ export default function TodoPanel(props: {
     setHideMine(!hideMine());
     saveHideMine(localStorage, project.dir, hideMine());
   };
+  // The tab on show: the project's own choice, kept for the next start. The Finished tab has no ticket.
+  const [tab, setTab] = createSignal<TodoTab>(loadTodoTab(localStorage, project.dir));
+  const showTab = (next: TodoTab) => {
+    if (next === 'finished') props.onTicketChange(null);
+    setTab(next);
+    saveTodoTab(localStorage, project.dir, next);
+  };
+  const finished = createMemo(() => finishedTasks(tasksOf(project.dir).tasks, ''));
+  // Each pane's own, as several projects' panels show at once.
+  const ids = createUniqueId();
+  const tabId = (t: TodoTab) => `todo-tab-${t}-${ids}`;
+  const panelId = (t: TodoTab) => `todo-tabpanel-${t}-${ids}`;
   const allItems = createMemo(() => {
     const v = view();
     return v ? todoItems(v, tasksOf(project.dir).tasks) : [];
@@ -114,6 +197,8 @@ export default function TodoPanel(props: {
    * the start check, so its Start warns as New task's does.
    */
   function openTicket(key: string, found?: { warning: StartCheck | null; error: string | null }) {
+    // A ticket is To do's: a Start that failed after the owner turned to Finished brings To do back with it.
+    if (tab() !== 'todo') showTab('todo');
     const opening = ++latestCheck;
     setWarning(found?.warning ?? null);
     setStartError(found?.error ?? null);
@@ -176,6 +261,11 @@ export default function TodoPanel(props: {
     }
   }
 
+  // A put-back or finished task's item continues it, through the item as Start goes, so main takes a note off the list
+  // once its task runs. No start check: the task goes on from its own branch. A card for the owner is the owner's
+  // own choice here, as Start anyway is.
+  const continueItem = (item: TodoItem) => void start(item, { noQuestions: false, ownersCard: item.forOwner });
+
   // As the board's Reopen; the card leaves the list, so its ticket goes.
   const reopen = (taskId: string) => {
     props.onTicketChange(null);
@@ -202,7 +292,11 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'lists' ? ask : undefined;
   };
-  const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open', (open) =>
+  const modelAsk = () => {
+    const ask = view()?.ask;
+    return ask?.kind === 'model' ? ask : undefined;
+  };
+  const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open' && !props.behind, (open) =>
     props.onOpenChange(open),
   );
 
@@ -229,10 +323,11 @@ export default function TodoPanel(props: {
         data-open={String(props.state === 'open')}
         data-state={props.state}
         // What the pane leaves right of the panel, its margin kept: the ticket is no wider. Floating, the panel sits
-        // beside its strip.
+        // beside the strips.
         style={{
           width: `${props.width}px`,
-          '--ticket-room': `${project.width() - props.width - 16 - (props.pinned ? 0 : STRIP_WIDTH + 8)}px`,
+          '--float-left': `${props.floatLeft}px`,
+          '--ticket-room': `${project.width() - props.width - 8 - (props.pinned ? 8 : props.floatLeft)}px`,
         }}
       >
         <FoldButton points="left" testId="todo-fold" handOff={handOff} />
@@ -247,25 +342,52 @@ export default function TodoPanel(props: {
         >
           <PinIcon />
         </button>
-        {/* One tab for now, and Quick Add and Sync beside the fold button, as the session panel's title bar holds its
-            buttons: the row under it keeps its width for the source's name. While a sync runs, the same button, kept so
-            that it keeps the focus, is its Stop, and the row under it says Syncing…. */}
+        {/* The two tabs, and To do's Quick Add and Sync beside the fold button, as the session panel's title bar holds
+            its buttons: the row under it keeps its width for the source's name. While a sync runs, the same button, kept
+            so that it keeps the focus, is its Stop, and the row under it says Syncing…. */}
         <div class="todo-tabs">
-          <h2 class="todo-tab">Todo</h2>
-          <Show when={view()}>
+          <div class="todo-tablist" role="tablist" aria-label="Todo">
+            <button
+              class="todo-tab"
+              role="tab"
+              data-testid="todo-tab-todo"
+              id={tabId('todo')}
+              aria-controls={panelId('todo')}
+              aria-selected={tab() === 'todo' ? 'true' : 'false'}
+              onMouseDown={keepFocus}
+              onClick={() => showTab('todo')}
+            >
+              To do
+            </button>
+            <button
+              class="todo-tab"
+              role="tab"
+              data-testid="todo-tab-finished"
+              id={tabId('finished')}
+              aria-controls={panelId('finished')}
+              aria-selected={tab() === 'finished' ? 'true' : 'false'}
+              onMouseDown={keepFocus}
+              onClick={() => showTab('finished')}
+            >
+              Finished <span class="todo-tab-count">{finished().length}</span>
+            </button>
+          </div>
+          <Show when={tab() === 'todo' && view()}>
             {(v) => (
               <>
                 <button
                   class="btn todo-add"
                   data-testid="todo-add-note"
+                  aria-label="Quick Add"
                   title="Add a todo that stays in Mainframe. It isn't added to your tracker: Sync only reads from it."
                   ref={addNote}
                   onMouseDown={keepFocus}
                   onClick={() => openTicket('new-note')}
                 >
-                  Quick Add
+                  <PlusIcon />
+                  <span>Quick Add</span>
                 </button>
-                {/* Its word goes where the header is narrow; its name stays. */}
+                {/* Its word goes where the header is narrow, as Quick Add's does; its name stays. */}
                 <button
                   class="btn todo-sync"
                   data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
@@ -282,9 +404,15 @@ export default function TodoPanel(props: {
           </Show>
         </div>
 
-        <Show when={view()}>
+        <Show when={tab() === 'finished'}>
+          <div class="todo-tabpanel" role="tabpanel" id={panelId('finished')} aria-labelledby={tabId('finished')}>
+            <FinishedList tasks={finished()} />
+          </div>
+        </Show>
+
+        <Show when={tab() === 'todo' && view()}>
           {(v) => (
-            <>
+            <div class="todo-tabpanel" role="tabpanel" id={panelId('todo')} aria-labelledby={tabId('todo')}>
               {/* Laid out as the manager's row under its title, so the two headers' dividers line up. */}
               <div class="p-branch-bar">
                 {/* The service's name opens the list where it lives, as the ticket's Open in does for a card. */}
@@ -315,6 +443,31 @@ export default function TodoPanel(props: {
                   </Show>
                 </span>
               </div>
+
+              {/* A run past two minutes: said in words, with the choice, as a sync that may cost the owner real money. */}
+              <Show when={v().longSync}>
+                <div class="todo-long-sync" data-testid="todo-long-sync" role="status">
+                  <p>Still syncing (2 min). Large syncs can use a lot of tokens.</p>
+                  <div class="todo-long-actions">
+                    <button
+                      class="btn"
+                      data-testid="todo-long-stop"
+                      onMouseDown={keepFocus}
+                      onClick={() => cancelTodoSync(project.dir)}
+                    >
+                      Stop
+                    </button>
+                    <button
+                      class="btn"
+                      data-testid="todo-keep-going"
+                      onMouseDown={keepFocus}
+                      onClick={() => keepTodoSync(project.dir)}
+                    >
+                      Keep going
+                    </button>
+                  </div>
+                </div>
+              </Show>
 
               <Switch>
                 <Match when={toolsAsk()}>
@@ -363,6 +516,9 @@ export default function TodoPanel(props: {
                       </For>
                     </div>
                   )}
+                </Match>
+                <Match when={modelAsk()}>
+                  {(ask) => <ModelAsk dir={project.dir} models={ask().models} suggested={ask().suggested} />}
                 </Match>
               </Switch>
 
@@ -428,7 +584,7 @@ export default function TodoPanel(props: {
                           <Show when={preview()}>
                             <p class="todo-body">{preview()}</p>
                           </Show>
-                          {/* A note always has its Start. */}
+                          {/* A note always has its Start, or its Continue. */}
                           <Show when={item().action || item().labels.length > 0}>
                             <div class="todo-row">
                               <Show when={item().kind === 'note'}>
@@ -448,6 +604,17 @@ export default function TodoPanel(props: {
                                       Reopen
                                     </button>
                                   )}
+                                </Match>
+                                <Match when={item().action?.kind === 'continue'}>
+                                  <button
+                                    class="card-act"
+                                    data-testid="todo-continue"
+                                    aria-label={`Continue ${item().title}`}
+                                    onMouseDown={keepFocus}
+                                    onClick={() => continueItem(item())}
+                                  >
+                                    Continue
+                                  </button>
                                 </Match>
                                 <Match when={item().action?.kind === 'start'}>
                                   <button
@@ -486,7 +653,7 @@ export default function TodoPanel(props: {
                   </button>
                 </div>
               </Show>
-            </>
+            </div>
           )}
         </Show>
 

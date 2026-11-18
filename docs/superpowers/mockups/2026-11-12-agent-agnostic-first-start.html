@@ -1,0 +1,74 @@
+<style>
+  .mf { background:#080c10; padding:10px; border-radius:12px; }
+  .term { background:#13191f; border:1px solid #29343d; border-radius:12px; color:#c5ced7; font:13px/1.6 'JetBrains Mono', ui-monospace, Menlo, monospace; padding:26px 28px; }
+  .term p { margin:0 0 1.2em; }
+  .strong { color:#f0f4f7; }
+  .hint { color:#a0afbd; }
+  .logo { color:#67d9ed; font-weight:700; line-height:1.15; white-space:pre; margin-bottom:1em; }
+  .check { display:grid; grid-template-columns:10ch 1fr; margin:0 !important; }
+  .check + p:not(.check) { margin-top:1.2em !important; }
+  .name { color:#f0f4f7; } .caret { color:#67d9ed; }
+  .ok { color:#98c9ae; } .bad { color:#f08f8a; } .dim { color:#a0afbd; }
+  .agents { display:flex; flex-direction:column; gap:8px; margin:0 0 1.2em; font-family:Inter, system-ui, sans-serif; }
+  .agent { display:flex; align-items:center; gap:12px; border:1px solid #394752; border-radius:8px; padding:10px 12px; background:#0c1218; color:#f0f4f7; }
+  .agent.on { border-color:#67d9ed; }
+  .agent.off { opacity:.55; }
+  .box { width:16px; height:16px; border-radius:4px; border:1px solid #67d9ed; display:grid; place-items:center; font-size:11px; color:#080c10; flex:none; }
+  .agent.on .box { background:#67d9ed; }
+  .agent.off .box { border-color:#394752; }
+  .agent .meta { color:#a0afbd; font-size:12px; margin-left:auto; font-family:'JetBrains Mono', monospace; }
+  .agent .link { color:#67d9ed; font-size:12px; margin-left:auto; }
+  .seg { display:inline-flex; border:1px solid #394752; border-radius:8px; overflow:hidden; font-family:Inter, system-ui, sans-serif; margin:0 0 1.2em; }
+  .seg span { padding:6px 14px; color:#c5ced7; }
+  .seg span.sel { background:#67d9ed; color:#080c10; font-weight:600; }
+  .btns { display:flex; gap:8px; font-family:Inter, system-ui, sans-serif; }
+  .btn { border:1px solid #394752; border-radius:6px; padding:6px 12px; color:#f0f4f7; background:#161e26; font-size:13px; }
+  .btn.primary { background:#67d9ed; border-color:#67d9ed; color:#080c10; font-weight:600; }
+  .cap { font:12px Inter, system-ui, sans-serif; color:#a0afbd; margin:6px 2px 0; }
+</style>
+
+<h2>First start: picking the agents</h2>
+<p class="subtitle">The setup screen as today (it types itself out like a terminal), with a new "which agents" step between the checks and the folder question. Two cases of the same screen.</p>
+
+<div class="split">
+  <div>
+    <div class="label">A friend with both installed</div>
+    <div class="mf"><div class="term">
+      <p class="strong">Hi, I'm Mainframe.</p>
+      <p>I keep a whole crew of coding agent sessions busy at once, each on its own task in its own git worktree, and I only tap you on the shoulder when one of them needs you.</p>
+      <p class="check"><span class="name"><span class="caret">›</span> git</span> <span class="ok">found  git 2.51.0  ✓</span></p>
+      <p class="check"><span class="name"><span class="caret">›</span> claude</span> <span class="ok">found  ~/.local/bin/claude · v2.1.300  ✓</span></p>
+      <p class="check"><span class="name"><span class="caret">›</span> opencode</span> <span class="ok">found  ~/.opencode/bin/opencode · v2.2.7  ✓</span></p>
+      <p class="strong">Which agents should I use?</p>
+      <div class="agents">
+        <div class="agent on"><span class="box">✓</span> Claude Code <span class="meta">v2.1.300</span></div>
+        <div class="agent on"><span class="box">✓</span> OpenCode <span class="meta">v2.2.7</span></div>
+      </div>
+      <p class="strong">Which one runs the manager, the Todo sync and new tasks?</p>
+      <div class="seg"><span class="sel">Claude Code</span><span>OpenCode</span></div>
+      <p class="hint">You can still pick the other one for a single task in the New task box. All of this can be changed in Settings later.</p>
+      <p class="strong">Last thing: which project should I open first?</p>
+      <div class="btns"><span class="btn primary">Choose a folder…</span></div>
+    </div></div>
+  </div>
+
+  <div>
+    <div class="label">A friend with only OpenCode</div>
+    <div class="mf"><div class="term">
+      <p class="strong">Hi, I'm Mainframe.</p>
+      <p>I keep a whole crew of coding agent sessions busy at once, each on its own task in its own git worktree, and I only tap you on the shoulder when one of them needs you.</p>
+      <p class="check"><span class="name"><span class="caret">›</span> git</span> <span class="ok">found  git 2.51.0  ✓</span></p>
+      <p class="check"><span class="name"><span class="caret">›</span> claude</span> <span class="dim">not found</span></p>
+      <p class="check"><span class="name"><span class="caret">›</span> opencode</span> <span class="ok">found  ~/.opencode/bin/opencode · v2.2.7  ✓</span></p>
+      <p class="strong">Which agents should I use?</p>
+      <div class="agents">
+        <div class="agent off"><span class="box"></span> Claude Code <span class="link">How to install ↗ · Find claude…</span></div>
+        <div class="agent on"><span class="box">✓</span> OpenCode <span class="meta">v2.2.7</span></div>
+      </div>
+      <p class="hint">OpenCode runs everything: the manager, the Todo sync and your tasks. Settings can change this later.</p>
+      <p class="strong">Last thing: which project should I open first?</p>
+      <div class="btns"><span class="btn primary">Choose a folder…</span></div>
+    </div></div>
+  </div>
+</div>
+<p class="cap">A missing agent is no longer red: it's only a problem when <em>no</em> agent is found. Then the screen says so and offers both install links.</p>

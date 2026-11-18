@@ -1,12 +1,21 @@
 import type { ProgramState } from '../../shared/types';
+import type { Instructions } from '../agents/agent';
 
 /** What a resume says to a session that was interrupted mid-turn: Claude starts no turn of its own after a resume. */
 export const RESUME_PROMPT = 'Continue where you left off.';
 /** What it says instead when Claude was waiting for the owner's answer, so Claude asks again rather than picks one. */
 export const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
+/** What Continue says to a finished task's resumed chat, so it knows where it now runs. */
+export const continuePrompt = (branch: string): string =>
+  `Mainframe has continued this task in a fresh worktree on branch ${branch}, made from the default branch, which has any of your earlier work that was merged. Wait for my next message.`;
+
+/** What Put back says to a card's task, whose own agent knows the card and has the connector to move it. */
+export const putBackPrompt = (i: Instructions): string =>
+  `I'm putting this task back on the to-do list for later. Move its card back to the to-do list the way ${i.again} says, or else to its board's to-do list or status. Then stop.`;
+
 /** The states a session is in the middle of a turn in: a blocked one's prompt dies with the process. */
-const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
+export const inTurn = (state: ProgramState | null): boolean => state === 'working' || state === 'blocked';
 
 /**
  * Where a session's turn was as it ended, from the state it last reported before the end was decided.
@@ -20,6 +29,8 @@ export function turnAtEnd(lastState: ProgramState | null, resumePending: boolean
 /** Where one `claude` process's turn is, from its OSC 7501 reports, until it is told to end. */
 export class TurnTracker {
   private lastState: ProgramState | null = null;
+  /** It has reported something other than idle: a prompt it was started with has taken. */
+  private hadTurn = false;
   /** Set by `end`: what the session reports on the way out is not what its turn was. */
   ending = false;
 
@@ -29,7 +40,18 @@ export class TurnTracker {
   note(state: ProgramState | null): void {
     if (this.ending) return;
     this.lastState = state;
+    if (state !== null && state !== 'idle') this.hadTurn = true;
     if (inTurn(state)) this.resumePending = false;
+  }
+
+  /**
+   * Its turn is over and it waits for the owner: done or error, or idle once a prompt it was started with has taken
+   * (the board's "Starting…" until then). Not once it is ending.
+   */
+  over(startedWithPrompt: boolean): boolean {
+    if (this.ending) return false;
+    const s = this.lastState;
+    return s === 'done' || s === 'error' || (s === 'idle' && (this.hadTurn || !startedWithPrompt));
   }
 
   /** Where its turn was as the end was decided, to record on its task or chat. */

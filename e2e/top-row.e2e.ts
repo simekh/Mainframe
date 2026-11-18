@@ -7,7 +7,7 @@ import {
 
 test.afterEach(cleanUp);
 
-test("the row holds Projects, then the project's Todo, Manager, name and New task, and Next that needs you at its right end; every panel starts under it", async () => {
+test("the row holds Projects, then the project's Todo, Manager, name and New task, then Next that needs you and the Settings cog at its right end; every panel starts under it", async () => {
   const { app, page } = await launchApp();
   const inRow = [
     page.getByTestId('projects-toggle'),
@@ -16,13 +16,14 @@ test("the row holds Projects, then the project's Todo, Manager, name and New tas
     page.locator('.tb-project'),
     page.getByTestId('new-task'),
     page.getByTestId('jump-next'),
+    page.getByTestId('settings-open'),
   ];
   const boxes = await Promise.all(inRow.map(boxOf));
   // Left to right, apart, on one centre line, and nothing over any of them.
   expectInOneRow(boxes);
   for (const el of inRow) expect(await isOnTop(el)).toBe(true);
-  const next = boxes.at(-1)!;
-  expect(next.x + next.width).toBeGreaterThanOrEqual((await page.evaluate(() => window.innerWidth)) - 20);
+  const cog = boxes.at(-1)!;
+  expect(cog.x + cog.width).toBeGreaterThanOrEqual((await page.evaluate(() => window.innerWidth)) - 20);
 
   for (const testId of ['project-rail', 'manager-column', 'side-panel']) expect((await box(page, testId)).y).toBe(ROW_HEIGHT);
   await app.close();

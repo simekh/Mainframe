@@ -1,18 +1,52 @@
 name: Tests
 
+# A run by hand can be narrowed to one system and some e2e tests, for a quicker answer while
+# troubleshooting, e.g.:
+#   gh workflow run test.yml --ref <branch> -f os=windows-latest -f e2e=e2e/diff.e2e.ts
+# Given e2e files or a title, it runs only those tests, without the typecheck, the unit tests and
+# the Linux start checks. Branches named diag-* run nothing on push, so a diagnostic branch runs
+# only what is asked for by hand.
 on:
   push:
+    branches-ignore: ['diag-*']
+    # With only a branch filter, a tag push would run nothing.
+    tags: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      os:
+        description: Which system to run on
+        type: choice
+        options: [all, windows-latest, ubuntu-latest, macos-latest]
+        default: all
+      e2e:
+        description: Only these e2e files, space-separated (e.g. e2e/diff.e2e.ts); empty for all
+        type: string
+        default: ''
+      grep:
+        description: Only the e2e tests whose title matches this
+        type: string
+        default: ''
+
+# A newer run of the same ref, event and inputs ends the one it replaces: a full run takes four macOS runners, and
+# GitHub's free plan runs five at a time, so a run left going would hold up the next one. A push to the default
+# branch is the exception, a group of its own, so each push there gets its own result: sessions push to it minutes
+# apart, and sharing a group would cancel the run before.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.os }}-${{ inputs.e2e }}-${{ inputs.grep }}-${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  # Typecheck, unit tests and the Linux start checks, once per system; a narrowed run skips them.
+  checks:
+    if: ${{ inputs.e2e == '' && inputs.grep == '' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        # On a push the inputs are empty: every system.
+        os: ${{ fromJSON((inputs.os == '' || inputs.os == 'all') && '["macos-latest","windows-latest","ubuntu-latest"]' || format('["{0}"]', inputs.os)) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -21,16 +55,6 @@ jobs:
           # The newest LTS, with the npm it ships: what a friend installs today.
           node-version: lts/*
           cache: npm
-
-      # The e2e tests size the window up to 1700 px wide. Whether the runner lets the resolution
-      # change isn't documented, so this tries, says what it got, and never fails the run.
-      - name: Screen size (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution failed: $_" }
-          Get-CimInstance Win32_VideoController | Select-Object Name, CurrentHorizontalResolution, CurrentVerticalResolution | Format-List
 
       - name: Install
         run: npm ci
@@ -53,6 +77,8 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         timeout-minutes: 5
         run: |
+          # A fresh clone has no packages: npm start's prestart installs them.
+          rm -rf node_modules
           set +e
           export MAINFRAME_DATA_DIR="$(mktemp -d)"
           timeout 90 xvfb-run -a npm start 2>&1 | tee start.log
@@ -76,18 +102,75 @@ jobs:
           # With the helper set up, Mainframe keeps the sandbox and says nothing.
           ! grep -q "without Chromium's sandbox" start.log
 
-      - name: E2E tests
-        if: ${{ !cancelled() && runner.os == 'Linux' }}
-        # xvfb-run's own default screen is far smaller than the window Mainframe opens.
-        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e
+  # The e2e tests, one at a time as on a desktop, split by file across three runners per system, which
+  # run at once: on a hosted runner the whole suite takes up to 14 minutes. A narrowed run is one runner.
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        # On a push the inputs are empty: every system.
+        os: ${{ fromJSON((inputs.os == '' || inputs.os == 'all') && '["macos-latest","windows-latest","ubuntu-latest"]' || format('["{0}"]', inputs.os)) }}
+        shard: ${{ fromJSON((inputs.e2e != '' || inputs.grep != '') && '["1/1"]' || '["1/3","2/3","3/3"]') }}
+    runs-on: ${{ matrix.os }}
+    # A narrowed run is one runner, which may still be given most of the suite.
+    timeout-minutes: 45
+    env:
+      E2E_FILES: ${{ inputs.e2e }}
+      E2E_GREP: ${{ inputs.grep }}
+      SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v7
 
+      - uses: actions/setup-node@v7
+        with:
+          # The newest LTS, with the npm it ships: what a friend installs today.
+          node-version: lts/*
+          cache: npm
+
+      # The e2e tests size the window up to 1700 px wide. Whether the runner lets the resolution
+      # change isn't documented, so this tries, says what it got, and never fails the run.
+      - name: Screen size (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force } catch { Write-Host "Set-DisplayResolution failed: $_" }
+          Get-CimInstance Win32_VideoController | Select-Object Name, CurrentHorizontalResolution, CurrentVerticalResolution | Format-List
+
+      - name: Install
+        run: npm ci
+
+      # The files split at spaces; the title filter stays one argument, as given.
       - name: E2E tests
-        if: ${{ !cancelled() && runner.os != 'Linux' }}
-        run: npm run test:e2e
+        if: runner.os != 'Windows'
+        run: |
+          set -f
+          args=($E2E_FILES)
+          if [ -n "$E2E_GREP" ]; then args+=(-g "$E2E_GREP"); fi
+          if [ "$RUNNER_OS" = Linux ]; then
+            # xvfb-run's own default screen is far smaller than the window Mainframe opens.
+            xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e -- --shard="$SHARD" "${args[@]}"
+          else
+            npm run test:e2e -- --shard="$SHARD" "${args[@]}"
+          fi
+
+      # PowerShell, the runner's own shell there, as Git Bash would change the PATH Mainframe inherits.
+      # test:e2e's two halves, Playwright through node: PowerShell may eat the `--` npm needs.
+      - name: E2E tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = @(-split $env:E2E_FILES | Where-Object { $_ })
+          $grep = if ($env:E2E_GREP) { @('-g', $env:E2E_GREP) } else { @() }
+          npm run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node node_modules/@playwright/test/cli.js test --shard=$env:SHARD @files @grep
 
       - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
-          name: test-results-${{ matrix.os }}
+          # The shard's own name holds a / that an artifact's may not, so the number is the job's place in the whole
+          # os x shard matrix, not the shard's.
+          name: test-results-${{ matrix.os }}-${{ strategy.job-index }}
           path: test-results/
           if-no-files-found: ignore

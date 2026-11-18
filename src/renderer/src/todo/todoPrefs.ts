@@ -34,6 +34,23 @@ export function saveHideMine(storage: Pick<Storage, 'setItem'>, dir: string, hid
   }
 }
 
+/** The panel's tab on show: To do, or the Finished tab. Each project keeps its own, and it starts on To do. */
+export type TodoTab = 'todo' | 'finished';
+
+const tabKey = (dir: string) => `mainframe.todo-tab:${dir}`;
+
+export const loadTodoTab = (storage: Pick<Storage, 'getItem'>, dir: string): TodoTab =>
+  storage.getItem(tabKey(dir)) === 'finished' ? 'finished' : 'todo';
+
+/** A storage that refuses the write leaves the tab for this run only. */
+export function saveTodoTab(storage: Pick<Storage, 'setItem'>, dir: string, tab: TodoTab): void {
+  try {
+    storage.setItem(tabKey(dir), tab);
+  } catch {
+    // Nothing to do: the panel keeps the tab it shows.
+  }
+}
+
 export const loadTodoPrefs = (storage: Pick<Storage, 'getItem'>, dir: string): PanelPrefs =>
   loadPanelPrefs(storage, dir, { key: KEY, defaults: DEFAULTS });
 

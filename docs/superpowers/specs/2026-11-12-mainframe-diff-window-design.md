@@ -56,7 +56,7 @@ The owner looks at one project's and one session's changes at a time **(owner)**
 
 - **The window's title** reads `Changes · <task title> · <project name>`, where the project name is the folder's name (`ProjectView.name`) **(designer's call)**. On every system it uses the system's own title bar and buttons, so it needs none of the main window's Mac title-bar work **(designer's call)**.
 - **The look is Mainframe's:** `app.css`'s colours, Inter for text and JetBrains Mono for code, dark only.
-- **The window closes** with its close button, or Esc while it is focused **(designer's call)**.
+- **The window closes** with its close button, or Esc while it is focused **(designer's call)**, or Cmd+W (Ctrl+W on Windows and Linux) while it is focused **(owner's call at acceptance, 2026-11-12)**.
 
 ### 4.2 Layout A
 
@@ -101,7 +101,7 @@ These show their heading and a one-line note in place of lines:
 - **Mainframe's window closing closes the diff window first,** so `window-all-closed` still ends the app as it does today. Electron's docs don't say whether children close with their parent, so this is done explicitly. Quit, and a Windows shutdown, behave as they do today with the diff window open.
 - **Position and size are remembered across opens and restarts,** in one app-wide file in the data folder **(designer's call)**. It belongs to no project, so it is not a one-project file. Saved bounds that fall off every current display (a monitor unplugged) are dropped. The default is about 1000 × 720, centred over Mainframe's window **(designer's call)**.
 - **In an e2e run it is shown or hidden as Mainframe's window is** (`show: !(e2e && onMac)`): hidden on the Mac, and shown on Windows and Linux, where a window that has never been shown gets no keyboard input, and the Esc test needs that input. Test helpers that take `BrowserWindow.getAllWindows()[0]` as Mainframe's window (`e2e/launch.ts`, `e2e/app.e2e.ts`) must keep finding Mainframe's window once a second one can exist.
-- **Keys and menus:** on the Mac, the app menu's Edit → Copy and View → Toggle Developer Tools act on the diff window when it is focused. On Windows and Linux, the diff window gets the same Ctrl+Shift+I DevTools key and the same right-click Copy as Mainframe's window. Esc closes it (§4.1).
+- **Keys and menus:** on the Mac, the app menu's Edit → Copy and View → Toggle Developer Tools act on the diff window when it is focused. On Windows and Linux, the diff window gets the same Ctrl+Shift+I DevTools key and the same right-click Copy as Mainframe's window. Esc and Cmd+W (Ctrl+W there) close it (§4.1).
 
 ## 7. Calls between the parts
 
@@ -127,7 +127,7 @@ The names are the builder's; the shape is not:
 - **e2e (Playwright):**
   - Clicking a file in the panel opens a second window titled for the task and project, listing the task's files and scrolled to the clicked one.
   - Clicking a file in another task reuses the same window.
-  - Esc closes the window.
+  - Esc, and Cmd+W (Ctrl+W off the Mac), close the window.
   - Closing Mainframe's window with the diff window open still ends the app.
 
 ## 10. Left to the builder

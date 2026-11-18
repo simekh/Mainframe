@@ -1,16 +1,23 @@
 import type { Terminal } from '@xterm/xterm';
-import { createResource, createSignal, Match, onCleanup, Switch } from 'solid-js';
+import { createEffect, createResource, createSignal, Match, onCleanup, Show, Switch } from 'solid-js';
+import { AGENT_NAMES } from '../../shared/types';
 import { installBoardShortcuts } from './board/shortcuts';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
 import { closeFocusedPane, focusProject, jump, openProject, projectsStore, railState } from './projects/projectsStore';
 import TopRow from './projects/TopRow';
+import SettingsButton from './settings/SettingsButton';
+import SettingsDialog from './settings/SettingsDialog';
+import { loadSettings, settingsView } from './settings/settingsStore';
 import SetupScreen from './setup/SetupScreen';
 import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
 import { getFit, getTerminal } from './terminal/registry';
 import { loadTerminalFont } from './terminal/terminalFont';
+import UpdateDialog from './updates/UpdateDialog';
+import UpdatePill from './updates/UpdatePill';
+import { loadUpdate } from './updates/updateStore';
 // Parallel Code's fonts: Inter for the interface, Sora for the session title, JetBrains Mono in the terminal.
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -111,6 +118,20 @@ export default function App() {
   // Where the window's part of the top row ends: the first pane's bar starts there.
   const [rowStart, setRowStart] = createSignal(0);
 
+  // Main answers the Settings and update calls once the projects have started, as the setup gives way to them.
+  createEffect(() => {
+    if (setupView() === null) {
+      void loadSettings();
+      void loadUpdate();
+    }
+  });
+  // Says when another agent stands in for the saved default; its ✕ hides it until the next start.
+  const [fallbackHidden, setFallbackHidden] = createSignal(false);
+  const fallback = () => {
+    const view = settingsView();
+    return view && view.runDefault !== view.defaultAgent && !fallbackHidden() ? view : undefined;
+  };
+
   return (
     <div class="app" data-rail={railState()} style={{ '--row-start': `${rowStart()}px` }}>
       <Switch>
@@ -118,6 +139,27 @@ export default function App() {
           <TopRow onRightEdge={setRowStart} />
           <ProjectRail />
           <Panes config={config()} />
+          {/* The cog is the last pane's in the top row; with no pane there, it keeps the window's top-right corner. */}
+          <Show when={projectsStore.layout.shown.length === 0}>
+            <div class="settings-corner">
+              <UpdatePill />
+              <SettingsButton />
+            </div>
+          </Show>
+          <SettingsDialog />
+          <UpdateDialog />
+          <Show when={fallback()}>
+            {(view) => (
+              <div class="default-fallback" data-testid="default-fallback" role="status">
+                <span>
+                  {`${AGENT_NAMES[view().defaultAgent]} didn't work at start, so ${AGENT_NAMES[view().runDefault]} runs the manager, the Todo sync and new tasks for now. Settings shows why.`}
+                </span>
+                <button type="button" title="Hide" aria-label="Hide" onClick={() => setFallbackHidden(true)}>
+                  ✕
+                </button>
+              </div>
+            )}
+          </Show>
         </Match>
         <Match when={setupView()}>{(view) => <SetupScreen view={view()} />}</Match>
       </Switch>

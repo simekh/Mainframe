@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import { afterEach, expect, it } from 'vitest';
 import * as z from 'zod/v4';
-import { mcpConfigJson, startMcpServer } from './mcpServer';
+import { startMcpServer } from './mcpServer';
 
 type Started = Awaited<ReturnType<typeof startMcpServer>>;
 const running: Started[] = [];
@@ -77,12 +77,6 @@ it('answers 404 under any other path', async () => {
   expect((await post(url.replace('/mcp', '/other'), bearer(token))).status).toBe(404);
 });
 
-it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', () => {
-  expect(mcpConfigJson('http://127.0.0.1:5000/mcp', 'abc123')).toBe(
-    '{"mcpServers":{"mainframe":{"type":"http","url":"http://127.0.0.1:5000/mcp","headers":{"Authorization":"Bearer abc123"},"timeout":360000}}}',
-  );
-});
-
 it('close frees the port', async () => {
   const { url, token, close } = await start();
   expect((await post(url, bearer(token))).status).toBe(200);
@@ -90,4 +84,18 @@ it('close frees the port', async () => {
   await close();
 
   await expect(post(url, bearer(token))).rejects.toMatchObject({ code: 'ECONNREFUSED' });
+});
+
+it("hands a tool call's session id to the tool, as Codex sends it in the call's _meta", async () => {
+  const seen: unknown[] = [];
+  const { url, token } = await start((server) => {
+    server.registerTool('ping', { description: 'Answers pong' }, async (ctx) => {
+      seen.push((ctx as { mcpReq: { _meta?: { sessionId?: unknown } } }).mcpReq._meta?.sessionId);
+      return { content: [{ type: 'text', text: 'pong' }] };
+    });
+  });
+  const call = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'ping', arguments: {}, _meta: { sessionId: 'S1' } } });
+  const response = await post(url, bearer(token), call);
+  expect(response.body).toContain('pong');
+  expect(seen).toEqual(['S1']);
 });
