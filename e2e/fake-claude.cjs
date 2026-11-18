@@ -224,8 +224,8 @@ function sync() {
  * session-start.json beside the --settings file, naming the conversation, how it began and its transcript.
  * Reopen resumes the id it holds; the manager only if the chat was saved, when it began or was cleared.
  * This one saves the chat at once, as if a message had been sent, under projects/ beside the other logs,
- * never in ~/.claude. Then it runs the shell, which has the terminal to itself: this process never reads
- * stdin, so every key typed reaches the shell.
+ * never in ~/.claude. Then it asks for OSC 7501 as Claude Code does (askStatusSupport) and runs the shell, which
+ * has the terminal to itself: past the answer this process reads no stdin, so every key typed reaches the shell.
  */
 function session() {
   let settings = '';
@@ -244,9 +244,7 @@ function session() {
     const started = { session_id: id, source, transcript_path: transcript };
     writeFileSync(join(dirname(settings), 'session-start.json'), JSON.stringify(started));
   }
-  // On Windows, Git Bash by its full path (e2e/globalSetup.ts finds it and names it here): a `bash` on the PATH there can be WSL's.
-  const shell = process.env.FAKE_CLAUDE_SHELL || '/bin/bash';
-  const child = spawn(shell, ['--noprofile', '--norc'], { stdio: 'inherit' });
+  // Set before the question, so a hang-up while it waits is held too.
   // With FAKE_CLAUDE_HANGUP_DELAY_MS, a hang-up ends this process only that long after, as a real claude may
   // take to save its chat, and it records its end in <pid>.ended. A second hang-up, which the system sends once
   // Mainframe has gone, ends it at once, with no record.
@@ -259,6 +257,42 @@ function session() {
       }, Number(hangupDelay)),
     );
   }
+  askStatusSupport(runShell);
+}
+
+/**
+ * Asks whether the terminal takes OSC 7501, as Claude Code and OpenCode do at start, and reads the answer in raw mode
+ * before the shell has the terminal. Mainframe answers a Claude session early, from when its screen turns bracketed paste
+ * on, until it asks: bash 5 turns that on at its prompt, and would take each early answer as typing.
+ */
+function askStatusSupport(then) {
+  if (!process.stdin.isTTY) return then();
+  let input = '';
+  // Reading stops before raw mode goes: on Windows a mode change while reading starts a console read of its own, which
+  // would compete with the shell's. The shell starts once the stop has taken.
+  const done = () => {
+    clearTimeout(giveUp);
+    process.stdin.off('data', onData);
+    process.stdin.pause();
+    process.stdin.setRawMode(false);
+    setImmediate(then);
+  };
+  const onData = (chunk) => {
+    input += chunk;
+    if (/\x1b\]7501;\?[^\x1b]*\x1b\\/.test(input)) done();
+  };
+  // Mainframe answers at once; the wait is long, so a slow machine's answer still reaches this process, not the shell.
+  const giveUp = setTimeout(done, 10_000);
+  process.stdin.setRawMode(true);
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', onData);
+  process.stdout.write('\x1b]7501;?\x1b\\');
+}
+
+function runShell() {
+  // On Windows, Git Bash by its full path (e2e/globalSetup.ts finds it and names it here): a `bash` on the PATH there can be WSL's.
+  const shell = process.env.FAKE_CLAUDE_SHELL || '/bin/bash';
+  const child = spawn(shell, ['--noprofile', '--norc'], { stdio: 'inherit' });
   // Ends as the shell did. A hang-up from Mainframe ends this process, and the system then hangs up the
   // shell, which holds the terminal's foreground; on Windows node-pty's kill ends every process on the console.
   child.on('exit', (code, signal) => {
