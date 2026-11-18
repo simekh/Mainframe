@@ -160,14 +160,16 @@ export class ManagerService {
     }
   }
 
-  onSessionExit(sessionId: string): void {
+  /** `exit` is the PTY's; a spawn that failed has none. */
+  onSessionExit(sessionId: string, exit?: { exitCode: number; signal: number | null }): void {
     const session = this.session;
     if (session?.id !== sessionId) return;
     this.session = null;
     if (!session.turn.ending) this.markEnding(session);
     writeJsonAtomic(this.recordFile, session.record);
-    // A resumed chat that never reported is one the agent no longer has; a quit ends it before it can report.
-    if (session.resumed && !session.reported && !this.quitting) {
+    // A resumed chat that never reported and ended by itself with an error is one the agent no longer has. A quit,
+    // a closed pane, a restart (a signal) or a spawn that failed ends it for other reasons.
+    if (session.resumed && !session.reported && !this.quitting && exit && exit.exitCode !== 0 && !exit.signal) {
       try {
         session.adapter.forgetManagerChat?.(this.dir);
       } catch (err) {

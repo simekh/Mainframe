@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
 import { MIN_CODEX_VERSION, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
@@ -122,7 +122,6 @@ export const codexAgent: AgentAdapter = {
   // The id goes into a command line, so only a session id's shape is kept.
   noteManagerChat: (dir, sessionId) => {
     if (!isUuid(sessionId)) return;
-    mkdirSync(dir, { recursive: true });
     writeJsonAtomic(join(dir, CODEX_CHAT_FILE), { sessionId });
   },
   forgetManagerChat: (dir) => rmSync(join(dir, CODEX_CHAT_FILE), { force: true }),

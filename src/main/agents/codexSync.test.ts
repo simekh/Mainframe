@@ -99,10 +99,15 @@ describe('readCodexAnswer', () => {
     expect(() => readCodexAnswer(jsonl({ type: 'turn.failed', error: { message: 'late' } }, { type: 'turn.completed' }), [])).toThrow('The sync run failed: late');
   });
 
-  it('reads the answer of a run that reconnected and completed, but not of one that never completed after the error', () => {
+  it('reads the answer of a run that reconnected and completed, and of one with an error after it completed', () => {
     const reconnect = { type: 'error', message: 'Reconnecting... 1/5 (stream disconnected before completion: reset)' };
     expect(readCodexAnswer(jsonl(reconnect, message(NONE), { type: 'turn.completed' }), [])).toEqual({ kind: 'none', message: 'No tracker' });
-    expect(() => readCodexAnswer(jsonl({ type: 'turn.completed' }, reconnect, message(NONE)), [])).toThrow(`The sync run failed: ${reconnect.message}`);
+    expect(readCodexAnswer(jsonl(message(NONE), { type: 'turn.completed' }, reconnect), [])).toEqual({ kind: 'none', message: 'No tracker' });
+  });
+
+  it('fails on an error when the turn never completed, whatever the run printed after it', () => {
+    const boom = { type: 'error', message: 'boom' };
+    expect(() => readCodexAnswer(jsonl(message(NONE), boom), [])).toThrow('The sync run failed: boom');
   });
 
   it('throws when a tool outside the allowed ones completed', () => {
@@ -122,6 +127,13 @@ describe('readCodexAnswer', () => {
     const tools = ['mcp__my_trk__get_card'];
     expect(() => readCodexAnswer(call('get-card'), tools)).not.toThrow();
     expect(() => readCodexAnswer(call('create-card'), tools)).toThrow("The sync used a tool that wasn't allowed: mcp__my_trk__create-card");
+  });
+
+  it('allows a confirmed name whose tool part has a hyphen, as the event spells it', () => {
+    const call = (tool: string) => jsonl({ type: 'item.completed', item: { type: 'mcp_tool_call', server: 'trk', tool, status: 'completed' } }, message(NONE));
+    const tools = ['mcp__trk__get-card'];
+    expect(() => readCodexAnswer(call('get-card'), tools)).not.toThrow();
+    expect(() => readCodexAnswer(call('create-card'), tools)).toThrow("The sync used a tool that wasn't allowed: mcp__trk__create-card");
   });
 
   it('throws without an agent message', () => {

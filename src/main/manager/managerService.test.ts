@@ -506,6 +506,8 @@ it('a later tool call naming the same chat writes nothing; one naming another ch
   expect(noted).toEqual([U2, other]);
 });
 
+const FAILED_EXIT = { exitCode: 1, signal: null };
+
 it('a resumed Codex manager that exits without a report forgets the chat; one that reported keeps it', async () => {
   const t = setup();
   t.use(CODEX);
@@ -515,7 +517,7 @@ it('a resumed Codex manager that exits without a report forgets the chat; one th
 
   const gone = await t.service.start();
   expect(resumes(t, gone)).toBe(true);
-  t.service.onSessionExit(gone.session!.id);
+  t.service.onSessionExit(gone.session!.id, FAILED_EXIT);
   expect(existsSync(t.file('codex-chat.json'))).toBe(false);
   const fresh = await t.service.start();
   expect(t.service.launchSpec(fresh.session!.id).argv).not.toContain('resume');
@@ -524,8 +526,23 @@ it('a resumed Codex manager that exits without a report forgets the chat; one th
 
   const kept = await t.service.start();
   t.service.noteStatus(kept.session!.id, 'idle');
-  t.service.onSessionExit(kept.session!.id);
+  t.service.onSessionExit(kept.session!.id, FAILED_EXIT);
   expect(existsSync(t.file('codex-chat.json'))).toBe(true);
+});
+
+it('a resumed Codex manager keeps the chat when it ends with no exit (a spawn that failed), by a signal, or with code 0', async () => {
+  const t = setup();
+  t.use(CODEX);
+  const first = await t.service.start();
+  t.service.noteToolCall(U2);
+  t.service.onSessionExit(first.session!.id);
+
+  for (const exit of [undefined, { exitCode: 0, signal: 1 }, { exitCode: 1, signal: 15 }, { exitCode: 0, signal: null }]) {
+    const resumed = await t.service.start();
+    expect(resumes(t, resumed)).toBe(true);
+    t.service.onSessionExit(resumed.session!.id, exit);
+    expect(existsSync(t.file('codex-chat.json'))).toBe(true);
+  }
 });
 
 it('a resumed Codex manager whose exit follows the quit keeps the chat, even with no report', async () => {
@@ -537,7 +554,7 @@ it('a resumed Codex manager whose exit follows the quit keeps the chat, even wit
 
   const second = await t.service.start();
   t.service.beginQuit();
-  t.service.onSessionExit(second.session!.id);
+  t.service.onSessionExit(second.session!.id, FAILED_EXIT);
   expect(existsSync(t.file('codex-chat.json'))).toBe(true);
 });
 
@@ -550,7 +567,7 @@ it('a chat that cannot be forgotten at the exit is logged, and the window still 
 
   const second = await t.service.start();
   t.changes.length = 0;
-  expect(() => t.service.onSessionExit(second.session!.id)).not.toThrow();
+  expect(() => t.service.onSessionExit(second.session!.id, FAILED_EXIT)).not.toThrow();
   expect(t.warnings).toEqual([expect.stringContaining('locked')]);
   expect(t.changes).toEqual([{ session: null }]);
 });

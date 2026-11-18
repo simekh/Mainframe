@@ -1353,6 +1353,19 @@ it('a prepare that resolves later runs then, and the sync counts as running mean
   expect(t.service.view().syncing).toBe(false);
 });
 
+it('a run that cannot start after a prepare that resolved ends the sync with its error', async () => {
+  const slow = slowPrepare();
+  const sync = { ...slow.agent.adapter.sync, prompt: () => { throw new Error('no prompt'); } };
+  const t = setup(undefined, { ...slow.agent, adapter: { ...slow.agent.adapter, sync } });
+
+  const pending = t.service.sync();
+  slow.resolve(SPEC);
+  await flush();
+
+  expect(await pending).toEqual({ error: 'no prompt' });
+  expect(t.service.view().syncing).toBe(false);
+});
+
 it('a second Sync while prepare runs joins it', async () => {
   const slow = slowPrepare();
   const t = setup(undefined, slow.agent);

@@ -49,15 +49,17 @@ type Event = { type?: string; message?: string; error?: { message?: string }; it
  */
 export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
   const all = jsonLines<Event>(stdout);
-  // Codex prints an error for a dropped stream, then reconnects and may still complete the turn.
-  const completed = all.findLastIndex((e) => e.type === 'turn.completed');
-  const failed = all.find((e, i) => e.type === 'turn.failed' || (e.type === 'error' && i > completed));
+  // Codex prints an error for a dropped stream, then reconnects and may still complete the turn: an error counts
+  // only when no turn completed.
+  const completed = all.some((e) => e.type === 'turn.completed');
+  const failed = all.find((e) => e.type === 'turn.failed' || (e.type === 'error' && !completed));
   if (failed) throw new Error(`The sync run failed: ${failed.error?.message ?? failed.message ?? 'unknown error'}`);
+  // Codex shows a tool `get-card` as `get_card`, so the confirmed names are compared as it spells them; its event keeps `get-card`.
+  const allowed = new Set(tools.map(codexNamespace));
   for (const { type, item } of all) {
     if (type !== 'item.completed' || item?.type !== 'mcp_tool_call' || item.status !== 'completed') continue;
-    // Codex shows a tool `get-card` as `get_card`, which is how the confirmed names spell it; its event keeps `get-card`.
     const prefix = `mcp__${codexNamespace(`${item.server}`)}__`;
-    if (!tools.includes(prefix + codexNamespace(`${item.tool}`))) throw new Error(`The sync used a tool that wasn't allowed: ${prefix}${item.tool}`);
+    if (!allowed.has(prefix + codexNamespace(`${item.tool}`))) throw new Error(`The sync used a tool that wasn't allowed: ${prefix}${item.tool}`);
   }
   const text = all.findLast((e) => e.type === 'item.completed' && e.item?.type === 'agent_message')?.item?.text;
   if (text === undefined) throw new Error('The sync run ended without an answer');

@@ -366,7 +366,12 @@ export class TodoService {
     const preparing = this.begin(() => {});
     prepared.then(
       (spec) => {
-        if (this.running === preparing) void this.startRun(adapter, bin, step, tools, spec, preparing);
+        if (this.running !== preparing) return;
+        try {
+          void this.startRun(adapter, bin, step, tools, spec, preparing);
+        } catch (err) {
+          this.end(preparing, () => this.refuse((err as Error).message));
+        }
       },
       (err: Error) => this.end(preparing, () => this.refuse(err.message)),
     );

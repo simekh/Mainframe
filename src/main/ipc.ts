@@ -200,9 +200,13 @@ export function registerIpc(
   ipcMain.handle(IPC.putBackTask, (_e, dir: string, taskId: string) => todoOf(dir).putBack(taskId));
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
-  const sessionEnded = (owner: TaskService | ManagerService, sessionId: string) => {
+  const sessionEnded = (
+    owner: { onSessionExit(sessionId: string, exit?: { exitCode: number; signal: number | null }): void },
+    sessionId: string,
+    exit?: { exitCode: number; signal: number | null },
+  ) => {
     try {
-      owner.onSessionExit(sessionId);
+      owner.onSessionExit(sessionId, exit);
     } catch (err) {
       console.error(`[sessions] could not record the end of session ${sessionId}`, err);
     }
@@ -231,7 +235,7 @@ export function registerIpc(
         },
         onExit: ({ exitCode, signal }) => {
           send(IPC.exit, { sessionId, exitCode, signal });
-          sessionEnded(owner, sessionId);
+          sessionEnded(owner, sessionId, { exitCode, signal });
         },
       });
     } catch (err) {

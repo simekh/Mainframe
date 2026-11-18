@@ -139,12 +139,6 @@ describe('the manager on Codex', () => {
       expect(() => codexAgent.forgetManagerChat?.(d)).not.toThrow();
     });
 
-    it('makes the folder when it is missing', () => {
-      const d = join(dir(), 'new');
-      codexAgent.noteManagerChat?.(d, ID);
-      expect(codexAgent.managerChat(d, undefined)).toBe(ID);
-    });
-
     it('ignores a value that is not a session id', () => {
       const d = dir();
       codexAgent.noteManagerChat?.(d, ID);

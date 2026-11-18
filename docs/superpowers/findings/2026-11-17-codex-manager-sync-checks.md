@@ -63,6 +63,10 @@ Every `tools/call` carried it, in `codex exec` and in the TUI:
   - `features.multi_agent=false`, used first, is deprecated: on the default model it left a `collaboration` namespace (`spawn_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`, `wait_agent`), and `spawn_agent` really spawned a subagent. `agents.enabled=false` removes that namespace, and the `multi_agent_v1` namespace of older models.
 - A stdio MCP server started with no `CODEX_SANDBOX` in its environment and its tool fetched `https://example.com` (status 200) under `-s read-only`, both in a trusted folder (a server from the folder's `.codex/config.toml`) and in an untrusted one (a server from `-c`).
 
+## A subagent's tool call
+
+Checked 2026-11-18 on the default model (code mode, multi-agent v2): a subagent (`agent_name` `/root/t1`) spawned with `spawn_agent` called an MCP tool, and its `tools/call` carried `_meta.sessionId` equal to the root thread's id (the `thread.started` id), so a subagent's call names the manager's own chat.
+
 ## Server names
 
 - A server named `my-trk` was offered to the model as namespace `mcp__my_trk`; the JSON events named it `my-trk`.
@@ -76,6 +80,5 @@ Prints an array of `{name, enabled, disabled_reason, transport: {type: streamabl
 ## Not checked
 
 - A real model, so whether a real model calls `list_sessions` first when told to, and the strict schema against the real API.
-- A subagent's tool call (which id it carries).
 - Profiles and plugins as sources of MCP servers.
 - Windows and Linux.

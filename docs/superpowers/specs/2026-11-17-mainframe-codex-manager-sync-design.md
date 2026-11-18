@@ -87,7 +87,7 @@ Ruled out earlier: reading Codex's session files, a SessionStart hook, `resume -
 - `sessionId` rather than `threadId`: a subagent's call would carry its own thread; the session is the one `resume` opens (builder checks with a subagent call if the fake model can make one; otherwise this stays as stated).
 - Mainframe's placeholder from `newSessionId` is never resumed: only an id Codex sent is.
 
-**A saved chat Codex no longer has.** If a manager that was started with `codex resume <id>` exits before its first OSC 7501 report, Mainframe forgets the saved id, so Restart opens a new chat instead of failing again. (Checked: a missing id exits with no report; a resumed chat reports `idle` within 0.2 s, so quitting it early doesn't trip this.) Only for Codex: Claude Code's and OpenCode's managers keep what they do. A user who quits a resumed Codex manager while its sign-in screen is up loses that chat's id too; accepted, as the chat itself stays in Codex.
+**A saved chat Codex no longer has.** If a manager that was started with `codex resume <id>` exits by itself with a non-zero code before its first OSC 7501 report, Mainframe forgets the saved id, so Restart opens a new chat instead of failing again. (Checked: a missing id exits with no report; a resumed chat reports `idle` within 0.2 s, so quitting it early doesn't trip this.) A spawn that fails, or a session that is closed or restarted (ended by a signal), keeps the id. Only for Codex: Claude Code's and OpenCode's managers keep what they do. A user who quits a resumed Codex manager while its sign-in screen is up loses that chat's id too; accepted, as the chat itself stays in Codex.
 
 **Errors.** With no id saved, the manager simply starts a new chat. A launch that fails says Codex's own error in the manager column, as other agents' do.
 
@@ -108,7 +108,7 @@ Ruled out earlier: reading Codex's session files, a SessionStart hook, `resume -
 - Mainframe's own manager server is not in that list (it is passed only to the manager's launch).
 
 **The answer.** `prepare` writes a strict copy of the answer schema into the project's Todo folder: every object lists all its properties in `required`, a property that was optional becomes `anyOf [its schema, {type: null}]`, `additionalProperties: false` stays. `readAnswer` from the JSONL:
-- a `turn.failed` event, or a top-level `error` event with no `turn.completed` after it: the run failed, with its message. Codex prints a top-level `error` ("Reconnecting... 1/5 (stream disconnected …)") when the model's stream drops, then reconnects and may still complete the turn. (An `item.completed` of type `error` is a warning, not a failure.)
+- a `turn.failed` event anywhere, or a top-level `error` event when the output has no `turn.completed` at all: the run failed, with its message. Codex prints a top-level `error` ("Reconnecting... 1/5 (stream disconnected …)") when the model's stream drops, then reconnects and may still complete the turn; an error in a run that completed is a notice. (An `item.completed` of type `error` is a warning, not a failure.)
 - any `mcp_tool_call` item with status `completed` whose `mcp__<server, cleaned as above>__<tool, cleaned the same way>` is not among the confirmed tools: "The sync used a tool that wasn't allowed: …", naming the tool as the event spells it (in discover, any completed call);
 - else the last `agent_message`'s text, parsed as JSON, top-level `null`s dropped, then `parseSyncAnswer`.
 
