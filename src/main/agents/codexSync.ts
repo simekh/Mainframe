@@ -4,7 +4,7 @@ import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
 import type { SyncAdapter, SyncWords } from './agent';
 import { isMcpToolName } from './claudeSync';
-import { runCodex, type Run } from './codexInstructions';
+import { CODEX_TIMEOUT_MS, runCodex, type Run } from './codexInstructions';
 import { agentsMdInstructions } from './opencode';
 import { jsonLines } from './opencodeSync';
 
@@ -49,12 +49,15 @@ type Event = { type?: string; message?: string; error?: { message?: string }; it
  */
 export function readCodexAnswer(stdout: string, tools: string[]): SyncAnswer {
   const all = jsonLines<Event>(stdout);
-  const failed = all.find((e) => e.type === 'turn.failed' || e.type === 'error');
+  // Codex prints an error for a dropped stream, then reconnects and may still complete the turn.
+  const completed = all.findLastIndex((e) => e.type === 'turn.completed');
+  const failed = all.find((e, i) => e.type === 'turn.failed' || (e.type === 'error' && i > completed));
   if (failed) throw new Error(`The sync run failed: ${failed.error?.message ?? failed.message ?? 'unknown error'}`);
   for (const { type, item } of all) {
     if (type !== 'item.completed' || item?.type !== 'mcp_tool_call' || item.status !== 'completed') continue;
-    const name = `mcp__${codexNamespace(`${item.server}`)}__${item.tool}`;
-    if (!tools.includes(name)) throw new Error(`The sync used a tool that wasn't allowed: ${name}`);
+    // Codex shows a tool `get-card` as `get_card`, which is how the confirmed names spell it; its event keeps `get-card`.
+    const prefix = `mcp__${codexNamespace(`${item.server}`)}__`;
+    if (!tools.includes(prefix + codexNamespace(`${item.tool}`))) throw new Error(`The sync used a tool that wasn't allowed: ${prefix}${item.tool}`);
   }
   const text = all.findLast((e) => e.type === 'item.completed' && e.item?.type === 'agent_message')?.item?.text;
   if (text === undefined) throw new Error('The sync run ended without an answer');
@@ -95,7 +98,9 @@ export async function listCodexServers(o: { bin: string; projectDir: string; env
   try {
     return serverNames(await run([bin, 'mcp', 'list', '--json'], { cwd: projectDir, env }));
   } catch (err) {
-    throw new Error(`Codex could not list its MCP servers: ${(err as Error).message}`);
+    // A run the timeout killed says only "Command failed".
+    const why = (err as { killed?: boolean }).killed ? `it took longer than ${CODEX_TIMEOUT_MS / 1000} seconds` : (err as Error).message;
+    throw new Error(`Codex could not list its MCP servers: ${why}`);
   }
 }
 
@@ -108,7 +113,8 @@ const toml = (key: string, value: string | string[]): string =>
 /**
  * The run's `-c` values. Its own tools that act are switched off. Discover sees every server, but a call to any tool
  * needs an approval that a `codex exec` can't give. A read leaves only the confirmed tools callable and the other
- * servers off. Every listed server's name is checked, so a renamed one can't slip past.
+ * servers off. Every listed server's name is checked, so a renamed one can't slip past. A confirmed `get_card` may be
+ * the server's `get-card`, which Codex shows by the same name, so both spellings are allowed.
  */
 export function codexSyncConfig(step: SyncStep, tools: string[], servers: string[]): string[] {
   for (const server of servers) {
@@ -118,12 +124,13 @@ export function codexSyncConfig(step: SyncStep, tools: string[], servers: string
   const prefixOf = (s: string) => `mcp__${codexNamespace(s)}__`;
   for (const name of step.kind === 'read' ? tools : []) {
     const owners = servers.filter((s) => name.startsWith(prefixOf(s)));
-    if (owners.length !== 1) throw new Error(`Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`);
+    if (owners.length !== 1) throw new Error(`Set up the sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`);
     const tool = name.slice(prefixOf(owners[0]).length);
     if (!passable(tool)) throw new Error(`Codex's MCP tool "${name}" has a name Mainframe can't pass to Codex`);
-    allowedOf.set(owners[0], [...(allowedOf.get(owners[0]) ?? []), tool]);
+    const spellings = tool.includes('_') ? [tool, tool.replace(/_/g, '-')] : [tool];
+    allowedOf.set(owners[0], [...(allowedOf.get(owners[0]) ?? []), ...spellings]);
   }
-  const config = ['features.shell_tool=false', toml('web_search', 'disabled'), 'features.multi_agent=false', 'features.apps=false', 'features.goals=false'];
+  const config = ['features.shell_tool=false', toml('web_search', 'disabled'), 'agents.enabled=false', 'features.apps=false', 'features.goals=false'];
   for (const server of servers) {
     const allowed = allowedOf.get(server);
     const prefix = `mcp_servers.${server}`;

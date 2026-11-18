@@ -31,6 +31,16 @@ describe('strictJsonSchema', () => {
     });
     expect(schema).toEqual(copy);
   });
+
+  it('makes each object schema in an anyOf strict', () => {
+    const schema = { anyOf: [{ type: 'object', properties: { a: { type: 'string' } } }, { type: 'object', properties: { b: { type: 'number' } }, required: ['b'] }] };
+    expect(strictJsonSchema(schema)).toEqual({
+      anyOf: [
+        { type: 'object', properties: { a: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['a'], additionalProperties: false },
+        { type: 'object', properties: { b: { type: 'number' } }, required: ['b'], additionalProperties: false },
+      ],
+    });
+  });
 });
 
 describe('CODEX_SYNC_SCHEMA_JSON', () => {
@@ -86,6 +96,13 @@ describe('readCodexAnswer', () => {
   it('throws when the turn failed', () => {
     expect(() => readCodexAnswer(jsonl({ type: 'turn.failed', error: { message: 'rate limited' } }), [])).toThrow('The sync run failed: rate limited');
     expect(() => readCodexAnswer(jsonl({ type: 'error', message: 'boom' }), [])).toThrow('The sync run failed: boom');
+    expect(() => readCodexAnswer(jsonl({ type: 'turn.failed', error: { message: 'late' } }, { type: 'turn.completed' }), [])).toThrow('The sync run failed: late');
+  });
+
+  it('reads the answer of a run that reconnected and completed, but not of one that never completed after the error', () => {
+    const reconnect = { type: 'error', message: 'Reconnecting... 1/5 (stream disconnected before completion: reset)' };
+    expect(readCodexAnswer(jsonl(reconnect, message(NONE), { type: 'turn.completed' }), [])).toEqual({ kind: 'none', message: 'No tracker' });
+    expect(() => readCodexAnswer(jsonl({ type: 'turn.completed' }, reconnect, message(NONE)), [])).toThrow(`The sync run failed: ${reconnect.message}`);
   });
 
   it('throws when a tool outside the allowed ones completed', () => {
@@ -100,6 +117,13 @@ describe('readCodexAnswer', () => {
     expect(() => readCodexAnswer(out, ['mcp__my_trk__get_card'])).not.toThrow();
   });
 
+  it('matches a hyphenated tool by the name Codex shows, and names a refused one as its event spells it', () => {
+    const call = (tool: string) => jsonl({ type: 'item.completed', item: { type: 'mcp_tool_call', server: 'my-trk', tool, status: 'completed' } }, message(NONE));
+    const tools = ['mcp__my_trk__get_card'];
+    expect(() => readCodexAnswer(call('get-card'), tools)).not.toThrow();
+    expect(() => readCodexAnswer(call('create-card'), tools)).toThrow("The sync used a tool that wasn't allowed: mcp__my_trk__create-card");
+  });
+
   it('throws without an agent message', () => {
     expect(() => readCodexAnswer(jsonl({ type: 'turn.completed' }), [])).toThrow('The sync run ended without an answer');
   });
@@ -111,7 +135,7 @@ describe('readCodexAnswer', () => {
 });
 
 describe('codexSyncConfig', () => {
-  const FEATURES = ['features.shell_tool=false', 'web_search="disabled"', 'features.multi_agent=false', 'features.apps=false', 'features.goals=false'];
+  const FEATURES = ['features.shell_tool=false', 'web_search="disabled"', 'agents.enabled=false', 'features.apps=false', 'features.goals=false'];
 
   it('lets discover see every server but approve nothing', () => {
     expect(codexSyncConfig({ kind: 'discover' }, [], ['trk', 'my-trk'])).toEqual([
@@ -126,10 +150,21 @@ describe('codexSyncConfig', () => {
     expect(codexSyncConfig({ kind: 'read', list: null }, tools, ['trk', 'my-trk'])).toEqual([
       ...FEATURES,
       'mcp_servers.trk.enabled=false',
-      'mcp_servers.my-trk.enabled_tools=["get_card","list_cards"]',
+      'mcp_servers.my-trk.enabled_tools=["get_card","get-card","list_cards","list-cards"]',
       'mcp_servers.my-trk.default_tools_approval_mode="prompt"',
       'mcp_servers.my-trk.tools.get_card.approval_mode="approve"',
+      'mcp_servers.my-trk.tools.get-card.approval_mode="approve"',
       'mcp_servers.my-trk.tools.list_cards.approval_mode="approve"',
+      'mcp_servers.my-trk.tools.list-cards.approval_mode="approve"',
+    ]);
+  });
+
+  it('allows one spelling of a tool with no underscore', () => {
+    expect(codexSyncConfig({ kind: 'read', list: null }, ['mcp__trk__list'], ['trk'])).toEqual([
+      ...FEATURES,
+      'mcp_servers.trk.enabled_tools=["list"]',
+      'mcp_servers.trk.default_tools_approval_mode="prompt"',
+      'mcp_servers.trk.tools.list.approval_mode="approve"',
     ]);
   });
 
@@ -140,7 +175,7 @@ describe('codexSyncConfig', () => {
   });
 
   it('refuses a tool that matches no server or two', () => {
-    const refusal = (name: string) => `Sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`;
+    const refusal = (name: string) => `Set up the sync again to find the tools: "${name}" doesn't match one of Codex's MCP servers`;
     expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__other__x'], ['trk'])).toThrow(refusal('mcp__other__x'));
     expect(() => codexSyncConfig({ kind: 'read', list: null }, ['mcp__a_b__x'], ['a_b', 'a-b'])).toThrow(refusal('mcp__a_b__x'));
   });
@@ -176,6 +211,13 @@ describe('listCodexServers', () => {
 
   it('throws when the run fails', async () => {
     await expect(listCodexServers({ ...base, run: vi.fn<Run>().mockRejectedValue(new Error('boom')) })).rejects.toThrow('Codex could not list its MCP servers: boom');
+  });
+
+  it('says it took too long when the timeout killed the run', async () => {
+    const killed = Object.assign(new Error('Command failed: /b/codex mcp list --json'), { killed: true, signal: 'SIGTERM' });
+    await expect(listCodexServers({ ...base, run: vi.fn<Run>().mockRejectedValue(killed) })).rejects.toThrow(
+      'Codex could not list its MCP servers: it took longer than 10 seconds',
+    );
   });
 });
 

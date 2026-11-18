@@ -8,6 +8,7 @@ const execFileAsync = promisify(execFile);
 export type Run = (argv: string[], o: { cwd: string; env: Record<string, string> }) => Promise<string>;
 
 const MAX_OUTPUT = 16 * 1024 * 1024;
+export const CODEX_TIMEOUT_MS = 10_000;
 const AGENTS_MD_HEADING = '# AGENTS.md instructions for ';
 const ENVIRONMENT_CONTEXT = '<environment_context>';
 const SNIPPET_LENGTH = 200;
@@ -22,7 +23,7 @@ const userTexts = (items: unknown[]): string[] =>
 
 /** Runs codex with no shell and resolves with stdout. What it prints holds the project's instructions, so it is never logged. */
 export const runCodex: Run = async ([file, ...args], o) =>
-  (await execFileAsync(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: 10_000, maxBuffer: MAX_OUTPUT })).stdout;
+  (await execFileAsync(file, args, { cwd: o.cwd, env: o.env, encoding: 'utf8', windowsHide: true, timeout: CODEX_TIMEOUT_MS, maxBuffer: MAX_OUTPUT })).stdout;
 
 /**
  * True when the project has a CLAUDE.md but no AGENTS.md or AGENTS.override.md (which Codex reads before any

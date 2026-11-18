@@ -106,7 +106,10 @@ export interface AgentAdapter {
   began(taskDir: string, task: { began?: boolean }): boolean;
   /** Forgets the conversation recorded in the task's folder, as one the agent no longer has; nothing for an agent that records none. */
   forgetChat(taskDir: string): void;
-  /** The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved. Null starts a new one. */
+  /**
+   * The chat to carry on: Claude Code's from its SessionStart record, OpenCode's the id manager.json saved, Codex's from
+   * its own record in the manager's folder (it ignores `saved`). Null starts a new one.
+   */
   managerChat(dir: string, saved: string | undefined): string | null;
   managerLaunch(o: ManagerLaunch): Promise<LaunchArgs>;
   /** An id the agent sent with a Mainframe tool call, kept as the manager chat to resume; only Codex has it. */

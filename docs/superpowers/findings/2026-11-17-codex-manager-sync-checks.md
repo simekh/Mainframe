@@ -6,6 +6,8 @@ Checks on 2026-11-17, worktree `codex-manager-sync`, with Codex CLI 0.169.0. The
 
 As in the first checks: no account, so the real `codex` ran against a fake Responses API, with a throwaway `CODEX_HOME` whose `config.toml` sets `model_provider = "fake"` and a `base_url` on localhost. Beside it ran a logging MCP server over Streamable HTTP (answers `initialize`, `tools/list` with one tool, `tools/call`), and later a stdio MCP server whose one tool fetches `https://example.com`. The fake model calls that tool when it is offered and no tool output is in the input yet, then answers a fixed text. `codex exec` ran with `--json --ephemeral`; the TUI ran in a pseudo-terminal (node-pty) that logged OSC 7501 reports and answered the terminal's queries. The folders were plain folders (exec with its flag to run outside a git repository), the TUI's folder trusted in the throwaway config.
 
+The config's `model = "fake-model"` gives Codex's classic tools. Leaving the `model` key out makes Codex use its default model's catalog (a code-mode model, gpt-6.1-sol in 0.169), so the tools that model is offered can be seen in the fake API's requests without an account. The switches' check on that model was added on 2026-11-18, after the final review.
+
 ## MCP over HTTP with a token
 
 ```
@@ -55,12 +57,16 @@ Every `tools/call` carried it, in `codex exec` and in the TUI:
 - `--output-schema <file>` is sent as `"text": {"format": {"type": "json_schema", "strict": true, "schema": …}}`. OpenAI's strict mode needs every property listed in `required`, `additionalProperties: false` on every object, and an optional field written as a union with `null` (OpenAI's Structured Outputs guide, "Supported schemas"). `SYNC_ANSWER_JSON` has optional properties, so the real API would refuse it as it is; the fake model doesn't check.
 - `--json` events seen: `thread.started` {thread_id}, `turn.started`, `item.started` / `item.completed` with items `agent_message` {text}, `mcp_tool_call` {server, tool, arguments, result, error, status: in_progress | completed | failed}, and `error` {message}, `turn.completed` {usage}. The `error` item came with an unknown model ("Model metadata for `fake-model` not found…"): a warning; the turn completed.
 - The prompt is read from stdin when none is given.
-- `-c features.shell_tool=false -c 'web_search="disabled"' -c features.multi_agent=false -c features.apps=false -c features.goals=false` (all accepted by `--strict-config`): with no MCP server configured, the model was offered only `request_user_input` and `view_image`. With servers configured it is also offered `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+- `-c features.shell_tool=false -c 'web_search="disabled"' -c agents.enabled=false -c features.apps=false -c features.goals=false` (all accepted by `--strict-config`):
+  - On `fake-model` (classic tools), with no MCP server configured, the model was offered only `request_user_input` and `view_image`. With servers configured it is also offered `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+  - On the default model (code mode), it was offered Codex's JavaScript `exec` tool (plus `wait`, `clock.sleep` and `request_user_input`), and through `exec` it can reach `apply_patch`, `view_image`, the MCP resource reads and the MCP tools. The `exec` JavaScript has no `fetch` and refuses `import('node:fs')`. `apply_patch` through it was refused: "patch rejected: writing is blocked by read-only sandbox". The MCP approval guard held for nested calls; they appear in `--json` as `mcp_tool_call` items and carry `_meta.sessionId`.
+  - `features.multi_agent=false`, used first, is deprecated: on the default model it left a `collaboration` namespace (`spawn_agent`, `send_message`, `followup_task`, `interrupt_agent`, `list_agents`, `wait_agent`), and `spawn_agent` really spawned a subagent. `agents.enabled=false` removes that namespace, and the `multi_agent_v1` namespace of older models.
 - A stdio MCP server started with no `CODEX_SANDBOX` in its environment and its tool fetched `https://example.com` (status 200) under `-s read-only`, both in a trusted folder (a server from the folder's `.codex/config.toml`) and in an untrusted one (a server from `-c`).
 
 ## Server names
 
 - A server named `my-trk` was offered to the model as namespace `mcp__my_trk`; the JSON events named it `my-trk`.
+- A tool named `get-card` is shown to the model as `mcp__trk__get_card`; the JSON events name it `get-card`, and `enabled_tools` and `tools.<t>` take `get-card` (the final review's probe, 2026-11-18).
 - `-c 'mcp_servers."a.b".command="node"'` failed: "Error loading config.toml: invalid transport … in `mcp_servers."a`". The `-c` path is split at every dot, quotes or not.
 
 ## `codex mcp list --json`

@@ -167,7 +167,13 @@ export class ManagerService {
     if (!session.turn.ending) this.markEnding(session);
     writeJsonAtomic(this.recordFile, session.record);
     // A resumed chat that never reported is one the agent no longer has; a quit ends it before it can report.
-    if (session.resumed && !session.reported && !this.quitting) session.adapter.forgetManagerChat?.(this.dir);
+    if (session.resumed && !session.reported && !this.quitting) {
+      try {
+        session.adapter.forgetManagerChat?.(this.dir);
+      } catch (err) {
+        this.warn(`Could not forget the manager's chat (${String(err)}); the next start may try to resume it`);
+      }
+    }
     this.deps.onChange(this.view());
   }
 

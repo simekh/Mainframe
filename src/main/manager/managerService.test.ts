@@ -541,6 +541,20 @@ it('a resumed Codex manager whose exit follows the quit keeps the chat, even wit
   expect(existsSync(t.file('codex-chat.json'))).toBe(true);
 });
 
+it('a chat that cannot be forgotten at the exit is logged, and the window still hears of the exit', async () => {
+  const t = setup();
+  t.use({ ...CODEX, adapter: { ...ADAPTERS.codex, forgetManagerChat: () => { throw new Error('locked'); } } });
+  const first = await t.service.start();
+  t.service.noteToolCall(U2);
+  t.service.onSessionExit(first.session!.id);
+
+  const second = await t.service.start();
+  t.changes.length = 0;
+  expect(() => t.service.onSessionExit(second.session!.id)).not.toThrow();
+  expect(t.warnings).toEqual([expect.stringContaining('locked')]);
+  expect(t.changes).toEqual([{ session: null }]);
+});
+
 it("an early exit of a resumed Claude Code manager leaves its session-start.json", async () => {
   const t = setup();
   const first = await started(t, 'idle');

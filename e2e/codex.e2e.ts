@@ -3,6 +3,7 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import type { AppSettings } from '../src/main/setup/settings';
+import { MANAGER_TOOL_TIMEOUT_MS } from '../src/main/todo/syncRun';
 import { cleanUp, fakeCodex, launchApp, launchWithCodex, removeAfterTest } from './launch';
 import {
   card, cardIn, closeTask, codexSyncReply, envOf, fakeLogDir, git, launches, managerLaunches, report, repo, sendLine, startTask, syncLaunches,
@@ -120,9 +121,17 @@ test("the manager starts on Codex with Mainframe's server, its tools' approvals 
   const [launch] = managerLaunches(dataDir);
   expect(realpathSync(launch.cwd)).toBe(realpathSync(main));
   expect(launch.args).not.toContain('resume');
-  expect(launch.args).toContainEqual(expect.stringMatching(/^mcp_servers\.mainframe\.url="http:\/\/127\.0\.0\.1:/));
-  expect(launch.args).toContain('mcp_servers.mainframe.tools.start_task.approval_mode="prompt"');
-  expect(launch.args).toContainEqual(expect.stringMatching(/^developer_instructions=.*call list_sessions/s));
+  const settings = launch.args.filter((_, i) => launch.args[i - 1] === '-c');
+  expect(settings).toEqual([
+    expect.stringMatching(/^mcp_servers\.mainframe\.url="http:\/\/127\.0\.0\.1:\d+\/[^"]*"$/),
+    'mcp_servers.mainframe.bearer_token_env_var="MAINFRAME_MCP_TOKEN"',
+    `mcp_servers.mainframe.tool_timeout_sec=${MANAGER_TOOL_TIMEOUT_MS / 1000}`,
+    'mcp_servers.mainframe.tools.list_sessions.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.sync_todo.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.close_session.approval_mode="approve"',
+    'mcp_servers.mainframe.tools.start_task.approval_mode="prompt"',
+    expect.stringMatching(/^developer_instructions=.*call list_sessions/s),
+  ]);
 
   const token = envOf(launch).MAINFRAME_MCP_TOKEN;
   expect(token).toMatch(/^[0-9a-f]{64}$/);
@@ -165,7 +174,8 @@ test('a sync on Codex finds the connector, then reads with only the confirmed to
   await expect(panel.getByTestId('todo-item')).toHaveCount(1);
   await expect(panel.getByTestId('todo-item')).toContainText('Search ignores accents');
   const read = syncLaunches(dataDir)[1];
-  expect(read.args).toContain('mcp_servers.tracker.enabled_tools=["get_cards"]');
+  expect(read.args).toContain('mcp_servers.tracker.enabled_tools=["get_cards","get-cards"]');
   expect(read.args).toContain('mcp_servers.tracker.tools.get_cards.approval_mode="approve"');
+  expect(read.args).toContain('mcp_servers.tracker.tools.get-cards.approval_mode="approve"');
   await app.close();
 });

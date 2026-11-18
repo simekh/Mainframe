@@ -12,6 +12,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   process.exit(1)
 }
 
+// A named model gets Codex's classic tools, which this fake answers; it checks the manager's resume,
+// not the tools Codex's default model is offered (leave `model` out to see those).
 const codexHome = await mkdtemp(join(tmpdir(), 'mainframe-codex-home-'))
 await writeFile(
   join(codexHome, 'config.toml'),
