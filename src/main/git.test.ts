@@ -393,13 +393,37 @@ it('removeWorktree rejects a locked worktree', async () => {
   expect(existsSync(wt)).toBe(true);
 });
 
+function endedPid(): number {
+  return Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+}
+
+function lockByEndedSession(main: string, wt: string): void {
+  git(main, 'worktree', 'lock', '--reason', `claude session task (pid ${endedPid()} start Tue Nov 17 12:57:02 2026)`, wt);
+}
+
 it('removeWorktree clears a lock that names a process which has ended, as an agent killed by a signal leaves it', async () => {
   const { main } = repo();
   const { wt } = taskBranch(main);
-  const ended = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
-  git(main, 'worktree', 'lock', '--reason', `claude session task (pid ${ended} start Tue Nov 17 12:57:02 2026)`, wt);
+  lockByEndedSession(main, wt);
   await removeWorktree(main, wt, { force: false });
   expect(existsSync(wt)).toBe(false);
+});
+
+it("removeWorktree clears an ended session's lock on a hand-deleted folder, so its branch can go", async () => {
+  const { main } = repo();
+  const { branch, wt } = taskBranch(main);
+  lockByEndedSession(main, wt);
+  rmSync(wt, { recursive: true, force: true });
+  await removeWorktree(main, wt, { force: false });
+  await deleteBranch(main, branch);
+  expect(await branchExists(main, branch)).toBe(false);
+});
+
+it('removeWorktree keeps a lock whose reason merely mentions a pid', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  git(main, 'worktree', 'lock', '--reason', `on the external disk, see pid ${endedPid()} notes`, wt);
+  await expect(removeWorktree(main, wt, { force: true })).rejects.toThrow(/locked/);
 });
 
 it('removeWorktree keeps a lock that names a process still running', async () => {
