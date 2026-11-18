@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+Fixed: A finished task's worktree is cleaned up even when its closed Claude Code session left the worktree locked.
+
 ## 0.1.0 · 18 Nov 2026
 
 Fixed: Mainframe runs on a newer Electron with Chromium's latest security fixes; on Linux, run the two `chrome-sandbox` lines from the README again to keep the sandbox.

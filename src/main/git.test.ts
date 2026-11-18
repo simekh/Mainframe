@@ -393,6 +393,23 @@ it('removeWorktree rejects a locked worktree', async () => {
   expect(existsSync(wt)).toBe(true);
 });
 
+it('removeWorktree clears a lock that names a process which has ended, as an agent killed by a signal leaves it', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  const ended = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+  git(main, 'worktree', 'lock', '--reason', `claude session task (pid ${ended} start Tue Nov 17 12:57:02 2026)`, wt);
+  await removeWorktree(main, wt, { force: false });
+  expect(existsSync(wt)).toBe(false);
+});
+
+it('removeWorktree keeps a lock that names a process still running', async () => {
+  const { main } = repo();
+  const { wt } = taskBranch(main);
+  git(main, 'worktree', 'lock', '--reason', `claude session task (pid ${process.pid} start Wed Nov 18 12:54:08 2026)`, wt);
+  await expect(removeWorktree(main, wt, { force: true })).rejects.toThrow(/locked/);
+  expect(existsSync(wt)).toBe(true);
+});
+
 it('taskGitState is no-commits for a branch still where it was created, even once the base moves on', async () => {
   const { main } = repo();
   const { branch, wt } = taskBranch(main);

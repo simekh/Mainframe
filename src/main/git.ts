@@ -1,6 +1,6 @@
 // Adapted from Parallel Code (MIT): electron/ipc/git.ts (getChangedFiles) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import { execFile } from 'node:child_process';
-import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
+import { lstat, open, readFile, readlink, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ChangedFile, FileDiff, StartCheck, TaskGitState } from '../shared/types';
@@ -365,8 +365,9 @@ export class FolderLeftError extends Error {}
 
 /**
  * Resolves when the folder is gone, clearing git's entry for it if it has one; other worktrees' entries are left
- * alone. Rejects with git's message: a locked worktree, changes without `force`, or a folder that is not a worktree; as
- * a `FolderLeftError` when a worktree is left behind no longer one.
+ * alone. A lock naming a process that has ended is cleared first. Rejects with git's message: any other locked
+ * worktree, changes without `force`, or a folder that is not a worktree; as a `FolderLeftError` when a worktree is left
+ * behind no longer one.
  */
 export async function removeWorktree(projectDir: string, worktreePath: string, o: { force: boolean }): Promise<void> {
   const remove = ['worktree', 'remove', ...(o.force ? ['--force'] : []), worktreePath];
@@ -376,6 +377,7 @@ export async function removeWorktree(projectDir: string, worktreePath: string, o
     return;
   }
   const wasWorktree = await isWorktreeTop(worktreePath).catch(() => false);
+  if (wasWorktree) await clearDeadLock(projectDir, worktreePath);
   try {
     await git(projectDir, remove);
   } catch (err) {
@@ -383,6 +385,27 @@ export async function removeWorktree(projectDir: string, worktreePath: string, o
     // Only git's own removal leaves a worktree half gone: a folder that never was one is just git's reason.
     const left = wasWorktree && (await pathExists(worktreePath)) && !(await isWorktreeTop(worktreePath).catch(() => false));
     throw left ? new FolderLeftError(message) : new Error(message);
+  }
+}
+
+/**
+ * Unlocks the worktree when its lock's reason names a `pid` no longer running: an agent that locks its worktree while
+ * it runs (Claude Code's `--worktree`) leaves the lock when a signal ends it. A lock with no pid is someone's own.
+ */
+async function clearDeadLock(projectDir: string, worktreePath: string): Promise<void> {
+  const gitDir = (await git(worktreePath, ['rev-parse', '--absolute-git-dir'])).trim();
+  const reason = await readFile(join(gitDir, 'locked'), 'utf8').catch(() => null);
+  const pid = reason?.match(/\bpid (\d+)\b/)?.[1];
+  if (pid !== undefined && !processRunning(Number(pid))) await git(projectDir, ['worktree', 'unlock', worktreePath]);
+}
+
+/** A process this user may not signal is running all the same. */
+function processRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
