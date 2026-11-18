@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 · 18 Nov 2026
+
 Fixed: A finished task's worktree is cleaned up even when its closed Claude Code session left the worktree locked.
 
 ## 0.1.0 · 18 Nov 2026
