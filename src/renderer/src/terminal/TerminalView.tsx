@@ -6,7 +6,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
-import { IMAGE_EXTENSIONS, IMAGE_LABEL, labelNumbers } from '../../../shared/imageLabels';
+import { IMAGE_FILE_TYPES, IMAGE_LABEL, labelNumbers } from '../../../shared/imageLabels';
 import { type AgentName, type RendererConfig, TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { linkClickHeld } from '../keys';
@@ -336,7 +336,7 @@ export default function TerminalView(props: {
     // rules); a paste with no label (it went into a question, or the agent didn't take the file) isn't
     // listed. An agent without such a label has its images listed at once, with no number.
     const label = IMAGE_LABEL[agent];
-    const takesAsImage = (path: string) => IMAGE_EXTENSIONS[agent].includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
+    const takesAsImage = (path: string) => IMAGE_FILE_TYPES.includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
     const record = (added: { path: string; number: number | null }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
@@ -456,8 +456,8 @@ export default function TerminalView(props: {
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
       clearTimeout(scanTimer);
-      if (imageWatch) imageWatch.dispose();
-      if (imageLinks) imageLinks.dispose();
+      imageWatch?.dispose();
+      imageLinks?.dispose();
       setSuggesting(id, false);
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);

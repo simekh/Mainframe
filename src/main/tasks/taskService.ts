@@ -277,7 +277,8 @@ export class TaskService {
       // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = adapter.newSessionId(this.newId);
-      this.clearImagesOf(task);
+      // A new chat starts its count at #1: the last chat's list goes.
+      clearImages(this.imagesFolder(task.id));
       launch = this.startLaunch(task, bin);
     }
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
@@ -319,7 +320,7 @@ export class TaskService {
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
     adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
-    this.clearImagesOf(task);
+    clearImages(this.imagesFolder(task.id));
     const launch = this.startLaunch(task, bin, { continuing: true });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false, continued: true });
   }
@@ -507,7 +508,7 @@ export class TaskService {
     const cwd = task.worktreePath;
     if (!task.began) {
       // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
-      this.clearImagesOf(task);
+      clearImages(this.imagesFolder(task.id));
       return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
@@ -884,11 +885,6 @@ export class TaskService {
 
   private imagesFolder(taskId: string): string {
     return join(this.taskDir(taskId), 'images');
-  }
-
-  /** A new chat starts its count at #1: the last chat's list goes. */
-  private clearImagesOf(task: TaskRecord): void {
-    clearImages(this.imagesFolder(task.id));
   }
 
   private worktreeFolders(): string[] {

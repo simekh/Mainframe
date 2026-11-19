@@ -524,3 +524,27 @@ export const savedSettings = (dataDir: string) =>
   readSettings(dataDir, (msg) => {
     throw new Error(msg);
   });
+
+const ONE_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+/** A real one-pixel PNG named `name`, in a folder of its own removed after the test. */
+export function pngFile(name = 'shot.png'): string {
+  const path = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-img-'))), name);
+  writeFileSync(path, Buffer.from(ONE_PIXEL, 'base64'));
+  return path;
+}
+
+/** The terminal of the task shown on the board. */
+export const TASK_TERMINAL = '.well > .terminal:not(.terminal--hidden)';
+
+/** Drops the file on the terminal `selector` finds, as Finder does; a file input gives the page its path, which a File made in the page has none of. */
+export async function dropFile(page: Page, path: string, selector: string) {
+  const input = await page.evaluateHandle(() => document.body.appendChild(Object.assign(document.createElement('input'), { type: 'file' })));
+  await input.setInputFiles(path);
+  await input.evaluate((el, sel) => {
+    const files = new DataTransfer();
+    files.items.add(el.files![0]);
+    el.remove();
+    document.querySelector(sel)!.dispatchEvent(new DragEvent('drop', { dataTransfer: files, bubbles: true, cancelable: true }));
+  }, selector);
+}

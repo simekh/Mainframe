@@ -54,8 +54,8 @@ export default function ImageViewer() {
   const neighbour = (delta: -1 | 1) => {
     const s = shown();
     if (!s) return null;
-    const i = s.index + delta;
-    return i >= 0 && i < s.count ? imagesOf(s.sessionId)[i] : null;
+    const i = stepIndex(s.index, s.count, delta);
+    return i === s.index ? null : imagesOf(s.sessionId)[i];
   };
   // On the window, so the arrows work wherever the focus is while the view is open: a step button at an end goes.
   const onKeyDown = (e: KeyboardEvent) => {

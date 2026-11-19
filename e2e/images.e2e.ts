@@ -1,35 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { cleanUp, launchApp, removeAfterTest } from './launch';
-import { card, managerScreen, projectPane, railRow, repo, screen, startIn, startTask } from './tasks';
+import { cleanUp, launchApp } from './launch';
+import { card, dropFile, managerScreen, pngFile, TASK_TERMINAL, projectPane, railRow, repo, screen, startIn, startTask } from './tasks';
 
 test.afterEach(cleanUp);
 
-const ONE_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
-/** A real one-pixel PNG named `name`, in a folder of its own removed after the test. */
-function pngFile(name: string): string {
-  const path = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-img-'))), name);
-  writeFileSync(path, Buffer.from(ONE_PIXEL, 'base64'));
-  return path;
-}
-
-const TASK_TERMINAL = '.well > .terminal:not(.terminal--hidden)';
 const MANAGER_TERMINAL = '[data-testid=manager-column] .terminal';
-
-/** Drops the file on the terminal `selector` finds, as Finder does; a file input gives the page its path. */
-async function dropFile(page: Page, path: string, selector = TASK_TERMINAL) {
-  const input = await page.evaluateHandle(() => document.body.appendChild(Object.assign(document.createElement('input'), { type: 'file' })));
-  await input.setInputFiles(path);
-  await input.evaluate((el, sel) => {
-    const files = new DataTransfer();
-    files.items.add(el.files![0]);
-    el.remove();
-    document.querySelector(sel)!.dispatchEvent(new DragEvent('drop', { dataTransfer: files, bubbles: true, cancelable: true }));
-  }, selector);
-}
 
 const thumbs = (scope: Page | Locator) => scope.getByTestId('image-thumb');
 
@@ -69,7 +45,7 @@ async function taskWithImages(page: Page, names = ['first.png', 'second.png']) {
   const a = await startTask(page);
   const paths = names.map(pngFile);
   for (const [i, path] of paths.entries()) {
-    await dropFile(page, path);
+    await dropFile(page, path, TASK_TERMINAL);
     await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
     await expect(thumbs(page.locator('.session'))).toHaveCount(i + 1);
   }
@@ -81,7 +57,7 @@ test('dropped images show in the strip under the terminal, numbered', async () =
   const a = await startTask(page);
   await expect(page.getByTestId('image-strip')).toHaveCount(0);
   for (const [i, path] of [pngFile('first.png'), pngFile('second.png')].entries()) {
-    await dropFile(page, path);
+    await dropFile(page, path, TASK_TERMINAL);
     await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
   }
   const strip = page.locator('.session').getByTestId('image-strip');

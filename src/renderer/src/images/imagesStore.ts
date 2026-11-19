@@ -32,10 +32,8 @@ export function imagesOf(sessionId: string): ImageEntry[] {
   return lists[sessionId] ?? [];
 }
 
-const [viewer, setViewer] = createSignal<{ sessionId: string; index: number } | null>(null);
-
 /** The image the full-size view shows, by its place in its session's list; null while it is closed. */
-export const viewerState = viewer;
+export const [viewerState, setViewer] = createSignal<{ sessionId: string; index: number } | null>(null);
 
 export function openImage(sessionId: string, index: number): void {
   setViewer({ sessionId, index });

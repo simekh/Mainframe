@@ -13,14 +13,10 @@ export const IMAGE_LABEL: Record<AgentName, RegExp | null> = {
 };
 
 /**
- * The file types each agent takes as an image when its path is pasted, in lower case. Claude Code and OpenCode checked by
+ * The file types every agent takes as an image when its path is pasted, in lower case. Claude Code and OpenCode checked by
  * pasting (BMP, TIFF and HEIC are left as text); Codex from the image formats its 0.169.0 source builds in.
  */
-export const IMAGE_EXTENSIONS: Record<AgentName, readonly string[]> = {
-  claude: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-  opencode: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-  codex: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-};
+export const IMAGE_FILE_TYPES: readonly string[] = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
 /**
  * Where each label is in the text, in the order they show: its first index, the index after it, and its number. On a line

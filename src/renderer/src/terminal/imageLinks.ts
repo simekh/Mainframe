@@ -27,6 +27,8 @@ export function imageLinkProvider(term: Terminal, sessionId: string, label: RegE
       const line = term.buffer.active.getLine(y - 1);
       const images = imagesOf(sessionId);
       if (!line || images.length === 0) return callback(undefined);
+      // Cheap bail-out: most lines hold no label, and this skips the per-cell walk for them.
+      if (labelRanges(line.translateToString(true), label).length === 0) return callback(undefined);
       const text = cellText(line, term.cols);
       const links = labelRanges(text, label)
         .filter((r) => images.some((e) => e.number === r.number))

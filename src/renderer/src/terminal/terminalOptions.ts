@@ -1,5 +1,6 @@
 // Colours adapted from Parallel Code (MIT): src/lib/parallelCodeTerminalTheme.ts at 97c3558. See THIRD_PARTY_NOTICES.md.
 import type { ITerminalOptions } from '@xterm/xterm';
+import { TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
 
 /** Bundled with the app (App.tsx imports it); xterm measures it once, so it must load first. */
 export const TERMINAL_FONT = 'JetBrains Mono';
@@ -20,8 +21,7 @@ export const BOLD_AND_LINK_COLORS = { bold: '#addb67', link: '#82aaff' };
  */
 export const TERMINAL_OPTIONS: ITerminalOptions = {
   fontFamily: `'${TERMINAL_FONT}', monospace`,
-  fontSize: 13,
-  lineHeight: 1,
+  ...TERMINAL_TEXT_DEFAULT,
   cursorBlink: false,
   // term.unicode, which the Unicode 11 width addon needs, is still a proposed API.
   allowProposedApi: true,

@@ -1,12 +1,10 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
 import { readSettings } from '../src/main/setup/settings';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
-import { cleanUp, launchApp, launchWithCodex, removeAfterTest } from './launch';
-import { card, cardIn, firstSpawn, fitSize, ids, repo, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
+import { cleanUp, launchApp, launchWithCodex } from './launch';
+import { card, cardIn, dropFile, firstSpawn, fitSize, ids, pngFile, repo, run, screen, sendLine, settled, startTask, styleOf, TASK_TERMINAL, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -314,29 +312,6 @@ test('a copy with nothing selected sends a program that keeps its own selection 
   await app.close();
 });
 
-/** A PNG file in a folder of its own, removed after the test; its content doesn't matter to the fake agent. */
-function pngFile(): string {
-  const path = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-img-'))), 'shot.png');
-  writeFileSync(path, 'png');
-  return path;
-}
-
-/**
- * Drops the file on the shown task terminal, as Finder does. The file comes from a file input, so the page can tell its
- * path, which a File made in the page has none of.
- */
-async function dropFile(page: Page, path: string) {
-  const input = await page.evaluateHandle(() => document.body.appendChild(Object.assign(document.createElement('input'), { type: 'file' })));
-  await input.setInputFiles(path);
-  await input.evaluate((el) => {
-    const files = new DataTransfer();
-    files.items.add(el.files![0]);
-    el.remove();
-    const terminal = document.querySelector('.well > .terminal:not(.terminal--hidden)')!;
-    terminal.dispatchEvent(new DragEvent('drop', { dataTransfer: files, bubbles: true, cancelable: true }));
-  });
-}
-
 /** The images listed for the task's running session. */
 const images = (page: Page, taskId: string) =>
   page.evaluate(async (id) => {
@@ -351,7 +326,7 @@ test('a dropped image is recorded with the number the agent shows', async () => 
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
   const a = await startTask(page);
   const path = pngFile();
-  await dropFile(page, path);
+  await dropFile(page, path, TASK_TERMINAL);
   await expect.poll(() => screen(page, a)).toContain('[Image #1]');
   await expect.poll(() => images(page, a)).toEqual([{ number: 1, path, name: 'shot.png' }]);
   await app.close();
@@ -361,7 +336,7 @@ test("an image the agent doesn't label isn't recorded", async () => {
   // The fake's plain shell takes the path as text, as an agent does in a question.
   const { app, page } = await launchApp();
   const a = await startTask(page);
-  await dropFile(page, pngFile());
+  await dropFile(page, pngFile(), TASK_TERMINAL);
   await expect.poll(() => screen(page, a)).toContain('shot.png');
   // Past the watch's 3 s.
   await page.waitForTimeout(3500);
@@ -373,7 +348,7 @@ test("an image for an agent whose label gives no number is recorded at once, wit
   const { app, page } = await launchWithCodex(repo());
   const a = await startTask(page, 'Task', '', 'codex');
   const path = pngFile();
-  await dropFile(page, path);
+  await dropFile(page, path, TASK_TERMINAL);
   await expect.poll(() => images(page, a)).toEqual([{ number: null, path, name: 'shot.png' }]);
   await app.close();
 });
