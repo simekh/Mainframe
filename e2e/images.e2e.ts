@@ -43,7 +43,7 @@ function linkClick(page: Page, taskId: string, text: string): Promise<boolean> {
 /** Starts a task whose agent labels images, and drops PNGs with these names on it, in order. */
 async function taskWithImages(page: Page, names = ['first.png', 'second.png']) {
   const a = await startTask(page);
-  const paths = names.map(pngFile);
+  const paths = names.map((name) => pngFile(name));
   for (const [i, path] of paths.entries()) {
     await dropFile(page, path, TASK_TERMINAL);
     await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
@@ -173,5 +173,47 @@ test('two projects side by side each show their own images', async () => {
 
   await thumbs(projectPane(page, globex).locator('.session')).nth(1).click();
   await expect(page.getByTestId('image-viewer')).toContainText('globex-2.png');
+  await app.close();
+});
+
+test('an image taken off the prompt with Backspace leaves the strip, and the full-size view closes once none is left', async () => {
+  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
+  // The session's id, from its first list, to type into it while the full-size view holds the keyboard.
+  const session = page.evaluate(() => new Promise<string>((resolve) => window.mainframe.onImages((e) => resolve(e.sessionId))));
+  const { a } = await taskWithImages(page);
+  const strip = page.locator('.session').getByTestId('image-strip');
+
+  await page.locator(TASK_TERMINAL).click();
+  await page.keyboard.press('Backspace');
+  await expect.poll(() => screen(page, a)).not.toContain('[Image #2]');
+  await expect(thumbs(strip)).toHaveText(['#1']);
+
+  // The next image takes #3, and its thumbnail shows it, not the picture #2 had at the same place.
+  await dropFile(page, pngFile('third.png', 2), TASK_TERMINAL);
+  await expect(thumbs(strip)).toHaveText(['#1', '#3']);
+  await expect.poll(() => strip.locator('img').evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).naturalWidth))).toEqual([1, 2]);
+
+  const viewer = page.getByTestId('image-viewer');
+  await thumbs(strip).first().click();
+  await expect(viewer).toBeVisible();
+  const id = await session;
+  await page.evaluate((sid) => window.mainframe.write(sid, '\x7f'), id);
+  await expect(thumbs(strip)).toHaveText(['#1']);
+  await expect(viewer).toBeVisible();
+  await page.evaluate((sid) => window.mainframe.write(sid, '\x7f'), id);
+  await expect(viewer).toBeHidden();
+  await expect(page.getByTestId('image-strip')).toHaveCount(0);
+  await app.close();
+});
+
+test('a sent image stays once its label has scrolled off the screen', async () => {
+  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
+  const { a } = await taskWithImages(page, ['first.png']);
+  await page.locator(TASK_TERMINAL).click();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => screen(page, a)).toContain('output 99');
+  // Longer than an unsent image's label may be gone.
+  await page.waitForTimeout(2000);
+  await expect(thumbs(page.locator('.session'))).toHaveText(['#1']);
   await app.close();
 });

@@ -12,7 +12,7 @@ import { errorMessage } from '../bridgeError';
 import { linkClickHeld } from '../keys';
 import { subscribePty } from '../ptyEvents';
 import { settingsView } from '../settings/settingsStore';
-import { setSuggesting } from '../tasksStore';
+import { setSuggesting, tasksStore } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
 import { imageLinkProvider } from './imageLinks';
@@ -228,6 +228,7 @@ export default function TerminalView(props: {
     const scan = () => {
       scanTimer = undefined;
       setSuggesting(id, hasSuggestion(bottomLines(SUGGESTION_SCAN_ROWS)));
+      imageWatch?.check();
     };
     // At most one scan per interval, and always one after the last output. A session that has
     // ended shows no ring whatever this finds: the ring needs a running session.
@@ -334,12 +335,23 @@ export default function TerminalView(props: {
     // label the agent numbers it by, only once that label shows, with its number (imageWatch has the
     // rules); a paste with no label (it went into a question, or the agent didn't take the file) isn't
     // listed. An agent without such a label has its images listed at once, with no number.
+    // One taken off the prompt again before it is sent (its label deleted) goes off the list: only one
+    // pasted while the agent waits for a message, and only until a turn begins, which sends it.
     const label = IMAGE_LABEL[agent];
     const takesAsImage = (path: string) => IMAGE_FILE_TYPES.includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
     const record = (added: { path: string; number: number | null }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
-    const imageWatch = label && createImageWatch(() => labelNumbers(screenText(bottomRows(term.rows).filter((line) => line !== undefined)), label), record);
+    const state = () => tasksStore.sessions[id]?.status?.state;
+    const imageWatch =
+      label &&
+      createImageWatch(
+        () => labelNumbers(screenText(bottomRows(term.rows).filter((line) => line !== undefined)), label),
+        record,
+        (numbers) => api.forgetImages(id, numbers).catch((err: unknown) => console.warn('[terminal] could not forget images', err)),
+        () => state() === 'idle' || state() === 'done',
+      );
+    if (imageWatch) createEffect(on(state, (s) => (s === 'working' || s === 'blocked') && imageWatch.settle()));
     // The labels link to their images, for an agent whose label numbers them.
     const imageLinks = label && term.registerLinkProvider(imageLinkProvider(term, id, label, api.platform));
     /** Set once the terminal is gone: a paste still waiting on main then does nothing. */

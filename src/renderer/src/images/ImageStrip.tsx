@@ -21,7 +21,9 @@ function Thumb(props: { sessionId: string; index: number; entry: ImageEntry }) {
       onClick={() => openImage(props.sessionId, props.index)}
     >
       <Show when={!gone()} fallback={<span class="image-thumb-gone">Not available</span>}>
-        <img src={imageUrl(props.sessionId, props.index)} alt="" draggable={false} onError={() => setGone(true)} />
+        {/* The name in the fragment, which the protocol ignores: an image forgotten off the end leaves its place to the
+            next one, and the cache would show the old picture at the old address. */}
+        <img src={`${imageUrl(props.sessionId, props.index)}#${encodeURIComponent(props.entry.name)}`} alt="" draggable={false} onError={() => setGone(true)} />
       </Show>
       <Show when={props.entry.number !== null}>
         <span class="image-thumb-n">#{props.entry.number}</span>

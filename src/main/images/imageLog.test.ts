@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, uti
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { clearImages, readImages, recordImages, unchanged } from './imageLog';
+import { clearImages, forgetImages, readImages, recordImages, unchanged } from './imageLog';
 
 const cleanup: string[] = [];
 
@@ -133,4 +133,28 @@ it("a list that is there but can't be used is never written over", () => {
   expect(readFileSync(join(dir, 'images.json'), 'utf8')).toBe('{not json');
   expect(existsSync(join(dir, 'a.png'))).toBe(false);
   expect(warn).toHaveBeenCalledWith(expect.stringContaining('records no images'));
+});
+
+it("forgetting an image takes it off the list and removes its copy, but never a dropped file outside the folder", () => {
+  const { root, pasteDir, dir, file } = setup();
+  const dropped = file(join(root, 'Desktop', 'shot.png'));
+  recordImages(dir, [{ path: file(join(pasteDir, 'a.png')), number: 1 }, { path: file(join(pasteDir, 'b.png')), number: 2 }, { path: dropped, number: 3 }], pasteDir);
+
+  const images = forgetImages(dir, [2, 3]);
+
+  expect(images).toMatchObject([{ number: 1, name: 'a.png' }]);
+  expect(readImages(dir)).toEqual(images);
+  expect(existsSync(join(dir, 'a.png'))).toBe(true);
+  expect(existsSync(join(dir, 'b.png'))).toBe(false);
+  expect(existsSync(dropped)).toBe(true);
+});
+
+it("forgetting from a list that can't be used leaves it as it is", () => {
+  const { dir } = setup();
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'images.json'), '{not json');
+
+  expect(forgetImages(dir, [1])).toEqual([]);
+  expect(readFileSync(join(dir, 'images.json'), 'utf8')).toBe('{not json');
 });

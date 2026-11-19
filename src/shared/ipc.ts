@@ -84,6 +84,7 @@ export const IPC = {
   copyText: 'clipboard:copy-text',
   getImages: 'images:get',
   recordImages: 'images:record',
+  forgetImages: 'images:forget',
   images: 'images:changed',
   showImageInFolder: 'images:show-in-folder',
   openLink: 'shell:open-link',
@@ -213,6 +214,8 @@ export interface MainframeApi {
   getImages(sessionId: string): Promise<ImageEntry[]>;
   /** Adds images the agent took to the session's list; a pasted one is copied into the conversation's folder. The new list comes through `onImages`. */
   recordImages(sessionId: string, added: { path: string; number: number | null }[]): Promise<void>;
+  /** Takes the images with these numbers off the session's list, as the agent dropped them; a copy goes with its entry. The new list comes through `onImages`. */
+  forgetImages(sessionId: string, numbers: number[]): Promise<void>;
   /** Every change to a session's list of images, with the whole list. */
   onImages(cb: (e: { sessionId: string; images: ImageEntry[] }) => void): () => void;
   /** Shows the listed image in Finder, Explorer or the file manager; nothing when its file has gone or changed. */

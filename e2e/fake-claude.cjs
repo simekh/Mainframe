@@ -160,26 +160,46 @@ function raw() {
 
 /**
  * Takes a pasted image as Claude Code does: asks for bracketed paste, and for each existing `.png` or `.jpg` path in a
- * bracketed paste prints `[Image #N]`, counting from 1. Escaped paths (quoted on Windows) are read back as escapePath
- * wrote them. Prints `$ ` first, as the tests wait for a prompt.
+ * bracketed paste prints `[Image #N]`, counting from 1 and never reusing a number. Escaped paths (quoted on Windows) are
+ * read back as escapePath wrote them. Says it is idle over OSC 7501, and prints `$ `, as the tests wait for a prompt.
+ * Backspace takes the last image off the prompt: the screen is drawn again without its label. Enter sends the prompt:
+ * a turn (working, then done) whose output scrolls the labels off the screen.
  */
 function labelImages() {
   let count = 0;
   let input = '';
+  const prompt = [];
+  const status = (state) => process.stdout.write(`\x1b]7501;state=${state}\x1b\\`);
   process.stdin.setRawMode(true);
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => {
+    if (chunk === '\x7f') {
+      prompt.pop();
+      process.stdout.write(`\x1b[2J\x1b[H${prompt.map((n) => `[Image #${n}]\r\n`).join('')}$ `);
+      return;
+    }
+    if (chunk === '\r') {
+      status('working');
+      prompt.length = 0;
+      process.stdout.write(`${Array.from({ length: 100 }, (_, i) => `output ${i}\r\n`).join('')}$ `);
+      status('done');
+      return;
+    }
     input += chunk;
     for (let m; (m = /\x1b\[200~([\s\S]*?)\x1b\[201~/.exec(input)); input = input.slice(m.index + m[0].length)) {
       const words = process.platform === 'win32' ? m[1].match(/"[^"]*"|\S+/g) : m[1].match(/(?:\\.|[^\s\\])+/g);
       for (const word of words ?? []) {
         const path = process.platform === 'win32' ? word.replace(/^"|"$/g, '') : word.replace(/\\(.)/g, '$1');
-        if (/\.(png|jpg)$/i.test(path) && existsSync(path)) process.stdout.write(`[Image #${++count}]\r\n`);
+        if (/\.(png|jpg)$/i.test(path) && existsSync(path)) {
+          prompt.push(++count);
+          process.stdout.write(`[Image #${count}]\r\n`);
+        }
       }
     }
   });
   // askStatusSupport paused it.
   process.stdin.resume();
+  status('idle');
   process.stdout.write('\x1b[?2004h$ ');
 }
 

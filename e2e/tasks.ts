@@ -525,12 +525,15 @@ export const savedSettings = (dataDir: string) =>
     throw new Error(msg);
   });
 
-const ONE_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const PNG = {
+  1: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  2: 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7gP9i18U1AAAAABJRU5ErkJggg==',
+};
 
-/** A real one-pixel PNG named `name`, in a folder of its own removed after the test. */
-export function pngFile(name = 'shot.png'): string {
+/** A real PNG named `name`, one pixel square unless `side` says 2, in a folder of its own removed after the test. */
+export function pngFile(name = 'shot.png', side: 1 | 2 = 1): string {
   const path = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-img-'))), name);
-  writeFileSync(path, Buffer.from(ONE_PIXEL, 'base64'));
+  writeFileSync(path, Buffer.from(PNG[side], 'base64'));
   return path;
 }
 

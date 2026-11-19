@@ -4,7 +4,7 @@ import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
 import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
-import { readImages, recordImages, unchanged } from './images/imageLog';
+import { forgetImages, readImages, recordImages, unchanged } from './images/imageLog';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
@@ -300,6 +300,12 @@ export function registerIpc(
     const dir = typeof sessionId === 'string' ? imagesDirOf(projects, sessionId) : null;
     if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
     send(IPC.images, { sessionId, images: recordImages(dir, added, clipboardDeps.pasteDir) });
+  });
+  ipcMain.handle(IPC.forgetImages, (_e, sessionId: unknown, numbers: unknown) => {
+    if (!Array.isArray(numbers) || !numbers.every(Number.isInteger)) throw new Error('Expected a list of image numbers');
+    const dir = typeof sessionId === 'string' ? imagesDirOf(projects, sessionId) : null;
+    if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
+    send(IPC.images, { sessionId, images: forgetImages(dir, numbers) });
   });
   ipcMain.handle(IPC.showImageInFolder, (_e, sessionId: unknown, index: unknown) => {
     if (typeof sessionId !== 'string' || !Number.isInteger(index)) return;

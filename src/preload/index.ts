@@ -63,6 +63,7 @@ const api: MainframeApi = {
   openLink: (url) => ipcRenderer.invoke(IPC.openLink, url),
   getImages: (sessionId) => ipcRenderer.invoke(IPC.getImages, sessionId),
   recordImages: (sessionId, added) => ipcRenderer.invoke(IPC.recordImages, sessionId, added),
+  forgetImages: (sessionId, numbers) => ipcRenderer.invoke(IPC.forgetImages, sessionId, numbers),
   onImages: (cb) => listen(IPC.images, cb),
   showImageInFolder: (sessionId, index) => ipcRenderer.invoke(IPC.showImageInFolder, sessionId, index),
   getPathForFile: (file) => webUtils.getPathForFile(file),
