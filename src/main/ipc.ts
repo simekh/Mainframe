@@ -4,7 +4,7 @@ import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
 import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
-import { readImages, recordImages } from './images/imageLog';
+import { readImages, recordImages, unchanged } from './images/imageLog';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
@@ -183,7 +183,7 @@ export function registerIpc(
   ipcMain.handle(IPC.listTasks, (_e, dir: string) => tasksOf(dir).list());
   ipcMain.handle(IPC.startCheck, (_e, dir: string) => tasksOf(dir).startCheck());
   ipcMain.handle(IPC.codexClaudeMdNote, (_e, dir: string) => tasksOf(dir).codexClaudeMdNote());
-  // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
+  // Only these six: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,
     (_e, dir: string, { title, description, noQuestions, agent, model, effort }: { title: string; description: string; noQuestions: boolean; agent?: unknown; model?: unknown; effort?: unknown }) =>
@@ -304,7 +304,7 @@ export function registerIpc(
   ipcMain.handle(IPC.showImageInFolder, (_e, sessionId: unknown, index: unknown) => {
     if (typeof sessionId !== 'string' || !Number.isInteger(index)) return;
     const entry = imagesOf(projects, sessionId)?.[index as number];
-    if (entry && existsSync(entry.path)) shell.showItemInFolder(entry.path);
+    if (entry && existsSync(entry.path) && unchanged(entry)) shell.showItemInFolder(entry.path);
   });
   ipcMain.on(IPC.copyText, (_e, text: string) => {
     clipboardDeps.clipboard.writeText(text).catch((err: unknown) => console.error('[clipboard] copy failed', err));

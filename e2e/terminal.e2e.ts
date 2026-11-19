@@ -328,7 +328,7 @@ test('a dropped image is recorded with the number the agent shows', async () => 
   const path = pngFile();
   await dropFile(page, path, TASK_TERMINAL);
   await expect.poll(() => screen(page, a)).toContain('[Image #1]');
-  await expect.poll(() => images(page, a)).toEqual([{ number: 1, path, name: 'shot.png' }]);
+  await expect.poll(() => images(page, a)).toMatchObject([{ number: 1, path, name: 'shot.png' }]);
   await app.close();
 });
 
@@ -349,7 +349,7 @@ test("an image for an agent whose label gives no number is recorded at once, wit
   const a = await startTask(page, 'Task', '', 'codex');
   const path = pngFile();
   await dropFile(page, path, TASK_TERMINAL);
-  await expect.poll(() => images(page, a)).toEqual([{ number: null, path, name: 'shot.png' }]);
+  await expect.poll(() => images(page, a)).toMatchObject([{ number: null, path, name: 'shot.png' }]);
   await app.close();
 });
 

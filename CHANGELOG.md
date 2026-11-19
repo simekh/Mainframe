@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-New: Images pasted or dropped into a session show as numbered thumbnails under its terminal, and Cmd+click on [Image #N] (Ctrl+click on Windows and Linux) opens one full size.
+New: Images pasted or dropped into a session show as thumbnails under its terminal, numbered for Claude Code, whose [Image #N] labels open one full size on Cmd+click (Ctrl+click on Windows and Linux); other agents' images show in order without a number.
 New: New Task can start a task on a chosen model and effort.
 New: Settings can make the terminal text larger and give it more line height.
 

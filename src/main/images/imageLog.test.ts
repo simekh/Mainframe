@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { clearImages, readImages, recordImages } from './imageLog';
+import { clearImages, readImages, recordImages, unchanged } from './imageLog';
 
 const cleanup: string[] = [];
 
@@ -33,7 +33,7 @@ it("a pasted image is copied into the conversation's folder, and the paste folde
   const images = recordImages(dir, [{ path: pasted, number: 1 }], pasteDir);
 
   expect(existsSync(pasted)).toBe(true);
-  expect(images).toEqual([{ number: 1, path: join(dir, 'a1.png'), name: 'a1.png' }]);
+  expect(images).toMatchObject([{ number: 1, path: join(dir, 'a1.png'), name: 'a1.png' }]);
   expect(existsSync(join(dir, 'a1.png'))).toBe(true);
 });
 
@@ -45,7 +45,7 @@ it('a dropped file stays where it is', () => {
 
   const images = recordImages(dir, [{ path: dropped, number: null }, { path: beside, number: 2 }], pasteDir);
 
-  expect(images).toEqual([
+  expect(images).toMatchObject([
     { number: null, path: dropped, name: 'shot.png' },
     { number: 2, path: beside, name: 'b.png' },
   ]);
@@ -60,7 +60,7 @@ it("a pasted image that can't be copied is left out, with a warning, and the oth
 
   const images = recordImages(dir, [{ path: join(pasteDir, 'gone.png'), number: 1 }, { path: dropped, number: 2 }], pasteDir);
 
-  expect(images).toEqual([{ number: 2, path: dropped, name: 'b.png' }]);
+  expect(images).toMatchObject([{ number: 2, path: dropped, name: 'b.png' }]);
   expect(readImages(dir)).toEqual(images);
   expect(warn).toHaveBeenCalledTimes(1);
 });
@@ -99,4 +99,38 @@ it('clearing removes the folder and the list', () => {
   expect(readImages(dir)).toEqual([]);
   // A folder that isn't there is nothing to clear.
   expect(() => clearImages(dir)).not.toThrow();
+});
+
+it("each entry keeps its file's size and modified time, and a file that changes after is no longer its image", () => {
+  const { root, pasteDir, dir, file } = setup();
+  const dropped = file(join(root, 'shot.png'));
+  const [pasted, listed] = recordImages(dir, [{ path: file(join(pasteDir, 'a.png')), number: 1 }, { path: dropped, number: 2 }], pasteDir);
+
+  expect(pasted).toMatchObject({ size: statSync(pasted.path).size, mtimeMs: statSync(pasted.path).mtimeMs });
+  expect(listed).toMatchObject({ size: 3, mtimeMs: statSync(dropped).mtimeMs });
+  expect(unchanged(listed)).toBe(true);
+
+  writeFileSync(dropped, 'another png');
+  expect(unchanged(listed)).toBe(false);
+  // Same size, another time: also another file.
+  writeFileSync(pasted.path, 'png');
+  utimesSync(pasted.path, new Date(2020, 0, 1), new Date(2020, 0, 1));
+  expect(unchanged(pasted)).toBe(false);
+  rmSync(dropped);
+  expect(unchanged(listed)).toBe(false);
+  // An entry from before sizes were kept goes by its path alone, as before.
+  expect(unchanged({ number: 1, path: '/not/checked.png', name: 'checked.png' })).toBe(true);
+});
+
+it("a list that is there but can't be used is never written over", () => {
+  const { root, pasteDir, dir, file } = setup();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'images.json'), '{not json');
+
+  expect(recordImages(dir, [{ path: file(join(pasteDir, 'a.png')), number: 1 }, { path: file(join(root, 'b.png')), number: 2 }], pasteDir)).toEqual([]);
+
+  expect(readFileSync(join(dir, 'images.json'), 'utf8')).toBe('{not json');
+  expect(existsSync(join(dir, 'a.png'))).toBe(false);
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('records no images'));
 });

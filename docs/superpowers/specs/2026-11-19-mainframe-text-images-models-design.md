@@ -51,8 +51,8 @@ Driven in a pty against Claude Code 2.1.328, OpenCode 2.2.7 and Codex 0.169.0:
   new id still carries the count on (#1 to #3 across the clear, then #4 and #5 after quit and resume). Claude Code also saves each pasted image as
   `<tmp>/claude-<uid>/<project>/<session>/images/<N>.png` (undocumented; cleared with the temp folder). The design
   doesn't rely on that folder.
-- **OpenCode** labels them `Image 1`, `Image 2`. Whether its count works like Claude's across messages and restarts is
-  not yet checked.
+- **OpenCode** 2.2.7 labels them `[Image N]`, but N starts again at 1 in each message, so a number doesn't name one
+  image in the conversation: Mainframe gives OpenCode's images no number.
 - **Codex** was not signed in on this Mac, so its label and count are unchecked.
 - **Models:** `claude --model <alias|full name>` (aliases such as `fable`, `opus`, `sonnet`, which follow the latest
   model) and `claude --effort <low|medium|high|xhigh|max>`. `codex -m <model>`, with effort through `-c`; `codex debug

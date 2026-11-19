@@ -59,3 +59,27 @@ it("the protocol serves a listed entry's file, and a 404 for an unlisted index o
   expect((await serve({ url: imageUrl('s1', 5) })).status).toBe(404);
   expect((await serve({ url: imageUrl('s1', 1) })).status).toBe(404);
 });
+
+it('a listed file that changed after it was recorded is served nothing: it is no longer that image', async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const { recordImages } = await import('./imageLog');
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-protocol-'));
+  try {
+    const shot = join(root, 'shot.png');
+    writeFileSync(shot, 'png');
+    const images = recordImages(join(root, 'images'), [{ path: shot, number: 1 }], join(root, 'paste'));
+    registerImageProtocol((id) => (id === 's2' ? images : null));
+    const serve = electron.handlers.get(IMAGE_SCHEME)!;
+    electron.files.add(pathToFileURL(shot).toString());
+    expect((await serve({ url: imageUrl('s2', 0) })).status).toBe(200);
+
+    writeFileSync(shot, 'another png');
+    expect(resolveImageRequest(imageUrl('s2', 0), () => images)).toBeNull();
+    expect((await serve({ url: imageUrl('s2', 0) })).status).toBe(404);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

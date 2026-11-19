@@ -343,6 +343,8 @@ export default function TerminalView(props: {
     const imageWatch = label && createImageWatch(() => labelNumbers(bottomLines(term.rows).join('\n'), label), record);
     // The labels link to their images, for an agent whose label numbers them.
     const imageLinks = label && term.registerLinkProvider(imageLinkProvider(term, id, label, api.platform));
+    /** Set once the terminal is gone: a paste still waiting on main then does nothing. */
+    let disposed = false;
     /** Pastes the paths, each escaped or quoted as one word, and lists the images among them. */
     const pastePaths = async (paths: string[]) => {
       if (exited) return;
@@ -351,6 +353,7 @@ export default function TerminalView(props: {
         // The numbers already listed are known before the paste too, also the ones scrolled off. A list that can't be
         // read means no watch: a label could then seem new.
         const listed = imageWatch.joinable() ? [] : await api.getImages(id).then((l) => l.flatMap((e) => e.number ?? []), () => null);
+        if (disposed) return;
         if (listed) imageWatch.paste(images, listed);
       }
       term.paste(paths.map((path) => escapePath(path, api.platform)).join(' '));
@@ -393,7 +396,7 @@ export default function TerminalView(props: {
       const paths = [...e.dataTransfer.files].map((file) => api.getPathForFile(file)).filter(Boolean);
       if (paths.length === 0) return;
       term.focus();
-      void pastePaths(paths);
+      pastePaths(paths).catch((err: unknown) => console.warn('[terminal] drop failed', err));
     };
     container.addEventListener('paste', onPaste, true);
     container.addEventListener('copy', onCopy, true);
@@ -449,6 +452,7 @@ export default function TerminalView(props: {
     );
 
     onCleanup(() => {
+      disposed = true;
       unsubscribe();
       cancelFlush?.();
       observer.disconnect();

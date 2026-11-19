@@ -75,7 +75,7 @@ it("recordImages takes only well-formed entries from the page, records them in t
     expect(sent).toEqual([]);
 
     record({}, 's1', [{ path: shot, number: 1, extra: 'dropped' }]);
-    const images = [{ number: 1, path: shot, name: 'shot.png' }];
+    const images = [{ number: 1, path: shot, name: 'shot.png', size: 3, mtimeMs: expect.any(Number) }];
     expect(sent).toEqual([[IPC.images, { sessionId: 's1', images }]]);
     expect(handlers.get(IPC.getImages)!({}, 's1')).toEqual(images);
     expect(handlers.get(IPC.getImages)!({}, 's9')).toEqual([]);

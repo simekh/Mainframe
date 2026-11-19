@@ -228,11 +228,16 @@ export interface ManagerView {
   session: { id: string; startedWithPrompt: boolean; agent: AgentName } | null;
 }
 
-/** One image a conversation received through Mainframe. `number`: the agent's label number; null when the agent has no known label. */
+/**
+ * One image a conversation received through Mainframe. `number`: the agent's label number; null when the agent has no
+ * known label. `size` and `mtimeMs`: its file's when it was recorded (a pasted one's copy); missing from older lists.
+ */
 export interface ImageEntry {
   number: number | null;
   path: string;
   name: string;
+  size?: number;
+  mtimeMs?: number;
 }
 
 export interface ChangedFile {
