@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SyncModel } from '../../shared/types';
+import type { ModelChoices, SyncModel } from '../../shared/types';
 import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { parseSyncAnswer, SYNC_ANSWER_JSON, type SyncAnswer } from '../todo/todoSchema';
 import type { Instructions, SyncAdapter, SyncWords } from './agent';
@@ -90,7 +90,7 @@ export function readOpencodeAnswer(stdout: string, tools: string[]): SyncAnswer 
 const runDirOf = (dir: string) => join(dir, 'opencode-run');
 
 type Cost = { tier?: unknown; input: number; output: number };
-type ListedModel = { id: string; providerID: string; name: string; status: string; enabled?: boolean; cost?: Cost[] };
+type ListedModel = { id: string; providerID: string; name: string; status: string; enabled?: boolean; cost?: Cost[]; variants?: { id: string }[] };
 
 /** The price of the base tier: the entry without a `tier`, else the first. */
 function priceOf(cost: Cost[] = []): SyncModel['price'] {
@@ -132,17 +132,28 @@ export async function apiList<T>(
 }
 
 /**
- * The enabled models, cheapest first with the unpriced last. `api model.list` can hold API keys (a model's
- * `settings` and `headers`): only the id `run -m` takes, the name, the status and the price leave here.
+ * The enabled models in OpenCode's order, each mapped by `pick`, listed with no project's config. `api model.list` can
+ * hold API keys (a model's and a variant's `settings` and `headers`): `pick` keeps only what may leave.
  */
-export function listModels(run: typeof runOpencode, { bin, dir, env }: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]> {
+function enabledModels<T>(run: typeof runOpencode, { bin, dir, env }: { bin: string; dir: string; env: Record<string, string> }, pick: (m: ListedModel) => T): Promise<T[]> {
   const o = { bin, cwd: runDirOf(dir), env: { ...env, OPENCODE_DISABLE_PROJECT_CONFIG: '1' }, makeCwd: true };
-  return apiList(run, 'model', o, (data) =>
-    (data as ListedModel[])
-      .filter((m) => m.enabled !== false)
-      .map((m) => ({ id: `${m.providerID}/${m.id}`, name: m.name, status: m.status, price: priceOf(m.cost) }))
-      .sort(byPrice),
-  );
+  return apiList(run, 'model', o, (data) => (data as ListedModel[]).filter((m) => m.enabled !== false).map(pick));
+}
+
+/** The id `run -m` takes. */
+const modelId = (m: ListedModel): string => `${m.providerID}/${m.id}`;
+
+/** The enabled models, cheapest first with the unpriced last: only the id, the name, the status and the price leave here. */
+export async function listModels(run: typeof runOpencode, o: { bin: string; dir: string; env: Record<string, string> }): Promise<SyncModel[]> {
+  const models = await enabledModels(run, o, (m) => ({ id: modelId(m), name: m.name, status: m.status, price: priceOf(m.cost) }));
+  return models.sort(byPrice);
+}
+
+/** The enabled models for a new task, in OpenCode's order, each with its variants' names as its efforts. */
+export async function listTaskModels(run: typeof runOpencode, o: { bin: string; dir: string; env: Record<string, string> }): Promise<ModelChoices> {
+  const models = await enabledModels(run, o, (m) => ({ id: modelId(m), name: m.name, efforts: (m.variants ?? []).map((v) => v.id) }));
+  // Variants belong to each model: Default has none to offer.
+  return { models, defaultEfforts: [] };
 }
 
 /** OpenCode's sync. `run` runs `session delete` after a run; tests hand it a fake. */

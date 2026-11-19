@@ -73,6 +73,7 @@ const api: MainframeApi = {
   setAgentOptions: (name, patch) => ipcRenderer.invoke(IPC.setAgentOptions, name, patch),
   setTerminalText: (patch) => ipcRenderer.invoke(IPC.setTerminalText, patch),
   opencodeChoices: () => ipcRenderer.invoke(IPC.opencodeChoices),
+  taskModelChoices: (agent) => ipcRenderer.invoke(IPC.taskModelChoices, agent),
   onShowSettings: (cb) => listen(IPC.showSettings, cb),
   getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),
   onUpdate: (cb) => listen(IPC.updateChanged, cb),

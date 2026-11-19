@@ -7,6 +7,7 @@ import type {
   ClipboardPaste,
   DiffView,
   ManagerView,
+  ModelChoices,
   OpencodeChoices,
   TerminalText,
   PtyDataEvent,
@@ -89,6 +90,7 @@ export const IPC = {
   setAgentOptions: 'settings:set-options',
   setTerminalText: 'settings:set-terminal-text',
   opencodeChoices: 'settings:opencode-choices',
+  taskModelChoices: 'tasks:model-choices',
   showSettings: 'settings:show',
   getUpdate: 'updates:get',
   updateChanged: 'updates:changed',
@@ -219,6 +221,8 @@ export interface MainframeApi {
   /** Only the values sent are changed; one outside the limits is refused. */
   setTerminalText(patch: Partial<TerminalText>): Promise<void>;
   opencodeChoices(): Promise<OpencodeChoices>;
+  /** The models and efforts New Task offers for `agent`; the whole app's, like Settings. */
+  taskModelChoices(agent: AgentName): Promise<ModelChoices>;
   /** Cmd+, or Ctrl+, from main: the page opens Settings unless the setup screen or another dialog shows. */
   onShowSettings(cb: () => void): () => void;
   /** The update calls are the whole app's, like Settings. Answers once the running version is known. */

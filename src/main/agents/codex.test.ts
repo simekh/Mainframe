@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mac, win } from '../testing/lookups';
 import type { ManagerLaunch } from './agent';
-import { CODEX_CHAT_FILE, codexAgent, codexManagerArgv, codexPlaces, codexReopenArgv, codexStartArgv, parseCodexVersion } from './codex';
+import { CODEX_CHAT_FILE, codexAgent, codexManagerArgv, codexPlaces, codexReopenArgv, codexStartArgv, codexTaskModels, parseCodexVersion } from './codex';
 import { opencodeAgent } from './opencode';
 
 describe('parseCodexVersion', () => {
@@ -150,5 +150,33 @@ describe('the manager on Codex', () => {
       writeFileSync(join(d, CODEX_CHAT_FILE), JSON.stringify({ sessionId: '-x' }));
       expect(codexAgent.managerChat(d, undefined)).toBeNull();
     });
+  });
+});
+
+describe("Codex's task models", () => {
+  const catalog = readFileSync(join(__dirname, 'fixtures', 'codex-models.json'), 'utf8');
+
+  it('lists the catalog models it shows, with each model\'s efforts', async () => {
+    const run = vi.fn(async () => catalog);
+    await expect(codexTaskModels({ bin: '/bin/codex', dataDir: '/data', env: { HOME: '/h' } }, run)).resolves.toEqual({
+      models: [
+        { id: 'gpt-6-sol', name: 'GPT-6-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        { id: 'gpt-5.5', name: 'GPT-5.5', efforts: ['low', 'medium', 'high', 'xhigh'] },
+      ],
+      defaultEfforts: ['low', 'medium', 'high', 'xhigh'],
+    });
+    expect(run).toHaveBeenCalledWith(['/bin/codex', 'debug', 'models'], { cwd: '/data', env: { HOME: '/h' } });
+  });
+
+  it('a catalog that shows no model offers no efforts', async () => {
+    const hidden = JSON.stringify({ models: JSON.parse(catalog).models.map((m: object) => ({ ...m, visibility: 'hide' })) });
+    await expect(codexTaskModels({ bin: 'codex', dataDir: '/data', env: {} }, async () => hidden)).resolves.toEqual({ models: [], defaultEfforts: [] });
+  });
+
+  it('an unreadable catalog rejects', async () => {
+    const o = { bin: 'codex', dataDir: '/data', env: {} };
+    await expect(codexTaskModels(o, async () => 'not json {')).rejects.toThrow(/^Codex could not list its models: its answer was not JSON$/);
+    await expect(codexTaskModels(o, async () => '{"models":[{"slug":1}]}')).rejects.toThrow(/^Codex could not list its models/);
+    await expect(codexTaskModels(o, async () => { throw new Error('spawn failed'); })).rejects.toThrow('Codex could not list its models: spawn failed');
   });
 });

@@ -1,12 +1,14 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
-import { MIN_CODEX_VERSION, type ProgramCheck } from '../../shared/types';
+import * as z from 'zod/v4';
+import { MIN_CODEX_VERSION, type ModelChoices, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { MANAGER_TOOL_TIMEOUT_MS } from '../todo/syncRun';
 import type { AgentAdapter } from './agent';
 import { isUuid } from './claude';
+import { runCodex, type Run } from './codexInstructions';
 import { makeCodexSync, tomlString } from './codexSync';
 import { agentsMdInstructions, mainframeWorktreeNote } from './opencode';
 
@@ -93,6 +95,36 @@ function codexManagerChat(dir: string): string | null {
   }
 }
 
+const CATALOG = z.object({
+  models: z.array(z.object({ slug: z.string(), display_name: z.string(), visibility: z.string(), supported_reasoning_levels: z.array(z.object({ effort: z.string() })) })),
+});
+
+/**
+ * The models Codex's catalog shows in its own picker (`visibility: list`), in its order. Default offers the efforts
+ * every one of them supports. Run in Mainframe's data folder, so no project's config is read.
+ */
+export async function codexTaskModels(o: { bin: string; dataDir: string; env: Record<string, string> }, run: Run = runCodex): Promise<ModelChoices> {
+  try {
+    const stdout = await run([o.bin, 'debug', 'models'], { cwd: o.dataDir, env: o.env });
+    let printed: unknown;
+    try {
+      printed = JSON.parse(stdout);
+    } catch {
+      // Not JSON.parse's own message, which quotes the output.
+      throw new Error('its answer was not JSON');
+    }
+    const parsed = CATALOG.safeParse(printed);
+    if (!parsed.success) throw new Error('its answer was not the catalog it prints');
+    const models = parsed.data.models
+      .filter((m) => m.visibility === 'list')
+      .map((m) => ({ id: m.slug, name: m.display_name, efforts: m.supported_reasoning_levels.map((l) => l.effort) }));
+    const defaultEfforts = models.length === 0 ? [] : models[0].efforts.filter((e) => models.every((m) => m.efforts.includes(e)));
+    return { models, defaultEfforts };
+  } catch (err) {
+    throw new Error(`Codex could not list its models: ${(err as Error).message}`);
+  }
+}
+
 export const codexAgent: AgentAdapter = {
   name: 'codex',
   envVar: 'MAINFRAME_CODEX_BIN',
@@ -109,6 +141,7 @@ export const codexAgent: AgentAdapter = {
   newSessionId: (uuid) => uuid(),
   taskStart: (o) => ({ argv: codexStartArgv({ codexBin: o.bin, prompt: o.prompt }) }),
   taskReopen: (o) => ({ argv: codexReopenArgv({ codexBin: o.bin, prompt: o.prompt }) }),
+  taskModels: (o) => codexTaskModels(o),
   // Mainframe never reads Codex's own session store: the task's `began` says whether Codex took the brief.
   recordedSession: () => null,
   chatKept: () => true,

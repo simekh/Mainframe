@@ -291,6 +291,10 @@ describe('AgentsInUse', () => {
     expect(h.saved()).toBeNull();
   });
 
+  it("an agent that isn't found has no model choices", async () => {
+    await expect(agents({ defaultAgent: 'claude' }, both).taskModelChoices('codex')).rejects.toThrow("Codex doesn't work");
+  });
+
   describe('codexClaudeMdNote', () => {
     const withCodex = (missed: boolean | null) => {
       const check = vi.fn(async () => missed === true);

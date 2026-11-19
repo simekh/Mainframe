@@ -300,3 +300,41 @@ describe('runOpencode', () => {
     await expect(node('process.exit(2)')).rejects.toThrow(/^opencode exited with code 2$/);
   });
 });
+
+describe("OpenCode's task models", () => {
+  it('lists the models the sync lists, with variants as efforts', async () => {
+    const list = JSON.stringify({
+      data: [
+        {
+          id: 'big', providerID: 'prov', name: 'Model big', status: 'active', enabled: true, settings: { apiKey: 'sk-SECRET-1' },
+          variants: [
+            { id: 'low', settings: { reasoningEffort: 'low' } },
+            { id: 'high', settings: { reasoningEffort: 'high' }, headers: { Authorization: 'Bearer SECRET-2' } },
+          ],
+        },
+        { id: 'small', providerID: 'prov', name: 'Model small', status: 'active' },
+        { id: 'off', providerID: 'prov', name: 'Model off', status: 'active', enabled: false, variants: [] },
+      ],
+    });
+    const run = vi.fn(async (_argv: string[], _o: { cwd: string; env: Record<string, string> }) => list);
+    const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-oc-models-'));
+    try {
+      const choices = await makeOpencodeAgent({ run }).taskModels({ bin: 'oc', dataDir, env: { HOME: '/h' } });
+      expect(choices).toEqual({
+        models: [
+          { id: 'prov/big', name: 'Model big', efforts: ['low', 'high'] },
+          { id: 'prov/small', name: 'Model small', efforts: [] },
+        ],
+        defaultEfforts: [],
+      });
+      expect(JSON.stringify(choices)).not.toMatch(/SECRET/);
+      // Listed where Settings lists them, with no project's config.
+      const [argv, o] = run.mock.calls[0];
+      expect(argv).toEqual(['oc', '--standalone', 'api', 'model.list']);
+      expect(o.cwd.startsWith(join(dataDir, 'opencode-lists'))).toBe(true);
+      expect(o.env).toMatchObject({ HOME: '/h', OPENCODE_DISABLE_PROJECT_CONFIG: '1' });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+});

@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix, win32 } from 'node:path';
-import { MIN_CLAUDE_VERSION, type ProgramCheck } from '../../shared/types';
+import { MIN_CLAUDE_VERSION, type ModelChoices, type ProgramCheck } from '../../shared/types';
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { MANAGER_TOOL_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
@@ -219,6 +219,18 @@ const instructions: Instructions = {
   integrates: 'this CLAUDE.md integrates',
 };
 
+/** Claude Code's own aliases, each for its newest model, and its `--effort` levels (as `claude --help` lists them). */
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const CLAUDE_MODELS: ModelChoices = {
+  models: [
+    { id: 'fable', name: 'Fable', efforts: CLAUDE_EFFORTS },
+    { id: 'opus', name: 'Opus', efforts: CLAUDE_EFFORTS },
+    { id: 'sonnet', name: 'Sonnet', efforts: CLAUDE_EFFORTS },
+    { id: 'haiku', name: 'Haiku', efforts: CLAUDE_EFFORTS },
+  ],
+  defaultEfforts: CLAUDE_EFFORTS,
+};
+
 const syncWords: SyncWords = { sessions: 'Claude Code sessions', instructions, toolNames: '(mcp__…)', noConnector: '' };
 
 export const claudeAgent: AgentAdapter = {
@@ -267,6 +279,7 @@ export const claudeAgent: AgentAdapter = {
     }),
     answerStatusEarly: true,
   }),
+  taskModels: async () => CLAUDE_MODELS,
   recordedSession: readRecordedSession,
   chatKept,
   began: (taskDir) => readRecordedSession(taskDir) !== null,

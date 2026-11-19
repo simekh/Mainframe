@@ -6,7 +6,7 @@ import { MIN_OPENCODE_VERSION, type OpencodeChoices, type ProgramCheck } from '.
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch } from './agent';
-import { apiList, listModels, makeOpencodeSync } from './opencodeSync';
+import { apiList, listModels, listTaskModels, makeOpencodeSync } from './opencodeSync';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
@@ -92,12 +92,15 @@ export function opencodeAgents(o: {
   );
 }
 
+/** Where OpenCode's lists for Settings and New Task are made: a folder of Mainframe's own, so no project's config is read. */
+const listsDirOf = (dataDir: string): string => join(dataDir, 'opencode-lists');
+
 /**
  * OpenCode's primary agents and its models, listed in a folder of their own in `dataDir`, so no project's
  * config is read. Only ids and the models' kept fields come back: the lists can hold API keys.
  */
 export async function opencodeChoices(o: { bin: string; dataDir: string; env: Record<string, string>; run?: typeof runOpencode }): Promise<OpencodeChoices> {
-  const dir = join(o.dataDir, 'opencode-lists');
+  const dir = listsDirOf(o.dataDir);
   mkdirSync(dir, { recursive: true });
   const { bin, env, run = runOpencode } = o;
   const [agents, models] = await Promise.all([
@@ -183,6 +186,7 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     // No `addDir`: OpenCode reads outside the project by default.
     taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
     taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
+    taskModels: ({ bin, dataDir, env }) => listTaskModels(run, { bin, dir: listsDirOf(dataDir), env }),
     // OpenCode has no SessionStart hook: its task keeps the session Mainframe started, and its manager the chat manager.json saved.
     recordedSession: () => null,
     // Its sessions stay in OpenCode's own store.

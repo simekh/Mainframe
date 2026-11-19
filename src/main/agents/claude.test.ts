@@ -459,3 +459,16 @@ describe('findClaude', () => {
     expect(run.calls).toEqual(['/usr/bin/claude']);
   });
 });
+
+it('lists its aliases and effort levels', async () => {
+  const efforts = ['low', 'medium', 'high', 'xhigh', 'max'];
+  await expect(claudeAgent.taskModels({ bin: 'claude', dataDir: '/data', env: {} })).resolves.toEqual({
+    models: [
+      { id: 'fable', name: 'Fable', efforts },
+      { id: 'opus', name: 'Opus', efforts },
+      { id: 'sonnet', name: 'Sonnet', efforts },
+      { id: 'haiku', name: 'Haiku', efforts },
+    ],
+    defaultEfforts: efforts,
+  });
+});

@@ -113,6 +113,7 @@ export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: Agent
     agents.setTerminalText(patch);
   });
   ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
+  ipcMain.handle(IPC.taskModelChoices, (_e, agent: unknown) => agents.taskModelChoices(agentOf(agent)));
 }
 
 /** The update calls take nothing from the page. */

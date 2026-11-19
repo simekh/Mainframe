@@ -128,6 +128,11 @@ export interface SettingsView {
 /** OpenCode's lists for Settings: only each agent's id, the first primary one marked as OpenCode's default. */
 export interface OpencodeChoices { agents: { id: string; isDefault: boolean }[]; models: SyncModel[] }
 
+/** A model a task can start on: `id` is what the agent takes, `efforts` the levels it offers (none: no Effort choice). */
+export interface ModelChoice { id: string; name: string; efforts: string[] }
+/** `defaultEfforts`: what Effort offers while Model is Default. */
+export interface ModelChoices { models: ModelChoice[]; defaultEfforts: string[] }
+
 export interface TaskGitState {
   /** gone: no local branch. no-commits: no commit was made on the branch, though it may have moved up to a newer base. merged: merging it into the base changes nothing. */
   branch: 'gone' | 'no-commits' | 'merged' | 'unmerged';

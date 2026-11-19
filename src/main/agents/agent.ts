@@ -1,4 +1,4 @@
-import type { AgentName, ProgramCheck, SyncModel } from '../../shared/types';
+import type { AgentName, ModelChoices, ProgramCheck, SyncModel } from '../../shared/types';
 import type { ExecutableFiles } from '../pty/findExecutable';
 import type { FindOptions, VersionRunner } from '../setup/programChecks';
 import type { SyncStep } from '../todo/syncRun';
@@ -95,6 +95,8 @@ export interface AgentAdapter {
   newSessionId(uuid: () => string): string;
   taskStart(o: TaskStart): LaunchArgs;
   taskReopen(o: TaskReopen): LaunchArgs;
+  /** The models and efforts a new task can pick; rejects with an Error that names the agent when it can't list them. */
+  taskModels(o: { bin: string; dataDir: string; env: Record<string, string> }): Promise<ModelChoices>;
   /** The conversation the agent last recorded in the task's folder (Claude Code's SessionStart hook); null when there is none, and always for an agent that records no session (OpenCode, Codex). */
   recordedSession(taskDir: string): string | null;
   /** Whether the agent still has the task's conversation to resume: Claude Code deletes old chats; the others keep theirs. */

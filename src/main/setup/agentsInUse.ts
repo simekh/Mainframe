@@ -1,4 +1,4 @@
-import { AGENT_NAMES, MIN_AGENT_VERSION, TERMINAL_TEXT_DEFAULT, TERMINAL_TEXT_LIMITS, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView, type TerminalText } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, TERMINAL_TEXT_DEFAULT, TERMINAL_TEXT_LIMITS, type AgentName, type ModelChoices, type OpencodeChoices, type ProgramCheck, type SettingsView, type TerminalText } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
@@ -148,6 +148,13 @@ export class AgentsInUse {
     const bin = this.bin('opencode');
     if (bin === null) throw new Error(`${AGENT_NAMES.opencode} doesn't work`);
     return opencodeChoices({ bin, dataDir: this.deps.dataDir, env: this.deps.env, run: this.deps.runOpencode });
+  }
+
+  /** The models and efforts a new task on `name` can pick. */
+  async taskModelChoices(name: AgentName): Promise<ModelChoices> {
+    const bin = this.bin(name);
+    if (bin === null) throw new Error(`${AGENT_NAMES[name]} doesn't work`);
+    return ADAPTERS[name].taskModels({ bin, dataDir: this.deps.dataDir, env: this.deps.env });
   }
 
   /**
