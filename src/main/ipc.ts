@@ -27,7 +27,7 @@ export interface ClipboardDeps {
   clipboard: ClipboardReader & { writeText(text: string): Promise<void> };
   writeFile: (path: string, data: Buffer) => Promise<void>;
   newImagePath: () => string;
-  /** The folder pasted images are saved to; one the agent took moves from it into its conversation's folder. */
+  /** The folder pasted images are saved to; one the agent took is copied from it into its conversation's folder. */
   pasteDir: string;
 }
 

@@ -14,7 +14,7 @@ export interface KeyLike {
 export type TerminalAction =
   | { send: string }
   | { scroll: 'line-up' | 'line-down' | 'page-up' | 'page-down' }
-  | { clipboard: 'copy' | 'copy-and-clear' | 'paste' };
+  | { clipboard: 'copy' | 'copy-and-clear' | 'paste' | 'paste-or-key' };
 
 const CMD_SENDS: Record<string, string> = {
   ArrowLeft: '\x1b[H', // beginning of line
@@ -40,8 +40,10 @@ const isShiftEnter = (e: KeyLike) =>
 /**
  * The keydown bindings the terminal handles itself.
  *
- * On the Mac, Option and Ctrl combinations are never matched: Option types characters on the Swedish
- * layout, and Cmd+C/V belong to the Edit menu. `hasSelection` changes nothing there.
+ * On the Mac, Option and Ctrl combinations are never matched, but for Ctrl+V: Option types characters on the Swedish
+ * layout, and Cmd+C/V belong to the Edit menu. Ctrl+V pastes a file or an image through Mainframe as Cmd+V does, so
+ * the agent never reads the clipboard itself; with anything else on the clipboard it goes on to the agent.
+ * `hasSelection` changes nothing there.
  *
  * Windows and Linux have no menu, so copy and paste are keys here, as in Windows Terminal. Alt and
  * Meta combinations are never matched: AltGr arrives as Ctrl+Alt on Windows, typing `@ { [ ] }` on
@@ -51,7 +53,8 @@ const isShiftEnter = (e: KeyLike) =>
  */
 export function matchTerminalBinding(e: KeyLike, platform: NodeJS.Platform, hasSelection: boolean): TerminalAction | undefined {
   if (platform !== 'darwin') return matchCtrlBinding(e, platform, hasSelection);
-  if (e.type !== 'keydown' || e.altKey || e.ctrlKey) return undefined;
+  if (e.type !== 'keydown' || e.altKey) return undefined;
+  if (e.ctrlKey) return !e.metaKey && !e.shiftKey && shortcutLetter(e) === 'v' ? { clipboard: 'paste-or-key' } : undefined;
   if (isShiftEnter(e)) return { send: '\x1b\r' };
   if (!e.metaKey) return undefined;
   if (!e.shiftKey && e.key in CMD_SENDS) return { send: CMD_SENDS[e.key] };

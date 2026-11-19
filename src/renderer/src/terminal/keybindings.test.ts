@@ -29,8 +29,9 @@ it.each([
 });
 
 it.each([
-  { key: 'C', ctrlKey: true, shiftKey: true }, { key: 'c', ctrlKey: true }, { key: 'v', ctrlKey: true },
-  { key: 'Backspace', ctrlKey: true },
+  { key: 'C', ctrlKey: true, shiftKey: true }, { key: 'c', ctrlKey: true }, { key: 'Backspace', ctrlKey: true },
+  { key: 'V', ctrlKey: true, shiftKey: true }, { key: 'v', ctrlKey: true, altKey: true }, { key: '√', ctrlKey: true, altKey: true },
+  { key: 'v', ctrlKey: true, type: 'keyup' },
 ])('on the Mac, with or without a selection, leaves %o to xterm', (k) => {
   expect(matchTerminalBinding(key(k), 'darwin', false)).toBeUndefined();
   expect(matchTerminalBinding(key(k), 'darwin', true)).toBeUndefined();
@@ -38,7 +39,12 @@ it.each([
 
 it('on the Mac, a Ctrl+letter on a layout without Latin letters is left to xterm too', () => {
   expect(matchTerminalBinding(key({ key: 'с', code: 'KeyC', ctrlKey: true }), 'darwin', true)).toBeUndefined();
-  expect(matchTerminalBinding(key({ key: 'м', code: 'KeyV', ctrlKey: true }), 'darwin', true)).toBeUndefined();
+});
+
+it('on the Mac, Ctrl+V pastes through Mainframe when the clipboard holds a file or an image, else goes to xterm', () => {
+  expect(matchTerminalBinding(key({ key: 'v', ctrlKey: true }), 'darwin', false)).toEqual({ clipboard: 'paste-or-key' });
+  expect(matchTerminalBinding(key({ key: 'v', ctrlKey: true }), 'darwin', true)).toEqual({ clipboard: 'paste-or-key' });
+  expect(matchTerminalBinding(key({ key: 'м', code: 'KeyV', ctrlKey: true }), 'darwin', false)).toEqual({ clipboard: 'paste-or-key' });
 });
 
 describe.each(['win32', 'linux'] as const)('on %s', (platform) => {

@@ -119,7 +119,14 @@ export default function ManagerColumn(props: {
               // Keyed: a new session gets a new terminal, as a task's does.
               <Show when={managerOf(project.dir)?.managerTerminal} keyed>
                 {(sessionId) => (
-                  <TerminalView sessionId={sessionId} selected={project.shown() && props.state === 'open'} takeFocus={false} config={c()} />
+                  <TerminalView
+                    sessionId={sessionId}
+                    selected={project.shown() && props.state === 'open'}
+                    takeFocus={false}
+                    config={c()}
+                    // Set together with managerTerminal, and kept with it once the session has ended.
+                    agent={managerOf(project.dir)!.managerAgent!}
+                  />
                 )}
               </Show>
             )}

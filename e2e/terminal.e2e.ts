@@ -1,10 +1,12 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
 import { readSettings } from '../src/main/setup/settings';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
-import { cleanUp, launchApp } from './launch';
-import { card, cardIn, firstSpawn, fitSize, ids, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
+import { cleanUp, launchApp, launchWithCodex, removeAfterTest } from './launch';
+import { card, cardIn, firstSpawn, fitSize, ids, repo, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -310,6 +312,106 @@ test('a copy with nothing selected sends a program that keeps its own selection 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+Shift+C');
   await expect.poll(keys).toBe(1);
   await app.close();
+});
+
+/** A PNG file in a folder of its own, removed after the test; its content doesn't matter to the fake agent. */
+function pngFile(): string {
+  const path = join(removeAfterTest(mkdtempSync(join(os.tmpdir(), 'mainframe-e2e-img-'))), 'shot.png');
+  writeFileSync(path, 'png');
+  return path;
+}
+
+/**
+ * Drops the file on the shown task terminal, as Finder does. The file comes from a file input, so the page can tell its
+ * path, which a File made in the page has none of.
+ */
+async function dropFile(page: Page, path: string) {
+  const input = await page.evaluateHandle(() => document.body.appendChild(Object.assign(document.createElement('input'), { type: 'file' })));
+  await input.setInputFiles(path);
+  await input.evaluate((el) => {
+    const files = new DataTransfer();
+    files.items.add(el.files![0]);
+    el.remove();
+    const terminal = document.querySelector('.well > .terminal:not(.terminal--hidden)')!;
+    terminal.dispatchEvent(new DragEvent('drop', { dataTransfer: files, bubbles: true, cancelable: true }));
+  });
+}
+
+/** The images listed for the task's running session. */
+const images = (page: Page, taskId: string) =>
+  page.evaluate(async (id) => {
+    for (const { dir } of await window.mainframe.listProjects()) {
+      const session = (await window.mainframe.listTasks(dir)).find((t) => t.id === id)?.session;
+      if (session) return window.mainframe.getImages(session.id);
+    }
+    throw new Error(`No running session for task ${id}`);
+  }, taskId);
+
+test('a dropped image is recorded with the number the agent shows', async () => {
+  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
+  const a = await startTask(page);
+  const path = pngFile();
+  await dropFile(page, path);
+  await expect.poll(() => screen(page, a)).toContain('[Image #1]');
+  await expect.poll(() => images(page, a)).toEqual([{ number: 1, path, name: 'shot.png' }]);
+  await app.close();
+});
+
+test("an image the agent doesn't label isn't recorded", async () => {
+  // The fake's plain shell takes the path as text, as an agent does in a question.
+  const { app, page } = await launchApp();
+  const a = await startTask(page);
+  await dropFile(page, pngFile());
+  await expect.poll(() => screen(page, a)).toContain('shot.png');
+  // Past the watch's 3 s.
+  await page.waitForTimeout(3500);
+  expect(await images(page, a)).toEqual([]);
+  await app.close();
+});
+
+test("an image for an agent whose label gives no number is recorded at once, without one", async () => {
+  const { app, page } = await launchWithCodex(repo());
+  const a = await startTask(page, 'Task', '', 'codex');
+  const path = pngFile();
+  await dropFile(page, path);
+  await expect.poll(() => images(page, a)).toEqual([{ number: null, path, name: 'shot.png' }]);
+  await app.close();
+});
+
+test("on the Mac, Ctrl+V pastes an image through Mainframe, which records it with the agent's number, and sends anything else to the agent as the key", async () => {
+  test.skip(process.platform !== 'darwin', "the Mac's Ctrl+V: on Windows and Linux Ctrl+V is the paste key, which the test above shows");
+  const { app, page, dataDir } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
+  const a = await startTask(page);
+  const original = await app.evaluate(({ clipboard }) => clipboard.readText());
+  try {
+    const onePixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    await app.evaluate(async ({ clipboard, ClipboardItem }, png) => {
+      const image = new Blob([Buffer.from(png, 'base64')], { type: 'image/png' });
+      await clipboard.write([new ClipboardItem({ 'image/png': image })]);
+    }, onePixel);
+    await page.keyboard.press('Control+V');
+    await expect.poll(() => screen(page, a)).toContain('[Image #1]');
+    // The pasted file is copied into the conversation's folder, in the data folder.
+    await expect.poll(async () => (await images(page, a)).map((e) => ({ number: e.number, saved: e.path.startsWith(dataDir) }))).toEqual([
+      { number: 1, saved: true },
+    ]);
+  } finally {
+    await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), original).catch(() => {});
+  }
+  await app.close();
+
+  const raw = await launchApp({ FAKE_CLAUDE_RAW: '1' });
+  const b = await startTask(raw.page);
+  const before = await raw.app.evaluate(({ clipboard }) => clipboard.readText());
+  try {
+    await raw.app.evaluate(({ clipboard }) => clipboard.writeText('some text'));
+    await raw.page.keyboard.press('Control+V');
+    // The read shows on the prompt's line, after `$ `.
+    await expect.poll(() => screen(raw.page, b)).toContain('read: "\\u0016"');
+  } finally {
+    await raw.app.evaluate(({ clipboard }, text) => clipboard.writeText(text), before).catch(() => {});
+  }
+  await raw.app.close();
 });
 
 test('quitting leaves no session process behind', async () => {

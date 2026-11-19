@@ -25,13 +25,14 @@ function setup() {
   return { root, pasteDir, dir, file };
 }
 
-it("a pasted image moves into the conversation's folder", () => {
+// Copied, not moved: Codex reads an attached image's file only when its message is sent.
+it("a pasted image is copied into the conversation's folder, and the paste folder keeps its own until it is emptied", () => {
   const { pasteDir, dir, file } = setup();
   const pasted = file(join(pasteDir, 'a1.png'));
 
   const images = recordImages(dir, [{ path: pasted, number: 1 }], pasteDir);
 
-  expect(existsSync(pasted)).toBe(false);
+  expect(existsSync(pasted)).toBe(true);
   expect(images).toEqual([{ number: 1, path: join(dir, 'a1.png'), name: 'a1.png' }]);
   expect(existsSync(join(dir, 'a1.png'))).toBe(true);
 });
@@ -52,7 +53,7 @@ it('a dropped file stays where it is', () => {
   expect(existsSync(beside)).toBe(true);
 });
 
-it("a pasted image that can't be moved is left out, with a warning, and the others are listed", () => {
+it("a pasted image that can't be copied is left out, with a warning, and the others are listed", () => {
   const { root, pasteDir, dir, file } = setup();
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   const dropped = file(join(root, 'b.png'));

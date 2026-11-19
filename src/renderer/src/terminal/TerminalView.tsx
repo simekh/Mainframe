@@ -6,7 +6,8 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
-import { type RendererConfig, TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
+import { IMAGE_EXTENSIONS, IMAGE_LABEL, labelNumbers } from '../../../shared/imageLabels';
+import { type AgentName, type RendererConfig, TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { linkClickHeld } from '../keys';
 import { subscribePty } from '../ptyEvents';
@@ -14,6 +15,7 @@ import { settingsView } from '../settings/settingsStore';
 import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
+import { newLabelNumbers } from './imageWatch';
 import { InputBatcher } from './inputBatcher';
 import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
@@ -33,6 +35,8 @@ const OUTPUT_FLUSH_FALLBACK_MS = 50;
 const WEBGL_DETACH_DELAY_MS = 1000;
 const SUGGESTION_SCAN_INTERVAL_MS = 250;
 const SUGGESTION_SCAN_ROWS = 24;
+const IMAGE_WATCH_INTERVAL_MS = 100;
+const IMAGE_WATCH_TRIES = 30;
 
 /** The earlier of the next animation frame and a fallback timer: frames can stop in a background window. */
 function scheduleFrame(flush: () => void): () => void {
@@ -58,12 +62,15 @@ export default function TerminalView(props: {
   /** Whether coming on screen puts the cursor in it; true unless set. */
   takeFocus?: boolean;
   config: RendererConfig;
+  /** The agent the session runs: which pasted files it takes as images, and the label it numbers them with. */
+  agent: AgentName;
 }) {
   let container!: HTMLDivElement;
   const api = window.mainframe;
 
   onMount(() => {
     const id = props.sessionId;
+    const agent = props.agent;
     // Cmd+click (Ctrl+click on Windows and Linux) opens a link in the browser: a plain URL, found by
     // the web-links addon, and an OSC 8 link Claude Code prints, which xterm hands to linkHandler
     // (never a non-http one). A plain click still selects and focuses.
@@ -196,7 +203,7 @@ export default function TerminalView(props: {
       if ('send' in action) {
         term.input(action.send, true);
       } else if ('clipboard' in action) {
-        if (action.clipboard === 'paste') pasteClipboard();
+        if (action.clipboard === 'paste' || action.clipboard === 'paste-or-key') pasteClipboard(action.clipboard === 'paste-or-key');
         else copySelection(action.clipboard === 'copy-and-clear');
       } else if (action.scroll === 'line-up') term.scrollLines(-1);
       else if (action.scroll === 'line-down') term.scrollLines(1);
@@ -206,19 +213,23 @@ export default function TerminalView(props: {
     });
 
     // --- Suggestion ring ---------------------------------------------------------------------
-    // The one place the app reads the screen: whether Claude Code shows a suggestion, for a ring on
-    // the card. Never for a lane. It reads the bottom of the live screen, not the part in view, so
-    // scrolling back changes nothing; a terminal off screen is read too.
-    let scanTimer: ReturnType<typeof setTimeout> | undefined;
-    const scan = () => {
-      scanTimer = undefined;
+    // The app reads the screen in two places only: here, whether Claude Code shows a suggestion, for
+    // a ring on the card (never for a lane), and for an image's label after a paste (below). Both read
+    // the live screen, its bottom `rows`, not the part in view, so scrolling back changes nothing; a
+    // terminal off screen is read too.
+    const bottomLines = (rows: number) => {
       const buffer = term.buffer.active;
       const end = buffer.baseY + term.rows;
       const lines: string[] = [];
-      for (let y = end - Math.min(term.rows, SUGGESTION_SCAN_ROWS); y < end; y++) {
+      for (let y = end - Math.min(term.rows, rows); y < end; y++) {
         lines.push(buffer.getLine(y)?.translateToString(true) ?? '');
       }
-      setSuggesting(id, hasSuggestion(lines));
+      return lines;
+    };
+    let scanTimer: ReturnType<typeof setTimeout> | undefined;
+    const scan = () => {
+      scanTimer = undefined;
+      setSuggesting(id, hasSuggestion(bottomLines(SUGGESTION_SCAN_ROWS)));
     };
     // At most one scan per interval, and always one after the last output. A session that has
     // ended shows no ring whatever this finds: the ring needs a running session.
@@ -302,12 +313,14 @@ export default function TerminalView(props: {
     // menu, whose Copy and Paste fire the same events.
     // Main resolves the clipboard: a Finder file or an image becomes a path. term.paste adds
     // bracketed-paste markers when the program asked for them; without them Claude Code doesn't
-    // attach a pasted path as an image.
-    const pasteClipboard = () => {
+    // attach a pasted path as an image. The Mac's Ctrl+V (`orKey`) with anything else on the
+    // clipboard goes on to the agent as the key.
+    const pasteClipboard = (orKey: boolean) => {
       api
         .resolvePaste()
         .then((paste) => {
-          if (paste.kind === 'file' || paste.kind === 'image') term.paste(escapePath(paste.path, api.platform));
+          if (paste.kind === 'file' || paste.kind === 'image') return pastePaths([paste.path]);
+          if (orKey) term.input('\x16', true);
           else if (paste.kind === 'text') term.paste(paste.text);
         })
         .catch((err: unknown) => console.warn('[terminal] paste failed', err));
@@ -315,7 +328,47 @@ export default function TerminalView(props: {
     const onPaste = (e: ClipboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      pasteClipboard();
+      pasteClipboard(false);
+    };
+
+    // A pasted or dropped file the agent takes as an image goes in the conversation's list. With a
+    // label the agent numbers it by, it goes in once a label above every one known before the paste
+    // shows, with that number; with none in 3 s (the paste went into a question, or the agent didn't
+    // take the file) it doesn't. A paste while one is watched joins its watch, so two never take the
+    // same label. An agent without such a label has its images listed at once, with no number.
+    const label = IMAGE_LABEL[agent];
+    const takesAsImage = (path: string) => IMAGE_EXTENSIONS[agent].includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
+    const record = (added: { path: string; number: number | null }[]) =>
+      api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
+    // The whole screen: a session just started has its prompt at the top of a tall one.
+    const shownLabels = (label: RegExp) => labelNumbers(bottomLines(term.rows).join('\n'), label);
+    let watch: { before: number[]; paths: string[]; tries: number; timer: ReturnType<typeof setTimeout> } | undefined;
+    const watchLabels = (label: RegExp) => {
+      const w = watch!;
+      const numbers = newLabelNumbers(w.before, shownLabels(label), w.paths.length);
+      if (numbers || ++w.tries >= IMAGE_WATCH_TRIES) {
+        watch = undefined;
+        if (numbers) record(w.paths.map((path, i) => ({ path, number: numbers[i] })));
+      } else w.timer = setTimeout(() => watchLabels(label), IMAGE_WATCH_INTERVAL_MS);
+    };
+    /** Pastes the paths, each escaped or quoted as one word, and lists the images among them. */
+    const pastePaths = async (paths: string[]) => {
+      if (exited) return;
+      const images = paths.filter(takesAsImage);
+      if (images.length > 0 && label) {
+        // The numbers already listed are known before the paste too, also the ones scrolled off. A list that can't be
+        // read means no watch: a label could then seem new.
+        const listed = watch ? [] : await api.getImages(id).then((l) => l.flatMap((e) => e.number ?? []), () => null);
+        if (watch) {
+          watch.paths.push(...images);
+          watch.tries = 0;
+        } else if (listed) {
+          const before = [...listed, ...shownLabels(label)];
+          watch = { before, paths: images, tries: 0, timer: setTimeout(() => watchLabels(label), IMAGE_WATCH_INTERVAL_MS) };
+        }
+      }
+      term.paste(paths.map((path) => escapePath(path, api.platform)).join(' '));
+      if (images.length > 0 && !label) record(images.map((path) => ({ path, number: null })));
     };
     // With nothing selected in xterm, a program that keeps its own selection (Claude Code in
     // fullscreen) is sent its copy key, and copies that selection itself.
@@ -351,14 +404,10 @@ export default function TerminalView(props: {
       if (!e.dataTransfer || e.dataTransfer.files.length === 0) return;
       e.preventDefault();
       e.stopPropagation();
-      const paths = [...e.dataTransfer.files]
-        .map((file) => api.getPathForFile(file))
-        .filter(Boolean)
-        .map((path) => escapePath(path, api.platform))
-        .join(' ');
-      if (!paths) return;
+      const paths = [...e.dataTransfer.files].map((file) => api.getPathForFile(file)).filter(Boolean);
+      if (paths.length === 0) return;
       term.focus();
-      term.paste(paths);
+      void pastePaths(paths);
     };
     container.addEventListener('paste', onPaste, true);
     container.addEventListener('copy', onCopy, true);
@@ -421,6 +470,7 @@ export default function TerminalView(props: {
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
       clearTimeout(scanTimer);
+      clearTimeout(watch?.timer);
       setSuggesting(id, false);
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);

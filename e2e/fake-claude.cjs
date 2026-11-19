@@ -66,6 +66,8 @@ if (versionCheck && isOpencode) {
   // `session delete` after a sync run: nothing to do.
 } else if (process.env.FAKE_CLAUDE_RAW === '1') {
   raw();
+} else if (process.env.FAKE_CLAUDE_IMAGES === '1') {
+  askStatusSupport(labelImages);
 } else if (isCodex && process.env.FAKE_CODEX_SESSION_ID) {
   callMainframe(process.env.FAKE_CODEX_SESSION_ID, session);
 } else {
@@ -154,6 +156,31 @@ function raw() {
   process.stdin.on('data', (chunk) => process.stdout.write(`read: ${JSON.stringify(chunk.toString())}\r\n`));
   process.stdout.on('resize', () => process.stdout.write(`resized: ${process.stdout.columns}x${process.stdout.rows}\r\n`));
   process.stdout.write('$ ');
+}
+
+/**
+ * Takes a pasted image as Claude Code does: asks for bracketed paste, and for each existing `.png` or `.jpg` path in a
+ * bracketed paste prints `[Image #N]`, counting from 1. Escaped paths (quoted on Windows) are read back as escapePath
+ * wrote them. Prints `$ ` first, as the tests wait for a prompt.
+ */
+function labelImages() {
+  let count = 0;
+  let input = '';
+  process.stdin.setRawMode(true);
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => {
+    input += chunk;
+    for (let m; (m = /\x1b\[200~([\s\S]*?)\x1b\[201~/.exec(input)); input = input.slice(m.index + m[0].length)) {
+      const words = process.platform === 'win32' ? m[1].match(/"[^"]*"|\S+/g) : m[1].match(/(?:\\.|[^\s\\])+/g);
+      for (const word of words ?? []) {
+        const path = process.platform === 'win32' ? word.replace(/^"|"$/g, '') : word.replace(/\\(.)/g, '$1');
+        if (/\.(png|jpg)$/i.test(path) && existsSync(path)) process.stdout.write(`[Image #${++count}]\r\n`);
+      }
+    }
+  });
+  // askStatusSupport paused it.
+  process.stdin.resume();
+  process.stdout.write('\x1b[?2004h$ ');
 }
 
 /**

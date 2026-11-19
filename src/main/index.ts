@@ -232,8 +232,8 @@ async function start(
   win: BrowserWindow,
   zoom: WindowZoom,
 ): Promise<void> {
-  // Pasted images get one file each; empty the folder at start so they don't pile up. One the agent took has moved
-  // into its conversation's folder; what is left are pastes no agent took.
+  // Pasted images get one file each; empty the folder at start so they don't pile up. One the agent took has a copy in
+  // its conversation's folder.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
 

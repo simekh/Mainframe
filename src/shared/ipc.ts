@@ -211,7 +211,7 @@ export interface MainframeApi {
   openLink(url: string): Promise<void>;
   /** The images the session's conversation received, in order; none for a session that isn't running. Each loads from `imageUrl(sessionId, index)`. */
   getImages(sessionId: string): Promise<ImageEntry[]>;
-  /** Adds images the agent took to the session's list; a pasted one moves into the conversation's folder. The new list comes through `onImages`. */
+  /** Adds images the agent took to the session's list; a pasted one is copied into the conversation's folder. The new list comes through `onImages`. */
   recordImages(sessionId: string, added: { path: string; number: number | null }[]): Promise<void>;
   /** Every change to a session's list of images, with the whole list. */
   onImages(cb: (e: { sessionId: string; images: ImageEntry[] }) => void): () => void;

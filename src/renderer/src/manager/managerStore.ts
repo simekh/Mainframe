@@ -1,5 +1,5 @@
 import { createStore, produce } from 'solid-js/store';
-import type { ManagerView } from '../../../shared/types';
+import type { AgentName, ManagerView } from '../../../shared/types';
 import { glyphOf, stateLabel } from '../board/lanes';
 import { sessionOf } from '../tasksStore';
 import { getTerminal } from '../terminal/registry';
@@ -9,6 +9,8 @@ export interface ProjectManager {
   manager: ManagerView;
   /** The session id of the manager's terminal: its running session, or the last one it had. */
   managerTerminal: string | null;
+  /** The agent that terminal's session ran; set with it, so it outlives the session too. */
+  managerAgent: AgentName | null;
 }
 
 /** By project folder; a project is missing until its manager's first view comes in, so its column never shows a stop that hasn't happened. */
@@ -27,7 +29,11 @@ const changed = new Set<string>();
 
 function setManager(dir: string, manager: ManagerView): void {
   // Once its session has ended, the terminal stays, so its last output can still be read.
-  setStore(dir, { manager, managerTerminal: manager.session?.id ?? store[dir]?.managerTerminal ?? null });
+  setStore(dir, {
+    manager,
+    managerTerminal: manager.session?.id ?? store[dir]?.managerTerminal ?? null,
+    managerAgent: manager.session?.agent ?? store[dir]?.managerAgent ?? null,
+  });
 }
 
 window.mainframe.onManager(({ dir, view }) => {

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ImageEntry } from '../../shared/types';
 import { writeJsonAtomic } from '../tasks/taskStore';
@@ -27,9 +27,10 @@ export function readImages(dir: string): ImageEntry[] {
 }
 
 /**
- * Adds the images to the conversation's list and returns the whole list. A pasted image (a file in `pasteDir`) moves
- * into `dir`, so it stays once the paste folder is emptied; a dropped file is listed where it is. One that can't be
- * moved is warned of and left out; the others are still listed.
+ * Adds the images to the conversation's list and returns the whole list. A pasted image (a file in `pasteDir`) is copied
+ * into `dir`, so it stays once the paste folder is emptied; copied, not moved, as Codex reads an attached image's file
+ * only when its message is sent. A dropped file is listed where it is. One that can't be copied is warned of and left
+ * out; the others are still listed.
  */
 export function recordImages(dir: string, added: { path: string; number: number | null }[], pasteDir: string): ImageEntry[] {
   mkdirSync(dir, { recursive: true });
@@ -39,25 +40,19 @@ export function recordImages(dir: string, added: { path: string; number: number 
     const inPaste = relative(resolve(pasteDir), resolve(path));
     const pasted = inPaste !== '' && !inPaste.startsWith('..') && !isAbsolute(inPaste);
     try {
-      images.push({ number, path: pasted ? moveInto(dir, path) : path, name });
+      images.push({ number, path: pasted ? copyInto(dir, path) : path, name });
     } catch (err) {
-      console.warn(`Could not move ${path} into ${dir} (${String(err)}); it is left out of the list`);
+      console.warn(`Could not copy ${path} into ${dir} (${String(err)}); it is left out of the list`);
     }
   }
   writeJsonAtomic(join(dir, LIST_FILE), images);
   return images;
 }
 
-/** Moves the file into `dir`, copying when the two are on different volumes; returns its new path. */
-function moveInto(dir: string, path: string): string {
+/** Copies the file into `dir`; returns the copy's path. */
+function copyInto(dir: string, path: string): string {
   const to = join(dir, basename(path));
-  try {
-    renameSync(path, to);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
-    copyFileSync(path, to);
-    unlinkSync(path);
-  }
+  copyFileSync(path, to);
   return to;
 }
 

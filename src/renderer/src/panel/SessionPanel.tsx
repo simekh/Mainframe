@@ -139,7 +139,12 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
           {(c) => (
             <For each={tasksOf(project.dir).terminals}>
               {(entry) => (
-                <TerminalView sessionId={entry.sessionId} selected={entry.sessionId === shownTerminal()} config={c()} />
+                <TerminalView
+                  sessionId={entry.sessionId}
+                  selected={entry.sessionId === shownTerminal()}
+                  config={c()}
+                  agent={tasksOf(project.dir).tasks.find((t) => t.id === entry.taskId)!.agent}
+                />
               )}
             </For>
           )}
