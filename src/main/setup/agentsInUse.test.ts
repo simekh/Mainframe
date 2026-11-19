@@ -116,6 +116,15 @@ describe('AgentsInUse', () => {
     expect(h.saved()?.terminalText).toEqual({ fontSize: 13, lineHeight: 1.3 });
   });
 
+  it('a saved text outside the limits shows as the default, and either stepper repairs it', () => {
+    for (const terminalText of [{ fontSize: 99, lineHeight: 1 }, { fontSize: 13, lineHeight: 0.2 }]) {
+      const h = onDisk({ terminalText }, both);
+      expect(h.a.view().terminalText).toEqual(TERMINAL_TEXT_DEFAULT);
+      h.a.setTerminalText({ lineHeight: 1.2 });
+      expect(h.saved()?.terminalText).toEqual({ fontSize: 13, lineHeight: 1.2 });
+    }
+  });
+
   it('saveAgentSetting writes settings.json and inUse() sees it', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-agents-'));
     try {

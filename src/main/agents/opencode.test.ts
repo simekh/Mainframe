@@ -57,10 +57,10 @@ describe('a task on a picked model', () => {
   const envFor = (pick: { model?: string; effort?: string }) => [opencodeAgent.taskStart({ ...start, ...pick }).env, opencodeAgent.taskReopen({ ...reopen, ...pick }).env];
 
   it('starts and reopens with the model, and its variant, in OPENCODE_CONFIG_CONTENT', () => {
-    expect(envFor({ model: 'litellm/gpt-6-sol', effort: 'high' })).toEqual(
-      Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol#high"}' }),
+    expect(envFor({ model: 'prov/big', effort: 'high' })).toEqual(
+      Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big#high"}' }),
     );
-    expect(envFor({ model: 'litellm/gpt-6-sol' })).toEqual(Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol"}' }));
+    expect(envFor({ model: 'prov/big' })).toEqual(Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big"}' }));
   });
 
   it('with no pick, or a variant without a model, the env is OPENCODE_ENV', () => {

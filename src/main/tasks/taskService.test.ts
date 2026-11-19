@@ -46,7 +46,7 @@ function fakeAgents() {
     models: {
       claude: { models: [{ id: 'opus', name: 'Opus', efforts: ['high'] }], defaultEfforts: ['high'] },
       codex: { models: [{ id: 'gpt-6-sol', name: 'GPT-6 Sol', efforts: ['high'] }], defaultEfforts: ['high'] },
-      opencode: { models: [{ id: 'litellm/gpt-6-sol', name: 'GPT-6 Sol', efforts: ['high'] }], defaultEfforts: ['high'] },
+      opencode: { models: [{ id: 'prov/big', name: 'Big', efforts: ['high'] }], defaultEfforts: ['high'] },
     } as Record<AgentName, ModelChoices | Error>,
     listed: [] as AgentName[],
     async taskModelChoices(name: AgentName): Promise<ModelChoices> {
@@ -1579,8 +1579,8 @@ it('the pick is saved and passed again on reopen', async () => {
   expect(t.service.launchSpec(resumed.session!.id).argv).toEqual(expect.arrayContaining(['--model', 'opus', '--effort', 'high']));
 
   // An OpenCode task's pick is in its config, on the start and on the reopen.
-  const oc = await t.service.start({ ...OPENCODE_TASK, title: 'Tidy up', model: 'litellm/gpt-6-sol' });
-  const config = { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol"}' };
+  const oc = await t.service.start({ ...OPENCODE_TASK, title: 'Tidy up', model: 'prov/big' });
+  const config = { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big"}' };
   expect(t.service.launchSpec(oc.session!.id).env).toEqual(config);
   t.service.onSessionExit(oc.session!.id);
   expect(t.service.launchSpec((await t.service.reopen(oc.id)).session!.id).env).toEqual(config);
@@ -1646,6 +1646,47 @@ it('a model list that fails keeps the pick', async () => {
   const reopened = await t.service.reopen(view.id);
   expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
   expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+});
+
+it('an empty model list keeps the pick, as a failed one does', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.models.codex = { models: [], defaultEfforts: [] };
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+  expect(t.warnings).toEqual([]);
+});
+
+it('put back drops a model the agent no longer lists before it launches', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.models.codex = { models: [{ id: 'gpt-7', name: 'GPT-7', efforts: ['high'] }], defaultEfforts: ['high'] };
+
+  void t.service.putBackCard(view.id);
+  await vi.waitFor(() => expect(t.service.sessionIds()).toHaveLength(1));
+  expect(t.service.launchSpec(t.service.sessionIds()[0]).argv).toEqual(['/bin/codex', 'resume', '--last', putBackPrompt(ADAPTERS.codex.instructions)]);
+  expect(t.readState()[0]).not.toHaveProperty('model');
+  expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
+});
+
+it('put back launches nothing when the task started again while the agent listed its models', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  let listed!: () => void;
+  const choices = t.agents.models.codex as ModelChoices;
+  t.agents.taskModelChoices = () => new Promise((resolve) => (listed = () => resolve(choices)));
+
+  const putting = t.service.putBackCard(view.id);
+  await vi.waitFor(() => expect(listed).toBeDefined());
+  // A reopen meanwhile, as at a restart.
+  t.agents.taskModelChoices = async () => choices;
+  await t.service.reopen(view.id);
+  listed();
+
+  await expect(putting).rejects.toThrow(`Close ${view.title} before putting it back`);
+  expect(t.service.sessionIds()).toHaveLength(1);
 });
 
 it("a Claude task's pick is never checked against a list: its aliases don't retire", async () => {

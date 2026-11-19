@@ -337,6 +337,11 @@ export class TaskService {
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
     if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before putting it back`);
     if (!this.began(task)) return true;
+    if (this.checksModel(task)) {
+      await this.dropRetiredModel(task, task.model!);
+      // Asked again: the task may have started, or the app begun to quit, while the agent listed its models.
+      if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before putting it back`);
+    }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     const prompt = putBackPrompt(adapter.instructions);
@@ -517,8 +522,8 @@ export class TaskService {
   }
 
   /**
-   * The task has a picked model to check before a reopen or Continue. Claude Code's picks are aliases, which never retire.
-   * Checked first, so a task with nothing to check reopens without waiting.
+   * The task has a picked model to check before a reopen, a Continue or a put back. Claude Code's picks are aliases,
+   * which never retire. Checked first, so a task with nothing to check reopens without waiting.
    */
   private checksModel(task: TaskRecord): boolean {
     return task.model !== undefined && agentOf(task) !== 'claude';
@@ -526,17 +531,17 @@ export class TaskService {
 
   /**
    * Drops the task's picked `model` when its agent no longer lists it, with its effort, so the task runs on the agent's
-   * default, and warns. A list that fails keeps the pick.
+   * default, and warns. A list that fails, or lists nothing, keeps the pick.
    */
   private async dropRetiredModel(task: TaskRecord, model: string): Promise<void> {
     const agent = agentOf(task);
-    let listed: boolean;
+    let models: { id: string }[];
     try {
-      listed = (await this.deps.agents.taskModelChoices(agent)).models.some((m) => m.id === model);
+      ({ models } = await this.deps.agents.taskModelChoices(agent));
     } catch {
       return;
     }
-    if (listed || task.model !== model) return;
+    if (models.length === 0 || models.some((m) => m.id === model) || task.model !== model) return;
     delete task.model;
     delete task.effort;
     this.commit();

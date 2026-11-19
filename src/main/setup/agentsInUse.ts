@@ -18,6 +18,11 @@ function inLimits(value: number, { min, max, step }: { min: number; max: number;
   return value >= min && value <= max && Math.abs(steps - Math.round(steps)) < 1e-9;
 }
 
+/** Both values in their limits and on their steps. */
+function textInLimits({ fontSize, lineHeight }: TerminalText): boolean {
+  return inLimits(fontSize, TERMINAL_TEXT_LIMITS.fontSize) && inLimits(lineHeight, TERMINAL_TEXT_LIMITS.lineHeight);
+}
+
 /** Why a file picked by hand can't be used. */
 function whyNot(name: AgentName, path: string, check: ProgramCheck): string {
   if (check.state === 'too-old') return `${path} is v${check.version}, and Mainframe needs v${MIN_AGENT_VERSION[name]} or newer`;
@@ -90,6 +95,12 @@ export class AgentsInUse {
     return { adapter: ADAPTERS[agent], bin: this.bin(agent)!, setting: this.deps.settings.agents?.[agent] ?? {} };
   }
 
+  /** The saved text settings, or the defaults when nothing is saved or a saved value is outside its limits. */
+  private terminalText(): TerminalText {
+    const saved = this.deps.settings.terminalText;
+    return saved && textInLimits(saved) ? saved : TERMINAL_TEXT_DEFAULT;
+  }
+
   view(): SettingsView {
     const { settings, checks, envBins } = this.deps;
     const status = agentStatus(settings, checks, envBins);
@@ -98,7 +109,7 @@ export class AgentsInUse {
       return { ...status[name], ...(managerAgent !== undefined && { managerAgent }), ...(syncModel !== undefined && { syncModel }) };
     };
     const inUse = this.defaultAgent();
-    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse, terminalText: settings.terminalText ?? TERMINAL_TEXT_DEFAULT };
+    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse, terminalText: this.terminalText() };
   }
 
   setTicked(name: AgentName, ticked: boolean): void {
@@ -134,9 +145,9 @@ export class AgentsInUse {
     this.save({ ...settings, agents: { ...settings.agents, [name]: setting as AgentSetting } });
   }
 
-  /** Merges `patch` onto the saved text settings; a value outside the limits or off its step is refused. */
+  /** Merges `patch` onto the text settings in use; a value outside the limits or off its step is refused. */
   setTerminalText(patch: Partial<TerminalText>): void {
-    const next = { ...(this.deps.settings.terminalText ?? TERMINAL_TEXT_DEFAULT), ...patch };
+    const next = { ...this.terminalText(), ...patch };
     const { fontSize, lineHeight } = TERMINAL_TEXT_LIMITS;
     if (!inLimits(next.fontSize, fontSize)) throw new Error('Terminal text size must be 10 to 20 px');
     if (!inLimits(next.lineHeight, lineHeight)) throw new Error('Line height must be 1.0 to 1.6');
