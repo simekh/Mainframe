@@ -8,6 +8,7 @@ import type {
   DiffView,
   ManagerView,
   OpencodeChoices,
+  TerminalText,
   PtyDataEvent,
   ProjectView,
   PtyExitEvent,
@@ -86,6 +87,7 @@ export const IPC = {
   setDefaultAgent: 'settings:set-default',
   settingsFindAgent: 'settings:find-agent',
   setAgentOptions: 'settings:set-options',
+  setTerminalText: 'settings:set-terminal-text',
   opencodeChoices: 'settings:opencode-choices',
   showSettings: 'settings:show',
   getUpdate: 'updates:get',
@@ -214,6 +216,8 @@ export interface MainframeApi {
   settingsFindAgent(name: AgentName): Promise<void>;
   /** `managerAgent: null` goes back to OpenCode's own default. */
   setAgentOptions(name: AgentName, patch: { managerAgent?: string | null; syncModel?: string }): Promise<void>;
+  /** Only the values sent are changed; one outside the limits is refused. */
+  setTerminalText(patch: Partial<TerminalText>): Promise<void>;
   opencodeChoices(): Promise<OpencodeChoices>;
   /** Cmd+, or Ctrl+, from main: the page opens Settings unless the setup screen or another dialog shows. */
   onShowSettings(cb: () => void): () => void;

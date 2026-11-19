@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProgramCheck, SettingsView } from '../../../shared/types';
+import { TERMINAL_TEXT_DEFAULT, type ProgramCheck, type SettingsView } from '../../../shared/types';
 import { defaultChoice } from './defaultChoice';
 
 const found: ProgramCheck = { state: 'found', path: '/bin/x', version: '9.9.9' };
@@ -13,6 +13,7 @@ const view = (o: { claude: [ProgramCheck, boolean]; opencode: [ProgramCheck, boo
   },
   defaultAgent: o.defaultAgent,
   runDefault: o.runDefault,
+  terminalText: TERMINAL_TEXT_DEFAULT,
 });
 
 describe('defaultChoice', () => {

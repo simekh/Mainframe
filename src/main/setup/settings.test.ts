@@ -46,6 +46,17 @@ describe('settings.json', () => {
     expect(warnings).toEqual([]);
   });
 
+  it('keeps the terminal text it saved', () => {
+    writeSettings(dataDir, { terminalText: { fontSize: 15, lineHeight: 1.3 } });
+    expect(readSettings(dataDir, warn).terminalText).toEqual({ fontSize: 15, lineHeight: 1.3 });
+  });
+
+  it('a file without terminal text still reads', () => {
+    writeFileSync(file(), JSON.stringify({ version: 2, defaultAgent: 'claude' }));
+    expect(readSettings(dataDir, warn).terminalText).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
   it('holds each entry on its own', () => {
     writeSettings(dataDir, { welcomeSeen: true });
     expect(readSettings(dataDir, warn)).toStrictEqual({ welcomeSeen: true });

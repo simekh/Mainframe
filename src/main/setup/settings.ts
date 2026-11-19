@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { AGENT_ORDER, type AgentName } from '../../shared/types';
+import { AGENT_ORDER, type AgentName, type TerminalText } from '../../shared/types';
 import type { AgentSetting } from '../agents/agent';
 import { writeJsonAtomic } from '../tasks/taskStore';
 
@@ -19,6 +19,8 @@ export interface AppSettings {
   defaultAgent?: AgentName;
   /** The welcome has been shown and a first project chosen. Kept apart from the agents, so it holds when MAINFRAME_CLAUDE_BIN is set. */
   welcomeSeen?: boolean;
+  /** The terminal panes' text size and line height; the defaults while unset. */
+  terminalText?: TerminalText;
 }
 
 const agentName = z.enum(AGENT_ORDER);
@@ -33,6 +35,7 @@ const settingsV2 = z.object({
   agents: z.partialRecord(agentName, agentSetting).optional(),
   defaultAgent: agentName.optional(),
   welcomeSeen: z.boolean().optional(),
+  terminalText: z.object({ fontSize: z.number(), lineHeight: z.number() }).optional(),
 });
 const settingsV1 = z.object({ version: z.literal(1), claudeBin: z.string().optional(), welcomeSeen: z.boolean().optional() });
 

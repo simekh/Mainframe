@@ -1,4 +1,4 @@
-import { AGENT_NAMES, MIN_AGENT_VERSION, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView } from '../../shared/types';
+import { AGENT_NAMES, MIN_AGENT_VERSION, TERMINAL_TEXT_DEFAULT, TERMINAL_TEXT_LIMITS, type AgentName, type OpencodeChoices, type ProgramCheck, type SettingsView, type TerminalText } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { NODE_NEEDED } from '../agents/claude';
@@ -11,6 +11,12 @@ import { writeSettings, type AppSettings } from './settings';
 
 /** A change to an agent's setting: null deletes the key. */
 export type AgentSettingPatch = { [K in keyof AgentSetting]?: AgentSetting[K] | null };
+
+/** In range and on a step from the minimum; float steps compare with a tolerance. */
+function inLimits(value: number, { min, max, step }: { min: number; max: number; step: number }): boolean {
+  const steps = (value - min) / step;
+  return value >= min && value <= max && Math.abs(steps - Math.round(steps)) < 1e-9;
+}
 
 /** Why a file picked by hand can't be used. */
 function whyNot(name: AgentName, path: string, check: ProgramCheck): string {
@@ -92,7 +98,7 @@ export class AgentsInUse {
       return { ...status[name], ...(managerAgent !== undefined && { managerAgent }), ...(syncModel !== undefined && { syncModel }) };
     };
     const inUse = this.defaultAgent();
-    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse };
+    return { agents: { claude: agentView('claude'), opencode: agentView('opencode'), codex: agentView('codex') }, defaultAgent: settings.defaultAgent ?? inUse, runDefault: inUse, terminalText: settings.terminalText ?? TERMINAL_TEXT_DEFAULT };
   }
 
   setTicked(name: AgentName, ticked: boolean): void {
@@ -126,6 +132,15 @@ export class AgentsInUse {
     const setting: Record<string, unknown> = { ...settings.agents?.[name], ...patch };
     for (const key of Object.keys(setting)) if (setting[key] === null) delete setting[key];
     this.save({ ...settings, agents: { ...settings.agents, [name]: setting as AgentSetting } });
+  }
+
+  /** Merges `patch` onto the saved text settings; a value outside the limits or off its step is refused. */
+  setTerminalText(patch: Partial<TerminalText>): void {
+    const next = { ...(this.deps.settings.terminalText ?? TERMINAL_TEXT_DEFAULT), ...patch };
+    const { fontSize, lineHeight } = TERMINAL_TEXT_LIMITS;
+    if (!inLimits(next.fontSize, fontSize)) throw new Error('Terminal text size must be 10 to 20 px');
+    if (!inLimits(next.lineHeight, lineHeight)) throw new Error('Line height must be 1.0 to 1.6');
+    this.save({ ...this.deps.settings, terminalText: next });
   }
 
   /** OpenCode's primary agents and its models, for Settings. */

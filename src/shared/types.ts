@@ -112,11 +112,17 @@ export interface SetupView {
 /** One agent in Settings: as the setup screen shows it, with its saved options. */
 export interface AgentView extends AgentStatus { managerAgent?: string; syncModel?: string }
 
+/** The text size and line height of the terminal panes. */
+export interface TerminalText { fontSize: number; lineHeight: number }
+export const TERMINAL_TEXT_DEFAULT: TerminalText = { fontSize: 13, lineHeight: 1 };
+export const TERMINAL_TEXT_LIMITS = { fontSize: { min: 10, max: 20, step: 1 }, lineHeight: { min: 1, max: 1.6, step: 0.1 } } as const;
+
 /** What the Settings dialog shows, for the whole app. */
 export interface SettingsView {
   agents: Record<AgentName, AgentView>;
   /** The saved default, which the choice shows. */ defaultAgent: AgentName;
   /** The default this run uses: another ticked agent when the saved one didn't work at start. */ runDefault: AgentName;
+  /** Always filled: the defaults when nothing is saved. */ terminalText: TerminalText;
 }
 
 /** OpenCode's lists for Settings: only each agent's id, the first primary one marked as OpenCode's default. */

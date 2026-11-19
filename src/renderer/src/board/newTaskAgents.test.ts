@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentView, SettingsView } from '../../../shared/types';
+import { TERMINAL_TEXT_DEFAULT, type AgentView, type SettingsView } from '../../../shared/types';
 import { newTaskAgents } from './newTaskAgents';
 
 const found: AgentView = { check: { state: 'found', path: '/bin/x', version: '2.1.300' }, fromEnv: false, ticked: true };
@@ -8,6 +8,7 @@ const view = (claude: Partial<AgentView>, opencode: Partial<AgentView>, runDefau
   agents: { claude: { ...found, ...claude }, opencode: { ...found, ...opencode }, codex: { check: { state: 'missing' }, fromEnv: false, ticked: false } },
   defaultAgent: runDefault,
   runDefault,
+  terminalText: TERMINAL_TEXT_DEFAULT,
 });
 
 describe('newTaskAgents', () => {

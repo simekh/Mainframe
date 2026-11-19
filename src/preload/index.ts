@@ -71,6 +71,7 @@ const api: MainframeApi = {
   setDefaultAgent: (name) => ipcRenderer.invoke(IPC.setDefaultAgent, name),
   settingsFindAgent: (name) => ipcRenderer.invoke(IPC.settingsFindAgent, name),
   setAgentOptions: (name, patch) => ipcRenderer.invoke(IPC.setAgentOptions, name, patch),
+  setTerminalText: (patch) => ipcRenderer.invoke(IPC.setTerminalText, patch),
   opencodeChoices: () => ipcRenderer.invoke(IPC.opencodeChoices),
   onShowSettings: (cb) => listen(IPC.showSettings, cb),
   getUpdate: () => ipcRenderer.invoke(IPC.getUpdate),

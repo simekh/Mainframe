@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentName, ProgramCheck, SettingsView } from '../../shared/types';
+import { TERMINAL_TEXT_DEFAULT, type AgentName, type ProgramCheck, type SettingsView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
 import { NODE_NEEDED } from '../agents/claude';
 import type { runOpencode } from '../agents/opencode';
@@ -93,6 +93,27 @@ describe('AgentsInUse', () => {
     const a = agents({ defaultAgent: 'opencode', agents: { opencode: setting } }, { claude: found(C), opencode: found(O), codex: missing });
     expect(a.inUse()).toEqual({ adapter: ADAPTERS.opencode, bin: O, setting });
     expect(agents({}, { claude: found(C), opencode: missing, codex: missing }).inUse()).toEqual({ adapter: ADAPTERS.claude, bin: C, setting: {} });
+  });
+
+  it('Settings shows the default terminal text until one is saved', () => {
+    expect(onDisk({}, both).a.view().terminalText).toEqual(TERMINAL_TEXT_DEFAULT);
+  });
+
+  it('saving the size keeps the line height and tells the page', () => {
+    const h = onDisk({}, both);
+    h.a.setTerminalText({ fontSize: 16 });
+    expect(h.saved()?.terminalText).toEqual({ fontSize: 16, lineHeight: 1 });
+    expect(h.sent.at(-1)?.terminalText).toEqual({ fontSize: 16, lineHeight: 1 });
+  });
+
+  it('a size outside the limits is refused', () => {
+    const h = onDisk({}, both);
+    for (const patch of [{ fontSize: 9 }, { fontSize: 21 }, { lineHeight: 1.7 }, { fontSize: 13.5 }]) {
+      expect(() => h.a.setTerminalText(patch)).toThrow();
+    }
+    expect(h.saved()).toBeNull();
+    h.a.setTerminalText({ lineHeight: 1.3 });
+    expect(h.saved()?.terminalText).toEqual({ fontSize: 13, lineHeight: 1.3 });
   });
 
   it('saveAgentSetting writes settings.json and inUse() sees it', () => {
@@ -199,6 +220,7 @@ describe('AgentsInUse', () => {
       },
       defaultAgent: 'claude',
       runDefault: 'opencode',
+      terminalText: TERMINAL_TEXT_DEFAULT,
     });
   });
 

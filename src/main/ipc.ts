@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 import { ipcMain } from 'electron';
 import { IPC } from '../shared/ipc';
-import { isAgentName, type AgentChoice, type AgentName, type DiffView, type RendererConfig, type TodoItemRef, type TodoNoteDraft } from '../shared/types';
+import { isAgentName, type AgentChoice, type AgentName, type DiffView, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
@@ -104,6 +104,13 @@ export function registerSettingsIpc(agents: AgentsInUse, pickAgent: (name: Agent
     if (managerAgent === null || typeof managerAgent === 'string') patch.managerAgent = managerAgent;
     if (typeof syncModel === 'string') patch.syncModel = syncModel;
     agents.saveAgentSetting(agentOf(name), patch);
+  });
+  ipcMain.handle(IPC.setTerminalText, (_e, raw: unknown) => {
+    const { fontSize, lineHeight } = (raw ?? {}) as Record<string, unknown>;
+    const patch: Partial<TerminalText> = {};
+    if (typeof fontSize === 'number') patch.fontSize = fontSize;
+    if (typeof lineHeight === 'number') patch.lineHeight = lineHeight;
+    agents.setTerminalText(patch);
   });
   ipcMain.handle(IPC.opencodeChoices, () => agents.opencodeChoices());
 }
