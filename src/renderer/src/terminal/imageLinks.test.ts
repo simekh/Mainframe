@@ -75,4 +75,14 @@ describe('imageLinkProvider', () => {
     expect(linksOn(term, 4)).toBeUndefined();
     expect(linksOn(term, 1)).toBeUndefined();
   });
+
+  it('finds a wrapped label far down a long line, reading only the rows near it', () => {
+    store.images = [{ number: 3, path: '/a.png', name: 'a.png' }];
+    const filler = { cells: [...'xxxxxxxx'], wrapped: true };
+    const term = termOf([{ cells: [...'xxxxxxxx'] }, filler, filler, filler, { cells: [...'xx[Image'], wrapped: true }, { cells: [...' #3]    '], wrapped: true }], 8);
+    const wrapped = [{ range: { start: { x: 3, y: 5 }, end: { x: 4, y: 6 } }, text: '[Image #3]' }];
+    expect(linksOn(term, 5)).toEqual(wrapped);
+    expect(linksOn(term, 6)).toEqual(wrapped);
+    expect(linksOn(term, 2)).toBeUndefined();
+  });
 });
