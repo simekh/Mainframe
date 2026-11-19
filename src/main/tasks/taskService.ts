@@ -108,6 +108,8 @@ export class TaskService {
   private readonly now: () => number;
   private readonly warn: (msg: string) => void;
   private readonly sessions = new Map<string, Session>();
+  /** The task of every session this run has started, kept past its exit: a stopped terminal still shows its images. */
+  private readonly sessionTasks = new Map<string, string>();
   /** Tasks a reopen or Continue is adding the worktree of: a reopen meanwhile would start a second session. */
   private readonly launching = new Set<string>();
   /** Tasks start has recorded but not yet given a session: off the board and the manager's list until then. */
@@ -439,9 +441,8 @@ export class TaskService {
     return ADAPTERS[agentOf(task)].began(this.taskDir(task.id), task);
   }
 
-  /** Moves a task that ended off the board, to `place`: its worktree has gone, and its images go with it. */
+  /** Moves a task that ended off the board, to `place`. */
   private moveOff(task: TaskRecord, place: 'finished' | 'discarded'): void {
-    this.clearImagesOf(task);
     task.place = place;
     task.endedAt = this.now();
     this.problems.delete(task.id);
@@ -610,10 +611,10 @@ export class TaskService {
     return [...this.sessions.keys()];
   }
 
-  /** Where the running session's task keeps the images its conversation received; null for a session it doesn't run. */
+  /** Where the session's task keeps the images its conversation received, running or not; null for a session of no task of this project. */
   imagesDir(sessionId: string): string | null {
-    const session = this.sessions.get(sessionId);
-    return session ? this.imagesFolder(session.taskId) : null;
+    const taskId = this.sessionTasks.get(sessionId);
+    return taskId === undefined ? null : this.imagesFolder(taskId);
   }
 
   launchSpec(sessionId: string): LaunchSpec {
@@ -855,6 +856,7 @@ export class TaskService {
   private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'launch' | 'startedWithPrompt' | 'continued'> & { resumePending: boolean }): void {
     const id = this.newId();
     this.sessions.set(id, { id, ...session, turn: new TurnTracker(resumePending) });
+    this.sessionTasks.set(id, session.taskId);
   }
 
   /**
@@ -884,7 +886,7 @@ export class TaskService {
     return join(this.taskDir(taskId), 'images');
   }
 
-  /** A new chat starts its count at #1, and the task's worktree going ends the task's work: either way its list goes. */
+  /** A new chat starts its count at #1: the last chat's list goes. */
   private clearImagesOf(task: TaskRecord): void {
     clearImages(this.imagesFolder(task.id));
   }

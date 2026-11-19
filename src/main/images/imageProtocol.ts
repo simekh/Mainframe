@@ -18,7 +18,11 @@ export function resolveImageRequest(url: string, lookup: (sessionId: string) => 
   return lookup(match[1])?.[Number(match[2])]?.path ?? null;
 }
 
-/** Serves the conversations' images to the page; a request for anything else, or a file that is gone, gets a 404. Call once the app is ready. */
+/**
+ * Serves the conversations' images to the page; a request for anything else, or a file that is gone, gets a 404. Call
+ * once the app is ready. The scheme stays unprivileged (no `supportFetchAPI`, `corsEnabled` or `bypassCSP`): that is
+ * what keeps the page from reading an image's bytes, so it can only show them.
+ */
 export function registerImageProtocol(lookup: (sessionId: string) => ImageEntry[] | null): void {
   protocol.handle(IMAGE_SCHEME, async (request) => {
     const path = resolveImageRequest(request.url, lookup);

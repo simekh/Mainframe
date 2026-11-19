@@ -62,6 +62,8 @@ export class ManagerService {
   private readonly dir: string;
   private readonly recordFile: string;
   private session: Session | null = null;
+  /** The agent of every session this run has started, kept past its exit: a stopped terminal still shows its images. */
+  private readonly sessionAgents = new Map<string, AgentName>();
   private starting: Promise<ManagerView> | null = null;
   private quitting = false;
 
@@ -77,9 +79,10 @@ export class ManagerService {
     return { session: s ? { id: s.id, startedWithPrompt: s.startedWithPrompt, agent: s.adapter.name } : null };
   }
 
-  /** Where the running session's chat keeps the images it received: one folder per agent, as each agent has its own chat. */
+  /** Where the session's chat keeps the images it received, running or not: one folder per agent, as each agent has its own chat. */
   imagesDir(sessionId: string): string | null {
-    return this.session?.id === sessionId ? this.imagesFolder(this.session.adapter.name) : null;
+    const agent = this.sessionAgents.get(sessionId);
+    return agent === undefined ? null : this.imagesFolder(agent);
   }
 
   private imagesFolder(agent: AgentName): string {
@@ -144,6 +147,7 @@ export class ManagerService {
     // A new chat counts its images from #1: the last chat's list goes.
     if (chat === null) clearImages(this.imagesFolder(name));
     this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn), adapter, resumed: chat !== null, reported: false };
+    this.sessionAgents.set(this.session.id, name);
     const view = this.view();
     this.deps.onChange(view);
     return view;

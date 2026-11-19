@@ -3144,10 +3144,14 @@ describe("a task's images", () => {
     return dir;
   };
 
-  it("are kept in the task's folder, found by its running session", async () => {
+  it("are kept in the task's folder, found by its session while it runs and once it has exited", async () => {
     const t = setup();
     const view = await t.service.start(NEW_TASK);
-    expect(t.service.imagesDir(view.session!.id)).toBe(join(t.taskDir(view.id), 'images'));
+    const dir = join(t.taskDir(view.id), 'images');
+    expect(t.service.imagesDir(view.session!.id)).toBe(dir);
+    // The stopped terminal stays on screen, with its labels and the strip.
+    t.service.onSessionExit(view.session!.id);
+    expect(t.service.imagesDir(view.session!.id)).toBe(dir);
     expect(t.service.imagesDir('no-such-session')).toBeNull();
   });
 
@@ -3198,7 +3202,7 @@ describe("a task's images", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it('removing the worktree clears them: a round that finishes the task', async () => {
+  it('removing the worktree keeps them: a round that finishes the task, and a Continue that resumes its chat', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     const dir = withImages(t, view.id);
@@ -3206,15 +3210,21 @@ describe("a task's images", () => {
 
     await t.service.checkRound();
     expect(t.service.list()[0].place).toBe('finished');
-    expect(existsSync(dir)).toBe(false);
+    expect(existsSync(join(dir, 'images.json'))).toBe(true);
+
+    // The chat carries on, and so do its numbers.
+    const continued = await t.service.continueTask(view.id);
+    expect(continued.session).not.toBeNull();
+    expect(existsSync(join(dir, 'images.json'))).toBe(true);
+    expect(t.service.imagesDir(continued.session!.id)).toBe(dir);
   });
 
-  it('removing the worktree clears them: a discard', async () => {
+  it('removing the worktree keeps them: a discard', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     const dir = withImages(t, view.id);
 
     await t.service.discard(view.id);
-    expect(existsSync(dir)).toBe(false);
+    expect(existsSync(join(dir, 'images.json'))).toBe(true);
   });
 });

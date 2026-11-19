@@ -28,7 +28,8 @@ export function readImages(dir: string): ImageEntry[] {
 
 /**
  * Adds the images to the conversation's list and returns the whole list. A pasted image (a file in `pasteDir`) moves
- * into `dir`, so it stays once the paste folder is emptied; a dropped file is listed where it is.
+ * into `dir`, so it stays once the paste folder is emptied; a dropped file is listed where it is. One that can't be
+ * moved is warned of and left out; the others are still listed.
  */
 export function recordImages(dir: string, added: { path: string; number: number | null }[], pasteDir: string): ImageEntry[] {
   mkdirSync(dir, { recursive: true });
@@ -37,7 +38,11 @@ export function recordImages(dir: string, added: { path: string; number: number 
     const name = basename(path);
     const inPaste = relative(resolve(pasteDir), resolve(path));
     const pasted = inPaste !== '' && !inPaste.startsWith('..') && !isAbsolute(inPaste);
-    images.push({ number, path: pasted ? moveInto(dir, path) : path, name });
+    try {
+      images.push({ number, path: pasted ? moveInto(dir, path) : path, name });
+    } catch (err) {
+      console.warn(`Could not move ${path} into ${dir} (${String(err)}); it is left out of the list`);
+    }
   }
   writeJsonAtomic(join(dir, LIST_FILE), images);
   return images;

@@ -601,6 +601,8 @@ it("the view's session names its agent, and its images are kept per agent in the
   expect(t.service.imagesDir(view.session!.id)).toBe(join(t.dir, 'images', 'claude'));
   expect(t.service.imagesDir('no-such-session')).toBeNull();
   t.service.onSessionExit(view.session!.id);
+  // The stopped terminal stays on screen, with its labels and the strip.
+  expect(t.service.imagesDir(view.session!.id)).toBe(join(t.dir, 'images', 'claude'));
 
   t.use(OPENCODE);
   const oc = await t.service.start();

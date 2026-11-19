@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
 import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
@@ -47,9 +47,22 @@ export interface Project extends RegisteredProject {
   todo: TodoService;
 }
 
-/** The running session's list of images, from whichever open project runs it; null for a session none runs. */
+/**
+ * The folder of the session's conversation, running or ended, asked of each open project's tasks and manager; each
+ * answers only for its own sessions. Null for a session of no open project.
+ */
+function imagesDirOf(projects: ProjectRegistry<Project>, sessionId: string): string | null {
+  for (const { dir } of projects.list()) {
+    const project = projects.get(dir);
+    const found = project && (project.service.imagesDir(sessionId) ?? project.manager.imagesDir(sessionId));
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The session's list of images; null for a session of no open project. */
 export function imagesOf(projects: ProjectRegistry<Project>, sessionId: string): ImageEntry[] | null {
-  const dir = projects.ownerOf(sessionId)?.imagesDir(sessionId);
+  const dir = imagesDirOf(projects, sessionId);
   return dir ? readImages(dir) : null;
 }
 
@@ -57,7 +70,7 @@ export function imagesOf(projects: ProjectRegistry<Project>, sessionId: string):
 function addedImages(raw: unknown): { path: string; number: number | null }[] {
   const entries = Array.isArray(raw) ? raw.map((e) => (e ?? {}) as Record<string, unknown>) : null;
   const usable = (e: Record<string, unknown>) =>
-    typeof e.path === 'string' && e.path !== '' && (e.number === null || (Number.isInteger(e.number) && (e.number as number) > 0));
+    typeof e.path === 'string' && isAbsolute(e.path) && (e.number === null || (Number.isInteger(e.number) && (e.number as number) > 0));
   if (!entries || !entries.every(usable)) throw new Error("Those images can't be recorded");
   return entries.map((e) => ({ path: e.path as string, number: e.number as number | null }));
 }
@@ -284,7 +297,7 @@ export function registerIpc(
   ipcMain.handle(IPC.getImages, (_e, sessionId: unknown) => (typeof sessionId === 'string' && imagesOf(projects, sessionId)) || []);
   ipcMain.handle(IPC.recordImages, (_e, sessionId: unknown, raw: unknown) => {
     const added = addedImages(raw);
-    const dir = typeof sessionId === 'string' ? projects.ownerOf(sessionId)?.imagesDir(sessionId) : null;
+    const dir = typeof sessionId === 'string' ? imagesDirOf(projects, sessionId) : null;
     if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
     send(IPC.images, { sessionId, images: recordImages(dir, added, clipboardDeps.pasteDir) });
   });

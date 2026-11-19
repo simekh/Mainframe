@@ -52,6 +52,18 @@ it('a dropped file stays where it is', () => {
   expect(existsSync(beside)).toBe(true);
 });
 
+it("a pasted image that can't be moved is left out, with a warning, and the others are listed", () => {
+  const { root, pasteDir, dir, file } = setup();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const dropped = file(join(root, 'b.png'));
+
+  const images = recordImages(dir, [{ path: join(pasteDir, 'gone.png'), number: 1 }, { path: dropped, number: 2 }], pasteDir);
+
+  expect(images).toEqual([{ number: 2, path: dropped, name: 'b.png' }]);
+  expect(readImages(dir)).toEqual(images);
+  expect(warn).toHaveBeenCalledTimes(1);
+});
+
 it('entries append in order and survive a read', () => {
   const { root, pasteDir, dir, file } = setup();
   recordImages(dir, [{ path: file(join(pasteDir, 'a.png')), number: 1 }], pasteDir);

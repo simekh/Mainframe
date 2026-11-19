@@ -45,21 +45,30 @@ it("Settings' Find opens one picker at a time: a second click while it is open j
   expect(pickAgent).toHaveBeenCalledTimes(2);
 });
 
-it("recordImages takes only well-formed entries from the page, records them in the session's own list and sends that list", async () => {
+it("recordImages takes only well-formed entries from the page, records them in the session's own list, ended or running, and sends that list", async () => {
   const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const root = mkdtempSync(join(tmpdir(), 'mainframe-ipc-'));
   try {
     const sent: [string, unknown][] = [];
-    const owner = { imagesDir: (id: string) => (id === 's1' ? join(root, 'images') : null) };
-    const projects = { ownerOf: (id: string) => (id === 's1' ? owner : undefined) };
+    // Each project's owners answer only for their own sessions, running or ended; no session runs here.
+    const none = { imagesDir: () => null };
+    const open = {
+      a: { service: none, manager: none },
+      b: { service: { imagesDir: (id: string) => (id === 's1' ? join(root, 'images') : null) }, manager: none },
+    };
+    const projects = {
+      list: () => Object.keys(open).map((dir) => ({ dir })),
+      get: (dir: keyof typeof open) => open[dir],
+      ownerOf: () => undefined,
+    };
     registerIpc((c, p) => sent.push([c, p]), projects as never, async () => {}, {} as never, { pasteDir: join(root, 'paste') } as never, {} as never);
     const record = handlers.get(IPC.recordImages)!;
     const shot = join(root, 'shot.png');
     writeFileSync(shot, 'png');
 
-    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: '', number: null }], [{ path: shot }]]) {
+    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: '', number: null }], [{ path: 'shot.png', number: null }], [{ path: shot }]]) {
       expect(() => record({}, 's1', bad)).toThrow();
     }
     expect(() => record({}, 's9', [{ path: shot, number: 1 }])).toThrow();
