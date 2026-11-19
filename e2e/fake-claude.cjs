@@ -24,7 +24,9 @@ const versionCheck = args[0] === '--version';
 const promptInput = isCodex && args[0] === 'debug' && args[1] === 'prompt-input';
 // Codex's `mcp list --json`, which the sync asks before each run: not a launch, so nothing is recorded.
 const mcpList = isCodex && args[0] === 'mcp' && args[1] === 'list';
-const recorded = !versionCheck && !promptInput && !mcpList;
+// Codex's `debug models`, the New task box's model list: not a launch, so nothing is recorded; an empty catalog.
+const modelList = isCodex && args[0] === 'debug' && args[1] === 'models';
+const recorded = !versionCheck && !promptInput && !mcpList && !modelList;
 
 // As OpenCode or Codex, a launch also records the environment Mainframe sets for it in <pid>.env, written first:
 // the tests wait on <pid>.argv. That is every OPENCODE_ variable, and PWD, where `run` and `api` take their folder from;
@@ -43,6 +45,8 @@ if (versionCheck && isOpencode) {
   process.stdout.write(`codex-cli ${process.env.FAKE_CODEX_VERSION ?? '0.169.0'}\n`);
 } else if (promptInput) {
   promptInputItems();
+} else if (modelList) {
+  process.stdout.write('{"models":[]}');
 } else if (mcpList) {
   // What the test wrote in codex-mcp-list.json, else no server.
   const file = logDir && join(logDir, 'codex-mcp-list.json');

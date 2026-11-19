@@ -5,6 +5,7 @@ import { commandHeld, commandName } from '../keys';
 import { useProject } from '../projects/projectContext';
 import { loadSettings, settingsView } from '../settings/settingsStore';
 import { startTask } from '../tasksStore';
+import { effortsFor, keptEffort, SWITCH_HELP } from './modelPick';
 import { newTaskAgents } from './newTaskAgents';
 import StartCheckWarning, { aheadOf } from './StartCheckWarning';
 
@@ -39,6 +40,29 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
         return null;
       }),
   );
+  // Asked afresh for each agent; a failed list is logged and leaves Default only.
+  const [choices] = createResource(agent, (name) =>
+    window.mainframe.taskModelChoices(name).catch((err: unknown) => {
+      console.error('[new task] model list failed', err);
+      return { models: [], defaultEfforts: [] };
+    }),
+  );
+  // Read only once the list for the agent on screen is in, so nothing is offered or sent from the last agent's list.
+  const ready = () => (choices.state === 'ready' ? choices() : undefined);
+  // Back to Default when the agent changes: the last agent's picks mean nothing to this one.
+  const [model, setModel] = createSignal<string>();
+  const [effortPicked, setEffortPicked] = createSignal<string>();
+  const efforts = () => effortsFor(ready(), model());
+  const effort = () => keptEffort(efforts(), effortPicked());
+  function pickAgent(name: AgentName): void {
+    setPicked(name);
+    setModel(undefined);
+    setEffortPicked(undefined);
+  }
+  function pickModel(id: string | undefined): void {
+    setModel(id);
+    setEffortPicked(keptEffort(effortsFor(ready(), id), effortPicked()));
+  }
   const [copied, setCopied] = createSignal(false);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(copiedTimer));
@@ -66,7 +90,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
     setStarting(true);
     setError(null);
     try {
-      await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions(), agent: agent() });
+      await startTask(project.dir, { title: title(), description: description(), noQuestions: noQuestions(), agent: agent(), model: model(), effort: effort() });
       dialog.close();
     } catch (err) {
       setError(errorMessage(err));
@@ -145,7 +169,7 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
                       name="nt-agent"
                       data-testid={`new-task-agent-${name}`}
                       checked={agent() === name}
-                      onChange={() => setPicked(name)}
+                      onChange={() => pickAgent(name)}
                     />
                     {AGENT_NAMES[name]}
                   </label>
@@ -161,6 +185,59 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
             </p>
           )}
         </For>
+        <Show when={agent()}>
+          {(name) => (
+            <div class="nt-model">
+              <div class="nt-model-picks">
+                <div class="field">
+                  <label for="nt-model">Model</label>
+                  <select
+                    id="nt-model"
+                    class="nt-select"
+                    data-testid="new-task-model"
+                    onChange={(e) => pickModel(e.currentTarget.value || undefined)}
+                  >
+                    <option value="" selected={model() === undefined}>
+                      Default
+                    </option>
+                    <For each={ready()?.models}>
+                      {(m) => (
+                        <option value={m.id} selected={model() === m.id}>
+                          {m.name}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </div>
+                <Show when={efforts().length > 0}>
+                  <div class="field">
+                    <label for="nt-effort">Effort</label>
+                    <select
+                      id="nt-effort"
+                      class="nt-select"
+                      data-testid="new-task-effort"
+                      onChange={(e) => setEffortPicked(e.currentTarget.value || undefined)}
+                    >
+                      <option value="" selected={effort() === undefined}>
+                        Default
+                      </option>
+                      <For each={efforts()}>
+                        {(level) => (
+                          <option value={level} selected={effort() === level}>
+                            {level}
+                          </option>
+                        )}
+                      </For>
+                    </select>
+                  </div>
+                </Show>
+              </div>
+              <p class="nt-hint" data-testid="new-task-model-help">
+                {SWITCH_HELP[name()]}
+              </p>
+            </div>
+          )}
+        </Show>
         <Show when={agent() === 'codex' && !codexNote.loading && codexNote()}>
           {(note) => (
             <div class="nt-codex-note" data-testid="new-task-codex-note">

@@ -3387,6 +3387,40 @@ kbd {
   accent-color: var(--accent);
 }
 
+/* Model and Effort side by side under the agent, each half the row so Model keeps its width when Effort
+   is hidden, then the quiet line on how to switch later. */
+.nt-model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nt-model-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.nt-select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  margin: 0;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  font: 14px var(--font-ui);
+  accent-color: var(--accent);
+}
+
+.nt-select:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 /* Quiet notes under the agent choice: why an agent isn't offered, or what Codex needs first. */
 .nt-hint {
   margin: 0;

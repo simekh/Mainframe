@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+New: New Task can start a task on a chosen model and effort.
 New: Settings can make the terminal text larger and give it more line height.
 
 ## 0.1.1 · 18 Nov 2026
