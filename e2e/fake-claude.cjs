@@ -161,7 +161,8 @@ function raw() {
 /**
  * Takes a pasted image as Claude Code does: asks for bracketed paste, and for each existing `.png` or `.jpg` path in a
  * bracketed paste prints `[Image #N]`, counting from 1. Escaped paths (quoted on Windows) are read back as escapePath
- * wrote them. Prints `$ ` first, as the tests wait for a prompt.
+ * wrote them. Prints `$ ` first, as the tests wait for a prompt. With FAKE_CLAUDE_WRAP_LABELS, each label starts four
+ * columns from the right edge, so the terminal wraps it onto the next row.
  */
 function labelImages() {
   let count = 0;
@@ -174,7 +175,10 @@ function labelImages() {
       const words = process.platform === 'win32' ? m[1].match(/"[^"]*"|\S+/g) : m[1].match(/(?:\\.|[^\s\\])+/g);
       for (const word of words ?? []) {
         const path = process.platform === 'win32' ? word.replace(/^"|"$/g, '') : word.replace(/\\(.)/g, '$1');
-        if (/\.(png|jpg)$/i.test(path) && existsSync(path)) process.stdout.write(`[Image #${++count}]\r\n`);
+        if (/\.(png|jpg)$/i.test(path) && existsSync(path)) {
+          const pad = process.env.FAKE_CLAUDE_WRAP_LABELS ? `\r${' '.repeat(process.stdout.columns - 4)}` : '';
+          process.stdout.write(`${pad}[Image #${++count}]\r\n`);
+        }
       }
     }
   });
