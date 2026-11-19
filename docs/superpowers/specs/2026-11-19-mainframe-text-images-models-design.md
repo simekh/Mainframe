@@ -163,15 +163,18 @@ plain text boxes (he'd need exact model names).
   `supported_reasoning_levels`. Passed as `-m` and the effort `-c` key (checked against Codex's docs). If the catalog
   can't be read or parsed, both pickers offer only Default.
 - **OpenCode:** models from the list Mainframe already reads for the Todo sync; efforts are the chosen model's
-  variants, if the list has them (otherwise no Effort picker). Passed as `-m provider/model#variant`.
+  variants, if the list has them (otherwise no Effort picker). The interactive `opencode` has no `-m`, so the pick goes
+  in `OPENCODE_CONFIG_CONTENT` as `model: { providerID, model, variant }`, added to any the user set (OpenCode's TUI
+  drops a variant given in the `provider/model#variant` string; a variant the user saved for that model in OpenCode wins).
 - Changing the model resets Effort to Default when the old pick isn't offered for the new model.
 - The lists are asked for when the dialog opens or the agent changes. While they load, and when they fail, the
   pickers show Default only; a failure is logged, and doesn't block Start.
 - The picks are saved on the task and passed again when it is reopened or continued, as the task's starting
   choice. A switch made inside the session (`/model`) lasts until the session ends; Reopen starts on the dialog's
-  pick again. Before a Codex or OpenCode reopen, a saved model the agent no longer lists is dropped to Default (with
-  a logged warning), so a retired model can't leave a task that won't reopen. If the list can't be read at that
-  moment, the pick is passed as saved. *(A call made while writing this design, not the owner's.)*
+  pick again. Before a Codex or OpenCode reopen, a saved model the agent no longer lists is left off that launch, which
+  runs on Default (with a logged warning), so a retired model can't leave a task that won't reopen; an effort the model
+  no longer offers is left off the same way. The task keeps its pick, which applies again if the model is listed again.
+  If the list can't be read at that moment, or takes over 5 s, the pick is passed as saved. *(A call made while writing this design, not the owner's.)*
 - **Help line** under the pickers, per agent: how to switch in a running session (Claude Code: `/model` and
   `/effort`; Codex and OpenCode: their commands, checked against their current docs), and that a reopen starts on
   the pick made here.
