@@ -49,8 +49,8 @@ export function unchanged(entry: ImageEntry): boolean {
 
 /**
  * Adds the images to the conversation's list and returns the whole list. A pasted image (a file in `pasteDir`) is copied
- * into `dir`, so it stays once the paste folder is emptied; copied, not moved: the pasted file is
- * left as the agent was given it. A dropped file is listed where it is. One that can't be copied or read is warned of and
+ * into `dir`, so it stays once the paste folder is emptied; copied, not moved, so the agent's file stays as it was
+ * given. A dropped file is listed where it is. One that can't be copied or read is warned of and
  * left out; the others are still listed. A list that is there but can't be used is left as it is, and nothing is recorded.
  */
 export function recordImages(dir: string, added: { path: string; number: number }[], pasteDir: string): ImageEntry[] {

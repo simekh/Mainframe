@@ -11,13 +11,13 @@ const MANAGER_TERMINAL = '[data-testid=manager-column] .terminal';
 type Where = { selector: string; taskId?: string };
 
 /**
- * Moves onto the terminal's `text` from the row below; with `click`, then clicks it with the system's link key held (Cmd
- * on the Mac, Ctrl on Windows and Linux). Whether the terminal had marked a link there.
+ * Moves onto the terminal's `text` from the row below, then clicks it with the system's link key held (Cmd on the Mac,
+ * Ctrl on Windows and Linux). Whether the terminal had marked a link there.
  */
-function pointAt(page: Page, where: Where, text: string, click: boolean): Promise<boolean> {
+function linkClick(page: Page, where: Where, text: string): Promise<boolean> {
   const held = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
   return page.evaluate(
-    ([{ selector, taskId }, wanted, keys, click]) => {
+    ([{ selector, taskId }, wanted, keys]) => {
       const e2e = window.__mainframeE2E;
       const screenEl = document.querySelector(`${selector} .xterm-screen`)!;
       const lines = (taskId ? e2e.screenText(taskId) : e2e.managerScreen()).split('\n');
@@ -34,20 +34,17 @@ function pointAt(page: Page, where: Where, text: string, click: boolean): Promis
       fire('mousemove', size.rows - 1, 0);
       fire('mousemove', row, col);
       const hovered = screenEl.classList.contains('xterm-cursor-pointer');
-      if (click) {
-        fire('mousedown', row, col);
-        fire('mouseup', row, col);
-      }
+      fire('mousedown', row, col);
+      fire('mouseup', row, col);
       return hovered;
     },
-    [where, text, held, click] as const,
+    [where, text, held] as const,
   );
 }
 
-/** Cmd+clicks the label (Ctrl+click on Windows and Linux) once it is a link: its image is listed. */
+/** Cmd+clicks the label (Ctrl+click on Windows and Linux) until it is a link, once its image is listed: a click on it then. */
 async function openLabel(page: Page, where: Where, text: string): Promise<void> {
-  await expect.poll(() => pointAt(page, where, text, false)).toBe(true);
-  expect(await pointAt(page, where, text, true)).toBe(true);
+  await expect.poll(() => linkClick(page, where, text)).toBe(true);
 }
 
 /** Starts a task whose agent labels images, and drops PNGs with these names on it, in order, each labelled. */

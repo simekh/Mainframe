@@ -349,6 +349,7 @@ test("an image for an agent whose label gives no number is pasted, and not recor
   const a = await startTask(page, 'Task', '', 'codex');
   await dropFile(page, pngFile(), TASK_TERMINAL);
   await expect.poll(() => screen(page, a)).toContain('shot.png');
+  // Time for a record sent with the paste to reach main.
   await page.waitForTimeout(1000);
   expect(await images(page, a)).toEqual([]);
   await app.close();

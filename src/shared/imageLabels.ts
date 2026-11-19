@@ -2,7 +2,7 @@ import type { AgentName } from './types';
 
 /**
  * The label each agent shows for an image it took, with the number in the first group; null where the label's number
- * doesn't name one image of the conversation, so its images get no number. Checked by pasting images into each agent:
+ * doesn't name one image of the conversation, so its images aren't listed: no label could open them. Checked by pasting images into each agent:
  * Claude Code 2.1.328 shows `[Image #1]` and counts on across the conversation. OpenCode 2.2.7 shows `[Image 1]` but
  * starts again at 1 in each message, and Codex 0.169.0 (not run here: it needs signing in) does the same in its source.
  */
