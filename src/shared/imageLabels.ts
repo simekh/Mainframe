@@ -22,7 +22,11 @@ export const IMAGE_EXTENSIONS: Record<AgentName, readonly string[]> = {
   codex: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
 };
 
-/** The numbers of the labels in the text, in the order they show. */
+/**
+ * The numbers of the labels in the text, in the order they show. It matches with a fresh copy of `label`, so the
+ * position a `g` regex keeps never shifts it. Callers must not use `.test` or `.exec` on the shared `IMAGE_LABEL` regexes.
+ */
 export function labelNumbers(text: string, label: RegExp): number[] {
-  return [...text.matchAll(label)].map((m) => Number(m[1]));
+  const all = new RegExp(label.source, label.flags.includes('g') ? label.flags : `${label.flags}g`);
+  return [...text.matchAll(all)].map((m) => Number(m[1]));
 }

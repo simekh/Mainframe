@@ -38,7 +38,7 @@ async function readFilePath(items: Items): Promise<string | null> {
 /**
  * What a paste into a terminal should insert, in order: a file copied in Finder becomes its path
  * (reading text would give only the basename), an image is saved as its own PNG and becomes that
- * path, text stays text.
+ * path, text stays text. `failed`: the clipboard couldn't be read, which isn't the same as empty.
  */
 export async function resolveClipboardPaste(
   clipboard: ClipboardReader,
@@ -60,7 +60,7 @@ export async function resolveClipboardPaste(
     return { kind: 'empty' };
   } catch (err) {
     console.error('[clipboard] resolveClipboardPaste failed:', err);
-    return { kind: 'empty' };
+    return { kind: 'failed' };
   }
 }
 

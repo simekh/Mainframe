@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, it, expect } from 'vitest';
+import { afterEach, it, expect, vi } from 'vitest';
 import { clearPasteFolder, resolveClipboardPaste } from './clipboard';
 
 const cleanup: string[] = [];
@@ -88,4 +88,12 @@ it('each image is saved to its own PNG', async () => {
 it('text stays text and nothing is empty', async () => {
   expect(await resolveClipboardPaste(board({ text: 'hej' }), write, nextPath)).toEqual({ kind: 'text', text: 'hej' });
   expect(await resolveClipboardPaste(board({}), write, nextPath)).toEqual({ kind: 'empty' });
+});
+
+it("a clipboard that can't be read is a failure, not an empty one: Ctrl+V then sends nothing to the agent", async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const broken = { read: () => Promise.reject(new Error('busy')), readText: () => Promise.resolve('') };
+  expect(await resolveClipboardPaste(broken, write, nextPath)).toEqual({ kind: 'failed' });
+  expect(error).toHaveBeenCalledTimes(1);
+  error.mockRestore();
 });

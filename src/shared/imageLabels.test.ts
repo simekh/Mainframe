@@ -8,3 +8,10 @@ it("reads the numbers of Claude Code's labels, in the order they show", () => {
 it('text without labels gives none', () => {
   expect(labelNumbers('❯ an image, see Image #3 and [Image]', IMAGE_LABEL.claude!)).toEqual([]);
 });
+
+it('reads from the start whatever position the regex was left at, and takes one without the g flag', () => {
+  const label = /\[Image #(\d+)\]/g;
+  label.lastIndex = 5;
+  expect(labelNumbers('[Image #1] [Image #2]', label)).toEqual([1, 2]);
+  expect(labelNumbers('[Image #1] [Image #2]', /\[Image #(\d+)\]/)).toEqual([1, 2]);
+});

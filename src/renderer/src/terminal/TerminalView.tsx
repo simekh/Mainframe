@@ -15,7 +15,7 @@ import { settingsView } from '../settings/settingsStore';
 import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
-import { newLabelNumbers } from './imageWatch';
+import { createImageWatch } from './imageWatch';
 import { InputBatcher } from './inputBatcher';
 import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
@@ -35,8 +35,6 @@ const OUTPUT_FLUSH_FALLBACK_MS = 50;
 const WEBGL_DETACH_DELAY_MS = 1000;
 const SUGGESTION_SCAN_INTERVAL_MS = 250;
 const SUGGESTION_SCAN_ROWS = 24;
-const IMAGE_WATCH_INTERVAL_MS = 100;
-const IMAGE_WATCH_TRIES = 30;
 
 /** The earlier of the next animation frame and a fallback timer: frames can stop in a background window. */
 function scheduleFrame(flush: () => void): () => void {
@@ -320,7 +318,8 @@ export default function TerminalView(props: {
         .resolvePaste()
         .then((paste) => {
           if (paste.kind === 'file' || paste.kind === 'image') return pastePaths([paste.path]);
-          if (orKey) term.input('\x16', true);
+          if (paste.kind === 'failed') console.warn('[terminal] the clipboard could not be read; nothing pasted');
+          else if (orKey) term.input('\x16', true);
           else if (paste.kind === 'text') term.paste(paste.text);
         })
         .catch((err: unknown) => console.warn('[terminal] paste failed', err));
@@ -332,40 +331,24 @@ export default function TerminalView(props: {
     };
 
     // A pasted or dropped file the agent takes as an image goes in the conversation's list. With a
-    // label the agent numbers it by, it goes in once a label above every one known before the paste
-    // shows, with that number; with none in 3 s (the paste went into a question, or the agent didn't
-    // take the file) it doesn't. A paste while one is watched joins its watch, so two never take the
-    // same label. An agent without such a label has its images listed at once, with no number.
+    // label the agent numbers it by, only once that label shows, with its number (imageWatch has the
+    // rules); a paste with no label (it went into a question, or the agent didn't take the file) isn't
+    // listed. An agent without such a label has its images listed at once, with no number.
     const label = IMAGE_LABEL[agent];
     const takesAsImage = (path: string) => IMAGE_EXTENSIONS[agent].includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
     const record = (added: { path: string; number: number | null }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
-    const shownLabels = (label: RegExp) => labelNumbers(bottomLines(term.rows).join('\n'), label);
-    let watch: { before: number[]; paths: string[]; tries: number; timer: ReturnType<typeof setTimeout> } | undefined;
-    const watchLabels = (label: RegExp) => {
-      const w = watch!;
-      const numbers = newLabelNumbers(w.before, shownLabels(label), w.paths.length);
-      if (numbers || ++w.tries >= IMAGE_WATCH_TRIES) {
-        watch = undefined;
-        if (numbers) record(w.paths.map((path, i) => ({ path, number: numbers[i] })));
-      } else w.timer = setTimeout(() => watchLabels(label), IMAGE_WATCH_INTERVAL_MS);
-    };
+    const imageWatch = label && createImageWatch(() => labelNumbers(bottomLines(term.rows).join('\n'), label), record);
     /** Pastes the paths, each escaped or quoted as one word, and lists the images among them. */
     const pastePaths = async (paths: string[]) => {
       if (exited) return;
       const images = paths.filter(takesAsImage);
-      if (images.length > 0 && label) {
+      if (images.length > 0 && imageWatch) {
         // The numbers already listed are known before the paste too, also the ones scrolled off. A list that can't be
         // read means no watch: a label could then seem new.
-        const listed = watch ? [] : await api.getImages(id).then((l) => l.flatMap((e) => e.number ?? []), () => null);
-        if (watch) {
-          watch.paths.push(...images);
-          watch.tries = 0;
-        } else if (listed) {
-          const before = [...listed, ...shownLabels(label)];
-          watch = { before, paths: images, tries: 0, timer: setTimeout(() => watchLabels(label), IMAGE_WATCH_INTERVAL_MS) };
-        }
+        const listed = imageWatch.joinable() ? [] : await api.getImages(id).then((l) => l.flatMap((e) => e.number ?? []), () => null);
+        if (listed) imageWatch.paste(images, listed);
       }
       term.paste(paths.map((path) => escapePath(path, api.platform)).join(' '));
       if (images.length > 0 && !label) record(images.map((path) => ({ path, number: null })));
@@ -470,7 +453,7 @@ export default function TerminalView(props: {
       if (resizeTimer !== undefined) clearTimeout(resizeTimer);
       if (detachTimer !== undefined) clearTimeout(detachTimer);
       clearTimeout(scanTimer);
-      clearTimeout(watch?.timer);
+      if (imageWatch) imageWatch.dispose();
       setSuggesting(id, false);
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);

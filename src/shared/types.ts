@@ -21,7 +21,8 @@ export interface ProgramStatus extends Omit<ProgramReport, 'state'> {
 export type ClipboardPaste =
   | { kind: 'file' | 'image'; path: string }
   | { kind: 'text'; text: string }
-  | { kind: 'empty' };
+  | { kind: 'empty' }
+  | { kind: 'failed' };
 
 export interface RendererConfig {
   inputBatchMs: number;
