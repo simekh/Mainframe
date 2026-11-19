@@ -7,7 +7,7 @@ const LIST_FILE = 'images.json';
 
 const isEntry = (e: unknown): e is ImageEntry => {
   const { number, path, name, size, mtimeMs } = (e ?? {}) as Record<string, unknown>;
-  return (number === null || typeof number === 'number') && typeof path === 'string' && typeof name === 'string' &&
+  return typeof number === 'number' && typeof path === 'string' && typeof name === 'string' &&
     (size === undefined || typeof size === 'number') && (mtimeMs === undefined || typeof mtimeMs === 'number');
 };
 
@@ -49,11 +49,11 @@ export function unchanged(entry: ImageEntry): boolean {
 
 /**
  * Adds the images to the conversation's list and returns the whole list. A pasted image (a file in `pasteDir`) is copied
- * into `dir`, so it stays once the paste folder is emptied; copied, not moved, as Codex reads an attached image's file
- * only when its message is sent. A dropped file is listed where it is. One that can't be copied or read is warned of and
+ * into `dir`, so it stays once the paste folder is emptied; copied, not moved: the pasted file is
+ * left as the agent was given it. A dropped file is listed where it is. One that can't be copied or read is warned of and
  * left out; the others are still listed. A list that is there but can't be used is left as it is, and nothing is recorded.
  */
-export function recordImages(dir: string, added: { path: string; number: number | null }[], pasteDir: string): ImageEntry[] {
+export function recordImages(dir: string, added: { path: string; number: number }[], pasteDir: string): ImageEntry[] {
   mkdirSync(dir, { recursive: true });
   const images = loadImages(dir);
   if (!images) {
@@ -62,8 +62,10 @@ export function recordImages(dir: string, added: { path: string; number: number 
   }
   for (const { path, number } of added) {
     const name = basename(path);
+    const inPaste = relative(resolve(pasteDir), resolve(path));
+    const pasted = inPaste !== '' && !inPaste.startsWith('..') && !isAbsolute(inPaste);
     try {
-      const listed = isInside(pasteDir, path) ? copyInto(dir, path) : path;
+      const listed = pasted ? copyInto(dir, path) : path;
       const { size, mtimeMs } = statSync(listed);
       images.push({ number, path: listed, name, size, mtimeMs });
     } catch (err) {
@@ -74,30 +76,11 @@ export function recordImages(dir: string, added: { path: string; number: number 
   return images;
 }
 
-/** Whether `path` is somewhere inside the folder `dir`. */
-function isInside(dir: string, path: string): boolean {
-  const rel = relative(resolve(dir), resolve(path));
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
 /** Copies the file into `dir`; returns the copy's path. */
 function copyInto(dir: string, path: string): string {
   const to = join(dir, basename(path));
   copyFileSync(path, to);
   return to;
-}
-
-/**
- * Takes the images with these numbers off the conversation's list and returns the whole list. A copy in `dir` goes with
- * its entry; a dropped file, listed where it is, stays. A list that can't be used is left as it is.
- */
-export function forgetImages(dir: string, numbers: number[]): ImageEntry[] {
-  const images = loadImages(dir);
-  if (!images) return [];
-  const kept = images.filter((e) => e.number === null || !numbers.includes(e.number));
-  for (const { path } of images.filter((e) => !kept.includes(e))) if (isInside(dir, path)) rmSync(path, { force: true });
-  writeJsonAtomic(join(dir, LIST_FILE), kept);
-  return kept;
 }
 
 /** Removes the conversation's images and their list. Never throws: a folder that can't go is warned of and left. */

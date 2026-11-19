@@ -229,11 +229,10 @@ export interface ManagerView {
 }
 
 /**
- * One image a conversation received through Mainframe. `number`: the agent's label number; null when the agent has no
- * known label. `size` and `mtimeMs`: its file's when it was recorded (a pasted one's copy); missing from older lists.
+ * One image a conversation received through Mainframe. `number`: the agent's label number. `size` and `mtimeMs`: its file's when it was recorded (a pasted one's copy); missing from older lists.
  */
 export interface ImageEntry {
-  number: number | null;
+  number: number;
   path: string;
   name: string;
   size?: number;

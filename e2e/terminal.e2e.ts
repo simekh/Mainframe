@@ -344,12 +344,13 @@ test("an image the agent doesn't label isn't recorded", async () => {
   await app.close();
 });
 
-test("an image for an agent whose label gives no number is recorded at once, without one", async () => {
+test("an image for an agent whose label gives no number is pasted, and not recorded: no label could open it", async () => {
   const { app, page } = await launchWithCodex(repo());
   const a = await startTask(page, 'Task', '', 'codex');
-  const path = pngFile();
-  await dropFile(page, path, TASK_TERMINAL);
-  await expect.poll(() => images(page, a)).toMatchObject([{ number: null, path, name: 'shot.png' }]);
+  await dropFile(page, pngFile(), TASK_TERMINAL);
+  await expect.poll(() => screen(page, a)).toContain('shot.png');
+  await page.waitForTimeout(1000);
+  expect(await images(page, a)).toEqual([]);
   await app.close();
 });
 

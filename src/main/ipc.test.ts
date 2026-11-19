@@ -45,7 +45,7 @@ it("Settings' Find opens one picker at a time: a second click while it is open j
   expect(pickAgent).toHaveBeenCalledTimes(2);
 });
 
-it("recordImages and forgetImages take only well-formed input from the page, change the session's own list, ended or running, and send that list", async () => {
+it("recordImages takes only well-formed entries from the page, records them in the session's own list, ended or running, and sends that list", async () => {
   const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -68,7 +68,7 @@ it("recordImages and forgetImages take only well-formed input from the page, cha
     const shot = join(root, 'shot.png');
     writeFileSync(shot, 'png');
 
-    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: '', number: null }], [{ path: 'shot.png', number: null }], [{ path: shot }]]) {
+    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: shot, number: null }], [{ path: shot, number: 0 }], [{ path: '', number: 1 }], [{ path: 'shot.png', number: 1 }], [{ path: shot }]]) {
       expect(() => record({}, 's1', bad)).toThrow();
     }
     expect(() => record({}, 's9', [{ path: shot, number: 1 }])).toThrow();
@@ -79,12 +79,6 @@ it("recordImages and forgetImages take only well-formed input from the page, cha
     expect(sent).toEqual([[IPC.images, { sessionId: 's1', images }]]);
     expect(handlers.get(IPC.getImages)!({}, 's1')).toEqual(images);
     expect(handlers.get(IPC.getImages)!({}, 's9')).toEqual([]);
-
-    const forget = handlers.get(IPC.forgetImages)!;
-    for (const bad of [null, 1, ['1'], [1.5]]) expect(() => forget({}, 's1', bad)).toThrow();
-    expect(() => forget({}, 's9', [1])).toThrow();
-    forget({}, 's1', [1]);
-    expect(sent.at(-1)).toEqual([IPC.images, { sessionId: 's1', images: [] }]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

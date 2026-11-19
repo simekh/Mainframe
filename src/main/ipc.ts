@@ -4,7 +4,7 @@ import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
 import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
-import { forgetImages, readImages, recordImages, unchanged } from './images/imageLog';
+import { readImages, recordImages, unchanged } from './images/imageLog';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
@@ -67,12 +67,12 @@ export function imagesOf(projects: ProjectRegistry<Project>, sessionId: string):
 }
 
 /** The images the page says the agent took, each as its type; anything else is refused. */
-function addedImages(raw: unknown): { path: string; number: number | null }[] {
+function addedImages(raw: unknown): { path: string; number: number }[] {
   const entries = Array.isArray(raw) ? raw.map((e) => (e ?? {}) as Record<string, unknown>) : null;
   const usable = (e: Record<string, unknown>) =>
-    typeof e.path === 'string' && isAbsolute(e.path) && (e.number === null || (Number.isInteger(e.number) && (e.number as number) > 0));
+    typeof e.path === 'string' && isAbsolute(e.path) && Number.isInteger(e.number) && (e.number as number) > 0;
   if (!entries || !entries.every(usable)) throw new Error("Those images can't be recorded");
-  return entries.map((e) => ({ path: e.path as string, number: e.number as number | null }));
+  return entries.map((e) => ({ path: e.path as string, number: e.number as number }));
 }
 
 /**
@@ -300,12 +300,6 @@ export function registerIpc(
     const dir = typeof sessionId === 'string' ? imagesDirOf(projects, sessionId) : null;
     if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
     send(IPC.images, { sessionId, images: recordImages(dir, added, clipboardDeps.pasteDir) });
-  });
-  ipcMain.handle(IPC.forgetImages, (_e, sessionId: unknown, numbers: unknown) => {
-    if (!Array.isArray(numbers) || !numbers.every(Number.isInteger)) throw new Error('Expected a list of image numbers');
-    const dir = typeof sessionId === 'string' ? imagesDirOf(projects, sessionId) : null;
-    if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
-    send(IPC.images, { sessionId, images: forgetImages(dir, numbers) });
   });
   ipcMain.handle(IPC.showImageInFolder, (_e, sessionId: unknown, index: unknown) => {
     if (typeof sessionId !== 'string' || !Number.isInteger(index)) return;

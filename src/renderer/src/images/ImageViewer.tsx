@@ -6,8 +6,6 @@ const SHOW_IN: Partial<Record<NodeJS.Platform, string>> = { darwin: 'Show in Fin
 const showInLabel = SHOW_IN[window.mainframe.platform] ?? 'Show in Folder';
 
 /** "#3"; nothing for an agent whose images have no number. */
-const numberOf = (n: number | null) => (n === null ? '' : `#${n}`);
-
 /**
  * One image of a session at full size, over the whole window: mounted once, shown while `viewerState()` names an image.
  * Left and right step through the session's images, Esc closes. A file that is gone, which the image's load tells, shows
@@ -17,7 +15,7 @@ export default function ImageViewer() {
   let dialog!: HTMLDialogElement;
   let closeButton: HTMLButtonElement | undefined;
   // Each opening and step loads the file afresh under a fragment of its own, which the protocol drops: the page keeps an
-  // image it has loaded by its whole URL, so a file deleted since its thumbnail loaded would still show.
+  // image it has loaded by its whole URL, so a file deleted since it was last shown would still show.
   let opens = 0;
   const opening = createMemo(() => (viewerState(), ++opens));
   const shown = () => {
@@ -88,9 +86,7 @@ export default function ImageViewer() {
           <div class="iv">
             <header class="iv-bar">
               <h2 id="image-viewer-title" class="iv-title">
-                <Show when={s().entry.number !== null}>
-                  <b data-testid="image-viewer-number">{numberOf(s().entry.number)}</b>
-                </Show>
+                <b data-testid="image-viewer-number">#{s().entry.number}</b>
                 <span class="iv-name" title={s().entry.name}>
                   {s().entry.name}
                 </span>
@@ -132,7 +128,7 @@ export default function ImageViewer() {
               <Show when={neighbour(-1)} fallback={<span />}>
                 {(prev) => (
                   <button type="button" class="iv-step" aria-label="Previous image" onClick={() => step(-1)}>
-                    ← {numberOf(prev().number)}
+                    ← #{prev().number}
                   </button>
                 )}
               </Show>
@@ -140,7 +136,7 @@ export default function ImageViewer() {
               <Show when={neighbour(1)} fallback={<span />}>
                 {(next) => (
                   <button type="button" class="iv-step" aria-label="Next image" onClick={() => step(1)}>
-                    {numberOf(next().number)} →
+                    #{next().number} →
                   </button>
                 )}
               </Show>

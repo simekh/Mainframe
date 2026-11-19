@@ -18,6 +18,11 @@ under the terminal, kept across restarts, with "Not available" when a file has g
 the New Task dialog only (no live picker on a running session), with a help line per agent saying how to switch in a
 running session.
 
+**Changed at acceptance (2026-11-19):** the owner dropped the strip of thumbnails: too much code and too many ways to go
+wrong for what it adds. A Cmd+click (Ctrl+click on Windows and Linux) on an `[Image #N]` label opening the full-size
+view is enough. So only images with a numbered label are listed, and an agent without one (Codex, OpenCode) gets no
+image list. The sections below that describe the strip, or images without a number, no longer apply.
+
 ## Goals
 
 - Terminal text size and line height are settings, apply to every open terminal at once, and are kept.

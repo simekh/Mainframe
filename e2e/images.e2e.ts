@@ -1,5 +1,5 @@
 import { rmSync } from 'node:fs';
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { cleanUp, launchApp } from './launch';
 import { card, dropFile, managerScreen, pngFile, TASK_TERMINAL, projectPane, railRow, repo, screen, startIn, startTask } from './tasks';
 
@@ -7,19 +7,21 @@ test.afterEach(cleanUp);
 
 const MANAGER_TERMINAL = '[data-testid=manager-column] .terminal';
 
-const thumbs = (scope: Page | Locator) => scope.getByTestId('image-thumb');
+/** A terminal on the page: its element, and the task it shows, or none for the manager's. */
+type Where = { selector: string; taskId?: string };
 
 /**
- * Moves onto the shown task terminal's `text` from the row below, then clicks it with the system's link key held (Cmd on
- * the Mac, Ctrl on Windows and Linux); whether the terminal had marked a link there.
+ * Moves onto the terminal's `text` from the row below; with `click`, then clicks it with the system's link key held (Cmd
+ * on the Mac, Ctrl on Windows and Linux). Whether the terminal had marked a link there.
  */
-function linkClick(page: Page, taskId: string, text: string): Promise<boolean> {
+function pointAt(page: Page, where: Where, text: string, click: boolean): Promise<boolean> {
   const held = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
   return page.evaluate(
-    ([id, wanted, keys, sel]) => {
-      const screenEl = document.querySelector(`${sel} .xterm-screen`)!;
-      const lines = window.__mainframeE2E.screenText(id).split('\n');
-      const size = window.__mainframeE2E.termSize(id)!;
+    ([{ selector, taskId }, wanted, keys, click]) => {
+      const e2e = window.__mainframeE2E;
+      const screenEl = document.querySelector(`${selector} .xterm-screen`)!;
+      const lines = (taskId ? e2e.screenText(taskId) : e2e.managerScreen()).split('\n');
+      const size = (taskId ? e2e.termSize(taskId) : e2e.managerTermSize())!;
       const box = screenEl.getBoundingClientRect();
       const row = lines.findIndex((line) => line.includes(wanted));
       if (row < 0) throw new Error(`"${wanted}" is not on the screen`);
@@ -32,51 +34,41 @@ function linkClick(page: Page, taskId: string, text: string): Promise<boolean> {
       fire('mousemove', size.rows - 1, 0);
       fire('mousemove', row, col);
       const hovered = screenEl.classList.contains('xterm-cursor-pointer');
-      fire('mousedown', row, col);
-      fire('mouseup', row, col);
+      if (click) {
+        fire('mousedown', row, col);
+        fire('mouseup', row, col);
+      }
       return hovered;
     },
-    [taskId, text, held, TASK_TERMINAL] as const,
+    [where, text, held, click] as const,
   );
 }
 
-/** Starts a task whose agent labels images, and drops PNGs with these names on it, in order. */
+/** Cmd+clicks the label (Ctrl+click on Windows and Linux) once it is a link: its image is listed. */
+async function openLabel(page: Page, where: Where, text: string): Promise<void> {
+  await expect.poll(() => pointAt(page, where, text, false)).toBe(true);
+  expect(await pointAt(page, where, text, true)).toBe(true);
+}
+
+/** Starts a task whose agent labels images, and drops PNGs with these names on it, in order, each labelled. */
 async function taskWithImages(page: Page, names = ['first.png', 'second.png']) {
   const a = await startTask(page);
   const paths = names.map((name) => pngFile(name));
   for (const [i, path] of paths.entries()) {
     await dropFile(page, path, TASK_TERMINAL);
     await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
-    await expect(thumbs(page.locator('.session'))).toHaveCount(i + 1);
   }
   return { a, paths };
 }
 
-test('dropped images show in the strip under the terminal, numbered', async () => {
-  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  const a = await startTask(page);
-  await expect(page.getByTestId('image-strip')).toHaveCount(0);
-  for (const [i, path] of [pngFile('first.png'), pngFile('second.png')].entries()) {
-    await dropFile(page, path, TASK_TERMINAL);
-    await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
-  }
-  const strip = page.locator('.session').getByTestId('image-strip');
-  await expect(thumbs(strip)).toHaveText(['#1', '#2']);
-  // Under the terminal's well, and both loaded.
-  const [well, stripBox] = await Promise.all([page.locator('.session .well').boundingBox(), strip.boundingBox()]);
-  expect(stripBox!.y).toBeGreaterThanOrEqual(well!.y + well!.height);
-  await expect(strip.locator('img')).toHaveCount(2);
-  await expect.poll(() => strip.locator('img').evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).naturalWidth))).toEqual([1, 1]);
-  await app.close();
-});
-
-test('Cmd+click on [Image #2] opens it full size; arrows step, Esc closes', async () => {
+test('Cmd+click on [Image #2] opens it full size; arrows step, Esc and the close button close it', async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
   const { a } = await taskWithImages(page);
+  const where = { selector: TASK_TERMINAL, taskId: a };
   const viewer = page.getByTestId('image-viewer');
   await expect(viewer).toBeHidden();
 
-  expect(await linkClick(page, a, '[Image #2]')).toBe(true);
+  await openLabel(page, where, '[Image #2]');
   await expect(viewer).toBeVisible();
   await expect(viewer.getByTestId('image-viewer-number')).toHaveText('#2');
   await expect(viewer).toContainText('second.png');
@@ -95,8 +87,7 @@ test('Cmd+click on [Image #2] opens it full size; arrows step, Esc closes', asyn
   await page.keyboard.press('Escape');
   await expect(viewer).toBeHidden();
 
-  // A thumbnail opens it too, and the close button closes it.
-  await thumbs(page.locator('.session')).first().click();
+  await openLabel(page, where, '[Image #1]');
   await expect(viewer.getByTestId('image-viewer-number')).toHaveText('#1');
   await viewer.getByRole('button', { name: 'Close' }).click();
   await expect(viewer).toBeHidden();
@@ -105,14 +96,15 @@ test('Cmd+click on [Image #2] opens it full size; arrows step, Esc closes', asyn
 
 test('an image whose file is gone shows Not available', async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  const { paths } = await taskWithImages(page, ['first.png', 'second.png', 'third.png']);
+  const { a, paths } = await taskWithImages(page, ['first.png', 'second.png', 'third.png']);
+  const where = { selector: TASK_TERMINAL, taskId: a };
   const viewer = page.getByTestId('image-viewer');
-  // Shown once while the file is there: the page has it loaded, thumbnail and full size.
-  await thumbs(page.locator('.session')).nth(1).click();
+  // Shown once while the file is there: the page has it loaded.
+  await openLabel(page, where, '[Image #2]');
   await expect(viewer).toContainText('1 × 1');
   await page.keyboard.press('Escape');
   rmSync(paths[1]);
-  await thumbs(page.locator('.session')).nth(1).click();
+  await openLabel(page, where, '[Image #2]');
   await expect(viewer.getByTestId('image-viewer-number')).toHaveText('#2');
   await expect(viewer).toContainText('Not available');
   await expect(viewer).toContainText('The file has been moved or deleted.');
@@ -134,86 +126,44 @@ test('an image whose file is gone shows Not available', async () => {
   await app.close();
 });
 
-test("the manager's terminal has its own strip", async () => {
+test("the manager's image labels open its own images", async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
   await expect.poll(() => managerScreen(page)).toContain('$');
-  const column = page.getByTestId('manager-column');
-  await expect(column.getByTestId('image-strip')).toHaveCount(0);
   await dropFile(page, pngFile('plan.png'), MANAGER_TERMINAL);
   await expect.poll(() => managerScreen(page)).toContain('[Image #1]');
-  await expect(thumbs(column)).toHaveText(['#1']);
-  // The task's panel has none of it.
+  // The task's terminal has none of it.
   const a = await startTask(page);
   expect(await screen(page, a)).not.toContain('[Image #1]');
-  await expect(page.locator('.session').getByTestId('image-strip')).toHaveCount(0);
-  await thumbs(column).click();
+  await openLabel(page, { selector: MANAGER_TERMINAL }, '[Image #1]');
   await expect(page.getByTestId('image-viewer')).toContainText('plan.png');
   await app.close();
 });
 
-test('two projects side by side each show their own images', async () => {
+test("two projects side by side each open their own images", async () => {
   const [acme, globex] = [repo(), repo()];
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' }, [acme, globex]);
   await railRow(page, globex).hover();
   await railRow(page, globex).getByTestId('rail-beside').click();
   await expect(projectPane(page, globex)).toHaveAttribute('data-shown', 'true');
 
-  const drops = [
-    { dir: acme, name: 'acme.png' },
-    { dir: globex, name: 'globex-1.png' },
-    { dir: globex, name: 'globex-2.png' },
-  ];
   const tasks = { [acme]: await startIn(page, acme, 'Acme'), [globex]: await startIn(page, globex, 'Globex') };
   for (const dir of [acme, globex]) await card(page, tasks[dir]).click();
-  for (const { dir, name } of drops) {
-    await dropFile(page, pngFile(name), `[data-testid=project-pane][data-project=${JSON.stringify(dir)}] ${TASK_TERMINAL}`);
+  const where = (dir: string) => ({ selector: `[data-testid=project-pane][data-project=${JSON.stringify(dir)}] ${TASK_TERMINAL}`, taskId: tasks[dir] });
+  const drops = [
+    { dir: acme, name: 'acme.png', label: '[Image #1]' },
+    { dir: globex, name: 'globex-1.png', label: '[Image #1]' },
+    { dir: globex, name: 'globex-2.png', label: '[Image #2]' },
+  ];
+  for (const { dir, name, label } of drops) {
+    await dropFile(page, pngFile(name), where(dir).selector);
+    await expect.poll(() => screen(page, tasks[dir])).toContain(label);
   }
-  await expect(thumbs(projectPane(page, acme).locator('.session'))).toHaveText(['#1']);
-  await expect(thumbs(projectPane(page, globex).locator('.session'))).toHaveText(['#1', '#2']);
-
-  await thumbs(projectPane(page, globex).locator('.session')).nth(1).click();
-  await expect(page.getByTestId('image-viewer')).toContainText('globex-2.png');
-  await app.close();
-});
-
-test('an image taken off the prompt with Backspace leaves the strip, and the full-size view closes once none is left', async () => {
-  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  // The session's id, from its first list, to type into it while the full-size view holds the keyboard.
-  const session = page.evaluate(() => new Promise<string>((resolve) => window.mainframe.onImages((e) => resolve(e.sessionId))));
-  const { a } = await taskWithImages(page);
-  const strip = page.locator('.session').getByTestId('image-strip');
-
-  await page.locator(TASK_TERMINAL).click();
-  await page.keyboard.press('Backspace');
-  await expect.poll(() => screen(page, a)).not.toContain('[Image #2]');
-  await expect(thumbs(strip)).toHaveText(['#1']);
-
-  // The next image takes #3, and its thumbnail shows it, not the picture #2 had at the same place.
-  await dropFile(page, pngFile('third.png', 2), TASK_TERMINAL);
-  await expect(thumbs(strip)).toHaveText(['#1', '#3']);
-  await expect.poll(() => strip.locator('img').evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).naturalWidth))).toEqual([1, 2]);
 
   const viewer = page.getByTestId('image-viewer');
-  await thumbs(strip).first().click();
-  await expect(viewer).toBeVisible();
-  const id = await session;
-  await page.evaluate((sid) => window.mainframe.write(sid, '\x7f'), id);
-  await expect(thumbs(strip)).toHaveText(['#1']);
-  await expect(viewer).toBeVisible();
-  await page.evaluate((sid) => window.mainframe.write(sid, '\x7f'), id);
-  await expect(viewer).toBeHidden();
-  await expect(page.getByTestId('image-strip')).toHaveCount(0);
-  await app.close();
-});
-
-test('a sent image stays once its label has scrolled off the screen', async () => {
-  const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  const { a } = await taskWithImages(page, ['first.png']);
-  await page.locator(TASK_TERMINAL).click();
-  await page.keyboard.press('Enter');
-  await expect.poll(() => screen(page, a)).toContain('output 99');
-  // Longer than an unsent image's label may be gone.
-  await page.waitForTimeout(2000);
-  await expect(thumbs(page.locator('.session'))).toHaveText(['#1']);
+  await openLabel(page, where(globex), '[Image #2]');
+  await expect(viewer).toContainText('globex-2.png');
+  await page.keyboard.press('Escape');
+  await openLabel(page, where(acme), '[Image #1]');
+  await expect(viewer).toContainText('acme.png');
   await app.close();
 });

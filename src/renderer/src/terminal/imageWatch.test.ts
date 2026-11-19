@@ -37,21 +37,15 @@ it('gives nothing until every pasted image has its label', () => {
 describe('the watch', () => {
   let screen: number[];
   let recorded: { path: string; number: number }[][];
-  let forgotten: number[][];
-  let removable: boolean;
   let watch: ReturnType<typeof createImageWatch>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     screen = [];
     recorded = [];
-    forgotten = [];
-    removable = false;
     watch = createImageWatch(
       () => screen,
       (added) => recorded.push(added),
-      (numbers) => forgotten.push(numbers),
-      () => removable,
     );
   });
 
@@ -117,83 +111,5 @@ describe('the watch', () => {
     screen = [2];
     vi.advanceTimersByTime(200);
     expect(recorded).toEqual([[{ path: '/c.png', number: 2 }]]);
-  });
-
-  describe('an image taken off the prompt before it is sent', () => {
-    /** #1 pasted and recorded while the agent waits for a message. */
-    const pasteOne = () => {
-      removable = true;
-      watch.paste(['/a.png'], []);
-      screen = [1];
-      vi.advanceTimersByTime(200);
-      expect(recorded).toEqual([[{ path: '/a.png', number: 1 }]]);
-    };
-
-    it('is forgotten once its label has been gone a second', () => {
-      pasteOne();
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(999);
-      expect(forgotten).toEqual([]);
-      vi.advanceTimersByTime(1);
-      expect(forgotten).toEqual([[1]]);
-    });
-
-    it('two labels that go at different times are each forgotten a second after their own', () => {
-      removable = true;
-      watch.paste(['/a.png', '/b.png'], []);
-      screen = [1, 2];
-      vi.advanceTimersByTime(200);
-      screen = [1];
-      watch.check();
-      vi.advanceTimersByTime(500);
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(500);
-      expect(forgotten).toEqual([[2]]);
-      vi.advanceTimersByTime(1000);
-      expect(forgotten).toEqual([[2], [1]]);
-    });
-
-    it('a label gone only for a moment, as in a repaint, keeps its image', () => {
-      pasteOne();
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(500);
-      screen = [1];
-      watch.check();
-      vi.advanceTimersByTime(2000);
-      expect(forgotten).toEqual([]);
-    });
-
-    it('once a turn begins, its image is kept even when the label scrolls off', () => {
-      pasteOne();
-      watch.settle();
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(2000);
-      expect(forgotten).toEqual([]);
-    });
-
-    it('one recorded while the agent was not waiting for a message is never forgotten', () => {
-      watch.paste(['/a.png'], []);
-      screen = [1];
-      vi.advanceTimersByTime(200);
-      removable = true;
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(2000);
-      expect(forgotten).toEqual([]);
-    });
-
-    it('comes back with its number when its label does, as a deleted placeholder can be put back', () => {
-      pasteOne();
-      screen = [];
-      watch.check();
-      vi.advanceTimersByTime(1000);
-      screen = [1];
-      watch.check();
-      expect(recorded).toEqual([[{ path: '/a.png', number: 1 }], [{ path: '/a.png', number: 1 }]]);
-    });
   });
 });
