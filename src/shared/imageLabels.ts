@@ -23,10 +23,14 @@ export const IMAGE_EXTENSIONS: Record<AgentName, readonly string[]> = {
 };
 
 /**
- * The numbers of the labels in the text, in the order they show. It matches with a fresh copy of `label`, so the
- * position a `g` regex keeps never shifts it. Callers must not use `.test` or `.exec` on the shared `IMAGE_LABEL` regexes.
+ * Where each label is in the text, in the order they show: its first index, the index after it, and its number. On a line
+ * whose characters stand one per column, those are columns. It matches with a fresh copy of `label`, so the position a
+ * `g` regex keeps never shifts it. Callers must not use `.test` or `.exec` on the shared `IMAGE_LABEL` regexes.
  */
-export function labelNumbers(text: string, label: RegExp): number[] {
+export function labelRanges(text: string, label: RegExp): { start: number; end: number; number: number }[] {
   const all = new RegExp(label.source, label.flags.includes('g') ? label.flags : `${label.flags}g`);
-  return [...text.matchAll(all)].map((m) => Number(m[1]));
+  return [...text.matchAll(all)].map((m) => ({ start: m.index, end: m.index + m[0].length, number: Number(m[1]) }));
 }
+
+/** The numbers of the labels in the text, in the order they show. */
+export const labelNumbers = (text: string, label: RegExp): number[] => labelRanges(text, label).map((r) => r.number);

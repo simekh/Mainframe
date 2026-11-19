@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 import { imageUrl } from '../../../shared/imageUrl';
 import { closeImage, imagesOf, openImage, stepIndex, viewerState } from './imagesStore';
 
@@ -15,8 +15,9 @@ const numberOf = (n: number | null) => (n === null ? '' : `#${n}`);
  */
 export default function ImageViewer() {
   let dialog!: HTMLDialogElement;
-  // Each opening and step loads the file afresh under a fragment of its own, which the protocol never sees: the page keeps
-  // an image it has loaded by its whole URL, so a file deleted since its thumbnail loaded would still show.
+  let closeButton: HTMLButtonElement | undefined;
+  // Each opening and step loads the file afresh under a fragment of its own, which the protocol drops: the page keeps an
+  // image it has loaded by its whole URL, so a file deleted since its thumbnail loaded would still show.
   let opens = 0;
   const opening = createMemo(() => (viewerState(), ++opens));
   const shown = () => {
@@ -36,8 +37,11 @@ export default function ImageViewer() {
   const gone = () => failed() === shown()?.url;
 
   createEffect(() => {
-    if (shown() && !dialog.open) dialog.showModal();
-    else if (!shown() && dialog.open) dialog.close();
+    if (shown() && !dialog.open) {
+      dialog.showModal();
+      // The close button is there whatever loads; Show in … comes and goes, and the focus would go with it.
+      closeButton?.focus();
+    } else if (!shown() && dialog.open) dialog.close();
   });
 
   const step = (delta: -1 | 1) => {
@@ -53,12 +57,15 @@ export default function ImageViewer() {
     const i = s.index + delta;
     return i >= 0 && i < s.count ? imagesOf(s.sessionId)[i] : null;
   };
+  // On the window, so the arrows work wherever the focus is while the view is open: a step button at an end goes.
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (dialog.open && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       e.preventDefault();
       step(e.key === 'ArrowLeft' ? -1 : 1);
     }
   };
+  window.addEventListener('keydown', onKeyDown);
+  onCleanup(() => window.removeEventListener('keydown', onKeyDown));
   const showInFolder = () => {
     const s = shown();
     if (s) window.mainframe.showImageInFolder(s.sessionId, s.index).catch((err: unknown) => console.warn('[images] could not show the file', err));
@@ -74,7 +81,6 @@ export default function ImageViewer() {
       onMouseDown={(e) => e.stopPropagation()}
       // A click on the dimmed window around the frame closes it, as Esc does.
       onClick={(e) => e.target === dialog && dialog.close()}
-      onKeyDown={onKeyDown}
       onClose={closeImage}
     >
       <Show when={shown()}>
@@ -90,12 +96,13 @@ export default function ImageViewer() {
                 </span>
                 <Show when={size()}>{(z) => <span class="iv-size">{`${z().width} × ${z().height}`}</span>}</Show>
               </h2>
-              <Show when={!gone()}>
+              {/* Only once the file has loaded: a missing one never shows it, not even until its load fails. */}
+              <Show when={size()}>
                 <button class="btn" type="button" onClick={showInFolder}>
                   {showInLabel}
                 </button>
               </Show>
-              <button class="iv-close" type="button" aria-label="Close" title="Close" onClick={() => dialog.close()}>
+              <button ref={closeButton} class="iv-close" type="button" aria-label="Close" title="Close" onClick={() => dialog.close()}>
                 <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
                   <path d="M3 3l6 6M9 3l-6 6" />
                 </svg>

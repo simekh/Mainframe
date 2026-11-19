@@ -64,10 +64,10 @@ function linkClick(page: Page, taskId: string, text: string): Promise<boolean> {
   );
 }
 
-/** Starts a task whose agent labels images, and drops two PNGs on it. */
-async function taskWithTwoImages(page: Page) {
+/** Starts a task whose agent labels images, and drops PNGs with these names on it, in order. */
+async function taskWithImages(page: Page, names = ['first.png', 'second.png']) {
   const a = await startTask(page);
-  const paths = [pngFile('first.png'), pngFile('second.png')];
+  const paths = names.map(pngFile);
   for (const [i, path] of paths.entries()) {
     await dropFile(page, path);
     await expect.poll(() => screen(page, a)).toContain(`[Image #${i + 1}]`);
@@ -96,7 +96,7 @@ test('dropped images show in the strip under the terminal, numbered', async () =
 
 test('Cmd+click on [Image #2] opens it full size; arrows step, Esc closes', async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  const { a } = await taskWithTwoImages(page);
+  const { a } = await taskWithImages(page);
   const viewer = page.getByTestId('image-viewer');
   await expect(viewer).toBeHidden();
 
@@ -129,7 +129,7 @@ test('Cmd+click on [Image #2] opens it full size; arrows step, Esc closes', asyn
 
 test('an image whose file is gone shows Not available', async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1' });
-  const { paths } = await taskWithTwoImages(page);
+  const { paths } = await taskWithImages(page, ['first.png', 'second.png', 'third.png']);
   const viewer = page.getByTestId('image-viewer');
   // Shown once while the file is there: the page has it loaded, thumbnail and full size.
   await thumbs(page.locator('.session')).nth(1).click();
@@ -142,6 +142,19 @@ test('an image whose file is gone shows Not available', async () => {
   await expect(viewer).toContainText('The file has been moved or deleted.');
   await expect(viewer).toContainText(paths[1]);
   await expect(viewer.getByRole('button', { name: /^Show in/ })).toHaveCount(0);
+  const number = viewer.getByTestId('image-viewer-number');
+
+  // The arrows still step from a missing image, onto a present one and back onto the missing one and past it.
+  await page.keyboard.press('ArrowLeft');
+  await expect(number).toHaveText('#1');
+  await expect(viewer).toContainText('1 × 1');
+  await page.keyboard.press('ArrowRight');
+  await expect(number).toHaveText('#2');
+  await expect(viewer).toContainText('Not available');
+  await page.keyboard.press('ArrowRight');
+  await expect(number).toHaveText('#3');
+  await expect(viewer).toContainText('1 × 1');
+  await expect(viewer.getByRole('button', { name: /^Show in/ })).toBeVisible();
   await app.close();
 });
 

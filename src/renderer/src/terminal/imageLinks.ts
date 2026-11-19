@@ -1,15 +1,7 @@
 import type { IBufferLine, ILinkProvider, Terminal } from '@xterm/xterm';
+import { labelRanges } from '../../../shared/imageLabels';
 import { imagesOf, openImage } from '../images/imagesStore';
 import { linkClickHeld } from '../keys';
-
-/**
- * Where each label is on a line whose characters stand one per column: its first column, the column after it (both from
- * 0), and its number. It matches with a fresh copy of `label`, so a shared `g` regex's position never shifts it.
- */
-export function labelRanges(line: string, label: RegExp): { start: number; end: number; number: number }[] {
-  const all = new RegExp(label.source, label.flags.includes('g') ? label.flags : `${label.flags}g`);
-  return [...line.matchAll(all)].map((m) => ({ start: m.index, end: m.index + m[0].length, number: Number(m[1]) }));
-}
 
 /**
  * The line with one character per column, so a string index is a column: a cell whose character isn't one UTF-16 unit

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { IMAGE_LABEL } from '../../../shared/imageLabels';
+import { IMAGE_LABEL, labelRanges } from '../../../shared/imageLabels';
 import { stepIndex } from '../images/imagesStore';
-import { labelRanges } from './imageLinks';
 
 describe('labelRanges', () => {
   it('gives the columns and number of each label on a line', () => {
