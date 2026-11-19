@@ -78,7 +78,8 @@ export default function ImageViewer() {
       onMouseDown={(e) => e.stopPropagation()}
       // A click on the dimmed window around the frame closes it, as Esc does.
       onClick={(e) => e.target === dialog && dialog.close()}
-      onClose={closeImage}
+      // The event comes a moment after the closing: an image opened since then stays open.
+      onClose={() => dialog.open || closeImage()}
     >
       <Show when={shown()}>
         {(s) => (

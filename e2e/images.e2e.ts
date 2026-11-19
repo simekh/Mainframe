@@ -12,9 +12,9 @@ type Where = { selector: string; taskId?: string };
 
 /**
  * Moves onto the terminal's `text` from the row below, then clicks it with the system's link key held (Cmd on the Mac,
- * Ctrl on Windows and Linux). Whether the terminal had marked a link there.
+ * Ctrl on Windows and Linux).
  */
-function linkClick(page: Page, where: Where, text: string): Promise<boolean> {
+function linkClick(page: Page, where: Where, text: string): Promise<void> {
   const held = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
   return page.evaluate(
     ([{ selector, taskId }, wanted, keys]) => {
@@ -33,18 +33,20 @@ function linkClick(page: Page, where: Where, text: string): Promise<boolean> {
         );
       fire('mousemove', size.rows - 1, 0);
       fire('mousemove', row, col);
-      const hovered = screenEl.classList.contains('xterm-cursor-pointer');
       fire('mousedown', row, col);
       fire('mouseup', row, col);
-      return hovered;
     },
     [where, text, held] as const,
   );
 }
 
-/** Cmd+clicks the label (Ctrl+click on Windows and Linux) until it is a link, once its image is listed: a click on it then. */
+/**
+ * Cmd+clicks the label (Ctrl+click on Windows and Linux) until the full-size view opens: the label is a link only once
+ * its image is listed, and xterm marks it a moment after the pointer moves onto it.
+ */
 async function openLabel(page: Page, where: Where, text: string): Promise<void> {
-  await expect.poll(() => linkClick(page, where, text)).toBe(true);
+  const viewer = page.getByTestId('image-viewer');
+  await expect.poll(async () => (await linkClick(page, where, text), viewer.isVisible())).toBe(true);
 }
 
 /** Starts a task whose agent labels images, and drops PNGs with these names on it, in order, each labelled. */
@@ -100,6 +102,8 @@ test('an image whose file is gone shows Not available', async () => {
   await openLabel(page, where, '[Image #2]');
   await expect(viewer).toContainText('1 × 1');
   await page.keyboard.press('Escape');
+  // The dialog closes a moment later: a click before then would land in the open one.
+  await expect(viewer).toBeHidden();
   rmSync(paths[1]);
   await openLabel(page, where, '[Image #2]');
   await expect(viewer.getByTestId('image-viewer-number')).toHaveText('#2');
@@ -160,6 +164,7 @@ test("two projects side by side each open their own images", async () => {
   await openLabel(page, where(globex), '[Image #2]');
   await expect(viewer).toContainText('globex-2.png');
   await page.keyboard.press('Escape');
+  await expect(viewer).toBeHidden();
   await openLabel(page, where(acme), '[Image #1]');
   await expect(viewer).toContainText('acme.png');
   await app.close();
