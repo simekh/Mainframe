@@ -51,6 +51,10 @@ function installE2eHooks(): void {
     taskIds: () => projectsStore.projects.flatMap((p) => tasksOf(p.dir).tasks.map((t) => t.id)),
     screenText: (taskId) => textOf(terminalOfTask(taskId)),
     termSize: (taskId) => sizeOf(terminalOfTask(taskId)),
+    termText: (taskId) => {
+      const options = terminalOfTask(taskId)?.options;
+      return options ? { fontSize: options.fontSize, lineHeight: options.lineHeight } : null;
+    },
     managerScreen: () => textOf(managerTerminal()),
     managerTermSize: () => sizeOf(managerTerminal()),
     select: (taskId, column, row, length) => terminalOfTask(taskId)?.select(column, row, length),

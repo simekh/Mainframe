@@ -1,5 +1,13 @@
 import { createEffect, createResource, createSignal, For, Index, Show } from 'solid-js';
-import { AGENT_NAMES, AGENT_ORDER, type AgentName, type SettingsView, type SyncModel } from '../../../shared/types';
+import {
+  AGENT_NAMES,
+  AGENT_ORDER,
+  type AgentName,
+  type SettingsView,
+  type SyncModel,
+  TERMINAL_TEXT_LIMITS,
+  type TerminalText,
+} from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { checkLine } from '../setup/setupCopy';
 import { checkNow, updateView, versionOf } from '../updates/updateStore';
@@ -155,6 +163,84 @@ function OpencodeSection(props: { view: SettingsView }) {
   );
 }
 
+/** − value +, a step at a time within its limits; the saved value shows until main sends the next. */
+function Stepper(props: {
+  id: string;
+  testId: string;
+  value: number;
+  limits: { min: number; max: number; step: number };
+  digits: number;
+  unit: string;
+  onStep: (next: number) => void;
+}) {
+  const go = (way: -1 | 1) => props.onStep(Number((props.value + way * props.limits.step).toFixed(props.digits)));
+  return (
+    <div class="settings-stepper" role="group" aria-labelledby={props.id} data-testid={props.testId}>
+      <button type="button" aria-label="Smaller" disabled={props.value <= props.limits.min} onClick={() => go(-1)}>
+        −
+      </button>
+      <output aria-live="polite">
+        {props.value.toFixed(props.digits)}
+        {props.unit}
+      </output>
+      <button type="button" aria-label="Larger" disabled={props.value >= props.limits.max} onClick={() => go(1)}>
+        +
+      </button>
+    </div>
+  );
+}
+
+/** The terminals' text size and line height, applied to every open terminal as it is saved. */
+function TerminalTextSection(props: { text: TerminalText }) {
+  const [error, setError] = createSignal<string | null>(null);
+  const save = (patch: Partial<TerminalText>) => {
+    setError(null);
+    window.mainframe.setTerminalText(patch).catch((err: unknown) => setError(errorMessage(err)));
+  };
+  return (
+    <section class="settings-section" aria-labelledby="settings-terminal-text">
+      <h3 id="settings-terminal-text" class="settings-title">
+        Terminal text
+      </h3>
+      <div class="settings-row">
+        <span class="settings-key" id="settings-font-size-label">
+          Size
+        </span>
+        <Stepper
+          id="settings-font-size-label"
+          testId="settings-font-size"
+          value={props.text.fontSize}
+          limits={TERMINAL_TEXT_LIMITS.fontSize}
+          digits={0}
+          unit=" px"
+          onStep={(fontSize) => save({ fontSize })}
+        />
+      </div>
+      <div class="settings-row">
+        <span class="settings-key" id="settings-line-height-label">
+          Line height
+        </span>
+        <Stepper
+          id="settings-line-height-label"
+          testId="settings-line-height"
+          value={props.text.lineHeight}
+          limits={TERMINAL_TEXT_LIMITS.lineHeight}
+          digits={1}
+          unit=""
+          onStep={(lineHeight) => save({ lineHeight })}
+        />
+      </div>
+      <Show when={error()}>
+        {(message) => (
+          <p class="settings-error" role="alert">
+            {message()}
+          </p>
+        )}
+      </Show>
+    </section>
+  );
+}
+
 /** Mainframe's own version, and Check for Updates…: the way in on Windows and Linux, which have no menu bar. */
 function MainframeSection() {
   const [checking, setChecking] = createSignal(false);
@@ -251,6 +337,7 @@ export default function SettingsDialog() {
             <Show when={view().agents.opencode.ticked && works(view(), 'opencode')}>
               <OpencodeSection view={view()} />
             </Show>
+            <TerminalTextSection text={view().terminalText} />
             <MainframeSection />
           </>
         )}

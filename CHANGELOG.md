@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+New: Settings can make the terminal text larger and give it more line height.
+
 ## 0.1.1 · 18 Nov 2026
 
 Fixed: A finished task's worktree is cleaned up even when its closed Claude Code session left the worktree locked.

@@ -6,10 +6,11 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
-import type { RendererConfig } from '../../../shared/types';
+import { type RendererConfig, TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { linkClickHeld } from '../keys';
 import { subscribePty } from '../ptyEvents';
+import { settingsView } from '../settings/settingsStore';
 import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
@@ -22,6 +23,7 @@ import { redrawAllTerminals, registerTerminal, unregisterTerminal } from './regi
 import { hasSuggestion } from './suggestion';
 import { createTerminalHttpLinkHandler } from './terminalLinks';
 import { BOLD_AND_LINK_COLORS, platformTerminalOptions, TERMINAL_OPTIONS } from './terminalOptions';
+import { terminalTextChanged } from './terminalText';
 import { createTermStyler } from './termStyle';
 import { recordSharedWebglContextLoss, WEBGL_REATTACH_DELAY_MS } from './webglLoss';
 
@@ -72,6 +74,7 @@ export default function TerminalView(props: {
     });
     const term = new Terminal({
       ...TERMINAL_OPTIONS,
+      ...(settingsView()?.terminalText ?? TERMINAL_TEXT_DEFAULT),
       ...platformTerminalOptions(api.platform, props.config.windowsBuild),
       linkHandler: { activate: openLink, allowNonHttpProtocols: false },
     });
@@ -371,6 +374,20 @@ export default function TerminalView(props: {
         navigator.clipboard.writeText(text).catch((err: unknown) => console.warn('[terminal] OSC 52 copy failed', err));
       },
     });
+
+    // A size or line height chosen in Settings: the terminal fits again to its new cells, which resizes its
+    // session, on screen or not.
+    createEffect(
+      on(
+        () => settingsView()?.terminalText,
+        (text) => {
+          if (!text || !terminalTextChanged(term, text)) return;
+          fitToContainer();
+          redrawAllTerminals();
+        },
+        { defer: true },
+      ),
+    );
 
     createEffect(
       on(

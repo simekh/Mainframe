@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { test, expect, type Page } from '@playwright/test';
+import { readSettings } from '../src/main/setup/settings';
 import { isProcessRunning } from '../src/main/testing/isProcessRunning';
 import { cleanUp, launchApp } from './launch';
-import { card, cardIn, fitSize, ids, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
+import { card, cardIn, firstSpawn, fitSize, ids, run, screen, sendLine, settled, startTask, styleOf, termSize } from './tasks';
 
 test.afterEach(cleanUp);
 
@@ -40,6 +41,46 @@ test('the terminal is measured in the bundled JetBrains Mono, loaded before it o
   expect(loaded).toBe(true);
   expect(cellHeight).toBeCloseTo(fontCellHeight, 1);
   await app.close();
+});
+
+/** The task's terminal's font size and line height, as xterm has them. */
+const termText = (page: Page, taskId: string) => page.evaluate((id) => window.__mainframeE2E.termText(id), taskId);
+
+/** Clicks the stepper's button `times` times, each once the value shows the step before. */
+async function step(page: Page, testId: string, label: 'Smaller' | 'Larger', values: string[]) {
+  const stepper = page.getByTestId(testId);
+  for (const value of values) {
+    await stepper.getByRole('button', { name: label }).click();
+    await expect(stepper).toContainText(value);
+  }
+}
+
+test('terminal text size and line height change from Settings without a restart', async () => {
+  const { app, page, dataDir } = await launchApp();
+  const a = await startTask(page);
+  const before = (await termSize(page, a))!;
+  expect(await termText(page, a)).toEqual({ fontSize: 13, lineHeight: 1 });
+
+  await page.getByTestId('settings-open').click();
+  await expect(page.getByTestId('settings-font-size')).toContainText('13 px');
+  await expect(page.getByTestId('settings-line-height')).toContainText('1.0');
+  await step(page, 'settings-font-size', 'Larger', ['14 px', '15 px', '16 px']);
+  await step(page, 'settings-line-height', 'Larger', ['1.1', '1.2', '1.3']);
+  await expect.poll(() => termText(page, a)).toEqual({ fontSize: 16, lineHeight: 1.3 });
+  await expect.poll(async () => (await termSize(page, a))!.rows).toBeLessThan(before.rows);
+
+  // The session itself was resized: its shell reports the terminal's new size.
+  await page.getByTestId('settings-close').click();
+  const size = (await termSize(page, a))!;
+  await run(page, 'stty size');
+  await expect.poll(() => screen(page, a)).toContain(`${size.rows} ${size.cols}`);
+  await app.close();
+
+  const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, undefined, { settings: readSettings(dataDir, () => {}) });
+  await expect.poll(() => termText(again.page, a)).toEqual({ fontSize: 16, lineHeight: 1.3 });
+  // Opened at it, not changed once open: its session started with the fewer rows the larger text gives.
+  expect((await firstSpawn(again.page, a))!.rows).toBeLessThan(before.rows);
+  await again.app.close();
 });
 
 test('an emoji takes two columns, as Claude Code counts it, so its tables line up', async () => {

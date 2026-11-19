@@ -9,6 +9,8 @@ declare global {
       /** The task's terminal buffer, its running session's or the last one's. */
       screenText(taskId: string): string;
       termSize(taskId: string): { cols: number; rows: number } | null;
+      /** The task's terminal's font size and line height. */
+      termText(taskId: string): { fontSize: number | undefined; lineHeight: number | undefined } | null;
       /** The manager's terminal buffer, its running session's or the last one's: the project's, or the first open one's. */
       managerScreen(): string;
       managerTermSize(): { cols: number; rows: number } | null;
