@@ -15,6 +15,7 @@ import { settingsView } from '../settings/settingsStore';
 import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
+import { imageLinkProvider } from './imageLinks';
 import { createImageWatch } from './imageWatch';
 import { InputBatcher } from './inputBatcher';
 import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
@@ -340,6 +341,8 @@ export default function TerminalView(props: {
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
     const imageWatch = label && createImageWatch(() => labelNumbers(bottomLines(term.rows).join('\n'), label), record);
+    // The labels link to their images, for an agent whose label numbers them.
+    const imageLinks = label && term.registerLinkProvider(imageLinkProvider(term, id, label, api.platform));
     /** Pastes the paths, each escaped or quoted as one word, and lists the images among them. */
     const pastePaths = async (paths: string[]) => {
       if (exited) return;
@@ -454,6 +457,7 @@ export default function TerminalView(props: {
       if (detachTimer !== undefined) clearTimeout(detachTimer);
       clearTimeout(scanTimer);
       if (imageWatch) imageWatch.dispose();
+      if (imageLinks) imageLinks.dispose();
       setSuggesting(id, false);
       linkScreen.removeEventListener('mousedown', keepLinkClickHere);
       container.removeEventListener('paste', onPaste, true);

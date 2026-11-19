@@ -7,6 +7,7 @@ import { stripShows, type PanelState } from '../panel/panelPrefs';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import ResumeIcon from '../panel/ResumeIcon';
+import ImageStrip from '../images/ImageStrip';
 import { useProject } from '../projects/projectContext';
 import TerminalView from '../terminal/TerminalView';
 import { MANAGER_WIDTH } from './managerPrefs';
@@ -132,6 +133,7 @@ export default function ManagerColumn(props: {
             )}
           </Show>
         </div>
+        <Show when={managerOf(project.dir)?.managerTerminal}>{(sessionId) => <ImageStrip sessionId={sessionId()} />}</Show>
 
         <Show when={managerOf(project.dir)?.manager.session === null}>
           <div class="manager-stopped">

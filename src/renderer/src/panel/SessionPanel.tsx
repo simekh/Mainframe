@@ -7,6 +7,7 @@ import StatusGlyph from '../board/StatusGlyph';
 import { errorMessage } from '../bridgeError';
 import { openLinkLogged } from '../openLink';
 import { useProject } from '../projects/projectContext';
+import ImageStrip from '../images/ImageStrip';
 import { closeTask, reopenTask, sessionOf, tasksOf, terminalOf } from '../tasksStore';
 import TerminalView from '../terminal/TerminalView';
 import ChangedFiles from './ChangedFiles';
@@ -154,6 +155,8 @@ export default function SessionPanel(props: { task: TaskView | undefined; config
           <p class="paused-note">Paused. Reopen continues this chat.</p>
         </Show>
       </div>
+      {/* The selected task's terminal's images, an ended session's too while its terminal shows. */}
+      <Show when={props.task && terminalOf(project.dir, props.task.id)}>{(sessionId) => <ImageStrip sessionId={sessionId()} />}</Show>
     </div>
   );
 }

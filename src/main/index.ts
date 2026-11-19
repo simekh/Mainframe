@@ -16,7 +16,7 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { IPC } from '../shared/ipc';
-import { AGENT_NAMES, type AgentName, type ProgramCheck } from '../shared/types';
+import { AGENT_NAMES, type AgentName, type ImageEntry, type ProgramCheck } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { copyMenuItems, editMenuItems } from './contextMenu';
@@ -427,7 +427,7 @@ async function start(
     diffWindow,
   );
   // The page's <img> loads a conversation's images by session and index; only listed ones are served.
-  registerImageProtocol((sessionId) => imagesOf(projects, sessionId));
+  imageLookup = (sessionId) => imagesOf(projects, sessionId);
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
@@ -446,6 +446,9 @@ function failStart(err: unknown): void {
   app.quit();
 }
 
+/** The lists the image protocol serves from: none until `start` has the projects. */
+let imageLookup: (sessionId: string) => ImageEntry[] | null = () => null;
+
 /**
  * Start-up, in order: the window opens first, so the setup can show in it; the setup then checks
  * git and the agents and starts the projects once git and an agent work, asking for what it can't find. A quit
@@ -460,6 +463,8 @@ async function launch(config: AppConfig): Promise<void> {
   // menu, so no menu bar: Open Project… is the project list's button there.
   const zoom = windowZoom(config.dataDir);
   Menu.setApplicationMenu(onMac ? buildMenu({ zoom: zoom.step }) : null);
+  // Before the window: a page takes the schemes it can load from when it loads, so one handled later is unknown to it.
+  registerImageProtocol((sessionId) => imageLookup(sessionId));
   const win = createWindow(config.e2e, zoom);
   // Mainframe was opened again on this data folder: that one has quit, and this one comes forward.
   app.on('second-instance', () => {

@@ -10,10 +10,12 @@ const IMAGE_URL = new RegExp(`^${IMAGE_SCHEME}://([A-Za-z0-9-]+)/(\\d+)$`);
 
 /**
  * The file to serve for an image URL: the path of the entry at its index in the session's list, never a path taken
- * from the URL. Null for a URL of another shape, an unknown session, or an index past the list.
+ * from the URL. Null for a URL of another shape, an unknown session, or an index past the list. A fragment is left out:
+ * the page adds one to load an image afresh, which it would otherwise show from what it loaded before.
  */
 export function resolveImageRequest(url: string, lookup: (sessionId: string) => ImageEntry[] | null): string | null {
-  const match = IMAGE_URL.exec(url);
+  const hash = url.indexOf('#');
+  const match = IMAGE_URL.exec(hash < 0 ? url : url.slice(0, hash));
   if (!match) return null;
   return lookup(match[1])?.[Number(match[2])]?.path ?? null;
 }

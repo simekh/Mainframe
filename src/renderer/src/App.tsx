@@ -2,6 +2,7 @@ import type { Terminal } from '@xterm/xterm';
 import { createEffect, createResource, createSignal, Match, onCleanup, Show, Switch } from 'solid-js';
 import { AGENT_NAMES } from '../../shared/types';
 import { installBoardShortcuts } from './board/shortcuts';
+import ImageViewer from './images/ImageViewer';
 import { managerOf } from './manager/managerStore';
 import Panes from './projects/Panes';
 import ProjectRail from './projects/ProjectRail';
@@ -152,6 +153,7 @@ export default function App() {
           </Show>
           <SettingsDialog />
           <UpdateDialog />
+          <ImageViewer />
           <Show when={fallback()}>
             {(view) => (
               <div class="default-fallback" data-testid="default-fallback" role="status">

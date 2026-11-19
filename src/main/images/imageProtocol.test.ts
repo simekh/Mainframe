@@ -29,6 +29,8 @@ const lookup = (sessionId: string) => LISTS[sessionId] ?? null;
 it("a listed index is served from its entry's path", () => {
   expect(resolveImageRequest(imageUrl('s1', 0), lookup)).toBe('/data/tasks/t1/images/a.png');
   expect(resolveImageRequest(imageUrl('s1', 1), lookup)).toBe('/Users/x/Desktop/b.png');
+  // The page's fragment, which loads it afresh, is left out.
+  expect(resolveImageRequest(`${imageUrl('s1', 0)}#7`, lookup)).toBe('/data/tasks/t1/images/a.png');
 });
 
 it('anything else is served nothing', () => {
@@ -41,6 +43,7 @@ it('anything else is served nothing', () => {
     expect(resolveImageRequest(url, lookup)).toBeNull();
   }
   expect(resolveImageRequest('file:///etc/passwd', lookup)).toBeNull();
+  expect(resolveImageRequest('mainframe-image://s1/0?x#7', lookup)).toBeNull();
 });
 
 it("the protocol serves a listed entry's file, and a 404 for an unlisted index or a listed file that is gone", async () => {
