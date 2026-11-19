@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, For, Index, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Index, on, Show } from 'solid-js';
 import {
   AGENT_NAMES,
   AGENT_ORDER,
@@ -163,7 +163,10 @@ function OpencodeSection(props: { view: SettingsView }) {
   );
 }
 
-/** − value +, a step at a time within its limits; the saved value shows until main sends the next. */
+/**
+ * − value +, a step at a time within its limits. A step shows at once and the next one goes on from it, also before
+ * main has sent the saved value back; a step that couldn't be saved shows the saved value again.
+ */
 function Stepper(props: {
   id: string;
   testId: string;
@@ -171,19 +174,26 @@ function Stepper(props: {
   limits: { min: number; max: number; step: number };
   digits: number;
   unit: string;
-  onStep: (next: number) => void;
+  onStep: (next: number) => Promise<void>;
 }) {
-  const go = (way: -1 | 1) => props.onStep(Number((props.value + way * props.limits.step).toFixed(props.digits)));
+  const [pending, setPending] = createSignal<number>();
+  const value = () => pending() ?? props.value;
+  createEffect(on(() => props.value, (saved) => saved === pending() && setPending(undefined)));
+  const go = (way: -1 | 1) => {
+    const next = Number((value() + way * props.limits.step).toFixed(props.digits));
+    setPending(next);
+    props.onStep(next).catch(() => setPending(undefined));
+  };
   return (
     <div class="settings-stepper" role="group" aria-labelledby={props.id} data-testid={props.testId}>
-      <button type="button" aria-label="Smaller" disabled={props.value <= props.limits.min} onClick={() => go(-1)}>
+      <button type="button" aria-label="Smaller" disabled={value() <= props.limits.min} onClick={() => go(-1)}>
         −
       </button>
       <output aria-live="polite">
-        {props.value.toFixed(props.digits)}
+        {value().toFixed(props.digits)}
         {props.unit}
       </output>
-      <button type="button" aria-label="Larger" disabled={props.value >= props.limits.max} onClick={() => go(1)}>
+      <button type="button" aria-label="Larger" disabled={value() >= props.limits.max} onClick={() => go(1)}>
         +
       </button>
     </div>
@@ -195,7 +205,10 @@ function TerminalTextSection(props: { text: TerminalText }) {
   const [error, setError] = createSignal<string | null>(null);
   const save = (patch: Partial<TerminalText>) => {
     setError(null);
-    window.mainframe.setTerminalText(patch).catch((err: unknown) => setError(errorMessage(err)));
+    return window.mainframe.setTerminalText(patch).catch((err: unknown) => {
+      setError(errorMessage(err));
+      throw err;
+    });
   };
   return (
     <section class="settings-section" aria-labelledby="settings-terminal-text">

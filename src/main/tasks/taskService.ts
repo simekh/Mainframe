@@ -540,16 +540,16 @@ export class TaskService {
   }
 
   /**
-   * The task has a picked model to check before a reopen, a Continue or a put back. Claude Code's picks are aliases,
-   * which never retire. Checked first, so a task with nothing to check reopens without waiting.
+   * The task has a picked model or effort to check before a reopen, a Continue or a put back. Claude Code's picks are
+   * aliases, which never retire. Checked first, so a task with nothing to check reopens without waiting.
    */
   private checksModel(task: TaskRecord): boolean {
-    return task.model !== undefined && agentOf(task) !== 'claude';
+    return (task.model !== undefined || task.effort !== undefined) && agentOf(task) !== 'claude';
   }
 
   /**
    * The pick this launch runs on: the task's, less a model its agent no longer lists (with its effort) or an effort the
-   * model no longer offers, each with a warning. The task keeps its pick, which applies again once it is listed again. A
+   * model, or with no model the agent's default, no longer offers, each with a warning. The task keeps its pick, which applies again once it is listed again. A
    * list that fails, takes longer than MODEL_CHECK_MS, or lists nothing, keeps the pick.
    */
   private async listedPick(task: TaskRecord): Promise<ModelPick> {
@@ -557,18 +557,24 @@ export class TaskService {
     const pick = pickOf(task);
     let timer: NodeJS.Timeout | undefined;
     let models: ModelChoice[];
+    let defaultEfforts: string[];
     try {
       const late = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error(`no list after ${MODEL_CHECK_MS / 1000} s`)), MODEL_CHECK_MS);
       });
-      ({ models } = await Promise.race([this.deps.agents.taskModelChoices(agent), late]));
+      ({ models, defaultEfforts } = await Promise.race([this.deps.agents.taskModelChoices(agent), late]));
     } catch (err) {
-      this.warn(`Could not check ${AGENT_NAMES[agent]}'s model ${pick.model} for the task ${task.title} (${message(err)}); it runs on it.`);
+      this.warn(`Could not check ${AGENT_NAMES[agent]}'s ${pick.model === undefined ? `effort ${pick.effort}` : `model ${pick.model}`} for the task ${task.title} (${message(err)}); it runs on it.`);
       return pick;
     } finally {
       clearTimeout(timer);
     }
     if (models.length === 0) return pick;
+    if (pick.model === undefined) {
+      if (pick.effort === undefined || defaultEfforts.includes(pick.effort)) return pick;
+      this.warn(`${AGENT_NAMES[agent]}'s default model no longer offers the effort ${pick.effort}, so the task ${task.title} runs on its default effort.`);
+      return {};
+    }
     const listed = models.find((m) => m.id === pick.model);
     if (!listed) {
       this.warn(`${AGENT_NAMES[agent]} no longer lists the model ${pick.model}, so the task ${task.title} runs on its default model.`);

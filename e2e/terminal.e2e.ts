@@ -67,6 +67,12 @@ test('terminal text size and line height change from Settings without a restart'
   await expect(page.getByTestId('settings-font-size')).toContainText('13 px');
   await expect(page.getByTestId('settings-line-height')).toContainText('1.0');
   await step(page, 'settings-font-size', 'Larger', ['14 px', '15 px', '16 px']);
+  // Two quick clicks go two steps, also before the first is saved.
+  const sizeStepper = page.getByTestId('settings-font-size');
+  await sizeStepper.getByRole('button', { name: 'Larger' }).dblclick();
+  await expect(sizeStepper).toContainText('18 px');
+  await sizeStepper.getByRole('button', { name: 'Smaller' }).dblclick();
+  await expect(sizeStepper).toContainText('16 px');
   await step(page, 'settings-line-height', 'Larger', ['1.1', '1.2', '1.3']);
   await expect.poll(() => termText(page, a)).toEqual({ fontSize: 16, lineHeight: 1.3 });
   await expect.poll(async () => (await termSize(page, a))!.rows).toBeLessThan(before.rows);

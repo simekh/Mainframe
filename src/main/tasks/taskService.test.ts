@@ -1698,6 +1698,20 @@ it('an empty model list keeps the pick, as a failed one does', async () => {
   expect(t.warnings).toEqual([]);
 });
 
+it("a reopen leaves off an effort picked without a model once the agent's default no longer offers it", async () => {
+  const t = setup();
+  const view = await t.service.start({ ...CODEX_TASK, effort: 'high' });
+  t.service.noteStatus(view.session!.id, 'working');
+  t.service.noteStatus(view.session!.id, 'done');
+  t.service.onSessionExit(view.session!.id);
+  t.agents.models.codex = { models: [{ id: 'gpt-7', name: 'GPT-7', efforts: ['low'] }], defaultEfforts: ['low'] };
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last']);
+  expect(t.readState()[0]).toMatchObject({ effort: 'high' });
+  expect(t.warnings).toEqual([expect.stringContaining('effort high')]);
+});
+
 it('put back leaves off a model the agent no longer lists', async () => {
   const t = setup();
   const view = await pickedCodexTask(t);
