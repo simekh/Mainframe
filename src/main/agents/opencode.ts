@@ -5,11 +5,20 @@ import { join, posix, win32 } from 'node:path';
 import { MIN_OPENCODE_VERSION, type OpencodeChoices, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch } from './agent';
+import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, ModelPick } from './agent';
 import { apiList, listModels, listTaskModels, makeOpencodeSync } from './opencodeSync';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
+
+/**
+ * A task's environment: OPENCODE_ENV, plus the picked model in OPENCODE_CONFIG_CONTENT, with its variant after `#`. The
+ * interactive `opencode` takes no model flag, so config is the only way in; a variant without a model has none.
+ */
+function opencodeTaskEnv({ model, effort }: ModelPick): Record<string, string> {
+  if (model === undefined) return OPENCODE_ENV;
+  return { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: effort === undefined ? model : `${model}#${effort}` }) };
+}
 
 const SESSION_ID = /^ses_[0-9a-f]{28}$/;
 
@@ -184,8 +193,8 @@ export function makeOpencodeAgent({ run = runOpencode }: { run?: typeof runOpenc
     needsNode: false,
     newSessionId: newOpencodeSessionId,
     // No `addDir`: OpenCode reads outside the project by default.
-    taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
-    taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: OPENCODE_ENV }),
+    taskStart: (o) => ({ argv: opencodeStartArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: opencodeTaskEnv(o) }),
+    taskReopen: (o) => ({ argv: opencodeReopenArgv({ opencodeBin: o.bin, sessionId: o.sessionId, prompt: o.prompt }), env: opencodeTaskEnv(o) }),
     taskModels: ({ bin, dataDir, env }) => listTaskModels(run, { bin, dir: listsDirOf(dataDir), env }),
     // OpenCode has no SessionStart hook: its task keeps the session Mainframe started, and its manager the chat manager.json saved.
     recordedSession: () => null,

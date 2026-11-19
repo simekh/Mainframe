@@ -49,6 +49,18 @@ it('a task starts as `codex <prompt>` and reopens as `codex resume --last [promp
   expect(codexReopenArgv({ codexBin: '/b/codex', prompt: 'Carry on' })).toEqual(['/b/codex', 'resume', '--last', 'Carry on']);
 });
 
+it('a picked model and effort go on the start and on `resume --last`', () => {
+  const pick = { model: 'gpt-6-sol', effort: 'high' };
+  const flags = ['-m', 'gpt-6-sol', '-c', 'model_reasoning_effort="high"'];
+  expect(codexStartArgv({ codexBin: '/b/codex', ...pick, prompt: 'Do it' })).toEqual(['/b/codex', ...flags, 'Do it']);
+  expect(codexReopenArgv({ codexBin: '/b/codex', ...pick, prompt: 'Carry on' })).toEqual(['/b/codex', 'resume', '--last', ...flags, 'Carry on']);
+  expect(codexReopenArgv({ codexBin: '/b/codex', model: 'gpt-6-sol' })).toEqual(['/b/codex', 'resume', '--last', '-m', 'gpt-6-sol']);
+  expect(codexAgent.taskStart({ bin: '/b/codex', nodeBin: null, taskDir: '/t', slug: 's', name: 'n', sessionId: 'x', prompt: 'P', ...pick }))
+    .toEqual({ argv: ['/b/codex', ...flags, 'P'] });
+  expect(codexAgent.taskReopen({ bin: '/b/codex', nodeBin: null, taskDir: '/t', slug: 's', sessionId: 'x', ...pick }))
+    .toEqual({ argv: ['/b/codex', 'resume', '--last', ...flags] });
+});
+
 it('the adapter: Mainframe adds the worktree, records no session, needs no node', () => {
   expect(codexAgent).toMatchObject({ name: 'codex', envVar: 'MAINFRAME_CODEX_BIN', mainframeAddsWorktree: true, worktreesDir: '.mainframe/worktrees', needsNode: false });
   expect(codexAgent.recordedSession('/any')).toBeNull();

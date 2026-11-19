@@ -6,7 +6,7 @@ import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { writeJsonAtomic } from '../tasks/taskStore';
 import { MANAGER_TOOL_TIMEOUT_MS } from '../todo/syncRun';
-import type { AgentAdapter } from './agent';
+import type { AgentAdapter, ModelPick } from './agent';
 import { isUuid } from './claude';
 import { runCodex, type Run } from './codexInstructions';
 import { makeCodexSync, tomlString } from './codexSync';
@@ -34,14 +34,20 @@ export const CODEX_DROPPED_ENV: readonly string[] = [
   'CODEX_MANAGED_PACKAGE_ROOT',
 ];
 
-/** No Codex setting is passed: the task runs in its worktree on the user's own config. */
-export function codexStartArgv(o: { codexBin: string; prompt: string }): string[] {
-  return [o.codexBin, o.prompt];
+/** `-m` and the reasoning effort, as a TOML string, for a pick; nothing for none. */
+const codexPickFlags = ({ model, effort }: ModelPick): string[] => [
+  ...(model === undefined ? [] : ['-m', model]),
+  ...(effort === undefined ? [] : ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`]),
+];
+
+/** Only the task's pick is passed: the task runs in its worktree on the user's own config otherwise. */
+export function codexStartArgv(o: ModelPick & { codexBin: string; prompt: string }): string[] {
+  return [o.codexBin, ...codexPickFlags(o), o.prompt];
 }
 
 /** The worktree's latest Codex session, as Codex picks it from the folder it runs in. */
-export function codexReopenArgv(o: { codexBin: string; prompt?: string }): string[] {
-  return [o.codexBin, 'resume', '--last', ...(o.prompt ? [o.prompt] : [])];
+export function codexReopenArgv(o: ModelPick & { codexBin: string; prompt?: string }): string[] {
+  return [o.codexBin, 'resume', '--last', ...codexPickFlags(o), ...(o.prompt ? [o.prompt] : [])];
 }
 
 // Only codex's own line counts, for the same reason as claude's; colour codes are stripped as for opencode.
@@ -139,8 +145,8 @@ export const codexAgent: AgentAdapter = {
   needsNode: false,
   // Mainframe's own key for the task, never sent to Codex: a reopen resumes the worktree's latest session.
   newSessionId: (uuid) => uuid(),
-  taskStart: (o) => ({ argv: codexStartArgv({ codexBin: o.bin, prompt: o.prompt }) }),
-  taskReopen: (o) => ({ argv: codexReopenArgv({ codexBin: o.bin, prompt: o.prompt }) }),
+  taskStart: (o) => ({ argv: codexStartArgv({ codexBin: o.bin, model: o.model, effort: o.effort, prompt: o.prompt }) }),
+  taskReopen: (o) => ({ argv: codexReopenArgv({ codexBin: o.bin, model: o.model, effort: o.effort, prompt: o.prompt }) }),
   taskModels: (o) => codexTaskModels(o),
   // Mainframe never reads Codex's own session store: the task's `began` says whether Codex took the brief.
   recordedSession: () => null,

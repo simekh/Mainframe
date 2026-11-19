@@ -4,7 +4,7 @@ import { MIN_CLAUDE_VERSION, type ModelChoices, type ProgramCheck } from '../../
 import { findExecutable, searchDirs, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
 import { MANAGER_TOOL_TIMEOUT_MS, syncPrompt } from '../todo/syncRun';
-import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, SyncWords } from './agent';
+import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, ModelPick, SyncWords } from './agent';
 import { chatKept, readResumableSession } from './claudeChat';
 import { isMcpToolName, prepareClaudeSync, readSyncAnswer } from './claudeSync';
 
@@ -46,7 +46,13 @@ export function isUuid(s: string): boolean {
   return UUID.test(s);
 }
 
-export function startArgv(o: {
+/** `--model` and `--effort` for a pick; nothing for none. */
+const pickFlags = ({ model, effort }: ModelPick): string[] => [
+  ...(model === undefined ? [] : ['--model', model]),
+  ...(effort === undefined ? [] : ['--effort', effort]),
+];
+
+export function startArgv(o: ModelPick & {
   claudeBin: string;
   slug: string;
   name: string;
@@ -57,10 +63,10 @@ export function startArgv(o: {
   prompt: string;
 }): string[] {
   const addDir = o.addDir === undefined ? [] : ['--add-dir', o.addDir];
-  return [o.claudeBin, '-w', o.slug, '-n', o.name, '--session-id', o.claudeSessionId, ...addDir, '--settings', o.settingsPath, o.prompt];
+  return [o.claudeBin, '-w', o.slug, '-n', o.name, '--session-id', o.claudeSessionId, ...addDir, '--settings', o.settingsPath, ...pickFlags(o), o.prompt];
 }
 
-export function reopenArgv(o: {
+export function reopenArgv(o: ModelPick & {
   claudeBin: string;
   slug: string;
   claudeSessionId: string;
@@ -72,7 +78,7 @@ export function reopenArgv(o: {
   const prompt = o.prompt === undefined ? [] : [o.prompt];
   // Claude Code makes a missing worktree, and its branch, from the default branch, and resets one that is there only
   // when it has no work of its own, so the task never runs in the main checkout.
-  return [o.claudeBin, '--worktree', o.slug, '--resume', o.claudeSessionId, '--settings', o.settingsPath, ...prompt];
+  return [o.claudeBin, '--worktree', o.slug, '--resume', o.claudeSessionId, '--settings', o.settingsPath, ...pickFlags(o), ...prompt];
 }
 
 /**
@@ -265,6 +271,8 @@ export const claudeAgent: AgentAdapter = {
       claudeSessionId: o.sessionId,
       settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
       ...(o.addDir && { addDir: o.addDir }),
+      model: o.model,
+      effort: o.effort,
       prompt: o.prompt,
     }),
     answerStatusEarly: true,
@@ -275,6 +283,8 @@ export const claudeAgent: AgentAdapter = {
       slug: o.slug,
       claudeSessionId: o.sessionId,
       settingsPath: writeHookSettings(o.taskDir, needNode(o.nodeBin)),
+      model: o.model,
+      effort: o.effort,
       prompt: o.prompt,
     }),
     answerStatusEarly: true,

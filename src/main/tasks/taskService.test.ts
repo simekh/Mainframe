@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FolderLeftError, gitQueries, type GitQueries } from '../git';
 import { makeRepo } from '../testing/makeRepo';
-import type { AgentName, ChangedFile, FileDiff, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
+import type { AgentName, ChangedFile, FileDiff, ModelChoices, ProgramState, ProgramStatus, TaskCardRef, TaskGitState, TaskView } from '../../shared/types';
 import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
@@ -41,6 +41,19 @@ function fakeAgents() {
     },
     async codexClaudeMdNote(_projectDir: string): Promise<string | null> {
       return null;
+    },
+    /** What each agent lists for a new task; an Error is a list that fails. */
+    models: {
+      claude: { models: [{ id: 'opus', name: 'Opus', efforts: ['high'] }], defaultEfforts: ['high'] },
+      codex: { models: [{ id: 'gpt-6-sol', name: 'GPT-6 Sol', efforts: ['high'] }], defaultEfforts: ['high'] },
+      opencode: { models: [{ id: 'litellm/gpt-6-sol', name: 'GPT-6 Sol', efforts: ['high'] }], defaultEfforts: ['high'] },
+    } as Record<AgentName, ModelChoices | Error>,
+    listed: [] as AgentName[],
+    async taskModelChoices(name: AgentName): Promise<ModelChoices> {
+      this.listed.push(name);
+      const choices = this.models[name];
+      if (choices instanceof Error) throw choices;
+      return choices;
     },
   };
 }
@@ -1538,6 +1551,92 @@ it('a Codex task that reported working reopens with `codex resume --last`', asyn
   const [carriedOn] = next.list();
   expect(next.launchSpec(carriedOn.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', RESUME_PROMPT]);
   expect(carriedOn.session).toMatchObject({ startedWithPrompt: true });
+});
+
+const CODEX_PICK = ['-m', 'gpt-6-sol', '-c', 'model_reasoning_effort="high"'];
+
+/** A Codex task on a picked model whose conversation began and whose session has ended. */
+async function pickedCodexTask(t: ReturnType<typeof setup>, service = t.service) {
+  const view = await service.start({ ...CODEX_TASK, model: ' gpt-6-sol ', effort: 'high' });
+  service.noteStatus(view.session!.id, 'working');
+  service.noteStatus(view.session!.id, 'done');
+  service.onSessionExit(view.session!.id);
+  return view;
+}
+
+it('the pick is saved and passed again on reopen', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
+
+  // A Claude task's pick goes on its resume too.
+  const claudeTask = await t.service.start({ ...NEW_TASK, title: 'Ship it', model: 'opus', effort: 'high' });
+  t.sessionStarted(claudeTask.id, t.readState()[1].claudeSessionId);
+  t.service.onSessionExit(claudeTask.session!.id);
+  const resumed = await t.service.reopen(claudeTask.id);
+  expect(t.service.launchSpec(resumed.session!.id).argv).toEqual(expect.arrayContaining(['--model', 'opus', '--effort', 'high']));
+
+  // An OpenCode task's pick is in its config, on the start and on the reopen.
+  const oc = await t.service.start({ ...OPENCODE_TASK, title: 'Tidy up', model: 'litellm/gpt-6-sol' });
+  const config = { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol"}' };
+  expect(t.service.launchSpec(oc.session!.id).env).toEqual(config);
+  t.service.onSessionExit(oc.session!.id);
+  expect(t.service.launchSpec((await t.service.reopen(oc.id)).session!.id).env).toEqual(config);
+});
+
+it('a blank pick is dropped: the task starts as one with none', async () => {
+  const { service, readState, projectDir } = setup();
+  const view = await service.start({ ...CODEX_TASK, model: '  ', effort: '' });
+  expect(readState()[0]).not.toHaveProperty('model');
+  expect(readState()[0]).not.toHaveProperty('effort');
+  expect(service.launchSpec(view.session!.id).argv).toEqual(['/bin/codex', codexOpening(projectDir)]);
+});
+
+it('continue passes the pick again', async () => {
+  const t = setup();
+  const records = new TaskRecords(t.stateFile, 1000, () => {});
+  const service = t.make(records);
+  const view = await pickedCodexTask(t, service);
+  records.all[0].place = 'finished';
+
+  const continued = await service.continueTask(view.id);
+  expect(service.launchSpec(continued.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK, continuePrompt(view.branch)]);
+});
+
+it('a model the agent no longer lists reopens on Default with a warning', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.models.codex = { models: [{ id: 'gpt-7', name: 'GPT-7', efforts: ['high'] }], defaultEfforts: ['high'] };
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last']);
+  expect(t.readState()[0]).not.toHaveProperty('model');
+  expect(t.readState()[0]).not.toHaveProperty('effort');
+  expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
+});
+
+it('a model list that fails keeps the pick', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.models.codex = new Error('Codex could not list its models: no catalog');
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+});
+
+it("a Claude task's pick is never checked against a list: its aliases don't retire", async () => {
+  const t = setup();
+  t.agents.models.claude = { models: [], defaultEfforts: [] };
+  const view = await t.service.start({ ...NEW_TASK, model: 'opus' });
+  t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+  t.service.onSessionExit(view.session!.id);
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(expect.arrayContaining(['--model', 'opus']));
+  expect(t.agents.listed).toEqual([]);
 });
 
 it('an OpenCode start that meets a quit records the task, which begins with its brief at the next start', async () => {

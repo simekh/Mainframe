@@ -44,6 +44,9 @@ export interface TaskRecord {
   place?: TaskPlace;
   /** When it went to that place. Records kept before it was saved lack it. */
   endedAt?: number;
+  /** The model and effort picked for it; one not picked, or dropped as retired, runs on the agent's default. */
+  model?: string;
+  effort?: string;
 }
 
 const PLACES: readonly string[] = ['putBack', 'finished', 'discarded'] satisfies TaskPlace[];
@@ -168,6 +171,8 @@ export function loadTasks(file: string, now: number, warn: (msg: string) => void
   if (version !== VERSION || !Array.isArray(tasks) || !tasks.every(isTaskRecord)) {
     return keepAside(file, now, warn, `does not hold version ${VERSION} task records`);
   }
+  // A pick that is not a string is dropped, not the file: the task runs on the agent's default.
+  for (const task of tasks) for (const key of ['model', 'effort'] as const) if (typeof task[key] !== 'string') delete task[key];
   return tasks;
 }
 

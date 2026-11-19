@@ -164,6 +164,18 @@ it('old records load as Claude tasks, and an agent loads as saved', () => {
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
 
+it("keeps a task's model and effort; a model or effort that is not a string loads without it", () => {
+  const file = join(folder(), 'state.json');
+  const tasks = [TASK, { ...TASK, id: 't2', model: 'opus', effort: 'high' }, { ...TASK, id: 't3', effort: 'low' }];
+  saveTasks(file, tasks);
+  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
+
+  const warnings: string[] = [];
+  writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ ...TASK, model: 42, effort: 'high' }, { ...TASK, id: 't2', model: 'opus', effort: null }] }));
+  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual([{ ...TASK, effort: 'high' }, { ...TASK, id: 't2', model: 'opus' }]);
+  expect(warnings).toEqual([]);
+});
+
 const CARD = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: null, labels: [], position: 0, urgent: false };
 
 it.each([

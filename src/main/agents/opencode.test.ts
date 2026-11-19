@@ -50,6 +50,25 @@ it('turns OpenCode tabs off in its environment', () => {
   expect(OPENCODE_ENV).toEqual({ OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' });
 });
 
+describe('a task on a picked model', () => {
+  const id = newOpencodeSessionId();
+  const start = { bin: 'oc', nodeBin: null, taskDir: '/t', slug: 's', name: 'n', sessionId: id, prompt: 'P' };
+  const reopen = { bin: 'oc', nodeBin: null, taskDir: '/t', slug: 's', sessionId: id };
+  const envFor = (pick: { model?: string; effort?: string }) => [opencodeAgent.taskStart({ ...start, ...pick }).env, opencodeAgent.taskReopen({ ...reopen, ...pick }).env];
+
+  it('starts and reopens with the model, and its variant, in OPENCODE_CONFIG_CONTENT', () => {
+    expect(envFor({ model: 'litellm/gpt-6-sol', effort: 'high' })).toEqual(
+      Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol#high"}' }),
+    );
+    expect(envFor({ model: 'litellm/gpt-6-sol' })).toEqual(Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"litellm/gpt-6-sol"}' }));
+  });
+
+  it('with no pick, or a variant without a model, the env is OPENCODE_ENV', () => {
+    expect(envFor({})).toEqual([OPENCODE_ENV, OPENCODE_ENV]);
+    expect(envFor({ effort: 'high' })).toEqual([OPENCODE_ENV, OPENCODE_ENV]);
+  });
+});
+
 const mapPath = { PATH: '/usr/bin', HOME: '/Users/x' };
 const winEnv = { Path: 'C:\\bin', USERPROFILE: 'C:\\Users\\x', APPDATA: 'C:\\Users\\x\\AppData\\Roaming' };
 const OC = '/Users/x/.opencode/bin/opencode';

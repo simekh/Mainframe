@@ -154,8 +154,15 @@ export function registerIpc(
   // Only these four: a card reaches `start` through the Todo service alone, which checks it against the synced list.
   ipcMain.handle(
     IPC.startTask,
-    (_e, dir: string, { title, description, noQuestions, agent }: { title: string; description: string; noQuestions: boolean; agent?: unknown }) =>
-      tasksOf(dir).start({ title, description, noQuestions, ...(isAgentName(agent) && { agent }) }),
+    (_e, dir: string, { title, description, noQuestions, agent, model, effort }: { title: string; description: string; noQuestions: boolean; agent?: unknown; model?: unknown; effort?: unknown }) =>
+      tasksOf(dir).start({
+        title,
+        description,
+        noQuestions,
+        ...(isAgentName(agent) && { agent }),
+        ...(typeof model === 'string' && { model }),
+        ...(typeof effort === 'string' && { effort }),
+      }),
   );
   ipcMain.handle(IPC.reopenTask, (_e, dir: string, taskId: string) => tasksOf(dir).reopen(taskId));
   ipcMain.handle(IPC.discardPreview, (_e, dir: string, taskId: string) => tasksOf(dir).discardPreview(taskId));

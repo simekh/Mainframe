@@ -14,9 +14,12 @@ export interface Instructions { first: string; again: string; requires: string; 
 export interface LaunchArgs { argv: string[]; env?: Record<string, string>; answerStatusEarly?: boolean }
 
 /** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
-export interface TaskStart { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
+/** The model and effort a task was started on; one left out runs on the agent's own default. */
+export interface ModelPick { model?: string; effort?: string }
 
-export interface TaskReopen { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; prompt?: string }
+export interface TaskStart extends ModelPick { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
+
+export interface TaskReopen extends ModelPick { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; prompt?: string }
 
 /** What settings.json keeps of one agent. */
 export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }

@@ -53,6 +53,24 @@ it('reopens with a prompt as the last argument when given one', () => {
     .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, 'P']);
 });
 
+it('a picked model and effort go on the start and the resume', () => {
+  const pick = { model: 'opus', effort: 'high' };
+  expect(startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'acme-fix-login', claudeSessionId: U, settingsPath: S, ...pick, prompt: 'P' }))
+    .toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--settings', S, '--model', 'opus', '--effort', 'high', 'P']);
+  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, ...pick, prompt: 'P' }))
+    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, '--model', 'opus', '--effort', 'high', 'P']);
+  // Either alone goes on alone.
+  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, effort: 'max' }))
+    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, '--effort', 'max']);
+});
+
+it('no pick, no flags', () => {
+  expect(startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'acme-fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
+    .toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--settings', S, 'P']);
+  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
+    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, 'P']);
+});
+
 it('refuses to resume an id that is not a UUID', () => {
   expect(() => reopenArgv({ claudeBin: 'claude', slug: 's', claudeSessionId: '--evil', settingsPath: S })).toThrow('--evil');
 });

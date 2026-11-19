@@ -140,7 +140,7 @@ export interface MainframeApi {
   /** The Codex config file to list CLAUDE.md in, when Codex wouldn't read the project's; asked afresh each time. */
   codexClaudeMdNote(dir: string): Promise<string | null>;
   /** Without `agent`, the task runs on the default agent. */
-  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName }): Promise<TaskView>;
+  startTask(dir: string, req: { title: string; description: string; noQuestions: boolean; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView>;
   reopenTask(dir: string, taskId: string): Promise<TaskView>;
   closeTask(dir: string, taskId: string): void;
   /** What a Discard of the paused task would lose. */

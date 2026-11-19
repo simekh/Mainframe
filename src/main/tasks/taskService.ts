@@ -30,7 +30,7 @@ export interface TaskServiceDeps {
   /** Every project's tasks, shared with the other open projects' services. */
   records: TaskRecords;
   /** The agents found at start, shared with the other open projects' services: asked at each start and reopen. */
-  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked' | 'codexClaudeMdNote'>;
+  agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked' | 'codexClaudeMdNote' | 'taskModelChoices'>;
   /** What Claude Code's SessionStart hook runs: a real program path; null when no node was found. */
   nodeBin: string | null;
   /**
@@ -173,7 +173,7 @@ export class TaskService {
     return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 
-  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName }): Promise<TaskView> {
+  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView> {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
     // Without one, the default: that covers the tasks the manager starts and those started from a Todo card.
@@ -216,6 +216,9 @@ export class TaskService {
       noQuestions: req.noQuestions,
       ...(req.card && { card: req.card }),
       agent,
+      // A blank pick is none: the agent's default.
+      ...(req.model?.trim() && { model: req.model.trim() }),
+      ...(req.effort?.trim() && { effort: req.effort.trim() }),
     };
 
     if (!adapter.mainframeAddsWorktree) {
@@ -249,6 +252,7 @@ export class TaskService {
 
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
+    if (this.checksModel(task)) await this.dropRetiredModel(task, task.model!);
     this.refuseWhilePuttingBack(task);
     // A finished or discarded task has no worktree or branch: Continue brings it back.
     if (isEnded(task.place) || this.busy(task)) return this.view(task);
@@ -282,6 +286,7 @@ export class TaskService {
     const task = this.find(taskId);
     if (task.place === undefined) throw new Error(`Task ${task.title} is on the board; reopen it instead`);
     if (task.place === 'putBack') return this.reopen(taskId);
+    if (this.checksModel(task)) await this.dropRetiredModel(task, task.model!);
     // A card has at most one task that isn't discarded: one started afresh since keeps the card.
     const card = task.card;
     const other = task.place === 'discarded' && card ? this.taskOfCard(card.id) : undefined;
@@ -487,6 +492,33 @@ export class TaskService {
     const carryOn = prompt !== undefined;
     const launch = this.reopenLaunch(task, bin, prompt);
     return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn && owed });
+  }
+
+  /**
+   * The task has a picked model to check before a reopen or Continue. Claude Code's picks are aliases, which never retire.
+   * Checked first, so a task with nothing to check reopens without waiting.
+   */
+  private checksModel(task: TaskRecord): boolean {
+    return task.model !== undefined && agentOf(task) !== 'claude';
+  }
+
+  /**
+   * Drops the task's picked `model` when its agent no longer lists it, with its effort, so the task runs on the agent's
+   * default, and warns. A list that fails keeps the pick.
+   */
+  private async dropRetiredModel(task: TaskRecord, model: string): Promise<void> {
+    const agent = agentOf(task);
+    let listed: boolean;
+    try {
+      listed = (await this.deps.agents.taskModelChoices(agent)).models.some((m) => m.id === model);
+    } catch {
+      return;
+    }
+    if (listed || task.model !== model) return;
+    delete task.model;
+    delete task.effort;
+    this.commit();
+    this.warn(`${AGENT_NAMES[agent]} no longer lists the model ${model}, so the task ${task.title} runs on its default model.`);
   }
 
   /** Runs the task's session, which puts it on the board. */
@@ -847,6 +879,8 @@ export class TaskService {
       taskDir: this.taskDir(task.id),
       slug: task.slug,
       sessionId: task.claudeSessionId,
+      model: task.model,
+      effort: task.effort,
       prompt,
     });
   }
@@ -866,6 +900,8 @@ export class TaskService {
         slug: task.slug,
         name: task.name,
         sessionId: task.claudeSessionId,
+        model: task.model,
+        effort: task.effort,
         prompt: openingPrompt({
           title: task.title,
           description: task.description,
