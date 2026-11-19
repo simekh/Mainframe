@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type IBufferLine } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
 import { IMAGE_FILE_TYPES, IMAGE_LABEL, labelNumbers } from '../../../shared/imageLabels';
@@ -16,7 +16,7 @@ import { setSuggesting } from '../tasksStore';
 import { cleanCopiedTerminalText } from './copyText';
 import { escapePath } from './escapePath';
 import { imageLinkProvider } from './imageLinks';
-import { createImageWatch } from './imageWatch';
+import { createImageWatch, screenText } from './imageWatch';
 import { InputBatcher } from './inputBatcher';
 import { matchTerminalBinding, swallowsKeyEvent } from './keybindings';
 import { handleOsc52Writes, trackRecentGesture } from './osc52';
@@ -216,15 +216,14 @@ export default function TerminalView(props: {
     // a ring on the card (never for a lane), and for an image's label after a paste (below). Both read
     // the live screen, its bottom `rows`, not the part in view, so scrolling back changes nothing; a
     // terminal off screen is read too.
-    const bottomLines = (rows: number) => {
+    const bottomRows = (rows: number) => {
       const buffer = term.buffer.active;
       const end = buffer.baseY + term.rows;
-      const lines: string[] = [];
-      for (let y = end - Math.min(term.rows, rows); y < end; y++) {
-        lines.push(buffer.getLine(y)?.translateToString(true) ?? '');
-      }
+      const lines: (IBufferLine | undefined)[] = [];
+      for (let y = end - Math.min(term.rows, rows); y < end; y++) lines.push(buffer.getLine(y));
       return lines;
     };
+    const bottomLines = (rows: number) => bottomRows(rows).map((line) => line?.translateToString(true) ?? '');
     let scanTimer: ReturnType<typeof setTimeout> | undefined;
     const scan = () => {
       scanTimer = undefined;
@@ -340,7 +339,7 @@ export default function TerminalView(props: {
     const record = (added: { path: string; number: number | null }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
-    const imageWatch = label && createImageWatch(() => labelNumbers(bottomLines(term.rows).join('\n'), label), record);
+    const imageWatch = label && createImageWatch(() => labelNumbers(screenText(bottomRows(term.rows).filter((line) => line !== undefined)), label), record);
     // The labels link to their images, for an agent whose label numbers them.
     const imageLinks = label && term.registerLinkProvider(imageLinkProvider(term, id, label, api.platform));
     /** Set once the terminal is gone: a paste still waiting on main then does nothing. */

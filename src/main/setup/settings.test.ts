@@ -57,6 +57,11 @@ describe('settings.json', () => {
     expect(warnings).toEqual([]);
   });
 
+  it('terminal text it cannot use drops only itself, and the other settings are kept', () => {
+    writeFileSync(file(), JSON.stringify({ version: 2, defaultAgent: 'opencode', welcomeSeen: true, terminalText: { fontSize: '14', lineHeight: 1.2 } }));
+    expect(readSettings(dataDir, warn)).toEqual({ defaultAgent: 'opencode', welcomeSeen: true });
+  });
+
   it('holds each entry on its own', () => {
     writeSettings(dataDir, { welcomeSeen: true });
     expect(readSettings(dataDir, warn)).toStrictEqual({ welcomeSeen: true });

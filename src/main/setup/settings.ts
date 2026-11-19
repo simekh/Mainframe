@@ -35,7 +35,8 @@ const settingsV2 = z.object({
   agents: z.partialRecord(agentName, agentSetting).optional(),
   defaultAgent: agentName.optional(),
   welcomeSeen: z.boolean().optional(),
-  terminalText: z.object({ fontSize: z.number(), lineHeight: z.number() }).optional(),
+  // One it can't use drops only itself: the rest of the file is kept, and so not overwritten by the next save.
+  terminalText: z.object({ fontSize: z.number(), lineHeight: z.number() }).optional().catch(undefined),
 });
 const settingsV1 = z.object({ version: z.literal(1), claudeBin: z.string().optional(), welcomeSeen: z.boolean().optional() });
 

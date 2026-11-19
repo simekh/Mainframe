@@ -54,13 +54,34 @@ describe('a task on a picked model', () => {
   const id = newOpencodeSessionId();
   const start = { bin: 'oc', nodeBin: null, taskDir: '/t', slug: 's', name: 'n', sessionId: id, prompt: 'P' };
   const reopen = { bin: 'oc', nodeBin: null, taskDir: '/t', slug: 's', sessionId: id };
-  const envFor = (pick: { model?: string; effort?: string }) => [opencodeAgent.taskStart({ ...start, ...pick }).env, opencodeAgent.taskReopen({ ...reopen, ...pick }).env];
+  const envFor = (pick: { model?: string; effort?: string; env?: Record<string, string>; warn?: (msg: string) => void }) => [
+    opencodeAgent.taskStart({ ...start, ...pick }).env,
+    opencodeAgent.taskReopen({ ...reopen, ...pick }).env,
+  ];
+  const config = (env: Record<string, string> | undefined) => JSON.parse(env!.OPENCODE_CONFIG_CONTENT);
 
-  it('starts and reopens with the model, and its variant, in OPENCODE_CONFIG_CONTENT', () => {
-    expect(envFor({ model: 'prov/big', effort: 'high' })).toEqual(
-      Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big#high"}' }),
+  it('starts and reopens with the model, and its variant, as the object in OPENCODE_CONFIG_CONTENT', () => {
+    // The object, as OpenCode's TUI drops a variant given in the string form.
+    expect(envFor({ model: 'prov/big/v2', effort: 'high' }).map(config)).toEqual(
+      Array(2).fill({ model: { providerID: 'prov', model: 'big/v2', variant: 'high' } }),
     );
-    expect(envFor({ model: 'prov/big' })).toEqual(Array(2).fill({ ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big"}' }));
+    expect(envFor({ model: 'prov/big' }).map(config)).toEqual(Array(2).fill({ model: { providerID: 'prov', model: 'big' } }));
+    expect(Object.keys(envFor({ model: 'prov/big' })[0]!).sort()).toEqual([...Object.keys(OPENCODE_ENV), 'OPENCODE_CONFIG_CONTENT'].sort());
+  });
+
+  it("adds the model to the user's own OPENCODE_CONFIG_CONTENT, whose other keys stay", () => {
+    const env = { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: 'mine/old', theme: 'dark', agent: { build: { model: 'mine/x' } } }) };
+    expect(envFor({ model: 'prov/big', effort: 'high', env }).map(config)).toEqual(
+      Array(2).fill({ model: { providerID: 'prov', model: 'big', variant: 'high' }, theme: 'dark', agent: { build: { model: 'mine/x' } } }),
+    );
+  });
+
+  it("leaves an OPENCODE_CONFIG_CONTENT it can't read as it is, and skips the pick with a warning", () => {
+    for (const value of ['{not json', '[1]', '"x"', 'null']) {
+      const warnings: string[] = [];
+      expect(envFor({ model: 'prov/big', env: { OPENCODE_CONFIG_CONTENT: value }, warn: (msg) => warnings.push(msg) })).toEqual([OPENCODE_ENV, OPENCODE_ENV]);
+      expect(warnings).toEqual(Array(2).fill(expect.stringContaining('OPENCODE_CONFIG_CONTENT')));
+    }
   });
 
   it('with no pick, or a variant without a model, the env is OPENCODE_ENV', () => {

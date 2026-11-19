@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
+import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ModelChoice, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
 import { ADAPTERS } from '../agents/adapters';
-import type { LaunchArgs } from '../agents/agent';
+import type { LaunchArgs, ModelPick } from '../agents/agent';
 import { FolderLeftError, type GitQueries } from '../git';
 import { clearImages } from '../images/imageLog';
 import type { AgentsInUse } from '../setup/agentsInUse';
@@ -25,6 +25,12 @@ const WHERE: Record<TaskPlace | 'board', string> = { board: 'paused', putBack: '
 /** What a session in a turn is doing, as the manager is told it; any other session whose turn is not over is starting. */
 const IN_TURN: Partial<Record<ProgramState, string>> = { working: 'working', blocked: "waiting for the owner's answer" };
 
+/** How long a reopen, a Continue or a put back waits for the agent's model list before it runs on the task's pick. */
+const MODEL_CHECK_MS = 5000;
+
+/** The model and effort the task was started on. */
+const pickOf = (task: TaskRecord): ModelPick => ({ model: task.model, effort: task.effort });
+
 export interface TaskServiceDeps {
   projectDir: string;
   dataDir: string;
@@ -34,6 +40,8 @@ export interface TaskServiceDeps {
   agents: Pick<AgentsInUse, 'bin' | 'defaultAgent' | 'ticked' | 'codexClaudeMdNote' | 'taskModelChoices'>;
   /** What Claude Code's SessionStart hook runs: a real program path; null when no node was found. */
   nodeBin: string | null;
+  /** The environment sessions start in, which a launch's own is laid over. */
+  env: Record<string, string>;
   /**
    * Windows caps a command line, so a task's long description goes to a file there; and it reserves
    * names a task's folder can't take.
@@ -256,14 +264,15 @@ export class TaskService {
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
     if (!this.reopenable(task)) return this.view(task);
+    let pick = pickOf(task);
     if (this.checksModel(task)) {
-      await this.dropRetiredModel(task, task.model!);
+      pick = await this.listedPick(task);
       // Asked again: the task may have moved, or another reopen started it, while the agent listed its models.
       if (!this.reopenable(task)) return this.view(task);
     }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
-    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task);
+    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, pick);
 
     const bin = this.binOf(agent);
     const recorded = adapter.recordedSession(this.taskDir(task.id));
@@ -272,14 +281,14 @@ export class TaskService {
     let launch: LaunchArgs;
     if (recorded) {
       task.claudeSessionId = recorded;
-      launch = this.reopenLaunch(task, bin, prompt);
+      launch = this.reopenLaunch(task, bin, prompt, pick);
     } else {
       // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = adapter.newSessionId(this.newId);
       // A new chat starts its count at #1: the last chat's list goes.
       clearImages(this.imagesFolder(task.id));
-      launch = this.startLaunch(task, bin);
+      launch = this.startLaunch(task, bin, { pick });
     }
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
   }
@@ -299,29 +308,30 @@ export class TaskService {
     if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
     // It stays finished until its session starts, so no round checks it while git adds its worktree.
     if (this.busy(task)) return this.view(task);
+    let pick = pickOf(task);
     if (this.checksModel(task)) {
-      await this.dropRetiredModel(task, task.model!);
+      pick = await this.listedPick(task);
       // Another Continue may have started it while the agent listed its models.
       if (this.busy(task)) return this.view(task);
     }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     const prompt = continuePrompt(task.branch);
-    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, prompt);
+    if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task, pick, prompt);
 
     const bin = this.binOf(agent);
     const dir = this.taskDir(task.id);
     if (adapter.chatKept(dir)) {
       // A kept chat is a recorded one.
       task.claudeSessionId = adapter.recordedSession(dir)!;
-      return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true, continued: true });
+      return this.relaunch(task, { ...this.reopenLaunch(task, bin, prompt, pick), cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: true, continued: true });
     }
     // The agent deleted the chat: a new one, which the agent's own flag starts in the fresh worktree. The old record
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
     adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
     clearImages(this.imagesFolder(task.id));
-    const launch = this.startLaunch(task, bin, { continuing: true });
+    const launch = this.startLaunch(task, bin, { continuing: true, pick });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false, continued: true });
   }
 
@@ -337,8 +347,9 @@ export class TaskService {
     if (task.place !== undefined) throw new Error(`Task ${task.title} is not paused on the board, so it cannot be put back`);
     if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before putting it back`);
     if (!this.began(task)) return true;
+    let pick = pickOf(task);
     if (this.checksModel(task)) {
-      await this.dropRetiredModel(task, task.model!);
+      pick = await this.listedPick(task);
       // Asked again: the task may have started, or the app begun to quit, while the agent listed its models.
       if (!this.pausedOnBoard(task)) throw new Error(`Close ${task.title} before putting it back`);
     }
@@ -347,11 +358,11 @@ export class TaskService {
     const prompt = putBackPrompt(adapter.instructions);
     let view: TaskView;
     if (adapter.mainframeAddsWorktree) {
-      view = await this.reopenInWorktree(task, prompt, { owed: false });
+      view = await this.reopenInWorktree(task, pick, prompt, { owed: false });
     } else {
       // A conversation that began is a recorded one.
       task.claudeSessionId = adapter.recordedSession(this.taskDir(task.id))!;
-      const launch = this.reopenLaunch(task, this.binOf(agent), prompt);
+      const launch = this.reopenLaunch(task, this.binOf(agent), prompt, pick);
       // The put-back prompt is not owed: a launch that dies before it works leaves no carry-on prompt for a Reopen.
       view = this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false });
     }
@@ -489,9 +500,9 @@ export class TaskService {
    * Resumes the session Mainframe started, in the task's worktree, with `prompt`, or starts it again with the opening
    * prompt when its conversation never began. A missing worktree folder is added back from its branch, or on a new
    * branch from the base when the branch is gone too. Marked as launching while git runs, so no round removes the task
-   * and no second reopen starts it meanwhile.
+   * and no second reopen starts it meanwhile. `pick` is the model it runs on.
    */
-  private async reopenInWorktree(task: TaskRecord, prompt = resumePromptFor(task), { owed = true } = {}): Promise<TaskView> {
+  private async reopenInWorktree(task: TaskRecord, pick: ModelPick, prompt = resumePromptFor(task), { owed = true } = {}): Promise<TaskView> {
     const bin = this.binOf(agentOf(task));
     if (!existsSync(task.worktreePath)) {
       const place = task.place;
@@ -514,10 +525,10 @@ export class TaskService {
     if (!task.began) {
       // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
       clearImages(this.imagesFolder(task.id));
-      return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
+      return this.relaunch(task, { ...this.startLaunch(task, bin, { pick }), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
-    const launch = this.reopenLaunch(task, bin, prompt);
+    const launch = this.reopenLaunch(task, bin, prompt, pick);
     return this.relaunch(task, { ...launch, cwd }, { startedWithPrompt: carryOn, resumePending: carryOn && owed });
   }
 
@@ -530,22 +541,37 @@ export class TaskService {
   }
 
   /**
-   * Drops the task's picked `model` when its agent no longer lists it, with its effort, so the task runs on the agent's
-   * default, and warns. A list that fails, or lists nothing, keeps the pick.
+   * The pick this launch runs on: the task's, less a model its agent no longer lists (with its effort) or an effort the
+   * model no longer offers, each with a warning. The task keeps its pick, which applies again once it is listed again. A
+   * list that fails, takes longer than MODEL_CHECK_MS, or lists nothing, keeps the pick.
    */
-  private async dropRetiredModel(task: TaskRecord, model: string): Promise<void> {
+  private async listedPick(task: TaskRecord): Promise<ModelPick> {
     const agent = agentOf(task);
-    let models: { id: string }[];
+    const pick = pickOf(task);
+    let timer: NodeJS.Timeout | undefined;
+    let models: ModelChoice[];
     try {
-      ({ models } = await this.deps.agents.taskModelChoices(agent));
-    } catch {
-      return;
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no list after ${MODEL_CHECK_MS / 1000} s`)), MODEL_CHECK_MS);
+      });
+      ({ models } = await Promise.race([this.deps.agents.taskModelChoices(agent), late]));
+    } catch (err) {
+      this.warn(`Could not check ${AGENT_NAMES[agent]}'s model ${pick.model} for the task ${task.title} (${message(err)}); it runs on it.`);
+      return pick;
+    } finally {
+      clearTimeout(timer);
     }
-    if (models.length === 0 || models.some((m) => m.id === model) || task.model !== model) return;
-    delete task.model;
-    delete task.effort;
-    this.commit();
-    this.warn(`${AGENT_NAMES[agent]} no longer lists the model ${model}, so the task ${task.title} runs on its default model.`);
+    if (models.length === 0) return pick;
+    const listed = models.find((m) => m.id === pick.model);
+    if (!listed) {
+      this.warn(`${AGENT_NAMES[agent]} no longer lists the model ${pick.model}, so the task ${task.title} runs on its default model.`);
+      return {};
+    }
+    if (pick.effort !== undefined && !listed.efforts.includes(pick.effort)) {
+      this.warn(`${AGENT_NAMES[agent]}'s model ${pick.model} no longer offers the effort ${pick.effort}, so the task ${task.title} runs on its default effort.`);
+      return { model: pick.model };
+    }
+    return pick;
   }
 
   /** Runs the task's session, which puts it on the board. */
@@ -910,15 +936,17 @@ export class TaskService {
   }
 
   /** The launch that resumes the task's conversation, `claudeSessionId`. */
-  private reopenLaunch(task: TaskRecord, bin: string, prompt: string | undefined): LaunchArgs {
+  private reopenLaunch(task: TaskRecord, bin: string, prompt: string | undefined, { model, effort }: ModelPick): LaunchArgs {
     return ADAPTERS[agentOf(task)].taskReopen({
       bin,
       nodeBin: this.deps.nodeBin,
       taskDir: this.taskDir(task.id),
       slug: task.slug,
       sessionId: task.claudeSessionId,
-      model: task.model,
-      effort: task.effort,
+      model,
+      effort,
+      env: this.deps.env,
+      warn: this.warn,
       prompt,
     });
   }
@@ -926,9 +954,10 @@ export class TaskService {
   /**
    * The launch that begins the task's conversation, under its `claudeSessionId`, with its opening prompt. On Windows,
    * when it would overflow the command line, the description goes to a file in a folder the session may read (`addDir`),
-   * and the prompt points at it. `continuing`: Continue starts it again, as its earlier conversation is gone.
+   * and the prompt points at it. `continuing`: Continue starts it again, as its earlier conversation is gone. `pick`: the
+   * model it runs on, the task's own unless a check left part of it off.
    */
-  private startLaunch(task: TaskRecord, bin: string, { continuing = false } = {}): LaunchArgs {
+  private startLaunch(task: TaskRecord, bin: string, { continuing = false, pick = pickOf(task) } = {}): LaunchArgs {
     const agent = agentOf(task);
     const build = (brief?: { dir: string; file: string }) =>
       ADAPTERS[agent].taskStart({
@@ -938,8 +967,9 @@ export class TaskService {
         slug: task.slug,
         name: task.name,
         sessionId: task.claudeSessionId,
-        model: task.model,
-        effort: task.effort,
+        ...pick,
+        env: this.deps.env,
+        warn: this.warn,
         prompt: openingPrompt({
           title: task.title,
           description: task.description,

@@ -1,5 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createImageWatch, newLabelNumbers } from './imageWatch';
+import { createImageWatch, newLabelNumbers, screenText } from './imageWatch';
+
+describe('screenText', () => {
+  /** A buffer row as xterm gives it: its cells, which it trims on the right when asked. */
+  const row = (cells: string, isWrapped = false) => ({ isWrapped, translateToString: (trimRight = false) => (trimRight ? cells.trimEnd() : cells) });
+
+  it('joins a soft-wrapped row onto the one above, so a label cut by the wrap reads whole', () => {
+    expect(screenText([row('> look at [Image'), row(' #3] please   ', true), row('next line   ')])).toBe('> look at [Image #3] please\nnext line');
+  });
+
+  it('keeps the trailing spaces of a row the next one continues: the wrap may fall on a space', () => {
+    expect(screenText([row('> [Image '), row('#3]', true)])).toBe('> [Image #3]');
+  });
+
+  it('a first row that continues one above the screen starts the text', () => {
+    expect(screenText([row('#2]', true), row(''), row('[Image #3]')])).toBe('#2]\n\n[Image #3]');
+  });
+});
 
 it('takes the new label above the ones seen before', () => {
   expect(newLabelNumbers([2], [1, 2, 3], 1)).toEqual([3]);

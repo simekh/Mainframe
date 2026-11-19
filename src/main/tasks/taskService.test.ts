@@ -18,6 +18,7 @@ import { TaskService } from './taskService';
 const cleanup: string[] = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -89,6 +90,8 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
 
   const stateFile = join(dataDir, 'state.json');
   /** A service as a new run of the app makes it: it reads state.json afresh, unless it is handed the run's records. */
+  /** The environment sessions start in. */
+  const env: Record<string, string> = {};
   const make = (records = new TaskRecords(stateFile, 1000, (msg) => warnings.push(msg)), dir = projectDir) =>
     new TaskService({
       projectDir: dir,
@@ -96,6 +99,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
       records,
       agents,
       nodeBin: NODE,
+      env,
       platform,
       git,
       kill: (id) => killed.push(id),
@@ -113,7 +117,7 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
     writeFileSync(join(taskDir(taskId), SESSION_START_FILE), JSON.stringify({ session_id: claudeSessionId, source: 'startup' }));
 
   return {
-    root, projectDir, dataDir, stateFile, make, service: make(), agents, killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
+    root, projectDir, dataDir, stateFile, make, service: make(), env, agents, killed, statuses, changes, warnings, readState, taskDir, sessionStarted,
   };
 }
 
@@ -1579,8 +1583,10 @@ it('the pick is saved and passed again on reopen', async () => {
   expect(t.service.launchSpec(resumed.session!.id).argv).toEqual(expect.arrayContaining(['--model', 'opus', '--effort', 'high']));
 
   // An OpenCode task's pick is in its config, on the start and on the reopen.
+  // Added to the user's own config.
+  t.env.OPENCODE_CONFIG_CONTENT = '{"theme":"dark"}';
   const oc = await t.service.start({ ...OPENCODE_TASK, title: 'Tidy up', model: 'prov/big' });
-  const config = { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"model":"prov/big"}' };
+  const config = { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: '{"theme":"dark","model":{"providerID":"prov","model":"big"}}' };
   expect(t.service.launchSpec(oc.session!.id).env).toEqual(config);
   t.service.onSessionExit(oc.session!.id);
   expect(t.service.launchSpec((await t.service.reopen(oc.id)).session!.id).env).toEqual(config);
@@ -1605,15 +1611,48 @@ it('continue passes the pick again', async () => {
   expect(service.launchSpec(continued.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK, continuePrompt(view.branch)]);
 });
 
-it('a model the agent no longer lists reopens on Default with a warning', async () => {
+it('a model the agent no longer lists reopens on Default with a warning, and the task keeps it for when it is back', async () => {
   const t = setup();
   const view = await pickedCodexTask(t);
+  const listed = t.agents.models.codex;
   t.agents.models.codex = { models: [{ id: 'gpt-7', name: 'GPT-7', efforts: ['high'] }], defaultEfforts: ['high'] };
 
   const reopened = await t.service.reopen(view.id);
   expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last']);
-  expect(t.readState()[0]).not.toHaveProperty('model');
-  expect(t.readState()[0]).not.toHaveProperty('effort');
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+  expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
+
+  // Listed again: the next reopen runs on it.
+  t.service.onSessionExit(reopened.session!.id);
+  t.agents.models.codex = listed;
+  const again = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(again.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
+});
+
+it('an effort the model no longer offers reopens on the model alone, with a warning, and the task keeps it', async () => {
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.models.codex = { models: [{ id: 'gpt-6-sol', name: 'GPT-6 Sol', efforts: ['low'] }], defaultEfforts: ['low'] };
+
+  const reopened = await t.service.reopen(view.id);
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', '-m', 'gpt-6-sol']);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+  expect(t.warnings).toEqual([expect.stringContaining('high')]);
+});
+
+it('a model list that takes too long keeps the pick, with a warning', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const t = setup();
+  const view = await pickedCodexTask(t);
+  t.agents.taskModelChoices = () => new Promise(() => {});
+
+  const reopening = t.service.reopen(view.id);
+  await vi.advanceTimersByTimeAsync(4999);
+  expect(t.service.sessionIds()).toEqual([]);
+  await vi.advanceTimersByTimeAsync(1);
+  const reopened = await reopening;
+  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
   expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
 });
 
@@ -1659,7 +1698,7 @@ it('an empty model list keeps the pick, as a failed one does', async () => {
   expect(t.warnings).toEqual([]);
 });
 
-it('put back drops a model the agent no longer lists before it launches', async () => {
+it('put back leaves off a model the agent no longer lists', async () => {
   const t = setup();
   const view = await pickedCodexTask(t);
   t.agents.models.codex = { models: [{ id: 'gpt-7', name: 'GPT-7', efforts: ['high'] }], defaultEfforts: ['high'] };
@@ -1667,7 +1706,7 @@ it('put back drops a model the agent no longer lists before it launches', async 
   void t.service.putBackCard(view.id);
   await vi.waitFor(() => expect(t.service.sessionIds()).toHaveLength(1));
   expect(t.service.launchSpec(t.service.sessionIds()[0]).argv).toEqual(['/bin/codex', 'resume', '--last', putBackPrompt(ADAPTERS.codex.instructions)]);
-  expect(t.readState()[0]).not.toHaveProperty('model');
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
   expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
 });
 

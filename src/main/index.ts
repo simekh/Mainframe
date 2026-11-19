@@ -322,6 +322,7 @@ async function start(
       records,
       agents,
       nodeBin: programs.nodeBin,
+      env: programs.env,
       platform: process.platform,
       git: gitQueries,
       kill: (sessionId) => host.kill(sessionId),

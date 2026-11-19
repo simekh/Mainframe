@@ -14,6 +14,17 @@ export function newLabelNumbers(before: number[], now: number[], count: number):
   return added.length >= count ? added : null;
 }
 
+/** A buffer row, as xterm's IBufferLine has it. */
+interface Row { isWrapped: boolean; translateToString(trimRight?: boolean): string }
+
+/**
+ * The rows' text, one line per row, except that a row soft-wrapped from the one above joins it with no break, so a
+ * label the wrap cut in two reads whole. A row the next one continues keeps its trailing spaces: the wrap may fall on one.
+ */
+export function screenText(rows: Row[]): string {
+  return rows.map((row, i) => (i > 0 && !row.isWrapped ? '\n' : '') + row.translateToString(!rows[i + 1]?.isWrapped)).join('');
+}
+
 type Added = { path: string; number: number }[];
 
 /**

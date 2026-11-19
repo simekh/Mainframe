@@ -16,10 +16,16 @@ export interface LaunchArgs { argv: string[]; env?: Record<string, string>; answ
 /** The model and effort a task was started on; one left out runs on the agent's own default. */
 export interface ModelPick { model?: string; effort?: string }
 
-/** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
-export interface TaskStart extends ModelPick { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
+/**
+ * What a task launch is laid over: `env`, the session host's own environment (the launch's env wins key by key), and
+ * `warn`, for what the adapter leaves out of the launch. Only OpenCode's adapter uses them.
+ */
+export interface LaunchBase { env?: Record<string, string>; warn?: (msg: string) => void }
 
-export interface TaskReopen extends ModelPick { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; prompt?: string }
+/** `nodeBin` is null when no node was found: Claude Code's adapter then throws, and OpenCode's needs none. */
+export interface TaskStart extends ModelPick, LaunchBase { bin: string; nodeBin: string | null; taskDir: string; slug: string; name: string; sessionId: string; prompt: string; addDir?: string }
+
+export interface TaskReopen extends ModelPick, LaunchBase { bin: string; nodeBin: string | null; taskDir: string; slug: string; sessionId: string; prompt?: string }
 
 /** What settings.json keeps of one agent. */
 export interface AgentSetting { enabled?: boolean; bin?: string; managerAgent?: string; syncModel?: string }

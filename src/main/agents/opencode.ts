@@ -5,19 +5,34 @@ import { join, posix, win32 } from 'node:path';
 import { MIN_OPENCODE_VERSION, type OpencodeChoices, type ProgramCheck } from '../../shared/types';
 import { findExecutable, type ExecutableFiles, type ExecutableLookup } from '../pty/findExecutable';
 import { checkProgram, findProgram, type FindOptions, type VersionRunner } from '../setup/programChecks';
-import type { AgentAdapter, Instructions, LaunchArgs, ManagerLaunch, ModelPick } from './agent';
+import type { AgentAdapter, Instructions, LaunchArgs, LaunchBase, ManagerLaunch, ModelPick } from './agent';
 import { apiList, listModels, listTaskModels, makeOpencodeSync } from './opencodeSync';
 
 /** OpenCode's own tabs would sit inside Mainframe's terminal: switched off for the session. */
 export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTENT: '{"tabs":{"mode":"off"}}' };
 
 /**
- * A task's environment: OPENCODE_ENV, plus the picked model in OPENCODE_CONFIG_CONTENT, with its variant after `#`. The
- * interactive `opencode` takes no model flag, so config is the only way in; a variant without a model has none.
+ * A task's environment: OPENCODE_ENV, plus the picked model in OPENCODE_CONFIG_CONTENT, added to the one already in `env`
+ * (the user's own) with its other keys kept. The interactive `opencode` takes no model flag, so config is the only way in;
+ * a variant without a model has none. The model goes as an object, since OpenCode's TUI drops a variant given in the
+ * `provider/model#variant` string. An OPENCODE_CONFIG_CONTENT that isn't a JSON object is left as it is, with no pick.
  */
-function opencodeTaskEnv({ model, effort }: ModelPick): Record<string, string> {
+function opencodeTaskEnv({ model, effort, env = {}, warn = console.warn }: ModelPick & LaunchBase): Record<string, string> {
   if (model === undefined) return OPENCODE_ENV;
-  return { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: effort === undefined ? model : `${model}#${effort}` }) };
+  let config: unknown = {};
+  const own = env.OPENCODE_CONFIG_CONTENT;
+  try {
+    if (own !== undefined) config = JSON.parse(own);
+  } catch {
+    config = null;
+  }
+  if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+    warn(`OPENCODE_CONFIG_CONTENT is not a JSON object, so the task runs without its model ${model}, on OpenCode's own choice.`);
+    return OPENCODE_ENV;
+  }
+  const slash = model.indexOf('/');
+  const pick = { providerID: model.slice(0, slash), model: model.slice(slash + 1), ...(effort !== undefined && { variant: effort }) };
+  return { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, model: pick }) };
 }
 
 const SESSION_ID = /^ses_[0-9a-f]{28}$/;
