@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
+import { isImageFile } from '../shared/imageLabels';
 import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
 import { readImages, recordImages, unchanged } from './images/imageLog';
@@ -66,11 +67,11 @@ export function imagesOf(projects: ProjectRegistry<Project>, sessionId: string):
   return dir ? readImages(dir) : null;
 }
 
-/** The images the page says the agent took, each as its type; anything else is refused. */
+/** The images the page says the agent took, each as its type and an image file by its name; anything else is refused. */
 function addedImages(raw: unknown): { path: string; number: number }[] {
   const entries = Array.isArray(raw) ? raw.map((e) => (e ?? {}) as Record<string, unknown>) : null;
   const usable = (e: Record<string, unknown>) =>
-    typeof e.path === 'string' && isAbsolute(e.path) && Number.isInteger(e.number) && (e.number as number) > 0;
+    typeof e.path === 'string' && isAbsolute(e.path) && isImageFile(e.path) && Number.isInteger(e.number) && (e.number as number) > 0;
   if (!entries || !entries.every(usable)) throw new Error("Those images can't be recorded");
   return entries.map((e) => ({ path: e.path as string, number: e.number as number }));
 }

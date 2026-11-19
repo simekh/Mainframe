@@ -6,7 +6,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type IBufferLine } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { createEffect, on, onCleanup, onMount } from 'solid-js';
-import { IMAGE_FILE_TYPES, IMAGE_LABEL, labelNumbers } from '../../../shared/imageLabels';
+import { IMAGE_LABEL, isImageFile, labelNumbers } from '../../../shared/imageLabels';
 import { type AgentName, type RendererConfig, TERMINAL_TEXT_DEFAULT } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 import { linkClickHeld } from '../keys';
@@ -334,7 +334,6 @@ export default function TerminalView(props: {
     // for an agent whose label numbers it, once that label shows, with its number (imageWatch has the rules). A paste
     // with no label (it went into a question, or the agent didn't take the file) isn't listed.
     const label = IMAGE_LABEL[agent];
-    const takesAsImage = (path: string) => IMAGE_FILE_TYPES.includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
     const record = (added: { path: string; number: number }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
     // The whole screen: a session just started has its prompt at the top of a tall one.
@@ -346,7 +345,7 @@ export default function TerminalView(props: {
     /** Pastes the paths, each escaped or quoted as one word, and lists the images among them. */
     const pastePaths = async (paths: string[]) => {
       if (exited) return;
-      const images = paths.filter(takesAsImage);
+      const images = paths.filter(isImageFile);
       if (images.length > 0 && imageWatch) {
         // The numbers already listed are known before the paste too, also the ones scrolled off. A list that can't be
         // read means no watch: a label could then seem new.
@@ -410,14 +409,15 @@ export default function TerminalView(props: {
       },
     });
 
-    // A size or line height chosen in Settings: the terminal fits again to its new cells, which resizes its
-    // session, on screen or not.
+    // A size or line height chosen in Settings: the terminal fits again to its new cells, which resizes its session.
+    // One off screen fits once it is shown again, as its container may be laid out for no pane meanwhile.
     createEffect(
       on(
         () => settingsView()?.terminalText,
         (text) => {
           if (!text || !terminalTextChanged(term, text)) return;
-          fitToContainer();
+          if (props.selected) fitToContainer();
+          else fitted = { width: 0, height: 0, ratio: 0 };
           redrawAllTerminals();
         },
         { defer: true },

@@ -27,7 +27,11 @@ export function imagesOf(sessionId: string): ImageEntry[] {
     window.mainframe
       .getImages(sessionId)
       .then((images) => pushed.has(sessionId) || set(sessionId, images))
-      .catch((err: unknown) => console.warn(`[images] could not read the images of session ${sessionId}`, err));
+      .catch((err: unknown) => {
+        // Asked again on the next read.
+        asked.delete(sessionId);
+        console.warn(`[images] could not read the images of session ${sessionId}`, err);
+      });
   }
   return lists[sessionId] ?? [];
 }

@@ -18,6 +18,9 @@ export const IMAGE_LABEL: Record<AgentName, RegExp | null> = {
  */
 export const IMAGE_FILE_TYPES: readonly string[] = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
+/** Whether the file's extension is one of IMAGE_FILE_TYPES. */
+export const isImageFile = (path: string): boolean => IMAGE_FILE_TYPES.includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase());
+
 /**
  * Where each label is in the text, in the order they show: its first index, the index after it, and its number. On a line
  * whose characters stand one per column, those are columns. It matches with a fresh copy of `label`, so the position a

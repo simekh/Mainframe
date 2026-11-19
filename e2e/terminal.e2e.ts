@@ -57,6 +57,8 @@ async function step(page: Page, testId: string, label: 'Smaller' | 'Larger', val
 
 test('terminal text size and line height change from Settings without a restart', async () => {
   const { app, page, dataDir } = await launchApp();
+  // B is off screen while the text changes.
+  const b = await startTask(page, 'B');
   const a = await startTask(page);
   const before = (await termSize(page, a))!;
   expect(await termText(page, a)).toEqual({ fontSize: 13, lineHeight: 1 });
@@ -74,6 +76,10 @@ test('terminal text size and line height change from Settings without a restart'
   const size = (await termSize(page, a))!;
   await run(page, 'stty size');
   await expect.poll(() => screen(page, a)).toContain(`${size.rows} ${size.cols}`);
+  // B kept its size off screen, and fits to the larger text once shown.
+  expect((await termSize(page, b))!.rows).toBe(before.rows);
+  await card(page, b).click();
+  await expect.poll(() => termSize(page, b)).toEqual(size);
   await app.close();
 
   const again = await launchApp({ MAINFRAME_DATA_DIR: dataDir }, undefined, { settings: readSettings(dataDir, () => {}) });

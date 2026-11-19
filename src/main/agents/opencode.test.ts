@@ -84,6 +84,14 @@ describe('a task on a picked model', () => {
     }
   });
 
+  it('skips a model that names no provider, with a warning', () => {
+    for (const model of ['big', '/big', 'prov/']) {
+      const warnings: string[] = [];
+      expect(envFor({ model, warn: (msg) => warnings.push(msg) })).toEqual([OPENCODE_ENV, OPENCODE_ENV]);
+      expect(warnings).toEqual(Array(2).fill(expect.stringContaining(model)));
+    }
+  });
+
   it('with no pick, or a variant without a model, the env is OPENCODE_ENV', () => {
     expect(envFor({})).toEqual([OPENCODE_ENV, OPENCODE_ENV]);
     expect(envFor({ effort: 'high' })).toEqual([OPENCODE_ENV, OPENCODE_ENV]);

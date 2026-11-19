@@ -49,18 +49,23 @@ export default function NewTaskDialog(props: { onClose: () => void }) {
   );
   // Read only once the list for the agent on screen is in, so nothing is offered or sent from the last agent's list.
   const ready = () => (choices.state === 'ready' ? choices() : undefined);
-  // Back to Default when the agent changes: the last agent's picks mean nothing to this one.
-  const [model, setModel] = createSignal<string>();
+  // Back to Default when the agent changes: the last agent's picks mean nothing to this one. A model counts only while
+  // the agent on screen lists it, however the agent changed.
+  const [modelPicked, setModelPicked] = createSignal<string>();
+  const model = () => {
+    const id = modelPicked();
+    return ready()?.models.some((m) => m.id === id) ? id : undefined;
+  };
   const [effortPicked, setEffortPicked] = createSignal<string>();
   const efforts = () => effortsFor(ready(), model());
   const effort = () => keptEffort(efforts(), effortPicked());
   function pickAgent(name: AgentName): void {
     setPicked(name);
-    setModel(undefined);
+    setModelPicked(undefined);
     setEffortPicked(undefined);
   }
   function pickModel(id: string | undefined): void {
-    setModel(id);
+    setModelPicked(id);
     setEffortPicked(keptEffort(effortsFor(ready(), id), effortPicked()));
   }
   const [copied, setCopied] = createSignal(false);

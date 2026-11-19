@@ -68,7 +68,7 @@ it("recordImages takes only well-formed entries from the page, records them in t
     const shot = join(root, 'shot.png');
     writeFileSync(shot, 'png');
 
-    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: shot, number: null }], [{ path: shot, number: 0 }], [{ path: '', number: 1 }], [{ path: 'shot.png', number: 1 }], [{ path: shot }]]) {
+    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: shot, number: null }], [{ path: shot, number: 0 }], [{ path: '', number: 1 }], [{ path: 'shot.png', number: 1 }], [{ path: join(root, 'id_rsa'), number: 1 }], [{ path: shot }]]) {
       expect(() => record({}, 's1', bad)).toThrow();
     }
     expect(() => record({}, 's9', [{ path: shot, number: 1 }])).toThrow();

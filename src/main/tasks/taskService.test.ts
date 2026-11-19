@@ -2971,6 +2971,25 @@ describe('discard', () => {
     expect(continued.place).toBeNull();
   });
 
+  it('Continue refuses a discarded task whose card started another task while the agent listed its models', async () => {
+    const t = roundSetup();
+    const first = await t.service.start({ ...CODEX_TASK, card: CARD, model: 'gpt-6-sol' });
+    t.service.close(first.id);
+    t.service.onSessionExit(first.session!.id);
+    await t.service.discard(first.id);
+    let listed!: () => void;
+    const choices = t.agents.models.codex as ModelChoices;
+    t.agents.taskModelChoices = () => new Promise((resolve) => (listed = () => resolve(choices)));
+
+    const continuing = t.service.continueTask(first.id);
+    await vi.waitFor(() => expect(listed).toBeDefined());
+    await t.service.start({ ...NEW_TASK, title: 'Again', card: CARD });
+    listed();
+
+    await expect(continuing).rejects.toThrow(`${CARD.number} already has the task "Again"; continue that one instead`);
+    expect(t.service.list().find((v) => v.id === first.id)).toMatchObject({ place: 'discarded', session: null });
+  });
+
   it('a card whose task is finished still refuses Start', async () => {
     const t = roundSetup();
     const first = await t.service.start({ ...NEW_TASK, card: CARD });

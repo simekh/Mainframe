@@ -302,17 +302,12 @@ export class TaskService {
     const task = this.find(taskId);
     if (task.place === undefined) throw new Error(`Task ${task.title} is on the board; reopen it instead`);
     if (task.place === 'putBack') return this.reopen(taskId);
-    // A card has at most one task that isn't discarded: one started afresh since keeps the card.
-    const card = task.card;
-    const other = task.place === 'discarded' && card ? this.taskOfCard(card.id) : undefined;
-    if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
-    // It stays finished until its session starts, so no round checks it while git adds its worktree.
-    if (this.busy(task)) return this.view(task);
+    if (!this.continuable(task)) return this.view(task);
     let pick = pickOf(task);
     if (this.checksModel(task)) {
       pick = await this.listedPick(task);
-      // Another Continue may have started it while the agent listed its models.
-      if (this.busy(task)) return this.view(task);
+      // Asked again: another Continue, or a task started afresh on its card, may have come while the agent listed its models.
+      if (!this.continuable(task)) return this.view(task);
     }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
@@ -446,6 +441,18 @@ export class TaskService {
    */
   private pausedOnBoard(task: TaskRecord): boolean {
     return task.place === undefined && !task.open && !this.busy(task);
+  }
+
+  /**
+   * Whether the finished or discarded task can be continued now: not while something is under way for it (it stays
+   * finished until its session starts, so no round checks it while git adds its worktree). Throws when its card has
+   * another task: a card has at most one that isn't discarded, and one started afresh since keeps the card.
+   */
+  private continuable(task: TaskRecord): boolean {
+    const card = task.card;
+    const other = task.place === 'discarded' && card ? this.taskOfCard(card.id) : undefined;
+    if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
+    return task.place !== undefined && !this.busy(task);
   }
 
   /** The project's task for the card: a card has at most one that isn't discarded. */

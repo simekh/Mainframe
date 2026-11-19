@@ -15,10 +15,16 @@ export const OPENCODE_ENV: Record<string, string> = { OPENCODE_CLI_CONFIG_CONTEN
  * A task's environment: OPENCODE_ENV, plus the picked model in OPENCODE_CONFIG_CONTENT, added to the one already in `env`
  * (the user's own) with its other keys kept. The interactive `opencode` takes no model flag, so config is the only way in;
  * a variant without a model has none. The model goes as an object, since OpenCode's TUI drops a variant given in the
- * `provider/model#variant` string. An OPENCODE_CONFIG_CONTENT that isn't a JSON object is left as it is, with no pick.
+ * `provider/model#variant` string. An OPENCODE_CONFIG_CONTENT that isn't a JSON object is left as it is, with no pick,
+ * as is a model that isn't `provider/model`.
  */
 function opencodeTaskEnv({ model, effort, env = {}, warn = console.warn }: ModelPick & LaunchBase): Record<string, string> {
   if (model === undefined) return OPENCODE_ENV;
+  const slash = model.indexOf('/');
+  if (slash < 1 || slash === model.length - 1) {
+    warn(`${model} is not an OpenCode model (provider/model), so the task runs on OpenCode's own choice.`);
+    return OPENCODE_ENV;
+  }
   let config: unknown = {};
   const own = env.OPENCODE_CONFIG_CONTENT;
   try {
@@ -30,7 +36,6 @@ function opencodeTaskEnv({ model, effort, env = {}, warn = console.warn }: Model
     warn(`OPENCODE_CONFIG_CONTENT is not a JSON object, so the task runs without its model ${model}, on OpenCode's own choice.`);
     return OPENCODE_ENV;
   }
-  const slash = model.indexOf('/');
   const pick = { providerID: model.slice(0, slash), model: model.slice(slash + 1), ...(effort !== undefined && { variant: effort }) };
   return { ...OPENCODE_ENV, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, model: pick }) };
 }
