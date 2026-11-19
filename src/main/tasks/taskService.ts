@@ -252,10 +252,12 @@ export class TaskService {
 
   async reopen(taskId: string): Promise<TaskView> {
     const task = this.find(taskId);
-    if (this.checksModel(task)) await this.dropRetiredModel(task, task.model!);
-    this.refuseWhilePuttingBack(task);
-    // A finished or discarded task has no worktree or branch: Continue brings it back.
-    if (isEnded(task.place) || this.busy(task)) return this.view(task);
+    if (!this.reopenable(task)) return this.view(task);
+    if (this.checksModel(task)) {
+      await this.dropRetiredModel(task, task.model!);
+      // Asked again: the task may have moved, or another reopen started it, while the agent listed its models.
+      if (!this.reopenable(task)) return this.view(task);
+    }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     if (adapter.mainframeAddsWorktree) return this.reopenInWorktree(task);
@@ -286,13 +288,17 @@ export class TaskService {
     const task = this.find(taskId);
     if (task.place === undefined) throw new Error(`Task ${task.title} is on the board; reopen it instead`);
     if (task.place === 'putBack') return this.reopen(taskId);
-    if (this.checksModel(task)) await this.dropRetiredModel(task, task.model!);
     // A card has at most one task that isn't discarded: one started afresh since keeps the card.
     const card = task.card;
     const other = task.place === 'discarded' && card ? this.taskOfCard(card.id) : undefined;
     if (other) throw new Error(`${card!.number ?? task.title} already has the task "${other.title}"; continue that one instead`);
     // It stays finished until its session starts, so no round checks it while git adds its worktree.
     if (this.busy(task)) return this.view(task);
+    if (this.checksModel(task)) {
+      await this.dropRetiredModel(task, task.model!);
+      // Another Continue may have started it while the agent listed its models.
+      if (this.busy(task)) return this.view(task);
+    }
     const agent = agentOf(task);
     const adapter = ADAPTERS[agent];
     const prompt = continuePrompt(task.branch);
@@ -358,6 +364,15 @@ export class TaskService {
       this.puttingBack.delete(task.id);
       this.deps.onChange(this.list());
     }
+  }
+
+  /**
+   * Whether a reopen would launch: a finished or discarded task has no worktree or branch (Continue brings it back), and
+   * a busy one is left as it is. Throws while the task is being put back.
+   */
+  private reopenable(task: TaskRecord): boolean {
+    this.refuseWhilePuttingBack(task);
+    return !isEnded(task.place) && !this.busy(task);
   }
 
   private refuseWhilePuttingBack(task: TaskRecord): void {

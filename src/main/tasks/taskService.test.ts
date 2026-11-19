@@ -1617,6 +1617,27 @@ it('a model the agent no longer lists reopens on Default with a warning', async 
   expect(t.warnings).toEqual([expect.stringContaining('gpt-6-sol')]);
 });
 
+it('a reopen that returns early lists no models and keeps the pick', async () => {
+  const t = setup();
+  const records = new TaskRecords(t.stateFile, 1000, () => {});
+  const service = t.make(records);
+  const view = await pickedCodexTask(t, service);
+  const running = await service.reopen(view.id);
+  t.agents.listed.length = 0;
+  t.agents.models.codex = { models: [], defaultEfforts: [] };
+
+  // Already running: nothing to launch.
+  await service.reopen(view.id);
+  // Finished: Continue brings it back, not Reopen.
+  service.onSessionExit(running.session!.id);
+  records.all[0].place = 'finished';
+  await service.reopen(view.id);
+
+  expect(t.agents.listed).toEqual([]);
+  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
+  expect(t.warnings).toEqual([]);
+});
+
 it('a model list that fails keeps the pick', async () => {
   const t = setup();
   const view = await pickedCodexTask(t);

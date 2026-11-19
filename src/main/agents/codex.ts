@@ -37,7 +37,7 @@ export const CODEX_DROPPED_ENV: readonly string[] = [
 /** `-m` and the reasoning effort, as a TOML string, for a pick; nothing for none. */
 const codexPickFlags = ({ model, effort }: ModelPick): string[] => [
   ...(model === undefined ? [] : ['-m', model]),
-  ...(effort === undefined ? [] : ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`]),
+  ...(effort === undefined ? [] : ['-c', `model_reasoning_effort=${tomlString(effort)}`]),
 ];
 
 /** Only the task's pick is passed: the task runs in its worktree on the user's own config otherwise. */
