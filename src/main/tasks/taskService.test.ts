@@ -3133,3 +3133,88 @@ describe('put back', () => {
     await expect(t.service.reopen(view.id)).resolves.toMatchObject({ session: { id: expect.any(String) } });
   });
 });
+
+describe("a task's images", () => {
+  /** Gives the task a list of one pasted image, as the page records one; returns the folder. */
+  const withImages = (t: ReturnType<typeof setup>, taskId: string) => {
+    const dir = join(t.taskDir(taskId), 'images');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'a.png'), 'png');
+    writeFileSync(join(dir, 'images.json'), JSON.stringify([{ number: 1, path: join(dir, 'a.png'), name: 'a.png' }]));
+    return dir;
+  };
+
+  it("are kept in the task's folder, found by its running session", async () => {
+    const t = setup();
+    const view = await t.service.start(NEW_TASK);
+    expect(t.service.imagesDir(view.session!.id)).toBe(join(t.taskDir(view.id), 'images'));
+    expect(t.service.imagesDir('no-such-session')).toBeNull();
+  });
+
+  it("a reopen that starts a new chat clears the task's images", async () => {
+    const t = setup();
+    const view = await t.service.start(NEW_TASK);
+    // SessionStart never fired: there is no chat to resume.
+    t.service.onSessionExit(view.session!.id);
+    const dir = withImages(t, view.id);
+
+    await t.service.reopen(view.id);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("a reopen that starts a new chat in Mainframe's worktree clears them too", async () => {
+    const t = setup();
+    const view = await t.service.start(CODEX_TASK);
+    // Codex never reported a turn: its reopen starts again from the opening prompt.
+    t.service.onSessionExit(view.session!.id);
+    const dir = withImages(t, view.id);
+
+    await t.service.reopen(view.id);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('a reopen that resumes keeps them', async () => {
+    const t = setup();
+    const view = await t.service.start(NEW_TASK);
+    t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+    t.service.onSessionExit(view.session!.id);
+    const dir = withImages(t, view.id);
+
+    await t.service.reopen(view.id);
+    expect(existsSync(join(dir, 'images.json'))).toBe(true);
+  });
+
+  it('a continue whose chat is gone clears them', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t, { begin: false });
+    const first = t.readState()[0].claudeSessionId;
+    const transcript_path = join(t.dataDir, 'projects', '-acme', `${first}.jsonl`);
+    writeFileSync(join(t.taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: first, source: 'startup', transcript_path }));
+    t.states.set(view.branch, MERGED);
+    await t.service.checkRound();
+    const dir = withImages(t, view.id);
+
+    await t.service.continueTask(view.id);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('removing the worktree clears them: a round that finishes the task', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    const dir = withImages(t, view.id);
+    t.states.set(view.branch, MERGED);
+
+    await t.service.checkRound();
+    expect(t.service.list()[0].place).toBe('finished');
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('removing the worktree clears them: a discard', async () => {
+    const t = roundSetup();
+    const view = await pausedTask(t);
+    const dir = withImages(t, view.id);
+
+    await t.service.discard(view.id);
+    expect(existsSync(dir)).toBe(false);
+  });
+});

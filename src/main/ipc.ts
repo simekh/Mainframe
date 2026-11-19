@@ -1,8 +1,10 @@
+import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { IPC } from '../shared/ipc';
-import { isAgentName, type AgentChoice, type AgentName, type DiffView, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
+import { isAgentName, type AgentChoice, type AgentName, type DiffView, type ImageEntry, type RendererConfig, type TodoItemRef, type TerminalText, type TodoNoteDraft } from '../shared/types';
 import { resolveClipboardPaste, type ClipboardReader } from './clipboard';
+import { readImages, recordImages } from './images/imageLog';
 import { openLink } from './links';
 import type { ManagerService } from './manager/managerService';
 import type { ProjectRegistry, RegisteredProject } from './projectRegistry';
@@ -25,6 +27,8 @@ export interface ClipboardDeps {
   clipboard: ClipboardReader & { writeText(text: string): Promise<void> };
   writeFile: (path: string, data: Buffer) => Promise<void>;
   newImagePath: () => string;
+  /** The folder pasted images are saved to; one the agent took moves from it into its conversation's folder. */
+  pasteDir: string;
 }
 
 /** The one diff window, which shows a task of any open project. */
@@ -41,6 +45,21 @@ export interface Project extends RegisteredProject {
   service: TaskService;
   manager: ManagerService;
   todo: TodoService;
+}
+
+/** The running session's list of images, from whichever open project runs it; null for a session none runs. */
+export function imagesOf(projects: ProjectRegistry<Project>, sessionId: string): ImageEntry[] | null {
+  const dir = projects.ownerOf(sessionId)?.imagesDir(sessionId);
+  return dir ? readImages(dir) : null;
+}
+
+/** The images the page says the agent took, each as its type; anything else is refused. */
+function addedImages(raw: unknown): { path: string; number: number | null }[] {
+  const entries = Array.isArray(raw) ? raw.map((e) => (e ?? {}) as Record<string, unknown>) : null;
+  const usable = (e: Record<string, unknown>) =>
+    typeof e.path === 'string' && e.path !== '' && (e.number === null || (Number.isInteger(e.number) && (e.number as number) > 0));
+  if (!entries || !entries.every(usable)) throw new Error("Those images can't be recorded");
+  return entries.map((e) => ({ path: e.path as string, number: e.number as number | null }));
 }
 
 /**
@@ -262,6 +281,18 @@ export function registerIpc(
   ipcMain.handle(IPC.resolvePaste, () =>
     resolveClipboardPaste(clipboardDeps.clipboard, clipboardDeps.writeFile, clipboardDeps.newImagePath),
   );
+  ipcMain.handle(IPC.getImages, (_e, sessionId: unknown) => (typeof sessionId === 'string' && imagesOf(projects, sessionId)) || []);
+  ipcMain.handle(IPC.recordImages, (_e, sessionId: unknown, raw: unknown) => {
+    const added = addedImages(raw);
+    const dir = typeof sessionId === 'string' ? projects.ownerOf(sessionId)?.imagesDir(sessionId) : null;
+    if (!dir) throw new Error(`Unknown session ${String(sessionId)}`);
+    send(IPC.images, { sessionId, images: recordImages(dir, added, clipboardDeps.pasteDir) });
+  });
+  ipcMain.handle(IPC.showImageInFolder, (_e, sessionId: unknown, index: unknown) => {
+    if (typeof sessionId !== 'string' || !Number.isInteger(index)) return;
+    const entry = imagesOf(projects, sessionId)?.[index as number];
+    if (entry && existsSync(entry.path)) shell.showItemInFolder(entry.path);
+  });
   ipcMain.on(IPC.copyText, (_e, text: string) => {
     clipboardDeps.clipboard.writeText(text).catch((err: unknown) => console.error('[clipboard] copy failed', err));
   });

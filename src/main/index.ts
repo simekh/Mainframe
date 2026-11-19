@@ -22,7 +22,8 @@ import { loadConfig, type AppConfig } from './config';
 import { copyMenuItems, editMenuItems } from './contextMenu';
 import { DiffWindow } from './diff/diffWindow';
 import { gitQueries } from './git';
-import { registerIpc, registerSettingsIpc, registerSetupIpc, registerUpdateIpc, type Project } from './ipc';
+import { registerImageProtocol } from './images/imageProtocol';
+import { imagesOf, registerIpc, registerSettingsIpc, registerSetupIpc, registerUpdateIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { startMcpServer } from './mcp/mcpServer';
@@ -231,7 +232,8 @@ async function start(
   win: BrowserWindow,
   zoom: WindowZoom,
 ): Promise<void> {
-  // Pasted images get one file each; empty the folder at start so they don't pile up.
+  // Pasted images get one file each; empty the folder at start so they don't pile up. One the agent took has moved
+  // into its conversation's folder; what is left are pastes no agent took.
   const pasteDir = join(app.getPath('temp'), 'mainframe-paste');
   clearPasteFolder(pasteDir, console.warn);
 
@@ -421,9 +423,11 @@ async function start(
     projects,
     openPicked,
     host,
-    { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`) },
+    { clipboard, writeFile, newImagePath: () => join(pasteDir, `${randomUUID()}.png`), pasteDir },
     diffWindow,
   );
+  // The page's <img> loads a conversation's images by session and index; only listed ones are served.
+  registerImageProtocol((sessionId) => imagesOf(projects, sessionId));
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }

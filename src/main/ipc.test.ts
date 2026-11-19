@@ -44,3 +44,33 @@ it("Settings' Find opens one picker at a time: a second click while it is open j
   await third;
   expect(pickAgent).toHaveBeenCalledTimes(2);
 });
+
+it("recordImages takes only well-formed entries from the page, records them in the session's own list and sends that list", async () => {
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const root = mkdtempSync(join(tmpdir(), 'mainframe-ipc-'));
+  try {
+    const sent: [string, unknown][] = [];
+    const owner = { imagesDir: (id: string) => (id === 's1' ? join(root, 'images') : null) };
+    const projects = { ownerOf: (id: string) => (id === 's1' ? owner : undefined) };
+    registerIpc((c, p) => sent.push([c, p]), projects as never, async () => {}, {} as never, { pasteDir: join(root, 'paste') } as never, {} as never);
+    const record = handlers.get(IPC.recordImages)!;
+    const shot = join(root, 'shot.png');
+    writeFileSync(shot, 'png');
+
+    for (const bad of [null, 'x', [{ path: 1, number: 1 }], [{ path: shot, number: '1' }], [{ path: shot, number: 1.5 }], [{ path: '', number: null }], [{ path: shot }]]) {
+      expect(() => record({}, 's1', bad)).toThrow();
+    }
+    expect(() => record({}, 's9', [{ path: shot, number: 1 }])).toThrow();
+    expect(sent).toEqual([]);
+
+    record({}, 's1', [{ path: shot, number: 1, extra: 'dropped' }]);
+    const images = [{ number: 1, path: shot, name: 'shot.png' }];
+    expect(sent).toEqual([[IPC.images, { sessionId: 's1', images }]]);
+    expect(handlers.get(IPC.getImages)!({}, 's1')).toEqual(images);
+    expect(handlers.get(IPC.getImages)!({}, 's9')).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

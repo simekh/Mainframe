@@ -6,6 +6,7 @@ import type {
   DiscardPreview,
   ClipboardPaste,
   DiffView,
+  ImageEntry,
   ManagerView,
   ModelChoices,
   OpencodeChoices,
@@ -81,6 +82,10 @@ export const IPC = {
   status: 'session:status',
   resolvePaste: 'clipboard:resolve-paste',
   copyText: 'clipboard:copy-text',
+  getImages: 'images:get',
+  recordImages: 'images:record',
+  images: 'images:changed',
+  showImageInFolder: 'images:show-in-folder',
   openLink: 'shell:open-link',
   getSettings: 'settings:get',
   settingsChanged: 'settings:changed',
@@ -204,6 +209,14 @@ export interface MainframeApi {
   copyText(text: string): void;
   /** Opens a web page in the owner's browser; main passes on only http: and https: addresses. */
   openLink(url: string): Promise<void>;
+  /** The images the session's conversation received, in order; none for a session that isn't running. Each loads from `imageUrl(sessionId, index)`. */
+  getImages(sessionId: string): Promise<ImageEntry[]>;
+  /** Adds images the agent took to the session's list; a pasted one moves into the conversation's folder. The new list comes through `onImages`. */
+  recordImages(sessionId: string, added: { path: string; number: number | null }[]): Promise<void>;
+  /** Every change to a session's list of images, with the whole list. */
+  onImages(cb: (e: { sessionId: string; images: ImageEntry[] }) => void): () => void;
+  /** Shows the listed image in Finder, Explorer or the file manager; nothing when its file has gone. */
+  showImageInFolder(sessionId: string, index: number): Promise<void>;
   getPathForFile(file: File): string;
   onData(cb: (e: PtyDataEvent) => void): () => void;
   onExit(cb: (e: PtyExitEvent) => void): () => void;

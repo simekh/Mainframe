@@ -5,6 +5,7 @@ import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFi
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs } from '../agents/agent';
 import { FolderLeftError, type GitQueries } from '../git';
+import { clearImages } from '../images/imageLog';
 import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { continuePrompt, inTurn, putBackPrompt, resumePromptFor, TurnTracker } from './carryOn';
@@ -274,6 +275,7 @@ export class TaskService {
       // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = adapter.newSessionId(this.newId);
+      this.clearImagesOf(task);
       launch = this.startLaunch(task, bin);
     }
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
@@ -315,6 +317,7 @@ export class TaskService {
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
     adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
+    this.clearImagesOf(task);
     const launch = this.startLaunch(task, bin, { continuing: true });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false, continued: true });
   }
@@ -436,8 +439,9 @@ export class TaskService {
     return ADAPTERS[agentOf(task)].began(this.taskDir(task.id), task);
   }
 
-  /** Moves a task that ended off the board, to `place`. */
+  /** Moves a task that ended off the board, to `place`: its worktree has gone, and its images go with it. */
   private moveOff(task: TaskRecord, place: 'finished' | 'discarded'): void {
+    this.clearImagesOf(task);
     task.place = place;
     task.endedAt = this.now();
     this.problems.delete(task.id);
@@ -502,6 +506,7 @@ export class TaskService {
     const cwd = task.worktreePath;
     if (!task.began) {
       // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
+      this.clearImagesOf(task);
       return this.relaunch(task, { ...this.startLaunch(task, bin), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
@@ -603,6 +608,12 @@ export class TaskService {
   /** The sessions it runs: one per open task. */
   sessionIds(): string[] {
     return [...this.sessions.keys()];
+  }
+
+  /** Where the running session's task keeps the images its conversation received; null for a session it doesn't run. */
+  imagesDir(sessionId: string): string | null {
+    const session = this.sessions.get(sessionId);
+    return session ? this.imagesFolder(session.taskId) : null;
   }
 
   launchSpec(sessionId: string): LaunchSpec {
@@ -867,6 +878,15 @@ export class TaskService {
 
   private taskDir(taskId: string): string {
     return join(this.deps.dataDir, 'tasks', taskId);
+  }
+
+  private imagesFolder(taskId: string): string {
+    return join(this.taskDir(taskId), 'images');
+  }
+
+  /** A new chat starts its count at #1, and the task's worktree going ends the task's work: either way its list goes. */
+  private clearImagesOf(task: TaskRecord): void {
+    clearImages(this.imagesFolder(task.id));
   }
 
   private worktreeFolders(): string[] {

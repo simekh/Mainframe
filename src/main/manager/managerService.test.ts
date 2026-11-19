@@ -119,7 +119,7 @@ it('the first start launches claude in the main checkout, under a fresh id and w
   const { service, projectDir, changes, argvOf, chatOf } = setup();
   const view = await service.start();
 
-  expect(view).toEqual({ session: { id: expect.any(String), startedWithPrompt: false } });
+  expect(view).toEqual({ session: { id: expect.any(String), startedWithPrompt: false, agent: 'claude' } });
   const chat = chatOf(view);
   expect(new Set([chat, view.session!.id]).size).toBe(2);
   expect(service.launchSpec(view.session!.id)).toEqual({ cwd: projectDir, argv: argvOf(chat, false), answerStatusEarly: true });
@@ -217,7 +217,7 @@ it('start resumes the conversation SessionStart last recorded', async () => {
   t.sessionStarted(U2);
 
   const view = await t.service.start();
-  expect(view.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
+  expect(view.session).toEqual({ id: expect.any(String), startedWithPrompt: false, agent: 'claude' });
   expect(t.service.launchSpec(view.session!.id).argv).toEqual(t.argvOf(U2, true));
 });
 
@@ -286,7 +286,7 @@ it.each([
   t.service.onSessionExit(view.session!.id);
   const again = await t.service.start();
 
-  expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
+  expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined, agent: 'claude' });
   expect(t.service.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
 });
 
@@ -305,7 +305,7 @@ it.each([
 
   const second = t.make();
   const again = await second.start();
-  expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined });
+  expect(again.session).toEqual({ id: expect.any(String), startedWithPrompt: prompt !== undefined, agent: 'claude' });
   expect(second.launchSpec(again.session!.id).argv).toEqual(t.argvOf(chat, true, prompt));
 });
 
@@ -592,4 +592,46 @@ it('a tool call with no manager running does nothing, and one whose chat cannot 
   await t.service.start();
   expect(() => t.service.noteToolCall(U2)).not.toThrow();
   expect(t.warnings).toEqual([expect.stringContaining('disk full')]);
+});
+
+it("the view's session names its agent, and its images are kept per agent in the manager's folder", async () => {
+  const t = setup();
+  const view = await t.service.start();
+  expect(view.session!.agent).toBe('claude');
+  expect(t.service.imagesDir(view.session!.id)).toBe(join(t.dir, 'images', 'claude'));
+  expect(t.service.imagesDir('no-such-session')).toBeNull();
+  t.service.onSessionExit(view.session!.id);
+
+  t.use(OPENCODE);
+  const oc = await t.service.start();
+  expect(oc.session!.agent).toBe('opencode');
+  expect(t.service.imagesDir(oc.session!.id)).toBe(join(t.dir, 'images', 'opencode'));
+});
+
+/** Gives the agent's manager chat a list of one image; returns its folder. */
+function withImages(t: Setup, agent: string): string {
+  const dir = join(t.dir, 'images', agent);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'images.json'), JSON.stringify([{ number: 1, path: join(dir, 'a.png'), name: 'a.png' }]));
+  return dir;
+}
+
+it("a new manager chat clears that agent's images", async () => {
+  const t = setup();
+  const claude = withImages(t, 'claude');
+  const opencode = withImages(t, 'opencode');
+
+  await t.service.start();
+  expect(existsSync(claude)).toBe(false);
+  // Another agent's chat is not the one starting over.
+  expect(existsSync(opencode)).toBe(true);
+});
+
+it('a resumed chat keeps them', async () => {
+  const t = setup();
+  t.sessionStarted(U2);
+  const claude = withImages(t, 'claude');
+
+  await t.service.start();
+  expect(existsSync(join(claude, 'images.json'))).toBe(true);
 });

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isAgentName, type AgentName, type ManagerView, type ProgramState } from '../../shared/types';
 import type { AgentAdapter, AgentInUse, LaunchArgs } from '../agents/agent';
+import { clearImages } from '../images/imageLog';
 import { resumePromptFor, TurnTracker } from '../tasks/carryOn';
 import { MANAGER_SLUG, projectKey, sessionName } from '../tasks/naming';
 import { writeJsonAtomic } from '../tasks/taskStore';
@@ -72,7 +73,17 @@ export class ManagerService {
   }
 
   view(): ManagerView {
-    return { session: this.session ? { id: this.session.id, startedWithPrompt: this.session.startedWithPrompt } : null };
+    const s = this.session;
+    return { session: s ? { id: s.id, startedWithPrompt: s.startedWithPrompt, agent: s.adapter.name } : null };
+  }
+
+  /** Where the running session's chat keeps the images it received: one folder per agent, as each agent has its own chat. */
+  imagesDir(sessionId: string): string | null {
+    return this.session?.id === sessionId ? this.imagesFolder(this.session.adapter.name) : null;
+  }
+
+  private imagesFolder(agent: AgentName): string {
+    return join(this.dir, 'images', agent);
   }
 
   /** Its running session, as a list: none, or the one. */
@@ -130,6 +141,8 @@ export class ManagerService {
     // Saved first: a start that cannot save it holds no session, so the next one tries again. Not every agent's launch makes the folder.
     mkdirSync(this.dir, { recursive: true });
     writeJsonAtomic(this.recordFile, record);
+    // A new chat counts its images from #1: the last chat's list goes.
+    if (chat === null) clearImages(this.imagesFolder(name));
     this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn), adapter, resumed: chat !== null, reported: false };
     const view = this.view();
     this.deps.onChange(view);

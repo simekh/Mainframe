@@ -223,8 +223,15 @@ export interface TaskView {
 }
 
 export interface ManagerView {
-  /** The running `claude` process; null before it starts and after it ends. */
-  session: { id: string; startedWithPrompt: boolean } | null;
+  /** The running agent process, and the agent it runs; null before it starts and after it ends. */
+  session: { id: string; startedWithPrompt: boolean; agent: AgentName } | null;
+}
+
+/** One image a conversation received through Mainframe. `number`: the agent's label number; null when the agent has no known label. */
+export interface ImageEntry {
+  number: number | null;
+  path: string;
+  name: string;
 }
 
 export interface ChangedFile {
