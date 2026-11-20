@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+Fixed: After a restart, Claude Code's [Image #1] no longer opens an image pasted before the restart.
+Fixed: Images whose [Image #N] label Claude Code wraps onto the next line are kept, and Cmd+click on either part opens them.
+
 ## 0.2.0 · 20 Nov 2026
 
 New: On the Mac, Ctrl+V pastes a copied image or file, as Cmd+V does.

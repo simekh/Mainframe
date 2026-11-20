@@ -23,6 +23,11 @@ wrong for what it adds. A Cmd+click (Ctrl+click on Windows and Linux) on an `[Im
 view is enough. So only images with a numbered label are listed, and an agent without one (Codex, OpenCode) gets no
 image list. The sections below that describe the strip, or images without a number, no longer apply.
 
+**Changed after v0.2.0 (2026-11-20):** two assumptions failed the owner's check on real Claude Code. It numbers images
+per run, not per conversation: a resumed chat starts again at `[Image #1]`. So every launch of a session now starts
+with an empty list. And it wraps its own prompt, breaking a label at its space onto a row the terminal doesn't count
+as wrapped, so the label pattern allows any whitespace, a row's end included, between `[Image` and `#N]`.
+
 ## Goals
 
 - Terminal text size and line height are settings, apply to every open terminal at once, and are kept.
