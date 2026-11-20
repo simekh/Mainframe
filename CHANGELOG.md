@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 · 20 Nov 2026
+
 Fixed: After a restart, Claude Code's [Image #1] no longer opens an image pasted before the restart.
 Fixed: Images whose [Image #N] label Claude Code wraps onto the next line are kept, and Cmd+click on either part opens them.
 
