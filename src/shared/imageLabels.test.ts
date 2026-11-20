@@ -9,6 +9,10 @@ it('reads a label Claude Code broke at its space onto the next row, indented', (
   expect(labelNumbers('❯ [Image #1] [Image\n  #5]', IMAGE_LABEL.claude!)).toEqual([1, 5]);
 });
 
+it("reads a label broken with no space left at the break, and none split by a blank line", () => {
+  expect(labelNumbers('[Image#2] [Image\n\n#4]', IMAGE_LABEL.claude!)).toEqual([2]);
+});
+
 it('text without labels gives none', () => {
   expect(labelNumbers('❯ an image, see Image #3 and [Image]', IMAGE_LABEL.claude!)).toEqual([]);
 });

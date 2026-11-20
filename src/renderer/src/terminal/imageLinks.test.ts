@@ -86,6 +86,14 @@ describe('imageLinkProvider', () => {
     expect(linksOn(term, 1)).toBeUndefined();
   });
 
+  it('links a label broken where `[Image` fills its row and `#3]` starts the next at its first column', () => {
+    store.images = [{ number: 3, path: '/a.png', name: 'a.png' }];
+    const term = termOf([{ cells: [...'ok  [Image'] }, { cells: [...'#3]       '] }], 10);
+    const broken = [{ range: { start: { x: 5, y: 1 }, end: { x: 3, y: 2 } }, text: '[Image#3]' }];
+    expect(linksOn(term, 1)).toEqual(broken);
+    expect(linksOn(term, 2)).toEqual(broken);
+  });
+
   it('finds a wrapped label far down a long line, reading only the rows near it', () => {
     store.images = [{ number: 3, path: '/a.png', name: 'a.png' }];
     const filler = { cells: [...'xxxxxxxx'], wrapped: true };

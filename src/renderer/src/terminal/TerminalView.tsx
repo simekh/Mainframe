@@ -248,6 +248,8 @@ export default function TerminalView(props: {
       if (exited) return;
       exited = true;
       input.dispose();
+      // An ended run records nothing more: a Reopen clears the list for the next one, which counts from #1 again.
+      imageWatch?.dispose();
     };
     // Subscribed before spawning, so no output is missed.
     const unsubscribe = subscribePty(id, {
@@ -336,8 +338,10 @@ export default function TerminalView(props: {
     const label = IMAGE_LABEL[agent];
     const record = (added: { path: string; number: number }[]) =>
       api.recordImages(id, added).catch((err: unknown) => console.warn('[terminal] could not record images', err));
-    // The whole screen: a session just started has its prompt at the top of a tall one.
-    const imageWatch = label && createImageWatch(() => labelNumbers(screenText(bottomRows(term.rows).filter((line) => line !== undefined)), label), record);
+    const numbersIn = (lines: (IBufferLine | undefined)[]) => labelNumbers(screenText(lines.filter((line) => line !== undefined)), label!);
+    const everyRow = () => Array.from({ length: term.buffer.active.length }, (_, y) => term.buffer.active.getLine(y));
+    // The whole screen: a session just started has its prompt at the top of a tall one. At a paste, the scrollback too.
+    const imageWatch = label && createImageWatch(() => numbersIn(bottomRows(term.rows)), record, () => numbersIn(everyRow()));
     // The labels link to their images, for an agent whose label numbers them.
     const imageLinks = label && term.registerLinkProvider(imageLinkProvider(term, id, label, api.platform));
     /** Set once the terminal is gone: a paste still waiting on main then does nothing. */

@@ -36,16 +36,20 @@ it('gives nothing until every pasted image has its label', () => {
 
 describe('the watch', () => {
   let screen: number[];
+  /** Labels above the screen, in the scrollback. */
+  let scrolledOff: number[];
   let recorded: { path: string; number: number }[][];
   let watch: ReturnType<typeof createImageWatch>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     screen = [];
+    scrolledOff = [];
     recorded = [];
     watch = createImageWatch(
       () => screen,
       (added) => recorded.push(added),
+      () => [...scrolledOff, ...screen],
     );
   });
 
@@ -78,6 +82,21 @@ describe('the watch', () => {
     screen = [1, 2, 3];
     vi.advanceTimersByTime(4000);
     expect(recorded).toEqual([]);
+  });
+
+  it("labels a resumed chat shows again, scrolled off too, are above the floor: a new run's label at or below them is never taken", () => {
+    // The chat's earlier run had three images; this run counts from #1 again.
+    scrolledOff = [3];
+    watch.paste(['/a.png'], []);
+    screen = [1];
+    vi.advanceTimersByTime(4000);
+    expect(recorded).toEqual([]);
+
+    vi.advanceTimersByTime(10_000);
+    watch.paste(['/d.png'], []);
+    screen = [1, 4];
+    vi.advanceTimersByTime(200);
+    expect(recorded).toEqual([[{ path: '/d.png', number: 4 }]]);
   });
 
   it('a drop of two files with a label already on screen takes the next two', () => {

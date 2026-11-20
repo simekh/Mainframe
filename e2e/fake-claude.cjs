@@ -177,7 +177,7 @@ function labelImages() {
         const path = process.platform === 'win32' ? word.replace(/^"|"$/g, '') : word.replace(/\\(.)/g, '$1');
         if (/\.(png|jpg)$/i.test(path) && existsSync(path)) {
           const label = process.env.FAKE_CLAUDE_WRAP_LABELS
-            ? `\r${' '.repeat(process.stdout.columns - 8)}[Image\x1b[K\r\n\x1b[2C#${++count}]`
+            ? `\r${' '.repeat(Math.max(0, (process.stdout.columns ?? 80) - 8))}[Image\x1b[K\r\n\x1b[2C#${++count}]`
             : `[Image #${++count}]`;
           process.stdout.write(`${label}\r\n`);
         }
