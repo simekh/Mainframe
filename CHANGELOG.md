@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 · 20 Nov 2026
+
 New: On the Mac, Ctrl+V pastes a copied image or file, as Cmd+V does.
 New: Cmd+click (Ctrl+click on Windows and Linux) on Claude Code's [Image #N] label opens the image you pasted or dropped full size.
 New: New Task can start a task on a chosen model and effort.
