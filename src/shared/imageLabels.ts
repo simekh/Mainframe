@@ -3,11 +3,13 @@ import type { AgentName } from './types';
 /**
  * The label each agent shows for an image it took, with the number in the first group; null where the label's number
  * doesn't name one image of the conversation, so its images aren't listed: no label could open them. Checked by pasting images into each agent:
- * Claude Code 2.1.328 shows `[Image #1]` and counts on across the conversation. OpenCode 2.2.7 shows `[Image 1]` but
- * starts again at 1 in each message, and Codex 0.169.0 (not run here: it needs signing in) does the same in its source.
+ * Claude Code 2.1.328 shows `[Image #1]` and counts on while it runs. It wraps its own prompt, and may break a label at
+ * its space onto the next row, indented: the whitespace between the two parts may hold a row's end. OpenCode 2.2.7 shows
+ * `[Image 1]` but starts again at 1 in each message, and Codex 0.169.0 (not run here: it needs signing in) does the
+ * same in its source.
  */
 export const IMAGE_LABEL: Record<AgentName, RegExp | null> = {
-  claude: /\[Image #(\d+)\]/g,
+  claude: /\[Image\s+#(\d+)\]/g,
   opencode: null,
   codex: null,
 };

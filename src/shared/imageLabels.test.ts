@@ -5,6 +5,10 @@ it("reads the numbers of Claude Code's labels, in the order they show", () => {
   expect(labelNumbers('❯ [Image #3] see [Image #12]', IMAGE_LABEL.claude!)).toEqual([3, 12]);
 });
 
+it('reads a label Claude Code broke at its space onto the next row, indented', () => {
+  expect(labelNumbers('❯ [Image #1] [Image\n  #5]', IMAGE_LABEL.claude!)).toEqual([1, 5]);
+});
+
 it('text without labels gives none', () => {
   expect(labelNumbers('❯ an image, see Image #3 and [Image]', IMAGE_LABEL.claude!)).toEqual([]);
 });

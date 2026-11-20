@@ -170,16 +170,16 @@ test("two projects side by side each open their own images", async () => {
   await app.close();
 });
 
-test('a label the terminal wrapped onto the next row opens its image from either row', async () => {
+test('a label Claude Code broke onto the next row is recorded, and opens its image from either row', async () => {
   const { app, page } = await launchApp({ FAKE_CLAUDE_IMAGES: '1', FAKE_CLAUDE_WRAP_LABELS: '1' });
   const a = await startTask(page);
   await dropFile(page, pngFile('wrapped.png'), TASK_TERMINAL);
   // Split across two rows: neither holds the whole label.
-  await expect.poll(() => screen(page, a)).toMatch(/\[Ima\s*$/m);
+  await expect.poll(() => screen(page, a)).toMatch(/\[Image\s*\n\s*#1\]/);
   expect(await screen(page, a)).not.toContain('[Image #1]');
   const where = { selector: TASK_TERMINAL, taskId: a };
   const viewer = page.getByTestId('image-viewer');
-  for (const part of ['[Ima', 'ge #1]']) {
+  for (const part of ['[Image', '#1]']) {
     await openLabel(page, where, part);
     await expect(viewer).toContainText('wrapped.png');
     await page.keyboard.press('Escape');

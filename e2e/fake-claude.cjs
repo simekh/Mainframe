@@ -161,8 +161,9 @@ function raw() {
 /**
  * Takes a pasted image as Claude Code does: asks for bracketed paste, and for each existing `.png` or `.jpg` path in a
  * bracketed paste prints `[Image #N]`, counting from 1. Escaped paths (quoted on Windows) are read back as escapePath
- * wrote them. Prints `$ ` first, as the tests wait for a prompt. With FAKE_CLAUDE_WRAP_LABELS, each label starts four
- * columns from the right edge, so the terminal wraps it onto the next row.
+ * wrote them. Prints `$ ` first, as the tests wait for a prompt. With FAKE_CLAUDE_WRAP_LABELS, each label is broken as
+ * Claude Code wraps its prompt: `[Image` near the right edge, the rest of the row cleared, and `#N]` on the next row
+ * after a two-column cursor move. Not a wrap the terminal makes: the second row isn't marked wrapped.
  */
 function labelImages() {
   let count = 0;
@@ -176,8 +177,10 @@ function labelImages() {
       for (const word of words ?? []) {
         const path = process.platform === 'win32' ? word.replace(/^"|"$/g, '') : word.replace(/\\(.)/g, '$1');
         if (/\.(png|jpg)$/i.test(path) && existsSync(path)) {
-          const pad = process.env.FAKE_CLAUDE_WRAP_LABELS ? `\r${' '.repeat(process.stdout.columns - 4)}` : '';
-          process.stdout.write(`${pad}[Image #${++count}]\r\n`);
+          const label = process.env.FAKE_CLAUDE_WRAP_LABELS
+            ? `\r${' '.repeat(process.stdout.columns - 8)}[Image\x1b[K\r\n\x1b[2C#${++count}]`
+            : `[Image #${++count}]`;
+          process.stdout.write(`${label}\r\n`);
         }
       }
     }

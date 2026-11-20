@@ -76,6 +76,16 @@ describe('imageLinkProvider', () => {
     expect(linksOn(term, 1)).toBeUndefined();
   });
 
+  it('links a label Claude Code broke onto a row of its own, from either row', () => {
+    store.images = [{ number: 3, path: '/a.png', name: 'a.png' }];
+    // Its own wrap: `[Image`, the row's end cleared, and `#3]` on the next row after two cells it skips. Not soft-wrapped.
+    const term = termOf([{ cells: [...'ok        '] }, { cells: [...'❯ [Image', '', ''] }, { cells: ['', '', ...'#3]', '', '', '', '', ''] }], 10);
+    const broken = [{ range: { start: { x: 3, y: 2 }, end: { x: 5, y: 3 } }, text: '[Image    #3]' }];
+    expect(linksOn(term, 2)).toEqual(broken);
+    expect(linksOn(term, 3)).toEqual(broken);
+    expect(linksOn(term, 1)).toBeUndefined();
+  });
+
   it('finds a wrapped label far down a long line, reading only the rows near it', () => {
     store.images = [{ number: 3, path: '/a.png', name: 'a.png' }];
     const filler = { cells: [...'xxxxxxxx'], wrapped: true };
