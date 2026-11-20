@@ -162,8 +162,7 @@ function raw() {
  * Takes a pasted image as Claude Code does: asks for bracketed paste, and for each existing `.png` or `.jpg` path in a
  * bracketed paste prints `[Image #N]`, counting from 1. Escaped paths (quoted on Windows) are read back as escapePath
  * wrote them. Prints `$ ` first, as the tests wait for a prompt. With FAKE_CLAUDE_WRAP_LABELS, each label is broken as
- * Claude Code wraps its prompt: `[Image` near the right edge, the rest of the row cleared, and `#N]` on the next row
- * after a two-column cursor move. Not a wrap the terminal makes: the second row isn't marked wrapped.
+ * Claude Code wraps its prompt: `[Image`, then `#N]` on the next row, indented.
  */
 function labelImages() {
   let count = 0;
