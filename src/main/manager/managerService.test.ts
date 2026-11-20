@@ -629,11 +629,11 @@ it("a new manager chat clears that agent's images", async () => {
   expect(existsSync(opencode)).toBe(true);
 });
 
-it('a resumed chat keeps them', async () => {
+it('a resumed chat clears them too: Claude Code counts from #1 again in each run', async () => {
   const t = setup();
   t.sessionStarted(U2);
   const claude = withImages(t, 'claude');
 
   await t.service.start();
-  expect(existsSync(join(claude, 'images.json'))).toBe(true);
+  expect(existsSync(claude)).toBe(false);
 });

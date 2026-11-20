@@ -3262,7 +3262,7 @@ describe("a task's images", () => {
     const view = await t.service.start(NEW_TASK);
     const dir = join(t.taskDir(view.id), 'images');
     expect(t.service.imagesDir(view.session!.id)).toBe(dir);
-    // The stopped terminal stays on screen, with its labels and the strip.
+    // The stopped terminal stays on screen, with its labels.
     t.service.onSessionExit(view.session!.id);
     expect(t.service.imagesDir(view.session!.id)).toBe(dir);
     expect(t.service.imagesDir('no-such-session')).toBeNull();
@@ -3290,7 +3290,7 @@ describe("a task's images", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it('a reopen that resumes keeps them', async () => {
+  it('a reopen that resumes the chat clears them too: Claude Code counts from #1 again in each run', async () => {
     const t = setup();
     const view = await t.service.start(NEW_TASK);
     t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
@@ -3298,7 +3298,7 @@ describe("a task's images", () => {
     const dir = withImages(t, view.id);
 
     await t.service.reopen(view.id);
-    expect(existsSync(join(dir, 'images.json'))).toBe(true);
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('a continue whose chat is gone clears them', async () => {
@@ -3315,7 +3315,7 @@ describe("a task's images", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it('removing the worktree keeps them: a round that finishes the task, and a Continue that resumes its chat', async () => {
+  it('a round that finishes the task keeps them; a Continue that resumes its chat clears them, as a new run', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     const dir = withImages(t, view.id);
@@ -3325,10 +3325,9 @@ describe("a task's images", () => {
     expect(t.service.list()[0].place).toBe('finished');
     expect(existsSync(join(dir, 'images.json'))).toBe(true);
 
-    // The chat carries on, and so do its numbers.
     const continued = await t.service.continueTask(view.id);
     expect(continued.session).not.toBeNull();
-    expect(existsSync(join(dir, 'images.json'))).toBe(true);
+    expect(existsSync(dir)).toBe(false);
     expect(t.service.imagesDir(continued.session!.id)).toBe(dir);
   });
 

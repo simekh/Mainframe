@@ -144,8 +144,8 @@ export class ManagerService {
     // Saved first: a start that cannot save it holds no session, so the next one tries again. Not every agent's launch makes the folder.
     mkdirSync(this.dir, { recursive: true });
     writeJsonAtomic(this.recordFile, record);
-    // A new chat counts its images from #1: the last chat's list goes.
-    if (chat === null) clearImages(this.imagesFolder(name));
+    // Claude Code counts its images from #1 again in each run, a resumed chat's too: the last run's list would name others.
+    clearImages(this.imagesFolder(name));
     this.session = { id: this.newId(), launch, startedWithPrompt: carryOn, record, turn: new TurnTracker(carryOn), adapter, resumed: chat !== null, reported: false };
     this.sessionAgents.set(this.session.id, name);
     const view = this.view();

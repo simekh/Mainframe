@@ -286,8 +286,6 @@ export class TaskService {
       // The agent never recorded the conversation: it was missing, or quit before the conversation began, so
       // there is none to resume. This starts it as the first launch would have.
       task.claudeSessionId = adapter.newSessionId(this.newId);
-      // A new chat starts its count at #1: the last chat's list goes.
-      clearImages(this.imagesFolder(task.id));
       launch = this.startLaunch(task, bin, { pick });
     }
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: !recorded || carryOn, resumePending: carryOn });
@@ -325,7 +323,6 @@ export class TaskService {
     // goes, or an exit before the new one is recorded would bring back the id of the chat that is gone.
     adapter.forgetChat(dir);
     task.claudeSessionId = adapter.newSessionId(this.newId);
-    clearImages(this.imagesFolder(task.id));
     const launch = this.startLaunch(task, bin, { continuing: true, pick });
     return this.relaunch(task, { ...launch, cwd: this.deps.projectDir }, { startedWithPrompt: true, resumePending: false, continued: true });
   }
@@ -531,7 +528,6 @@ export class TaskService {
     const cwd = task.worktreePath;
     if (!task.began) {
       // The agent never took the brief: it failed to start, was quit before its first turn, or Mainframe quit first.
-      clearImages(this.imagesFolder(task.id));
       return this.relaunch(task, { ...this.startLaunch(task, bin, { pick }), cwd }, { startedWithPrompt: true, resumePending: false });
     }
     const carryOn = prompt !== undefined;
@@ -900,6 +896,8 @@ export class TaskService {
 
   private addSession({ resumePending, ...session }: Pick<Session, 'taskId' | 'launch' | 'startedWithPrompt' | 'continued'> & { resumePending: boolean }): void {
     const id = this.newId();
+    // Claude Code counts its images from #1 again in each run, a resumed chat's too: the last run's list would name others.
+    clearImages(this.imagesFolder(session.taskId));
     this.sessions.set(id, { id, ...session, turn: new TurnTracker(resumePending) });
     this.sessionTasks.set(id, session.taskId);
   }
