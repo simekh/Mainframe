@@ -90,6 +90,7 @@ export class TrelloAuth implements TrelloTokens {
     let data: Partial<AuthFile>;
     try {
       data = JSON.parse(readFileSync(this.d.file, 'utf8')) as Partial<AuthFile>;
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) throw new Error('not an object');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') this.warn('Trello sign-in file unreadable; starting clean');
       return;
@@ -188,7 +189,8 @@ export class TrelloAuth implements TrelloTokens {
       throw new TrelloError('offline', "Can't reach Trello");
     }
     if (this.tokens !== held) return this.current();
-    if (res.status === 400 || res.status === 401) {
+    if (res.status >= 400 && res.status < 500) {
+      // Any 4xx: Atlassian answers a dead or rotated refresh token with 400, 401 or 403 invalid_grant.
       this.tokens = null;
       this.username = null;
       this.needsReconnect = true;

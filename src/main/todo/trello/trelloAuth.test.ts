@@ -356,9 +356,9 @@ describe('TrelloAuth tokens', () => {
     expect(readStored().tokens).toMatchObject({ accessToken: 'access-2', refreshToken: 'refresh-2' });
   });
 
-  it('a refused refresh sets needsReconnect and later calls reject auth', async () => {
+  it.each([400, 401, 403])('a refused refresh (%i) sets needsReconnect and later calls reject auth', async (status) => {
     seed();
-    const f = fakeFetch(() => json(400, { error: 'invalid_grant' }));
+    const f = fakeFetch(() => json(status, { error: 'invalid_grant' }));
     const { auth, views } = make({ fetch: f.fn });
     await auth.load();
     await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'auth' });
@@ -368,6 +368,16 @@ describe('TrelloAuth tokens', () => {
     await expect(auth.accessToken()).rejects.toBeInstanceOf(TrelloError);
     await expect(auth.accessToken()).rejects.toMatchObject({ kind: 'auth' });
     await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'auth' });
+  });
+
+  it('a refresh answered 5xx rejects http and keeps the tokens', async () => {
+    seed();
+    const f = fakeFetch(() => json(503, {}));
+    const { auth } = make({ fetch: f.fn });
+    await auth.load();
+    await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'http' });
+    expect(auth.view()).toMatchObject({ connected: true, needsReconnect: false });
+    expect(readStored().tokens).toMatchObject({ refreshToken: 'refresh-0' });
   });
 
   it('a refresh that cannot reach Trello rejects offline and changes nothing', async () => {
@@ -427,6 +437,15 @@ describe('TrelloAuth load', () => {
     const { auth: broken } = make({ warn });
     await broken.load();
     expect(broken.view().connected).toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it.each(['null', '[]', '"x"', '7'])('starts clean when the file holds %s', async (content) => {
+    writeFileSync(file, content);
+    const warn = vi.fn();
+    const { auth } = make({ warn });
+    await auth.load();
+    expect(auth.view()).toMatchObject({ connected: false, ownClientId: null });
     expect(warn).toHaveBeenCalledOnce();
   });
 
