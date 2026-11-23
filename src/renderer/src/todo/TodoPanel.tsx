@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, createUniqueId, For, Match, onCleanup, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import { httpUrl } from '../../../shared/httpUrl';
 import type { StartCheck, SyncModel } from '../../../shared/types';
 import { now } from '../board/ageClock';
@@ -314,18 +314,22 @@ export default function TodoPanel(props: {
     setSetup('agent');
   };
   const trello = () => view()?.sourceKind === 'trello';
-  // A Trello list stays fresh while it shows: at once, then on its interval and at each return to the window. A memo,
-  // so a change elsewhere in the sign-in (its name coming in) doesn't start it again; a reconnect does, and so reads.
-  const polls = createMemo(() => props.state === 'open' && trello() && trelloSignedIn());
+  // A Trello list stays fresh while it shows, its project on screen: at once, then on its interval and at each return
+  // to the window. A memo, so a change elsewhere in the sign-in (its name coming in) doesn't start it again; a
+  // reconnect, or the project showing again, does, and so reads. Only that drives it: started untracked, so a new
+  // interval (main backing off) is read at the next wait rather than restarting it with a poll.
+  const polls = createMemo(() => props.state === 'open' && project.shown() && trello() && trelloSignedIn());
   createEffect(() => {
     if (!polls()) return;
     const dir = project.dir;
-    const stop = startPolling({
-      every: () => view()?.pollMs ?? 60_000,
-      active: () => document.visibilityState === 'visible' && document.hasFocus(),
-      poll: () => pollTodo(dir),
-    });
     const onFocus = () => pollTodo(dir);
+    const stop = untrack(() =>
+      startPolling({
+        every: () => view()?.pollMs ?? 60_000,
+        active: () => document.visibilityState === 'visible' && document.hasFocus(),
+        poll: () => pollTodo(dir),
+      }),
+    );
     window.addEventListener('focus', onFocus);
     onCleanup(() => {
       stop();

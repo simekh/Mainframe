@@ -49,8 +49,11 @@ describe('startPolling', () => {
   it('uses the interval each time', () => {
     const t = fakeTimers();
     let every = 60_000;
-    startPolling({ every: () => every, active: () => true, poll: () => {}, setTimer: t.setTimer });
+    let polls = 0;
+    startPolling({ every: () => every, active: () => true, poll: () => polls++, setTimer: t.setTimer });
     every = 120_000;
+    // A new interval is read at the next wait: it never polls ahead of the timer.
+    expect(polls).toBe(1);
     expect(t.fire()).toBe(60_000);
     expect(t.fire()).toBe(120_000);
   });
