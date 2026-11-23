@@ -2,7 +2,7 @@
 // file under plain Node, which cannot resolve a relative import without its extension. Types are erased, so they may
 // come from anywhere.
 import * as z from 'zod/v4';
-import type { TaskCardRef, TodoCard, TodoListRef, TodoNote, TodoSource } from '../../shared/types';
+import type { TaskCardRef, TodoCard, TodoListRef, TodoNote, TodoSource, TrelloPick } from '../../shared/types';
 
 // No `.min`, `.max` or `.regex` anywhere here: the JSON Schema of SYNC_ANSWER goes to `claude -p --json-schema`,
 // which may reject the keywords they add. Each `satisfies` keeps a schema in step with its type.
@@ -43,6 +43,17 @@ export const TODO_NOTE = z.object({
   text: z.string(),
   taskId: z.string().optional(),
 }) satisfies z.ZodType<TodoNote>;
+
+export const TRELLO_PICK = z.object({
+  boardId: z.string(),
+  boardName: z.string(),
+  boardUrl: z.string(),
+  listId: z.string(),
+  listName: z.string(),
+  inProgressListId: z.string().nullable(),
+  mineLabelIds: z.array(z.string()),
+  urgentLabelIds: z.array(z.string()),
+}) satisfies z.ZodType<TrelloPick>;
 
 export const TASK_CARD_REF = z.object({
   sourceKind: z.string(),

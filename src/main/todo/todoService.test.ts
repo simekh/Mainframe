@@ -306,7 +306,7 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
   };
   expect(t.service.view()).toEqual(expected);
   expect(t.todo()).toEqual({
-    version: 1,
+    version: 2,
     readTools: { connector: 'Tracker', tools: TOOLS, agent: 'claude' },
     source: SOURCE,
     syncedAt: NOW,
@@ -333,7 +333,7 @@ it("confirmed tools saved without an agent are Claude Code's", async () => {
 it('a switch of agent syncs at discover again and keeps the cards and notes', async () => {
   const notes = [{ id: 'n1', title: 'Call the bank', text: '' }];
   const record = {
-    version: 1,
+    version: 2,
     readTools: { connector: 'Tracker', tools: TOOLS, agent: 'claude' },
     pickedList: DOING,
     source: SOURCE,
@@ -988,7 +988,7 @@ it('an unknown card or note is refused, saying so', async () => {
 });
 
 it('a Todo file from a newer Mainframe: the panel says so, and nothing syncs or saves', async () => {
-  const newer = JSON.stringify({ version: 2, cards: [{ id: 'c1' }], notes: [{ id: 'n1' }], extra: true });
+  const newer = JSON.stringify({ version: 3, cards: [{ id: 'c1' }], notes: [{ id: 'n1' }], extra: true });
   const t = setup(newer);
   const message = t.service.view().error!;
 

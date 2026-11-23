@@ -3,14 +3,13 @@ import { dirname } from 'node:path';
 import * as z from 'zod/v4';
 import { AGENT_ORDER } from '../../shared/types';
 import { writeJsonAtomic } from '../tasks/taskStore';
-import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE } from './todoSchema';
+import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE, TRELLO_PICK } from './todoSchema';
 
 /** The version of `todo.json` this build writes and reads. */
-const VERSION = 1;
+const VERSION = 2;
 
 /** What `todo.json` holds for one project: the list as the last sync found it, and what the owner confirmed for it. */
-const RECORD = z.object({
-  version: z.literal(VERSION),
+const RECORD_FIELDS = {
   /** The tools the owner confirmed the sync may read with, as the agent they were confirmed on names them (no agent: Claude Code). */
   readTools: z
     .object({ connector: z.string(), tools: z.array(z.string()), agent: z.enum(AGENT_ORDER).optional() })
@@ -21,6 +20,13 @@ const RECORD = z.object({
   syncedAt: z.number().optional(),
   cards: z.array(TODO_CARD),
   notes: z.array(TODO_NOTE),
+};
+const RECORD_V1 = z.object({ version: z.literal(1), ...RECORD_FIELDS });
+const RECORD = z.object({
+  version: z.literal(VERSION),
+  ...RECORD_FIELDS,
+  /** The Trello board and list the owner picked, read directly; without it the project reads through its agent. */
+  trello: TRELLO_PICK.optional(),
 });
 export type TodoRecord = z.infer<typeof RECORD>;
 
@@ -60,6 +66,12 @@ export function loadTodo(file: string, now: number, warn: (msg: string) => void)
 
   const { version } = (parsed ?? {}) as { version?: unknown };
   if (typeof version === 'number' && version > VERSION) throw new NewerTodoError(file, version);
+  if (version === 1) {
+    // A version 1 file is the agent source as it was; only its number changes, on the next save.
+    const v1 = RECORD_V1.safeParse(parsed);
+    if (!v1.success) return keepAside(file, now, warn, 'does not hold a version 1 Todo record');
+    return { ...v1.data, version: VERSION };
+  }
   const record = RECORD.safeParse(parsed);
   if (!record.success) return keepAside(file, now, warn, `does not hold a version ${VERSION} Todo record`);
   return record.data;
