@@ -78,6 +78,7 @@ describe('TrelloApi', () => {
       ...Array.from({ length: 6 }, () => status(429)),
       json({}),
       status(429),
+      json({}),
     ]);
     for (const pause of [10_000, 20_000, 40_000, 80_000, 120_000, 120_000]) {
       expect(await kindOf(api.get('/x'))).toBe('busy');
@@ -90,6 +91,24 @@ describe('TrelloApi', () => {
     advance(9_999);
     expect(await kindOf(api.get('/x'))).toBe('busy');
     expect(fetch).toHaveBeenCalledTimes(8);
+    advance(1);
+    await api.get('/x');
+    expect(fetch).toHaveBeenCalledTimes(9);
+  });
+
+  it('429s that arrive together make one pause, and a shorter Retry-After never shortens it', async () => {
+    const { api, fetch, advance } = setup([status(429), status(429), status(429, { 'retry-after': '1' }), status(429), json({})]);
+    await Promise.all([api.get('/a').catch(() => 0), api.get('/b').catch(() => 0), api.get('/c').catch(() => 0)]);
+    advance(9_999);
+    expect(await kindOf(api.get('/x'))).toBe('busy');
+    advance(1);
+    expect(await kindOf(api.get('/x'))).toBe('busy');
+    expect(fetch).toHaveBeenCalledTimes(4);
+    advance(19_999);
+    expect(await kindOf(api.get('/x'))).toBe('busy');
+    advance(1);
+    await api.get('/x');
+    expect(fetch).toHaveBeenCalledTimes(5);
   });
 
   it('pollMs doubles under 30% of the client budget, caps at 10 min, and returns to 60 s', async () => {

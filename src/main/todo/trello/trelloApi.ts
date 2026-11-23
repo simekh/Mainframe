@@ -97,15 +97,18 @@ export class TrelloApi {
   }
 
   private pause(retryAfter: string | null): void {
+    const now = this.now();
     const seconds = Number(retryAfter);
     let ms: number;
     if (retryAfter !== null && Number.isFinite(seconds) && seconds >= 0) {
       ms = seconds * 1000;
+    } else if (now < this.pausedUntil) {
+      return; // another request already set this pause
     } else {
       ms = this.nextPauseMs;
       this.nextPauseMs = Math.min(ms * 2, MAX_PAUSE_MS);
     }
-    this.pausedUntil = this.now() + ms;
+    this.pausedUntil = Math.max(this.pausedUntil, now + ms);
   }
 
   private readRateHeaders(response: Response): void {
