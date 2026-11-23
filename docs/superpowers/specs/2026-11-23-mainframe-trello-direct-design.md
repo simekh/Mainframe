@@ -223,6 +223,14 @@ No tool deletes, and no tool touches another board. Tool results put card text i
 - e2e: a fake Trello server (like the existing fakes) for the panel, so no test touches real Trello.
 - UI layout and wording, within §6.5 and §9.
 
+**Settled while planning and building part 1 (2026-11-23):**
+- Electron 44.11.4 has `safeStorage.encryptStringAsync`, `decryptStringAsync` (resolves `{ shouldReEncrypt, result }`), `isAsyncEncryptionAvailable` and `getSelectedStorageBackend` (checked in `electron.d.ts`). The sync API is deprecated from 45 and removed in 46.
+- REST requests and fields, checked live on the owner's board: `members/me` (`id, username, fullName`), `members/me/boards?filter=open&fields=name,url`, `boards/{id}/lists?fields=name,pos&filter=open`, `boards/{id}/labels?fields=name,color&limit=1000`, and `lists/{id}/cards?fields=id,idShort,name,desc,labels,pos,shortUrl&checklists=all&checklist_fields=name,pos` all answer 200 with those fields, in `pos` order; `idShort` is a number; a missing list answers 404. No checked card had a checklist, so `checkItems` follows the docs.
+- **The change check is dropped:** it costs one request a minute, as the list read does, and the rate limit counts requests, so each poll reads the list itself.
+- **GDPR:** Trello's guide applies to public apps that store personal data outside Trello for more than 14 days, and its polling needs a confidential client, which an open-source desktop app can't hold. Mainframe keeps no member data on disk (the username is held in memory only); card text is the board's content, kept as the agent sync keeps it.
+- **Revoke:** no OAuth 2.0 revoke endpoint is documented. Disconnect deletes the local tokens and says the grant can be revoked under Connected apps in the Atlassian account.
+- **Start-up never waits on Trello:** the Keychain is asked only when a sealed sign-in must be read or written, and the sign-in loads in the background while projects open.
+
 ## 12. Research notes (2026-11-23)
 
 - **Prior art:** JetBrains' Trello task server, Raycast's Trello extension and the Obsidian "Trello" plugin ship one legacy key and have users paste a never-expiring token; n8n and some Obsidian plugins make each user create a key. No desktop tool found used OAuth 2.0 yet (it arrived 2026-09-15).

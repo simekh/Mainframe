@@ -55,7 +55,7 @@ Done by the main session, not a subagent. It needs the owner for one click.
   - **Change check dropped:** it costs one request a minute, as the list read does, and the rate limit counts requests, so each poll reads the list itself. Simpler, and no doubt about which edits move `dateLastActivity`.
   - **GDPR:** Trello's guide applies to public apps that store personal data outside Trello for more than 14 days, and its polling needs a confidential client, which an open-source desktop app can't hold. Mainframe keeps no member data on disk (username in memory only); card text is the board's content, kept as today's agent sync keeps it. The owner hears this in the hand-over.
   - **Revoke:** no OAuth 2.0 revoke endpoint is documented. Disconnect deletes the local tokens and says the grant can be revoked under Connected apps in the Atlassian account.
-- [ ] **Step 4:** Confirmed shapes (fill from Step 2): _to be filled_.
+- [x] **Step 4:** Confirmed shapes (live, 2026-11-23): `members/me` → `{ id, username, fullName }`; boards → `{ id, name, url }[]`; lists → `{ id, name, pos }[]` in `pos` order; labels → `{ id, name, color }[]` (name may be ''); cards → `{ id, idShort: number, name, desc, labels: { id, name, color, … }[], pos, shortUrl, checklists: [] }[]` in `pos` order; a missing list → 404. `checkItems` (`id, name, state, pos`) per the docs: no checked card had a checklist.
 
 ---
 
