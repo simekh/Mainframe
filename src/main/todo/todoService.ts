@@ -545,8 +545,9 @@ export class TodoService {
     if (cards.some((c) => c.id.trim() === '')) return this.refuse('The sync gave a card no id; sync again');
     const seen = new Set<string>();
     for (const { id } of cards) {
-      if (seen.has(cardKey(id))) return this.refuse(`The sync gave two cards the id ${id}; sync again`);
-      seen.add(cardKey(id));
+      const key = cardKey(id);
+      if (seen.has(key)) return this.refuse(`The sync gave two cards the id ${id}; sync again`);
+      seen.add(key);
     }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
     this.returnPutBacksOffList(seen);

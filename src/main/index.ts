@@ -334,17 +334,18 @@ async function start(
 
   // One Trello sign-in and one API for the app: every project reads its list through them. The Keychain is asked only
   // once there is a sign-in to read or keep. An e2e run names a stand-in for both, on any free port.
+  const apiBase = config.trelloUrl ?? 'https://api.trello.com';
   const trelloAuth = new TrelloAuth({
     file: join(config.dataDir, 'trello-auth.json'),
     crypt: () => trelloCrypt(config.e2e),
     authBase: config.trelloUrl ?? 'https://auth.atlassian.com',
-    apiBase: config.trelloUrl ?? 'https://api.trello.com',
+    apiBase,
     ports: config.trelloUrl ? [0] : TRELLO_PORTS,
     // Looked up at each call, so an e2e run can stand in for the browser.
     openExternal: (url) => shell.openExternal(url),
     onChange: (view) => toWindow(IPC.trelloChanged, view),
   });
-  const trelloApi = new TrelloApi({ tokens: trelloAuth, base: config.trelloUrl ?? 'https://api.trello.com' });
+  const trelloApi = new TrelloApi({ tokens: trelloAuth, base: apiBase });
   const trelloReader = { read: (pick: TrelloPick) => readList(trelloApi, pick), pollMs: () => trelloApi.pollMs() };
 
   async function makeProject(dir: string): Promise<Project> {

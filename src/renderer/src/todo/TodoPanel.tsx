@@ -314,6 +314,9 @@ export default function TodoPanel(props: {
     setSetup('agent');
   };
   const trello = () => view()?.sourceKind === 'trello';
+  // The header's Sync is its Stop while an agent sync runs; a Trello list's is a Refresh.
+  const stops = () => !trello() && view()?.syncing === true;
+  const syncName = () => (trello() ? 'Refresh' : stops() ? 'Stop the sync' : 'Sync');
   // A Trello list stays fresh while it shows, its project on screen: at once, then on its interval and at each return
   // to the window. A memo, so a change elsewhere in the sign-in (its name coming in) doesn't start it again; a
   // reconnect, or the project showing again, does, and so reads. Only that drives it: started untracked, so a new
@@ -430,34 +433,17 @@ export default function TodoPanel(props: {
                 </button>
                 {/* Its word goes where the header is narrow, as Quick Add's does; its name stays. A Trello list reads
                     in a moment, so it is a Refresh with nothing to stop. */}
-                <Show
-                  when={!trello()}
-                  fallback={
-                    <button
-                      class="btn todo-sync"
-                      data-testid="todo-refresh"
-                      aria-label="Refresh"
-                      title="Refresh"
-                      onMouseDown={keepFocus}
-                      onClick={() => syncTodo(project.dir)}
-                    >
-                      <SyncIcon />
-                      <span>Refresh</span>
-                    </button>
-                  }
+                <button
+                  class="btn todo-sync"
+                  data-testid={trello() ? 'todo-refresh' : stops() ? 'todo-stop-sync' : 'todo-sync'}
+                  aria-label={syncName()}
+                  title={syncName()}
+                  onMouseDown={keepFocus}
+                  onClick={() => (stops() ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
                 >
-                  <button
-                    class="btn todo-sync"
-                    data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
-                    aria-label={v().syncing ? 'Stop the sync' : 'Sync'}
-                    title={v().syncing ? 'Stop the sync' : 'Sync'}
-                    onMouseDown={keepFocus}
-                    onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
-                  >
-                    {v().syncing ? <StopIcon /> : <SyncIcon />}
-                    <span>{v().syncing ? 'Stop' : 'Sync'}</span>
-                  </button>
-                </Show>
+                  {stops() ? <StopIcon /> : <SyncIcon />}
+                  <span>{trello() ? 'Refresh' : stops() ? 'Stop' : 'Sync'}</span>
+                </button>
               </>
             )}
           </Show>

@@ -23,11 +23,6 @@ const LOW_BUDGET = 0.3;
 const FIRST_PAUSE_MS = 10_000;
 const MAX_PAUSE_MS = 120_000;
 
-/** A TrelloError passes through; anything else becomes the given kind. */
-function asTrelloError(e: unknown, kind: TrelloErrorKind): TrelloError {
-  return e instanceof TrelloError ? e : new TrelloError(kind, e instanceof Error ? e.message : String(e));
-}
-
 /**
  * Reads Trello's REST API. One instance serves every open project, so the pause
  * after a 429 and the poll interval are shared by all of them.
@@ -77,11 +72,12 @@ export class TrelloApi {
     }
   }
 
+  /** A TrelloError from the token side passes through (offline stays offline); anything else is auth. */
   private async token(fetchToken: () => Promise<string>): Promise<string> {
     try {
       return await fetchToken();
     } catch (e) {
-      throw asTrelloError(e, 'auth');
+      throw e instanceof TrelloError ? e : new TrelloError('auth', e instanceof Error ? e.message : String(e));
     }
   }
 
