@@ -119,7 +119,7 @@ trello?: {
 
 - **Read the list:** `GET /1/lists/{listId}/cards` with `fields=id,idShort,name,desc,labels,pos,shortUrl,dateLastActivity` and `checklists=all` (`checklist_fields=name`, items with `name,state,pos`). Cards come in `pos` order. The builder verifies the exact parameter names against the API reference.
 - **Mapping to `TodoCard`:** `id` = Trello's card id; `number` = `#${idShort}`; `title` = `name`; `description` = `desc`; `labels` = each label's name, or its colour when it has no name (Mainframe's own board has colour-only labels); `checklists` from Trello's; `url` = `shortUrl`; `forOwner` = has any `mineLabelIds`; `urgent` = has any `urgentLabelIds`. `TodoSource` = `{ kind: 'Trello', board: boardName, list: listName, url: boardUrl }`.
-- **Old task records:** tasks started from an agent sync keep card ids like `ari:cloud:trello::card/workspace/<ws>/<hex>` (seen in Damela's and Word²'s `todo.json`); Trello's id is the last segment. Card matching (the `todoItems` task map, `startItem`, Put back) compares on the last `/` segment, so old tasks still find their cards (designer's call; a one-time rewrite of task records is the alternative).
+- **Old task records:** tasks started from an agent sync keep card ids like `ari:cloud:trello::card/workspace/<ws>/<hex>` (seen in Damela's and Word²'s `todo.json`); Trello's id is the last segment. Card matching (the `todoItems` task map, `board/lanes.ts`, `startItem`, Put back) compares on the last `/` segment, so old tasks still find their cards (designer's call; a one-time rewrite of task records is the alternative).
 - **Change check:** one cheap request per board, `GET /1/boards/{id}?fields=dateLastActivity`; when it moved, re-read the list. The builder verifies that card edits, moves and checklist ticks move `dateLastActivity`; if not, use `GET /1/boards/{id}/actions?limit=1&fields=date` instead.
 - **When:** at panel open, at window focus, right after Mainframe's own writes, on the refresh button, and every 60 s while that project's Todo panel is open (not folded or off) and the window is visible and focused. Nothing polls while Mainframe is in the background.
 - **Being a good neighbour on the shared client:** every response's `x-rate-limit-oauth2-client-id-remaining` is tracked; under 30% of max, the poll interval doubles (up to 10 min) and returns to 60 s once it recovers. A 429 stops all of this Mainframe's Trello calls for `Retry-After` seconds, or 10 s doubling to 2 min, and the panel shows "Trello is busy; retrying". At one request a minute per open project, the shared 300/10 s covers about 1,800 projects open at once.
@@ -164,6 +164,11 @@ The Trello path replaces the measurement the card asked for: the agent sync no l
 - **Writes are optimistic:** the panel shows the change at once, rolls back on failure with the reason in the ticket, and re-reads the list after.
 - **Conflicts:** at save of a title or description, if the card's `dateLastActivity` moved since the ticket loaded, Mainframe asks "Changed in Trello since you opened it: overwrite or reload?". Other edits are last-write-wins (designer's call).
 - **Start:** when the project has an in-progress list, Mainframe moves the card there (`PUT /1/cards/{id}` `idList`, top) as the task starts. A failed move doesn't stop the start; the task's card shows "Couldn't move the card in Trello: …".
+- **Mainframe makes the other moves too (owner, 2026-11-23),** all only when the project has an in-progress list, and none of them resumes a session or runs a model:
+  - **Put back:** Mainframe moves the card back to the to-do list at its old place (`TaskCardRef.position`: between the cards now at that index, or the bottom when the list is shorter), re-reads the list, and marks the task put back once the card is on it. Today's flow (`putBackPrompt` in `carryOn.ts`, the session moving the card) stays for agent-source projects.
+  - **Discard:** the same move back, so the card can be started afresh (a discarded attempt is given up).
+  - **Continue and Reopen** of a put-back or finished task: the card moves to in progress again.
+  - A failed move says why on the task's card; Put back then leaves the task Paused, as today's failure does.
 - **The opening prompt** of a Trello card's task changes in part 3 (§8.3). In part 2 only its "mark the card as in progress" line goes when Mainframe has moved it.
 
 ## 8. Part 3: the agents write through Mainframe
@@ -187,6 +192,8 @@ Today only the manager connects to Mainframe's MCP server (`mcpServer.ts`, one t
 - `card_create(listId?, title, description?, position)`
 - `card_update`, `card_move`, `card_comment`, `card_check_item`, `card_add_checklist_item`
 - `card_archive(cardId)`
+
+**Who approves what (owner, 2026-11-23):** the manager's reading tools (`cards_list`, `card_get`, `board_lists`) are pre-allowed. Every manager tool that changes the board asks the owner first, through the agent's own permission prompt, as `start_task` does today (it is kept out of `MANAGER_ALLOWED_TOOLS` in `claude.ts` for that reason); the owner can allow them for good in their own settings. The same split holds for Codex and OpenCode launches. A task's tools are all pre-allowed: they reach only its own card.
 
 No tool deletes, and no tool touches another board. Tool results put card text in quotes as data: card text is written by anyone on the board.
 
