@@ -28,6 +28,9 @@ const view = (extra: Partial<TodoView> = {}): TodoView => ({
   error: null,
   ask: null,
   setUp: true,
+  sourceKind: 'agent',
+  pollMs: null,
+  notice: null,
   ...extra,
 });
 
@@ -105,6 +108,14 @@ describe('todoItems', () => {
       ['card:1', true, null],
       ['card:2', true, { kind: 'reopen', taskId: 't2' }],
     ]);
+  });
+
+  it('a task started from the ARI id matches the bare card id', () => {
+    const ari = 'ari:cloud:trello::card/workspace/60c1/6b03f0975d81';
+    const items = todoItems(view({ cards: [card('6b03f0975d81')] }), [
+      { ...task('t1', ari, { open: false }), place: 'finished', endedAt: 1 },
+    ]);
+    expect(items.map((i) => i.action)).toEqual([{ kind: 'continue', taskId: 't1' }]);
   });
 
   it('a card whose task is put back or finished offers continue; one whose task was discarded offers start', () => {

@@ -289,6 +289,14 @@ describe('laneOrder', () => {
     expect(laneOrder(tasks, sessions, listed)['needs-you'].map((t) => t.id)).toEqual(['c', 'a', 'b', 'gone']);
   });
 
+  it('ranks a task by its card when the ids differ only by the ARI prefix', () => {
+    const ari = (n: number) => ({ ...cardAt(9)!, id: `ari:cloud:trello::card/workspace/60c1/c${n}` });
+    const tasks = [withSession('a', 10, ari(1)), withSession('b', 20, ari(0))];
+    const sessions = Object.fromEntries(tasks.map((t) => [t.session!.id, state('done')]));
+    const listed = [{ id: 'c0', urgent: false }, { id: 'c1', urgent: false }];
+    expect(laneOrder(tasks, sessions, listed)['needs-you'].map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
   it('cards at the same place in the list go by age', () => {
     const tasks = [withSession('newer', 20, cardAt(3)), withSession('older', 5, cardAt(3))];
     const sessions = { 's-newer': state('done'), 's-older': state('done') };

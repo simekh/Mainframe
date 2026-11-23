@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import { cardKey } from '../../shared/cardKey';
 import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncAdapter, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
@@ -89,6 +90,9 @@ export class TodoService {
       error: this.error,
       ask: this.ask,
       setUp: readTools !== undefined || pickedList !== undefined,
+      sourceKind: 'agent',
+      pollMs: null,
+      notice: null,
     };
   }
 
@@ -236,7 +240,7 @@ export class TodoService {
       // A run already under way read the list before the card moved.
       if (this.running) await this.running.outcome;
       const outcome = await this.sync();
-      listed = 'cards' in outcome && this.record.cards.some((c) => c.id === card.id);
+      listed = 'cards' in outcome && this.record.cards.some((c) => cardKey(c.id) === cardKey(card.id));
     } catch {
       // Not listed: the project is closing, or the file is a newer Mainframe's.
     }
@@ -263,7 +267,7 @@ export class TodoService {
         throw new Error(`${card.number ?? card.title} is marked as the owner's; the owner starts it from its ticket with Start anyway`);
       }
       // A card has one task for good, discarded ones aside.
-      const own = this.deps.tasks.list().find((t) => t.card?.id === card.id && t.place !== 'discarded');
+      const own = this.deps.tasks.list().find((t) => t.card && cardKey(t.card.id) === cardKey(card.id) && t.place !== 'discarded');
       if (own?.place === 'putBack' || own?.place === 'finished') return this.deps.tasks.continueTask(own.id);
       return this.deps.tasks.start({
         title: card.title,
@@ -452,13 +456,13 @@ export class TodoService {
     if (cards.some((c) => c.id.trim() === '')) return this.refuse('The sync gave a card no id; sync again');
     const seen = new Set<string>();
     for (const { id } of cards) {
-      if (seen.has(id)) return this.refuse(`The sync gave two cards the id ${id}; sync again`);
-      seen.add(id);
+      if (seen.has(cardKey(id))) return this.refuse(`The sync gave two cards the id ${id}; sync again`);
+      seen.add(cardKey(id));
     }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
     // A put-back task is seen only through its card: once the card is off the list, the task goes back to the board.
     for (const task of this.deps.tasks.list()) {
-      if (task.place === 'putBack' && task.card && !seen.has(task.card.id)) this.deps.tasks.returnToBoard(task.id);
+      if (task.place === 'putBack' && task.card && !seen.has(cardKey(task.card.id))) this.deps.tasks.returnToBoard(task.id);
     }
     return { cards: cards.length };
   }

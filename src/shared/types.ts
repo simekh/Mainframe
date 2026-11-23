@@ -349,6 +349,45 @@ export interface TodoView {
   ask: TodoAsk | null;
   /** Whether tools are confirmed or a list picked, so "Set up again" has something to forget. */
   setUp: boolean;
+  sourceKind: 'agent' | 'trello';
+  /** How often the panel polls a Trello list; null for the agent source. */
+  pollMs: number | null;
+  /** A quiet line under the source (offline, Trello busy); the list stays. */
+  notice: string | null;
+}
+
+/** The state of the Trello connection, shared by every Trello project. */
+export interface TrelloConnection {
+  connected: boolean; // tokens held (in memory or on disk)
+  username: string | null; // null until /members/me answered
+  needsReconnect: boolean; // a refresh failed: every Trello project shows Reconnect
+  connecting: boolean; // a Connect waits for the browser
+  remembers: boolean; // tokens are kept on disk (false: Linux basic_text, or no encryption)
+  ownClientId: string | null; // "Use my own Trello app"
+  error: string | null; // why the last Connect failed
+}
+
+/** The board and list a project reads, with the labels that mark a card for the owner or as urgent. */
+export interface TrelloPick {
+  boardId: string;
+  boardName: string;
+  boardUrl: string;
+  listId: string;
+  listName: string;
+  inProgressListId: string | null; // used from part 2
+  mineLabelIds: string[]; // forOwner
+  urgentLabelIds: string[]; // urgent
+}
+
+export interface TrelloBoardRef {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface TrelloBoardChoices {
+  lists: { id: string; name: string }[];
+  labels: { id: string; name: string; color: string | null }[];
 }
 
 /** What a task started from a card keeps of it. */

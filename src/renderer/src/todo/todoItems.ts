@@ -1,4 +1,5 @@
 import { isEnded, type TaskView, type TodoCard, type TodoItemRef, type TodoNote, type TodoSource, type TodoView } from '../../../shared/types';
+import { cardKey } from '../../../shared/cardKey';
 
 /** One row of the Todo panel's list: a synced card or one of the owner's notes. */
 export interface TodoItem {
@@ -28,9 +29,9 @@ export interface TodoItem {
  */
 export function todoItems(view: TodoView, tasks: TaskView[]): TodoItem[] {
   const taskOf = new Map<string, TaskView>();
-  for (const t of tasks) if (t.card !== null && t.place !== 'discarded') taskOf.set(t.card.id, t);
+  for (const t of tasks) if (t.card !== null && t.place !== 'discarded') taskOf.set(cardKey(t.card.id), t);
   const cards = view.cards.flatMap((card): TodoItem[] => {
-    const task = taskOf.get(card.id);
+    const task = taskOf.get(cardKey(card.id));
     if (task?.session) return [];
     // A card marked for the owner has no Start in the list, though its task, once closed, can be reopened or continued.
     // The owner starts it from its ticket.

@@ -247,6 +247,9 @@ it("a first sync runs with no tools allowed, then asks the owner to confirm the 
     error: null,
     ask: { kind: 'tools', connector: 'Tracker', tools: TOOLS },
     setUp: false,
+    sourceKind: 'agent',
+    pollMs: null,
+    notice: null,
   });
   // Nothing is kept until the owner confirms.
   expect(existsSync(t.file)).toBe(false);
@@ -297,6 +300,9 @@ it('confirming keeps the tools and syncs with exactly those allowed; the cards, 
     error: null,
     ask: null,
     setUp: true,
+    sourceKind: 'agent',
+    pollMs: null,
+    notice: null,
   };
   expect(t.service.view()).toEqual(expected);
   expect(t.todo()).toEqual({
@@ -829,6 +835,19 @@ it('a card starts a task with its title, the brief and its card', async () => {
   await expect(t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false })).rejects.toThrow('#c1 is already open');
 });
 
+it('startItem continues the finished task whose card id is the ARI form', async () => {
+  const t = setup();
+  await synced(t, { kind: 'cards', source: SOURCE, cards: [card('6b03f0975d81')] });
+  t.taskViews.push(
+    paused({ place: 'finished', card: { sourceKind: 'Tracker', id: 'ari:cloud:trello::card/workspace/60c1/6b03f0975d81' } as TaskView['card'] }),
+  );
+
+  await t.service.startItem({ kind: 'card', id: '6b03f0975d81' }, { noQuestions: false });
+
+  expect(t.starts).toEqual([]);
+  expect(t.taskCalls).toEqual([['continueTask', 'task-7']]);
+});
+
 it("a card also starts by its number as the list shows it, with or without the #, as by its id", async () => {
   const t = setup();
   const cards = [card('x9f', { number: '#131' }), card('x1a', { number: '7' }), card('x2b', { number: null })];
@@ -974,7 +993,7 @@ it('a Todo file from a newer Mainframe: the panel says so, and nothing syncs or 
   const message = t.service.view().error!;
 
   expect(message).toContain('newer Mainframe');
-  expect(t.service.view()).toEqual({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, longSync: false, error: message, ask: null, setUp: false });
+  expect(t.service.view()).toEqual({ source: null, syncedAt: null, cards: [], notes: [], syncing: false, longSync: false, error: message, ask: null, setUp: false, sourceKind: 'agent', pollMs: null, notice: null });
 
   await expect(t.service.sync()).rejects.toThrow(message);
   expect(() => t.service.saveNote({ title: 'A note', text: '' })).toThrow(message);

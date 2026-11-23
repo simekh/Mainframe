@@ -1,5 +1,6 @@
 // Adapted from Parallel Code (MIT): src/components/next-attention-task.ts (stepInQueue) at 97c3558. See THIRD_PARTY_NOTICES.md.
 import type { ProgramKind, TaskView, TodoCard } from '../../../shared/types';
+import { cardKey } from '../../../shared/cardKey';
 import { onBoard, type SessionState } from '../taskModel';
 
 export type Lane = 'needs-you' | 'working' | 'paused' | 'done';
@@ -115,10 +116,10 @@ export function laneOrder(
 ): Record<Lane, TaskView[]> {
   const lanes: Record<Lane, TaskView[]> = { 'needs-you': [], working: [], paused: [], done: [] };
   for (const task of tasks.filter(onBoard)) lanes[laneOf(task, task.session ? sessions[task.session.id] : undefined)].push(task);
-  const place = new Map(listed.map((card, at) => [card.id, { at, urgent: card.urgent }]));
+  const place = new Map(listed.map((card, at) => [cardKey(card.id), { at, urgent: card.urgent }]));
   const rank = (t: TaskView) => {
     if (!t.card) return { group: 2, at: 0 };
-    const now = place.get(t.card.id) ?? { at: listed.length + t.card.position, urgent: t.card.urgent };
+    const now = place.get(cardKey(t.card.id)) ?? { at: listed.length + t.card.position, urgent: t.card.urgent };
     return { group: now.urgent ? 0 : 1, at: now.at };
   };
   lanes['needs-you'].sort((a, b) => {
