@@ -1,11 +1,11 @@
-import { Show } from 'solid-js';
+import { createMemo, Show } from 'solid-js';
 import { connectTrello, disconnectTrello, setTrelloClientId, trelloConnection } from './trelloStore';
-
-const CALLBACKS = [33333, 33334, 33335].map((port) => `http://127.0.0.1:${port}/callback`);
 
 /** The one Trello sign-in every Trello project reads with, and the user's own Trello app if they bring one. */
 export default function TrelloSection() {
   let clientId!: HTMLInputElement;
+  // Written to the field only when the saved id changes, so a view that comes in while typing keeps what was typed.
+  const savedId = createMemo(() => trelloConnection()?.ownClientId ?? '');
   return (
     <Show when={trelloConnection()}>
       {(t) => (
@@ -73,7 +73,7 @@ export default function TrelloSection() {
                 autocomplete="off"
                 placeholder="Mainframe's own app"
                 data-testid="trello-client-id"
-                value={t().ownClientId ?? ''}
+                value={savedId()}
               />
               <button class="btn" type="submit" data-testid="trello-client-save">
                 Save
@@ -81,7 +81,8 @@ export default function TrelloSection() {
             </form>
             <p class="settings-hint">
               Create an app at <code>trello.com/power-ups/admin</code> and add an OAuth 2.0 public client with the callback URLs{' '}
-              <code>{CALLBACKS[0]}</code>, <code>{CALLBACKS[1]}</code> and <code>{CALLBACKS[2]}</code>, and the scopes Read
+              <code>http://127.0.0.1:33333/callback</code>,{' '}
+              <code>http://127.0.0.1:33334/callback</code> and <code>http://127.0.0.1:33335/callback</code>, and the scopes Read
               boards, Write boards and Read members. Leave it empty to use Mainframe's own app. Changing it signs you out of
               Trello.
             </p>
