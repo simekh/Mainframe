@@ -316,9 +316,17 @@ export class TodoService {
         title: card.title,
         description: opts.brief ?? '',
         noQuestions: opts.noQuestions,
-        card: { sourceKind: source.kind, id: card.id, number: card.number, url: card.url, labels: card.labels, position, urgent: card.urgent },
-        // Read directly, the card is in no connector the session may have: its prompt carries its text.
-        ...(this.record.trello && { cardText: cardText(card) }),
+        card: {
+          sourceKind: source.kind,
+          id: card.id,
+          number: card.number,
+          url: card.url,
+          labels: card.labels,
+          position,
+          urgent: card.urgent,
+          // Read directly, the card is in no connector the session may have: its prompts carry its text.
+          ...(this.record.trello && { text: cardText(card) }),
+        },
       });
     }
 

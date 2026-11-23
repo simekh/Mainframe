@@ -1493,13 +1493,14 @@ it("with a Trello pick, a card's task starts with the card's text: its descripti
   await t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false, brief: 'web only' });
   await t.service.startItem({ kind: 'card', id: 'c2' }, { noQuestions: false });
 
-  expect(t.starts[0]).toMatchObject({
-    description: 'web only',
-    cardText: 'About c1\n\nChecklist: Steps\n- [x] Read it\n- [ ] Show it\n\nChecklist: After',
+  expect(t.starts[0].description).toBe('web only');
+  expect(t.starts[0].card).toMatchObject({
+    sourceKind: 'Trello',
+    id: 'c1',
+    text: 'About c1\n\nChecklist: Steps\n- [x] Read it\n- [ ] Show it\n\nChecklist: After',
   });
-  expect(t.starts[0].card).toMatchObject({ sourceKind: 'Trello', id: 'c1' });
   // An empty description and no checklists: the prompt says the card has none.
-  expect(t.starts[1].cardText).toBe('');
+  expect(t.starts[1].card?.text).toBe('');
 });
 
 it('with a Trello pick, sync reads Trello and runs no agent', async () => {

@@ -149,7 +149,13 @@ it('loadTasks keeps place and endedAt, and loads records without them', () => {
 it("keeps a task's card", () => {
   const file = join(folder(), 'state.json');
   const card = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
-  const tasks = [TASK, { ...TASK, id: 't2', card }, { ...TASK, id: 't3', card: { ...card, number: null, url: null, labels: [], urgent: false } }];
+  // t4's card was read by Mainframe itself, so it keeps its text; the others, as older records, have none.
+  const tasks = [
+    TASK,
+    { ...TASK, id: 't2', card },
+    { ...TASK, id: 't3', card: { ...card, number: null, url: null, labels: [], urgent: false } },
+    { ...TASK, id: 't4', card: { ...card, sourceKind: 'Trello', text: 'Show the list.' } },
+  ];
   saveTasks(file, tasks);
   expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
 });
@@ -192,6 +198,7 @@ it.each([
   ['an unknown agent', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'gemini' }] })],
   ['a task whose began is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'opencode', began: 'yes' }] })],
   ['a task whose card is null', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: null }] })],
+  ["a task whose card's text is not a string", JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, text: 7 } }] })],
   ['a task whose card lacks a field', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, position: undefined } }] })],
   ['a task whose card has labels that are not a list', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, labels: 'UI' } }] })],
 ])('a file with %s is kept aside', (_what, text) => {

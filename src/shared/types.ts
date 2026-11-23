@@ -404,4 +404,6 @@ export interface TaskCardRef {
   /** The card's place in the list when the task started, from 0. */
   position: number;
   urgent: boolean;
+  /** The card's text, when Mainframe read the card itself: no connector the session may have holds it. */
+  text?: string;
 }

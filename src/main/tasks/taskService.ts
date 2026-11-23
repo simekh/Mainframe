@@ -185,7 +185,7 @@ export class TaskService {
     return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 
-  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; cardText?: string; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView> {
+  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView> {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
     // Without one, the default: that covers the tasks the manager starts and those started from a Todo card.
@@ -235,7 +235,7 @@ export class TaskService {
 
     if (!adapter.mainframeAddsWorktree) {
       // The agent makes the task's worktree as it starts.
-      const launch = this.startLaunch(task, bin, { cardText: req.cardText });
+      const launch = this.startLaunch(task, bin);
       this.deps.records.all.push(task);
       this.addSession({ taskId: task.id, launch: { ...launch, cwd: this.deps.projectDir }, startedWithPrompt: true, resumePending: false });
     } else {
@@ -254,7 +254,7 @@ export class TaskService {
       }
       // The project closed, or the app began to quit, while git ran: the task is kept, open, and begins at the next open.
       if (!this.quitting) {
-        const launch = this.startLaunch(task, bin, { cardText: req.cardText });
+        const launch = this.startLaunch(task, bin);
         this.addSession({ taskId: task.id, launch: { ...launch, cwd: task.worktreePath }, startedWithPrompt: true, resumePending: false });
       }
     }
@@ -967,15 +967,16 @@ export class TaskService {
    * The launch that begins the task's conversation, under its `claudeSessionId`, with its opening prompt. On Windows,
    * when it would overflow the command line, the description goes to a file in a folder the session may read (`addDir`),
    * and the prompt points at it. `continuing`: Continue starts it again, as its earlier conversation is gone. `pick`: the
-   * model it runs on, the task's own unless a check left part of it off. `cardText`: the text of a card Mainframe read
-   * itself, which only a start brings; it goes where the description goes, before it.
+   * model it runs on, the task's own unless a check left part of it off. The text of a card Mainframe read itself goes
+   * where the description goes, before it.
    */
   private startLaunch(
     task: TaskRecord,
     bin: string,
-    { continuing = false, pick = pickOf(task), cardText }: { continuing?: boolean; pick?: ModelPick; cardText?: string } = {},
+    { continuing = false, pick = pickOf(task) }: { continuing?: boolean; pick?: ModelPick } = {},
   ): LaunchArgs {
     const agent = agentOf(task);
+    const cardText = task.card?.text;
     const build = (brief?: { dir: string; file: string }) =>
       ADAPTERS[agent].taskStart({
         bin,

@@ -63,6 +63,7 @@ export const TASK_CARD_REF = z.object({
   labels: z.array(z.string()),
   position: z.number(),
   urgent: z.boolean(),
+  text: z.string().optional(),
 }) satisfies z.ZodType<TaskCardRef>;
 
 /** What a sync run answers with: which of the four it is decides which fields it fills. */

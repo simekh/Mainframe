@@ -272,22 +272,37 @@ it("a task started from a card keeps it, shows it, and its launch carries the ca
   );
 });
 
-it("a card's text, when the start brings it, goes in the launch's prompt and is not kept on the task", async () => {
-  const { service, readState } = setup();
-  const view = await service.start({ ...NEW_TASK, card: CARD, cardText: 'Show the list.' });
+/** A card Mainframe read itself: the task keeps its text, as no connector the session may have holds it. */
+const READ_CARD: TaskCardRef = { ...CARD, sourceKind: 'Trello', text: 'Show the list.' };
 
-  expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
-    openingPrompt({
-      agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login',
-      noQuestions: false, card: CARD, cardText: 'Show the list.',
-    }),
-  );
-  expect(JSON.stringify(readState()[0])).not.toContain('Show the list.');
+/** The opening prompt of a Claude task started from NEW_TASK and READ_CARD. */
+const readCardOpening = (o: { continuing?: boolean } = {}) =>
+  openingPrompt({
+    agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login',
+    noQuestions: false, card: READ_CARD, cardText: 'Show the list.', ...o,
+  });
+
+it("a card's text, kept on its card, goes in the launch's prompt and in state.json", async () => {
+  const { service, readState } = setup();
+  const view = await service.start({ ...NEW_TASK, card: READ_CARD });
+
+  expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(readCardOpening());
+  expect(readState()[0].card).toEqual(READ_CARD);
+});
+
+it("a reopen that must begin the conversation again sends the card's text again", async () => {
+  const { service } = setup();
+  const view = await service.start({ ...NEW_TASK, card: READ_CARD });
+  // claude was missing or quit at once: SessionStart never fired.
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(readCardOpening());
 });
 
 it("on Windows, a card's text too long for the command line goes to the file, with the owner's note after it", async () => {
   const { service, taskDir } = setup({}, 'win32');
-  const view = await service.start({ ...NEW_TASK, card: CARD, cardText: LONG });
+  const view = await service.start({ ...NEW_TASK, card: { ...READ_CARD, text: LONG } });
 
   const file = join(taskDir(view.id), 'brief', 'description.md');
   const prompt = service.launchSpec(view.session!.id).argv.at(-1)!;
@@ -1491,6 +1506,21 @@ it('an OpenCode task whose conversation never began gets its brief on reopen', a
   expect(reopened.session).toMatchObject({ startedWithPrompt: true });
 });
 
+it("an OpenCode task from a read card whose conversation never began gets the card's text on reopen", async () => {
+  const { service, projectDir } = setup();
+  const view = await service.start({ ...OPENCODE_TASK, card: READ_CARD });
+  service.noteStatus(view.session!.id, 'idle');
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
+    openingPrompt({
+      agent: 'opencode', projectDir, worktreePath: join(projectDir, '.mainframe', 'worktrees', 'fix-login'), title: 'Fix login',
+      description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: READ_CARD, cardText: 'Show the list.',
+    }),
+  );
+});
+
 it('an OpenCode task remembers its conversation began across runs', async () => {
   const { service, make, readState } = setup();
   const view = await service.start(OPENCODE_TASK);
@@ -2466,6 +2496,23 @@ it('Continue of a finished Claude task resumes its chat in its worktree with the
   // The prompt is owed until the session works on it.
   t.service.close(view.id);
   expect(t.readState()[0].midTurn).toBe(true);
+});
+
+it("Continue of a finished task whose chat is gone sends its card's text again", async () => {
+  const t = roundSetup();
+  const view = await t.service.start({ ...NEW_TASK, card: READ_CARD });
+  const first = t.readState()[0].claudeSessionId;
+  // Claude Code deleted the chat: no project folder holds its file.
+  const transcript_path = join(t.dataDir, 'projects', '-acme', `${first}.jsonl`);
+  writeFileSync(join(t.taskDir(view.id), SESSION_START_FILE), JSON.stringify({ session_id: first, source: 'startup', transcript_path }));
+  t.service.close(view.id);
+  t.service.onSessionExit(view.session!.id);
+  t.states.set(view.branch, MERGED);
+  await t.service.checkRound();
+  expect(t.service.list()[0].place).toBe('finished');
+
+  const continued = await t.service.continueTask(view.id);
+  expect(t.service.launchSpec(continued.session!.id).argv.at(-1)).toBe(readCardOpening({ continuing: true }));
 });
 
 it('Continue of a finished task whose chat is gone starts a new conversation with the continuing opening prompt', async () => {
