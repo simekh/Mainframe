@@ -18,6 +18,15 @@ const OFFLINE = 'Offline; showing the last copy';
 const TRELLO_BUSY = 'Trello is busy; retrying';
 const RECONNECT = 'Reconnect Trello in Settings';
 
+/** A card's description, then each checklist with its ticked and unticked items: empty when it has neither. */
+const cardText = ({ description, checklists }: TodoCard): string =>
+  [
+    description.trim(),
+    ...checklists.map((c) => [`Checklist: ${c.name}`, ...c.items.map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`)].join('\n')),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
 /** Reads a picked Trello list directly, for every Trello project. */
 export interface TrelloReader {
   read(pick: TrelloPick): Promise<{ source: TodoSource; cards: TodoCard[] }>;
@@ -309,6 +318,8 @@ export class TodoService {
         description: opts.brief ?? '',
         noQuestions: opts.noQuestions,
         card: { sourceKind: source.kind, id: card.id, number: card.number, url: card.url, labels: card.labels, position, urgent: card.urgent },
+        // Read directly, the card is in no connector the session may have: its prompt carries its text.
+        ...(this.record.trello && { cardText: cardText(card) }),
       });
     }
 

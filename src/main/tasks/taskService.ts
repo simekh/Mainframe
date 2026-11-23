@@ -11,7 +11,7 @@ import type { AgentsInUse } from '../setup/agentsInUse';
 import { fitsWindowsCommandLine } from '../pty/windowsCommandLine';
 import { continuePrompt, inTurn, putBackPrompt, resumePromptFor, TurnTracker } from './carryOn';
 import { MANAGER_SLUG, sessionName, slugify, uniqueSlug, WINDOWS_RESERVED_NAMES } from './naming';
-import { openingPrompt } from './openingPrompt';
+import { cardBrief, openingPrompt } from './openingPrompt';
 import type { TaskRecord, TaskRecords } from './taskStore';
 
 /** How a card's problem line starts when git left a worktree's folder half removed. */
@@ -185,7 +185,7 @@ export class TaskService {
     return this.deps.agents.codexClaudeMdNote(this.deps.projectDir);
   }
 
-  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView> {
+  async start(req: { title: string; description: string; noQuestions: boolean; card?: TaskCardRef; cardText?: string; agent?: AgentName; model?: string; effort?: string }): Promise<TaskView> {
     const title = req.title.trim();
     if (!title) throw new Error('A task needs a title');
     // Without one, the default: that covers the tasks the manager starts and those started from a Todo card.
@@ -235,7 +235,7 @@ export class TaskService {
 
     if (!adapter.mainframeAddsWorktree) {
       // The agent makes the task's worktree as it starts.
-      const launch = this.startLaunch(task, bin);
+      const launch = this.startLaunch(task, bin, { cardText: req.cardText });
       this.deps.records.all.push(task);
       this.addSession({ taskId: task.id, launch: { ...launch, cwd: this.deps.projectDir }, startedWithPrompt: true, resumePending: false });
     } else {
@@ -254,7 +254,7 @@ export class TaskService {
       }
       // The project closed, or the app began to quit, while git ran: the task is kept, open, and begins at the next open.
       if (!this.quitting) {
-        const launch = this.startLaunch(task, bin);
+        const launch = this.startLaunch(task, bin, { cardText: req.cardText });
         this.addSession({ taskId: task.id, launch: { ...launch, cwd: task.worktreePath }, startedWithPrompt: true, resumePending: false });
       }
     }
@@ -967,9 +967,14 @@ export class TaskService {
    * The launch that begins the task's conversation, under its `claudeSessionId`, with its opening prompt. On Windows,
    * when it would overflow the command line, the description goes to a file in a folder the session may read (`addDir`),
    * and the prompt points at it. `continuing`: Continue starts it again, as its earlier conversation is gone. `pick`: the
-   * model it runs on, the task's own unless a check left part of it off.
+   * model it runs on, the task's own unless a check left part of it off. `cardText`: the text of a card Mainframe read
+   * itself, which only a start brings; it goes where the description goes, before it.
    */
-  private startLaunch(task: TaskRecord, bin: string, { continuing = false, pick = pickOf(task) } = {}): LaunchArgs {
+  private startLaunch(
+    task: TaskRecord,
+    bin: string,
+    { continuing = false, pick = pickOf(task), cardText }: { continuing?: boolean; pick?: ModelPick; cardText?: string } = {},
+  ): LaunchArgs {
     const agent = agentOf(task);
     const build = (brief?: { dir: string; file: string }) =>
       ADAPTERS[agent].taskStart({
@@ -988,6 +993,7 @@ export class TaskService {
           branch: task.branch,
           noQuestions: task.noQuestions ?? false,
           card: task.card,
+          cardText,
           descriptionFile: brief?.file,
           continuing,
           agent,
@@ -1002,7 +1008,7 @@ export class TaskService {
     const dir = join(this.taskDir(task.id), 'brief');
     const file = join(dir, 'description.md');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(file, task.description, 'utf8');
+    writeFileSync(file, cardText === undefined ? task.description : cardBrief(cardText, task.description), 'utf8');
     return build({ dir, file });
   }
 

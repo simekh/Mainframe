@@ -1482,6 +1482,26 @@ async function trelloSynced(t: Setup, cards: TodoCard[] = CARDS) {
   return first;
 }
 
+it("with a Trello pick, a card's task starts with the card's text: its description, then each checklist", async () => {
+  const t = setup();
+  const checklists = [
+    { name: 'Steps', items: [{ text: 'Read it', done: true }, { text: 'Show it', done: false }] },
+    { name: 'After', items: [] },
+  ];
+  await trelloSynced(t, [card('c1', { checklists }), card('c2', { description: '  ' })]);
+
+  await t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false, brief: 'web only' });
+  await t.service.startItem({ kind: 'card', id: 'c2' }, { noQuestions: false });
+
+  expect(t.starts[0]).toMatchObject({
+    description: 'web only',
+    cardText: 'About c1\n\nChecklist: Steps\n- [x] Read it\n- [ ] Show it\n\nChecklist: After',
+  });
+  expect(t.starts[0].card).toMatchObject({ sourceKind: 'Trello', id: 'c1' });
+  // An empty description and no checklists: the prompt says the card has none.
+  expect(t.starts[1].cardText).toBe('');
+});
+
 it('with a Trello pick, sync reads Trello and runs no agent', async () => {
   const t = setup();
 

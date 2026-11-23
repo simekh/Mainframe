@@ -11,7 +11,7 @@ import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agen
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
 import { ADAPTERS } from '../agents/adapters';
 import { continuePrompt, putBackPrompt } from './carryOn';
-import { openingPrompt } from './openingPrompt';
+import { cardBrief, openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
 
@@ -270,6 +270,30 @@ it("a task started from a card keeps it, shows it, and its launch carries the ca
   expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
     openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
   );
+});
+
+it("a card's text, when the start brings it, goes in the launch's prompt and is not kept on the task", async () => {
+  const { service, readState } = setup();
+  const view = await service.start({ ...NEW_TASK, card: CARD, cardText: 'Show the list.' });
+
+  expect(service.launchSpec(view.session!.id).argv.at(-1)).toBe(
+    openingPrompt({
+      agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login',
+      noQuestions: false, card: CARD, cardText: 'Show the list.',
+    }),
+  );
+  expect(JSON.stringify(readState()[0])).not.toContain('Show the list.');
+});
+
+it("on Windows, a card's text too long for the command line goes to the file, with the owner's note after it", async () => {
+  const { service, taskDir } = setup({}, 'win32');
+  const view = await service.start({ ...NEW_TASK, card: CARD, cardText: LONG });
+
+  const file = join(taskDir(view.id), 'brief', 'description.md');
+  const prompt = service.launchSpec(view.session!.id).argv.at(-1)!;
+  expect(prompt).toContain(file);
+  expect(prompt).not.toContain('Users get logged out');
+  expect(readFileSync(file, 'utf8')).toBe(cardBrief(LONG, NEW_TASK.description));
 });
 
 it('a task started without a card has none', async () => {

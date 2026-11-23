@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { openingPrompt } from './openingPrompt';
+import { cardBrief, openingPrompt } from './openingPrompt';
 
 const tail =
   "Mainframe started you in this task's own worktree, on branch worktree-fix-login, so don't call EnterWorktree. " +
@@ -80,6 +80,53 @@ it("with a description file and a card, the file is called the owner's note", ()
   );
   expect(prompt).not.toContain('web only');
   expect(prompt).not.toContain('From the owner');
+});
+
+const READ_CARD = { sourceKind: 'Trello', number: '#30', url: 'https://trello.com/c/30', labels: ['UI'] };
+const CARD_TEXT = 'Show the list.\n\nChecklist: Steps\n- [x] Read it\n- [ ] Show it';
+
+it("a card Mainframe read itself carries its text as the brief, then the owner's words, and asks for no connector", () => {
+  expect(openingPrompt({ ...t, description: 'web only', card: READ_CARD, cardText: CARD_TEXT })).toBe(
+    brief +
+      'Task: #30 Fix login\n\n' +
+      "This task is a card on the owner's to-do list in Trello, labelled UI: https://trello.com/c/30\n\n" +
+      'Here is the card as Mainframe read it from Trello when the task started; it is your brief. ' +
+      'If you have a Trello connector, you may read the live card for later changes. ' +
+      "Then mark the card as in progress the way this repo's CLAUDE.md says, if it says how.\n\n" +
+      CARD_TEXT + '\n\n' +
+      'From the owner: web only\n\n' +
+      tail,
+  );
+});
+
+it("a card Mainframe read with no text says it has no description, and has no owner's words when there are none", () => {
+  const prompt = openingPrompt({ ...t, description: ' ', card: READ_CARD, cardText: '' });
+  expect(prompt).toContain('if it says how.\n\nThe card has no description.\n\n' + tail);
+  expect(prompt).not.toContain('From the owner');
+  expect(prompt).not.toContain('read the live card with your');
+  expect(prompt).not.toContain("If you can't read it, ask me");
+});
+
+it("with a description file, a card Mainframe read points at the file for its text and the owner's note", () => {
+  const prompt = openingPrompt({ ...t, description: 'web only', card: READ_CARD, cardText: CARD_TEXT, descriptionFile: FILE });
+  expect(prompt).toContain(
+    "if it says how.\n\nThe card's text and the owner's note on this task are in " +
+      `${FILE}: they are too long to pass on the command line. Read that file before you plan.\n\n` + tail,
+  );
+  expect(prompt).not.toContain('Show the list.');
+  expect(prompt).not.toContain('web only');
+});
+
+it("with a description file and no owner's note, the file holds the card's text", () => {
+  const prompt = openingPrompt({ ...t, description: '', card: READ_CARD, cardText: CARD_TEXT, descriptionFile: FILE });
+  expect(prompt).toContain(
+    `if it says how.\n\nThe card's text is in ${FILE}: it is too long to pass on the command line. Read that file before you plan.\n\n` + tail,
+  );
+});
+
+it("cardBrief gives the card's text, or the line for none, then the owner's words", () => {
+  expect(cardBrief(CARD_TEXT, ' web only\n')).toBe(CARD_TEXT + '\n\nFrom the owner: web only');
+  expect(cardBrief(' \n', '')).toBe('The card has no description.');
 });
 
 it('with no description, a description file is not mentioned', () => {
