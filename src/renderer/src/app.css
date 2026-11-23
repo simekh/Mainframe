@@ -3974,7 +3974,8 @@ kbd {
   font-weight: 600;
 }
 
-.settings-select {
+.settings-select,
+.settings-input {
   flex: 1;
   min-width: 0;
   max-width: 340px;
@@ -3988,7 +3989,8 @@ kbd {
   accent-color: var(--accent);
 }
 
-.settings-select:focus-visible {
+.settings-select:focus-visible,
+.settings-input:focus-visible {
   outline: none;
   border-color: var(--border-focus);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
@@ -4003,6 +4005,38 @@ kbd {
 
 .settings-hint {
   padding-left: 150px;
+}
+
+/* Trello's own-app setting: folded away, since most people use Mainframe's app. */
+.settings-advanced {
+  margin-top: 10px;
+}
+
+.settings-advanced summary {
+  width: fit-content;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-advanced summary:hover {
+  color: var(--fg);
+}
+
+.settings-advanced summary:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--border-focus);
+}
+
+.settings-input {
+  font: 12px var(--font-mono);
+}
+
+.settings-hint code {
+  font: 11px var(--font-mono);
+  color: var(--fg-muted);
+  user-select: text;
 }
 
 .settings-error {

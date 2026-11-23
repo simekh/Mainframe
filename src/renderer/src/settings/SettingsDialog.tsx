@@ -13,6 +13,7 @@ import { checkLine } from '../setup/setupCopy';
 import { checkNow, updateView, versionOf } from '../updates/updateStore';
 import { defaultChoice, works } from './defaultChoice';
 import { closeSettings, settingsOpen, settingsView } from './settingsStore';
+import TrelloSection from './TrelloSection';
 
 const price = (m: SyncModel) => (m.price ? `$${m.price.input} / $${m.price.output}` : 'price unknown');
 
@@ -350,6 +351,7 @@ export default function SettingsDialog() {
             <Show when={view().agents.opencode.ticked && works(view(), 'opencode')}>
               <OpencodeSection view={view()} />
             </Show>
+            <TrelloSection />
             <TerminalTextSection text={view().terminalText} />
             <MainframeSection />
           </>

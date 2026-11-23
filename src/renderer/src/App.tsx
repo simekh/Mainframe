@@ -11,6 +11,7 @@ import TopRow from './projects/TopRow';
 import SettingsButton from './settings/SettingsButton';
 import SettingsDialog from './settings/SettingsDialog';
 import { loadSettings, settingsView } from './settings/settingsStore';
+import { loadTrello } from './settings/trelloStore';
 import SetupScreen from './setup/SetupScreen';
 import { loadSetup, setupView } from './setup/setupStore';
 import { tasksOf, tasksStore, terminalOf } from './tasksStore';
@@ -127,6 +128,7 @@ export default function App() {
   createEffect(() => {
     if (setupView() === null) {
       void loadSettings();
+      void loadTrello();
       void loadUpdate();
     }
   });
