@@ -81,16 +81,19 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function make(o: {
   fetch?: typeof fetch;
   openExternal?: (url: string) => Promise<void>;
-  crypt?: TokenCrypt | null;
+  crypt?: TokenCrypt | null | (() => Promise<TokenCrypt | null>);
   timeoutMs?: number;
+  requestTimeoutMs?: number;
   warn?: (msg: string) => void;
   now?: () => number;
   ports?: number[];
 }) {
   const views: TrelloConnection[] = [];
+  const crypt = o.crypt === undefined ? fakeCrypt() : o.crypt;
   const auth = new TrelloAuth({
     file,
-    crypt: o.crypt === undefined ? fakeCrypt() : o.crypt,
+    crypt: typeof crypt === 'function' ? crypt : async () => crypt,
+    requestTimeoutMs: o.requestTimeoutMs,
     authBase: 'https://auth.test',
     apiBase: 'https://api.test',
     ports: o.ports ?? [0],
@@ -461,9 +464,75 @@ describe('TrelloAuth load', () => {
     writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), extra: true }));
     const { auth } = make({ crypt: fakeCrypt({ stale: true }) });
     await auth.load();
-    expect(auth.view()).toMatchObject({ connected: true, username: 'ada' });
+    await vi.waitFor(() => expect(auth.view()).toMatchObject({ connected: true, username: 'ada' }));
     const { data, tokens } = readStored();
     expect(data).not.toHaveProperty('extra');
     expect(tokens).toMatchObject({ accessToken: 'access-0', refreshToken: 'refresh-0' });
+  });
+
+  it('a load with no file never asks for the crypt', async () => {
+    const crypt = vi.fn(async () => fakeCrypt());
+    const { auth } = make({ crypt });
+    await auth.load();
+    await auth.disconnect();
+    expect(crypt).not.toHaveBeenCalled();
+    expect(auth.view().remembers).toBe(true);
+  });
+
+  it('a load with a sealed sign-in asks for the crypt once', async () => {
+    seed();
+    const crypt = vi.fn(async () => fakeCrypt());
+    const f = fakeFetch(() => json(200, pair(2)));
+    const { auth } = make({ crypt, fetch: f.fn });
+    await auth.load();
+    await auth.refreshed();
+    expect(readStored().tokens).toMatchObject({ accessToken: 'access-2' });
+    expect(crypt).toHaveBeenCalledOnce();
+  });
+
+  it('remembers turns false once the crypt is known to be none', async () => {
+    seed();
+    const { auth, views } = make({ crypt: null });
+    expect(auth.view().remembers).toBe(true);
+    await auth.load();
+    expect(auth.view()).toMatchObject({ connected: false, remembers: false });
+    expect(views.at(-1)).toMatchObject({ remembers: false });
+  });
+
+  it('accessToken during a slow load waits for it, then answers with the token', async () => {
+    seed();
+    let give!: (c: TokenCrypt) => void;
+    const { auth } = make({ crypt: () => new Promise<TokenCrypt>((r) => (give = r)) });
+    const loading = auth.load();
+    const token = auth.accessToken();
+    await vi.waitFor(() => expect(give).toBeDefined());
+    give(fakeCrypt());
+    await loading;
+    expect(await token).toBe('access-0');
+  });
+
+  it('a load does not wait for the username', async () => {
+    seed();
+    let answer!: (r: Response) => void;
+    const fetchFn = vi.fn(() => new Promise<Response>((r) => (answer = r))) as unknown as typeof fetch;
+    const { auth } = make({ fetch: fetchFn });
+    await auth.load();
+    expect(auth.view()).toMatchObject({ connected: true, username: null });
+    await vi.waitFor(() => expect(answer).toBeDefined());
+    answer(json(200, { username: 'ada' }));
+    await vi.waitFor(() => expect(auth.view().username).toBe('ada'));
+  });
+
+  it('a token request that times out rejects offline', async () => {
+    seed();
+    // Answers only by honouring the abort signal.
+    const hang = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason))),
+    ) as unknown as typeof fetch;
+    const { auth } = make({ fetch: hang, requestTimeoutMs: 20 });
+    await auth.load();
+    await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'offline' });
+    expect(auth.view()).toMatchObject({ connected: true, needsReconnect: false });
   });
 });

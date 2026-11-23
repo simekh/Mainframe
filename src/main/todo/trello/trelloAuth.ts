@@ -12,6 +12,7 @@ export const TRELLO_PORTS = [33333, 33334, 33335];
 const SCOPES = 'read:member:trello read:board:trello write:board:trello offline_access';
 const REFRESH_MARGIN_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Encryption for the stored tokens; null keeps them in memory only. */
 export interface TokenCrypt {
@@ -51,7 +52,8 @@ function callbackProblem(p: URLSearchParams, state: string): { reason: string; e
 export class TrelloAuth implements TrelloTokens {
   private readonly d: {
     file: string;
-    crypt: TokenCrypt | null;
+    /** Asked once, and only when a sealed sign-in is read or written: asking may show the Keychain's prompt. */
+    crypt(): Promise<TokenCrypt | null>;
     authBase: string;
     apiBase: string;
     ports: number[];
@@ -61,7 +63,12 @@ export class TrelloAuth implements TrelloTokens {
   private readonly doFetch: typeof fetch;
   private readonly now: () => number;
   private readonly timeoutMs: number;
+  private readonly requestTimeoutMs: number;
   private readonly warn: (msg: string) => void;
+  private crypt: Promise<TokenCrypt | null> | null = null;
+  /** Known once the crypt has been asked for and there is none. */
+  private noCrypt = false;
+  private loading: Promise<void> | null = null;
 
   private tokens: Tokens | null = null;
   private username: string | null = null;
@@ -77,16 +84,41 @@ export class TrelloAuth implements TrelloTokens {
   private pendingRefresh: Promise<string> | null = null;
   private saving: Promise<void> = Promise.resolve();
 
-  constructor(deps: TrelloAuth['d'] & { fetch?: typeof fetch; now?: () => number; timeoutMs?: number; warn?: (msg: string) => void }) {
+  constructor(
+    deps: TrelloAuth['d'] & { fetch?: typeof fetch; now?: () => number; timeoutMs?: number; requestTimeoutMs?: number; warn?: (msg: string) => void },
+  ) {
     this.d = deps;
     this.doFetch = deps.fetch ?? fetch;
     this.now = deps.now ?? Date.now;
     this.timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.requestTimeoutMs = deps.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
     this.warn = deps.warn ?? console.warn;
   }
 
-  /** Reads the file, decrypts, then fetches the username (failure: username stays null). */
-  async load(): Promise<void> {
+  /** Reads the file and decrypts, then starts fetching the username without waiting for it (failure: it stays null). */
+  load(): Promise<void> {
+    this.loading = this.runLoad();
+    return this.loading;
+  }
+
+  /** A load under way, done; its failure is the load's caller's to see. */
+  private async loaded(): Promise<void> {
+    await this.loading?.catch(() => undefined);
+  }
+
+  /** The crypt, asked for once; one that fails to come counts as none. */
+  private cryptOf(): Promise<TokenCrypt | null> {
+    this.crypt ??= this.d.crypt().catch(() => null).then((crypt) => {
+      if (!crypt) {
+        this.noCrypt = true;
+        this.emit();
+      }
+      return crypt;
+    });
+    return this.crypt;
+  }
+
+  private async runLoad(): Promise<void> {
     let data: Partial<AuthFile>;
     try {
       data = JSON.parse(readFileSync(this.d.file, 'utf8')) as Partial<AuthFile>;
@@ -96,9 +128,10 @@ export class TrelloAuth implements TrelloTokens {
       return;
     }
     this.ownClientId = typeof data.ownClientId === 'string' && data.ownClientId.trim() ? data.ownClientId.trim() : null;
-    if (this.d.crypt && typeof data.sealed === 'string') {
+    const crypt = typeof data.sealed === 'string' ? await this.cryptOf() : null;
+    if (crypt) {
       try {
-        const { text, stale } = await this.d.crypt.decrypt(Buffer.from(data.sealed, 'base64'));
+        const { text, stale } = await crypt.decrypt(Buffer.from(data.sealed!, 'base64'));
         const t = JSON.parse(text) as Tokens;
         if (t.clientId === this.clientId() && typeof t.accessToken === 'string' && typeof t.refreshToken === 'string' && typeof t.expiresAt === 'number') {
           this.tokens = t;
@@ -109,7 +142,7 @@ export class TrelloAuth implements TrelloTokens {
       }
     }
     this.emit();
-    await this.fetchUsername();
+    void this.fetchUsername();
   }
 
   view(): TrelloConnection {
@@ -118,16 +151,23 @@ export class TrelloAuth implements TrelloTokens {
       username: this.username,
       needsReconnect: this.needsReconnect,
       connecting: this.connecting,
-      remembers: this.d.crypt !== null,
+      remembers: !this.noCrypt,
       ownClientId: this.ownClientId,
       error: this.error,
     };
   }
 
-  /** Signs in through the browser. A second call while one waits returns the same promise. */
+  /** Signs in through the browser, once a load under way is done. A second call while one waits returns the same promise. */
   connect(): Promise<void> {
-    this.pendingConnect ??= this.runConnect();
+    this.pendingConnect ??= this.connectAfterLoad();
     return this.pendingConnect;
+  }
+
+  private async connectAfterLoad(): Promise<void> {
+    const epoch = this.epoch;
+    await this.loaded();
+    // A disconnect while the load ran has cancelled this Connect.
+    if (epoch === this.epoch) await this.runConnect();
   }
 
   /** Drops the tokens in memory and on disk, and cancels a pending Connect; keeps ownClientId. */
@@ -153,14 +193,16 @@ export class TrelloAuth implements TrelloTokens {
     await this.disconnect();
   }
 
-  /** Refreshes first when under a minute is left. */
+  /** Refreshes first when under a minute is left. Waits for a load under way, as do `refreshed` and `connect`. */
   async accessToken(): Promise<string> {
+    await this.loaded();
     if (this.tokens && this.tokens.expiresAt - this.now() < REFRESH_MARGIN_MS) return this.refreshed();
     return this.current();
   }
 
   /** One refresh at a time; the new pair is saved before it resolves. */
-  refreshed(): Promise<string> {
+  async refreshed(): Promise<string> {
+    await this.loaded();
     this.pendingRefresh ??= this.refresh().finally(() => (this.pendingRefresh = null));
     return this.pendingRefresh;
   }
@@ -308,6 +350,8 @@ export class TrelloAuth implements TrelloTokens {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      // A timeout rejects as a fetch that can't reach Trello does.
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
   }
 
@@ -323,6 +367,7 @@ export class TrelloAuth implements TrelloTokens {
       const token = await this.accessToken();
       const res = await this.doFetch(`${this.d.apiBase}/1/members/me?fields=username,fullName`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
       });
       const body = res.ok ? ((await res.json()) as { username?: unknown }) : null;
       if (typeof body?.username !== 'string' || !this.tokens) return;
@@ -336,9 +381,10 @@ export class TrelloAuth implements TrelloTokens {
   /** Writes the current state; saves run one after another, so the last write holds the latest state. */
   private save(): Promise<void> {
     const run = this.saving.then(async () => {
+      const crypt = this.tokens ? await this.cryptOf() : null;
       const data: AuthFile = { version: 1 };
       if (this.ownClientId) data.ownClientId = this.ownClientId;
-      if (this.d.crypt && this.tokens) data.sealed = (await this.d.crypt.encrypt(JSON.stringify(this.tokens))).toString('base64');
+      if (crypt && this.tokens) data.sealed = (await crypt.encrypt(JSON.stringify(this.tokens))).toString('base64');
       writeJsonAtomic(this.d.file, data);
     });
     this.saving = run.catch(() => undefined);

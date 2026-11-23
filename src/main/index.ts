@@ -332,11 +332,11 @@ async function start(
     );
   });
 
-  // One Trello sign-in and one API for the app: every project reads its list through them. Made once a quit is
-  // handled, as the Keychain may take a moment. An e2e run names a stand-in for both, on any free port.
+  // One Trello sign-in and one API for the app: every project reads its list through them. The Keychain is asked only
+  // once there is a sign-in to read or keep. An e2e run names a stand-in for both, on any free port.
   const trelloAuth = new TrelloAuth({
     file: join(config.dataDir, 'trello-auth.json'),
-    crypt: await trelloCrypt(config.e2e),
+    crypt: () => trelloCrypt(config.e2e),
     authBase: config.trelloUrl ?? 'https://auth.atlassian.com',
     apiBase: config.trelloUrl ?? 'https://api.trello.com',
     ports: config.trelloUrl ? [0] : TRELLO_PORTS,
@@ -467,8 +467,8 @@ async function start(
   );
   // The page's <img> loads a conversation's images by session and index; only listed ones are served.
   imageLookup = (sessionId) => imagesOf(projects, sessionId);
-  // Before the projects open, so their first sync finds the sign-in. Without it Mainframe runs on, not connected.
-  await trelloAuth.load().catch((err: unknown) => console.error('[trello] could not load the sign-in', err));
+  // Not waited for: the projects open meanwhile, and their Trello reads wait for it. Without it Mainframe runs on, not connected.
+  void trelloAuth.load().catch((err: unknown) => console.error('[trello] could not load the sign-in', err));
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }
