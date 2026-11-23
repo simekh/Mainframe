@@ -81,7 +81,7 @@ export function registerManagerTools(
     'sync_todo',
     {
       description:
-        "Syncs the Todo panel: a background run reads the owner's to-do list through their connector, and Mainframe shows it. Returns the number of cards, what the owner must do in the Todo panel first (allow the tools that read the list, or pick the list), or why it couldn't. Only when the owner asks.",
+        "Syncs the Todo panel: Mainframe reads the owner's to-do list, from Trello directly or through their connector, and shows it. Returns the number of cards, what the owner must do in the Todo panel first (allow the tools that read the list, or pick the list), or why it couldn't. Only when the owner asks.",
     },
     async (ctx) => {
       noteCall(ctx);

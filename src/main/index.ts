@@ -40,6 +40,7 @@ import { SetupFlow } from './setup/setupFlow';
 import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
+import { TrelloError } from './todo/trello/trelloApi';
 import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 import { APP_BACKGROUND, webPreferences } from './windowOptions';
@@ -343,6 +344,8 @@ async function start(
       saveAgentSetting: (name, patch) => agents.saveAgentSetting(name, patch),
       tasks: service,
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
+      // A placeholder: the app-wide Trello reader replaces it in the wiring task.
+      trello: { read: () => Promise.reject(new TrelloError('auth', 'Trello is not connected')), pollMs: () => 60_000 },
     });
     // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.
     const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo, (id) => manager.noteToolCall(id)));

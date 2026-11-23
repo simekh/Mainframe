@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { AgentName, SyncModel, TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource } from '../../shared/types';
+import type { AgentName, SyncModel, TaskCardRef, TaskView, TodoCard, TodoListRef, TodoSource, TrelloPick } from '../../shared/types';
 import type { AgentInUse, AgentSetting } from '../agents/agent';
 import { ADAPTERS } from '../agents/adapters';
 import { syncArgv, syncSettings } from '../agents/claudeSync';
@@ -11,6 +11,7 @@ import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
 import { LONG_SYNC_MS, SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
 import { TodoService, type TodoServiceDeps } from './todoService';
+import { TrelloError } from './trello/trelloApi';
 
 const prompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
 const CLAUDE: AgentInUse = { adapter: ADAPTERS.claude, bin: 'claude', setting: {} };
@@ -64,6 +65,19 @@ interface Call {
   fail(message: string, stdout?: string): void;
 }
 
+/** A call of the fake Trello reader: the test settles it when it wants the read to end. */
+interface Read {
+  pick: TrelloPick;
+  resolve(cards?: TodoCard[]): void;
+  fail(err: Error): void;
+}
+
+const PICK: TrelloPick = {
+  boardId: 'b1', boardName: 'Sprint', boardUrl: 'https://trello.com/b/b1', listId: 'l1', listName: 'To do',
+  inProgressListId: null, mineLabelIds: [], urgentLabelIds: [],
+};
+const TRELLO_SOURCE: TodoSource = { kind: 'Trello', board: 'Sprint', list: 'To do', url: 'https://trello.com/b/b1' };
+
 function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
   const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-todo-data-'));
   cleanup.push(dataDir);
@@ -96,6 +110,13 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     };
     calls.push(call);
     return { done, cancel: () => (call.cancelled = true) };
+  };
+
+  const reads: Read[] = [];
+  const trello: TodoServiceDeps['trello'] = {
+    read: (pick) =>
+      new Promise((resolve, reject) => reads.push({ pick, resolve: (cards = CARDS) => resolve({ source: TRELLO_SOURCE, cards }), fail: reject })),
+    pollMs: () => 60_000,
   };
 
   const starts: Parameters<TaskService['start']>[0][] = [];
@@ -176,6 +197,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
       tasks,
       onChange: (view) => changes.push(view),
       run,
+      trello,
       newId: () => `id-${++counter}`,
       now: () => NOW,
       warn: (msg) => warnings.push(msg),
@@ -189,6 +211,8 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     projectDir,
     calls,
     last: () => calls[calls.length - 1],
+    reads,
+    lastRead: () => reads[reads.length - 1],
     starts,
     control,
     taskCalls,
@@ -1436,4 +1460,236 @@ it('a prepare that rejects says why in the view', async () => {
   expect(await pending).toEqual({ error: 'Codex could not list its MCP servers: x' });
   expect(t.service.view()).toMatchObject({ syncing: false, error: 'Codex could not list its MCP servers: x' });
   expect(t.calls).toHaveLength(0);
+});
+
+const GONE = 'This list is gone or you no longer have access. Set up again to pick another.';
+
+/** Picks the Trello list and ends its first read with `cards`. */
+async function trelloSynced(t: Setup, cards: TodoCard[] = CARDS) {
+  const first = t.service.useTrello(PICK);
+  t.lastRead().resolve(cards);
+  return first;
+}
+
+it('with a Trello pick, sync reads Trello and runs no agent', async () => {
+  const t = setup();
+
+  expect(await trelloSynced(t)).toEqual({ cards: 2 });
+
+  expect(t.reads.map((r) => r.pick)).toEqual([PICK]);
+  expect(t.calls).toEqual([]);
+  const view = { source: TRELLO_SOURCE, cards: CARDS, syncedAt: NOW, sourceKind: 'trello', pollMs: 60_000, setUp: true, error: null, notice: null };
+  expect(t.service.view()).toMatchObject(view);
+  expect(t.todo()).toMatchObject({ trello: PICK, source: TRELLO_SOURCE, cards: CARDS, syncedAt: NOW });
+  expect(t.make().view()).toMatchObject(view);
+
+  const again = t.service.sync();
+  t.lastRead().resolve([card('c2')]);
+  expect(await again).toEqual({ cards: 1 });
+  expect(t.reads).toHaveLength(2);
+  expect(t.calls).toEqual([]);
+});
+
+it('a quiet sync shows no syncing; a forced one does', async () => {
+  const t = setup();
+  await trelloSynced(t);
+  t.changes.length = 0;
+
+  const quiet = t.service.sync({ quiet: true });
+  expect(t.service.view().syncing).toBe(false);
+  expect(t.changes.map((v) => v.syncing)).not.toContain(true);
+  t.lastRead().resolve();
+  await quiet;
+
+  const forced = t.service.sync();
+  expect(t.service.view().syncing).toBe(true);
+  t.lastRead().resolve();
+  await forced;
+  expect(t.service.view().syncing).toBe(false);
+});
+
+it('a second sync while a read runs joins it', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  const quiet = t.service.sync({ quiet: true });
+  const forced = t.service.sync();
+
+  expect(t.reads).toHaveLength(2);
+  // The owner's Sync shows the poll's read as syncing.
+  expect(t.service.view().syncing).toBe(true);
+  t.lastRead().resolve([card('c1')]);
+  expect(await quiet).toEqual({ cards: 1 });
+  expect(await forced).toEqual({ cards: 1 });
+  expect(t.service.view().syncing).toBe(false);
+});
+
+it('drops a read that finished after the source changed', async () => {
+  // Set up again mid-read.
+  const reset = setup();
+  await trelloSynced(reset);
+  const resetRead = reset.service.sync();
+  reset.service.resetSource();
+  reset.lastRead().resolve([card('c9')]);
+  expect(await resetRead).toEqual({ error: SYNC_STOPPED });
+  expect(reset.service.view()).toMatchObject({ cards: CARDS, syncing: false, sourceKind: 'agent' });
+
+  // Another list picked mid-read: only the new list's read counts.
+  const other = setup();
+  const first = other.service.useTrello(PICK);
+  const second = other.service.useTrello({ ...PICK, listId: 'l2', listName: 'Doing' });
+  const [oldRead, newRead] = other.reads;
+  expect(newRead.pick.listId).toBe('l2');
+  oldRead.resolve([card('c9')]);
+  expect(await first).toEqual({ error: SYNC_STOPPED });
+  expect(other.service.view()).toMatchObject({ cards: [], syncing: true });
+  newRead.resolve([card('c2')]);
+  expect(await second).toEqual({ cards: 1 });
+  expect(other.service.view().cards).toEqual([card('c2')]);
+
+  // Closed mid-read: neither cards nor an error are kept.
+  const closing = setup();
+  await trelloSynced(closing);
+  const late = closing.service.sync();
+  const failing = closing.service.sync({ quiet: true });
+  closing.service.close();
+  closing.lastRead().fail(new TrelloError('http', 'Trello answered 500'));
+  expect(await late).toEqual({ error: SYNC_STOPPED });
+  expect(await failing).toEqual({ error: SYNC_STOPPED });
+  expect(closing.service.view()).toMatchObject({ cards: CARDS, error: null, syncing: false });
+});
+
+it('keeps an old put-back task put back', async () => {
+  const t = setup();
+  // Put back while the agent read the list: its card has the ARI id.
+  t.taskViews.push(paused({ place: 'putBack', card: cardRef('ari:cloud:trello::card/workspace/60c1/c1') }));
+
+  await trelloSynced(t);
+
+  expect(t.taskCalls).toEqual([]);
+});
+
+it('returns a put-back task whose card left the list', async () => {
+  const t = setup();
+  t.taskViews.push(paused({ place: 'putBack', card: cardRef('c1') }), paused({ id: 'task-8', place: 'putBack', card: cardRef('c2') }));
+
+  await trelloSynced(t, [card('c2')]);
+
+  expect(t.taskCalls).toEqual([['returnToBoard', 'task-7']]);
+});
+
+it('a put-back on Trello waits for a read already under way, and reads again', async () => {
+  const t = setup();
+  await trelloSynced(t);
+  t.taskViews.push(paused({ card: cardRef('c1') }));
+  const held = { release: () => {} };
+  t.putBackHooks.card = () => new Promise<boolean>((resolve) => (held.release = () => resolve(true)));
+
+  const putting = t.service.putBack('task-7');
+  // A poll read the list while the agent was moving the card.
+  void t.service.sync({ quiet: true });
+  const before = t.lastRead();
+  held.release();
+  await flush();
+  before.resolve([card('c2')]);
+  await flush();
+  expect(t.lastRead()).not.toBe(before);
+  t.lastRead().resolve();
+  await putting;
+  expect(t.taskCalls.at(-1)).toEqual(['markPutBack', 'task-7']);
+});
+
+it('a gone list says so and keeps the cards', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  const gone = t.service.sync();
+  t.lastRead().fail(new TrelloError('notFound', 'Trello answered 404'));
+
+  expect(await gone).toEqual({ error: GONE });
+  expect(t.service.view()).toMatchObject({ error: GONE, notice: null, cards: CARDS, sourceKind: 'trello', syncing: false });
+  expect(t.todo().trello).toEqual(PICK);
+
+  // Picking again clears it before the read.
+  void t.service.useTrello(PICK);
+  expect(t.service.view().error).toBeNull();
+});
+
+it('busy and offline are notices', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  const offline = t.service.sync({ quiet: true });
+  t.lastRead().fail(new TrelloError('offline', 'getaddrinfo ENOTFOUND'));
+  expect(await offline).toEqual({ error: 'Offline; showing the last copy' });
+  expect(t.service.view()).toMatchObject({ notice: 'Offline; showing the last copy', error: null, cards: CARDS });
+
+  const busy = t.service.sync({ quiet: true });
+  t.lastRead().fail(new TrelloError('busy', 'Trello answered 429'));
+  expect(await busy).toEqual({ error: 'Trello is busy; retrying' });
+  expect(t.service.view()).toMatchObject({ notice: 'Trello is busy; retrying', error: null });
+
+  // The next read that works clears it.
+  const back = t.service.sync({ quiet: true });
+  t.lastRead().resolve();
+  await back;
+  expect(t.service.view().notice).toBeNull();
+});
+
+it('an auth failure sets no error', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  const refused = t.service.sync();
+  t.lastRead().fail(new TrelloError('auth', 'Trello refused the token'));
+
+  expect(await refused).toEqual({ error: 'Reconnect Trello in Settings' });
+  expect(t.service.view()).toMatchObject({ error: null, notice: null, cards: CARDS });
+});
+
+it('any other failure says its message', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  const http = t.service.sync();
+  t.lastRead().fail(new TrelloError('http', 'Trello answered 500'));
+  expect(await http).toEqual({ error: 'Trello answered 500' });
+  expect(t.service.view().error).toBe('Trello answered 500');
+
+  const odd = t.service.sync();
+  t.lastRead().fail(new Error('socket hang up'));
+  expect(await odd).toEqual({ error: 'socket hang up' });
+  expect(t.service.view().error).toBe('socket hang up');
+});
+
+it("useTrello forgets the agent's tools and list", async () => {
+  const t = setup();
+  await synced(t, LISTS_ANSWER);
+  const picking = t.service.pickList(0);
+  t.last().answer(CARDS_ANSWER);
+  await picking;
+  // An agent sync under way stops first.
+  void t.service.sync();
+  const running = t.last();
+
+  void t.service.useTrello(PICK);
+
+  expect(running.cancelled).toBe(true);
+  expect(t.todo().readTools).toBeUndefined();
+  expect(t.todo().pickedList).toBeUndefined();
+  expect(t.todo().trello).toEqual(PICK);
+  expect(t.service.view()).toMatchObject({ ask: null, error: null, syncing: true, sourceKind: 'trello' });
+});
+
+it('resetSource forgets the pick', async () => {
+  const t = setup();
+  await trelloSynced(t);
+
+  t.service.resetSource();
+
+  expect(t.todo().trello).toBeUndefined();
+  expect(t.service.view()).toMatchObject({ sourceKind: 'agent', pollMs: null, setUp: false, cards: CARDS });
+  void t.service.sync();
+  expect(t.calls).toHaveLength(1);
+  expect(t.reads).toHaveLength(1);
 });

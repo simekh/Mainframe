@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { AgentName, TaskView, TodoAsk, TodoItemRef, TodoNote, TodoNoteDraft, TodoView } from '../../shared/types';
+import type { AgentName, TaskView, TodoAsk, TodoCard, TodoItemRef, TodoNote, TodoNoteDraft, TodoSource, TodoView, TrelloPick } from '../../shared/types';
 import { cardKey } from '../../shared/cardKey';
 import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncAdapter, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
@@ -8,10 +8,22 @@ import type { TaskService } from '../tasks/taskService';
 import { LONG_SYNC_MS, runSync, SYNC_STOPPED, SYNC_TIMEOUT_MS, type SyncStep } from './syncRun';
 import { emptyTodo, loadTodo, NewerTodoError, saveTodo, type TodoRecord } from './todoFile';
 import type { SyncAnswer } from './todoSchema';
+import { TrelloError } from './trello/trelloApi';
 
 const TODO_FILE = 'todo.json';
 const UNASKED = "The sync run answered something Mainframe didn't ask for";
 const PUT_BACK_FAILED = 'Put back: the card is not on the to-do list';
+const LIST_GONE = 'This list is gone or you no longer have access. Set up again to pick another.';
+const OFFLINE = 'Offline; showing the last copy';
+const TRELLO_BUSY = 'Trello is busy; retrying';
+const RECONNECT = 'Reconnect Trello in Settings';
+
+/** Reads a picked Trello list directly, for every Trello project. */
+export interface TrelloReader {
+  read(pick: TrelloPick): Promise<{ source: TodoSource; cards: TodoCard[] }>;
+  /** How often the panel polls the list now. */
+  pollMs(): number;
+}
 
 export interface TodoServiceDeps {
   projectDir: string;
@@ -31,6 +43,7 @@ export interface TodoServiceDeps {
   warn?: (msg: string) => void;
   /** Calls `fn` after `ms`; the function it returns cancels that. */
   setTimer?: (fn: () => void, ms: number) => () => void;
+  trello: TrelloReader;
 }
 
 export type SyncOutcome = { cards: number } | { ask: TodoAsk['kind'] } | { error: string };
@@ -63,6 +76,11 @@ export class TodoService {
   /** The agent whose sync asked about tools or a model: the names in that ask are its own. Set with every such ask. */
   private askedBy: AgentName | null = null;
   private error: string | null = null;
+  private notice: string | null = null;
+  /** The Trello read under way; `shown` while a sync that is not quiet waits on it. */
+  private reading: { outcome: Promise<SyncOutcome>; shown: boolean } | null = null;
+  /** Bumped when the source changes or the project closes: a Trello read begun before then is dropped. */
+  private generation = 0;
 
   constructor(private readonly deps: TodoServiceDeps) {
     this.newId = deps.newId ?? randomUUID;
@@ -79,31 +97,33 @@ export class TodoService {
   }
 
   view(): TodoView {
-    const { source, syncedAt, cards, notes, readTools, pickedList } = this.record;
+    const { source, syncedAt, cards, notes, readTools, pickedList, trello } = this.record;
     return {
       source: source ?? null,
       syncedAt: syncedAt ?? null,
       cards,
       notes,
-      syncing: this.running !== null,
+      syncing: this.running !== null || this.reading?.shown === true,
       longSync: this.running?.long ?? false,
       error: this.error,
       ask: this.ask,
-      setUp: readTools !== undefined || pickedList !== undefined,
-      sourceKind: 'agent',
-      pollMs: null,
-      notice: null,
+      setUp: readTools !== undefined || pickedList !== undefined || trello !== undefined,
+      sourceKind: trello ? 'trello' : 'agent',
+      pollMs: trello ? this.deps.trello.pollMs() : null,
+      notice: this.notice,
     };
   }
 
   /**
-   * Reads the list with a background run. A call while one runs gets that run's outcome. Tools confirmed on another
-   * agent are not this one's names, so the run finds the connector again.
+   * Reads the list: a picked Trello list directly, else with a background run. A call while one runs gets that run's
+   * outcome. A quiet one (a poll) shows no syncing. Tools confirmed on another agent are not this one's names, so the
+   * run finds the connector again.
    */
-  sync(): Promise<SyncOutcome> {
+  sync(opts: { quiet?: boolean } = {}): Promise<SyncOutcome> {
     if (this.closed) return Promise.reject(new Error('The project is closing'));
     if (this.running) return this.running.outcome;
     if (this.newer) return Promise.reject(new Error(this.newer));
+    if (this.record.trello) return this.readTrello(this.record.trello, opts.quiet ?? false);
     const agent = this.deps.agent();
     const { readTools, pickedList } = this.record;
     const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
@@ -135,12 +155,23 @@ export class TodoService {
     return this.sync();
   }
 
-  /** Forgets the confirmed tools and the picked list, so the next sync begins again. The cards and notes stay. */
+  /** Forgets the confirmed tools, the picked list and the Trello pick, so the next sync begins again. The cards and notes stay. */
   resetSource(): void {
+    this.replaceSource({});
+  }
+
+  /** Reads `pick` directly from now on, in place of the agent's tools and list, then syncs. */
+  async useTrello(pick: TrelloPick): Promise<SyncOutcome> {
+    this.replaceSource({ trello: pick });
+    return this.sync();
+  }
+
+  private replaceSource(next: Pick<TodoRecord, 'trello'>): void {
     this.cancel();
-    const { readTools, pickedList, ...kept } = this.record;
-    this.save(kept);
-    this.ask = this.error = null;
+    this.dropRead();
+    const { readTools, pickedList, trello, ...kept } = this.record;
+    this.save({ ...kept, ...next });
+    this.ask = this.error = this.notice = null;
     this.changed();
   }
 
@@ -237,8 +268,9 @@ export class TodoService {
     if (!(await this.deps.tasks.putBackCard(taskId))) return;
     let listed = false;
     try {
-      // A run already under way read the list before the card moved.
-      if (this.running) await this.running.outcome;
+      // A run or read already under way read the list before the card moved.
+      const underWay = this.running?.outcome ?? this.reading?.outcome;
+      if (underWay) await underWay;
       const outcome = await this.sync();
       listed = 'cards' in outcome && this.record.cards.some((c) => cardKey(c.id) === cardKey(card.id));
     } catch {
@@ -310,6 +342,63 @@ export class TodoService {
   close(): void {
     this.closed = true;
     this.cancel();
+    this.dropRead();
+  }
+
+  /** Drops the Trello read under way: its callers get the stopped outcome, and nothing it reads is kept. */
+  private dropRead(): void {
+    this.generation++;
+    this.reading = null;
+  }
+
+  /** Reads `pick` from Trello. A call while a read runs joins it; one that is not quiet shows it as syncing. */
+  private readTrello(pick: TrelloPick, quiet: boolean): Promise<SyncOutcome> {
+    if (this.reading) {
+      if (!quiet && !this.reading.shown) {
+        this.reading.shown = true;
+        this.changed();
+      }
+      return this.reading.outcome;
+    }
+    const { generation } = this;
+    const finish = (outcome: () => SyncOutcome): SyncOutcome => {
+      if (generation !== this.generation) return { error: SYNC_STOPPED };
+      this.reading = null;
+      let result: SyncOutcome;
+      try {
+        result = outcome();
+      } catch (err) {
+        result = this.refuse((err as Error).message);
+      }
+      this.changed();
+      return result;
+    };
+    const outcome = this.deps.trello.read(pick).then(
+      ({ source, cards }) =>
+        finish(() => {
+          this.save({ ...this.record, source, cards, syncedAt: this.now() });
+          this.returnPutBacksOffList(new Set(cards.map((c) => cardKey(c.id))));
+          this.error = this.notice = null;
+          return { cards: cards.length };
+        }),
+      (err: unknown) => finish(() => this.trelloFailed(err)),
+    );
+    this.reading = { outcome, shown: !quiet };
+    if (!quiet) this.changed();
+    return outcome;
+  }
+
+  /** What a failed Trello read shows: an error, a notice over the last copy, or nothing (Reconnect is the connection's). */
+  private trelloFailed(err: unknown): SyncOutcome {
+    this.error = this.notice = null;
+    const kind = err instanceof TrelloError ? err.kind : 'http';
+    if (kind === 'auth') return { error: RECONNECT };
+    if (kind === 'notFound') return this.refuse(LIST_GONE);
+    if (kind === 'offline' || kind === 'busy') {
+      this.notice = kind === 'offline' ? OFFLINE : TRELLO_BUSY;
+      return { error: this.notice };
+    }
+    return this.refuse(err instanceof Error ? err.message : String(err));
   }
 
   /**
@@ -460,11 +549,15 @@ export class TodoService {
       seen.add(cardKey(id));
     }
     this.save({ ...this.record, source, cards, syncedAt: this.now() });
-    // A put-back task is seen only through its card: once the card is off the list, the task goes back to the board.
-    for (const task of this.deps.tasks.list()) {
-      if (task.place === 'putBack' && task.card && !seen.has(cardKey(task.card.id))) this.deps.tasks.returnToBoard(task.id);
-    }
+    this.returnPutBacksOffList(seen);
     return { cards: cards.length };
+  }
+
+  /** A put-back task is seen only through its card: once the card is off the list (`listed`, by `cardKey`), the task goes back to the board. */
+  private returnPutBacksOffList(listed: Set<string>): void {
+    for (const task of this.deps.tasks.list()) {
+      if (task.place === 'putBack' && task.card && !listed.has(cardKey(task.card.id))) this.deps.tasks.returnToBoard(task.id);
+    }
   }
 
   private viewOf(taskId: string): TaskView | undefined {
