@@ -22,7 +22,7 @@ const MAX_POLL_MS = 600_000;
 const LOW_BUDGET = 0.3;
 const FIRST_PAUSE_MS = 10_000;
 const MAX_PAUSE_MS = 120_000;
-const REQUEST_TIMEOUT_MS = 30_000;
+export const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Reads Trello's REST API. One instance serves every open project, so the pause

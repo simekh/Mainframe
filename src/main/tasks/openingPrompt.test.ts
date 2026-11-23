@@ -107,21 +107,13 @@ it("a card Mainframe read with no text says it has no description, and has no ow
   expect(prompt).not.toContain("If you can't read it, ask me");
 });
 
-it("with a description file, a card Mainframe read points at the file for its text and the owner's note", () => {
+it("with a description file, a card Mainframe read points at the file for its text and any note from the owner", () => {
   const prompt = openingPrompt({ ...t, description: 'web only', card: READ_CARD, cardText: CARD_TEXT, descriptionFile: FILE });
   expect(prompt).toContain(
-    "if it says how.\n\nThe card's text and the owner's note on this task are in " +
-      `${FILE}: they are too long to pass on the command line. Read that file before you plan.\n\n` + tail,
+    `if it says how.\n\nThe card's text, and any note from the owner, is in ${FILE}: it is too long to pass on the command line. Read that file before you plan.\n\n` + tail,
   );
   expect(prompt).not.toContain('Show the list.');
   expect(prompt).not.toContain('web only');
-});
-
-it("with a description file and no owner's note, the file holds the card's text", () => {
-  const prompt = openingPrompt({ ...t, description: '', card: READ_CARD, cardText: CARD_TEXT, descriptionFile: FILE });
-  expect(prompt).toContain(
-    `if it says how.\n\nThe card's text is in ${FILE}: it is too long to pass on the command line. Read that file before you plan.\n\n` + tail,
-  );
 });
 
 it("cardBrief gives the card's text, or the line for none, then the owner's words", () => {

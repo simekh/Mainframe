@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { TrelloConnection } from '../../../shared/types';
 import { writeJsonAtomic } from '../../tasks/taskStore';
 import { openLoopback, PortsBusyError, type Loopback } from './oauthLoopback';
-import { TrelloError, type TrelloTokens } from './trelloApi';
+import { REQUEST_TIMEOUT_MS, TrelloError, type TrelloTokens } from './trelloApi';
 
 /** Mainframe's public OAuth client: it has no secret, so the id is not one either. */
 export const TRELLO_CLIENT_ID = 'cjmiq05mPFq8nq2NbdTU5En5PgRfxFAv';
@@ -11,7 +11,6 @@ export const TRELLO_CLIENT_ID = 'cjmiq05mPFq8nq2NbdTU5En5PgRfxFAv';
 const SCOPES = 'read:member:trello read:board:trello write:board:trello offline_access';
 const REFRESH_MARGIN_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Encryption for the stored tokens; null keeps them in memory only. */
 export interface TokenCrypt {

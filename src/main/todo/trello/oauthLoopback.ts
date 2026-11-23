@@ -40,7 +40,7 @@ export async function openLoopback(o: {
       body = o.page(url.searchParams);
     } catch {
       // A target `new URL` can't read (`//`), or a page that throws: this request is no answer.
-      if (!res.headersSent) res.writeHead(400).end();
+      res.writeHead(400).end();
       return;
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', connection: 'close' });

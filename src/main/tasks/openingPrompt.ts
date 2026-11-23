@@ -46,8 +46,8 @@ export function cardBrief(cardText: string, description: string): string {
 }
 
 /** Where the description is, when it is too long for the command line and Mainframe has put it in a file. */
-function descriptionInFile(file: string, what: string, are = false): string {
-  return `${what} ${are ? 'are' : 'is'} in ${file}: ${are ? 'they are' : 'it is'} too long to pass on the command line. Read that file before you plan.`;
+function descriptionInFile(file: string, what: string): string {
+  return `${what} is in ${file}: it is too long to pass on the command line. Read that file before you plan.`;
 }
 
 /** What the prompt says of the description, or of the file that holds it. */
@@ -55,8 +55,7 @@ function descriptionParts(t: { description: string; card?: PromptCard; cardText?
   const description = t.description.trim();
   if (t.cardText !== undefined) {
     if (!t.descriptionFile) return [cardBrief(t.cardText, description)];
-    if (!description) return [descriptionInFile(t.descriptionFile, "The card's text")];
-    return [descriptionInFile(t.descriptionFile, "The card's text and the owner's note on this task", true)];
+    return [descriptionInFile(t.descriptionFile, "The card's text, and any note from the owner,")];
   }
   if (!description) return [];
   if (t.descriptionFile) return [descriptionInFile(t.descriptionFile, t.card ? "The owner's note on this task" : "This task's description")];

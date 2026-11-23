@@ -1541,17 +1541,6 @@ it('a read that finds the same list writes no file, but the view shows when it w
   expect(t.todo()).toMatchObject({ syncedAt: NOW + 60_000, cards: [card('c2')] });
 });
 
-it('a quiet sync (a poll) on a project without a Trello pick runs nothing', async () => {
-  const t = setup();
-  t.changes.length = 0;
-
-  await t.service.sync({ quiet: true });
-
-  expect(t.calls).toEqual([]);
-  expect(t.reads).toEqual([]);
-  expect(t.changes).toEqual([]);
-});
-
 it('a quiet sync shows no syncing; a forced one does', async () => {
   const t = setup();
   await trelloSynced(t);

@@ -272,7 +272,9 @@ export function registerIpc(
     await todoOf(dir).useTrello(pick.data);
   });
   ipcMain.handle(IPC.pollTodo, async (_e, dir: string) => {
-    await todoOf(dir).sync({ quiet: true });
+    // Only a Trello list is polled: an agent's run costs the owner, so only their Sync starts one.
+    const todo = todoOf(dir);
+    if (todo.view().sourceKind === 'trello') await todo.sync({ quiet: true });
   });
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.

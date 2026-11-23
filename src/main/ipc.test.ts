@@ -89,8 +89,8 @@ describe('the Trello todo calls', () => {
     boardId: 'b1', boardName: 'Board', boardUrl: 'https://trello.com/b/b1', listId: 'l1', listName: 'TODO',
     inProgressListId: null, mineLabelIds: [], urgentLabelIds: ['u1'],
   };
-  const setup = () => {
-    const todo = { useTrello: vi.fn(async () => ({ cards: 1 })), sync: vi.fn(async () => ({ cards: 1 })) };
+  const setup = (sourceKind = 'trello') => {
+    const todo = { useTrello: vi.fn(async () => ({ cards: 1 })), sync: vi.fn(async () => ({ cards: 1 })), view: () => ({ sourceKind }) };
     const projects = { get: (dir: string) => (dir === '/p' ? { todo } : undefined) };
     registerIpc(() => {}, projects as never, async () => {}, {} as never, {} as never, {} as never);
     return todo;
@@ -114,5 +114,11 @@ describe('the Trello todo calls', () => {
     const todo = setup();
     await expect(handlers.get(IPC.pollTodo)!({}, '/p')).resolves.toBeUndefined();
     expect(todo.sync.mock.calls).toEqual([[{ quiet: true }]]);
+  });
+
+  it('pollTodo on an agent project starts no sync', async () => {
+    const todo = setup('agent');
+    await expect(handlers.get(IPC.pollTodo)!({}, '/p')).resolves.toBeUndefined();
+    expect(todo.sync).not.toHaveBeenCalled();
   });
 });
