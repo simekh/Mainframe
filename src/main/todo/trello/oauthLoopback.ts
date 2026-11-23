@@ -15,13 +15,15 @@ export interface Loopback {
 }
 
 /**
- * Listens on 127.0.0.1 at the first free port of `ports` (0 = any, for e2e). `params` resolves with the first
- * /callback request's query and rejects after `timeoutMs` or on close(). The server is closed after any of the
- * three; any other path or method gets 404, a target it can't read 400, and is ignored.
+ * Listens on 127.0.0.1 at the first free port of `ports` (0 = any, for e2e). `params` resolves with the query of the
+ * first /callback request that carries `state` and a code or an error, and rejects after `timeoutMs` or on close().
+ * The server is closed after any of the three. Any other path or method gets 404; any other /callback, or a target
+ * it can't read, gets 400; both are ignored.
  */
 export async function openLoopback(o: {
   ports: number[];
   timeoutMs: number;
+  state: string;
   page: (params: URLSearchParams) => string;
 }): Promise<Loopback> {
   let settle!: { resolve: (p: URLSearchParams) => void; reject: (e: Error) => void };
@@ -37,7 +39,13 @@ export async function openLoopback(o: {
         res.writeHead(404).end();
         return;
       }
-      body = o.page(url.searchParams);
+      const p = url.searchParams;
+      // Without this sign-in's state and a code or an error, it is not this sign-in's answer.
+      if (p.get('state') !== o.state || !(p.get('code') || p.get('error'))) {
+        res.writeHead(400).end();
+        return;
+      }
+      body = o.page(p);
     } catch {
       // A target `new URL` can't read (`//`), or a page that throws: this request is no answer.
       res.writeHead(400).end();

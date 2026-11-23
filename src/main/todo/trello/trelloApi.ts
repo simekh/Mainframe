@@ -59,7 +59,8 @@ export class TrelloApi {
     let response = await this.send(url, await this.token(() => this.tokens.accessToken()));
     if (response.status === 401) {
       response = await this.send(url, await this.token(() => this.tokens.refreshed()));
-      if (response.status === 401) throw new TrelloError('auth', 'Trello refused the sign-in');
+      // The refresh worked, so the sign-in is fine: this token just can't reach this resource.
+      if (response.status === 401) throw new TrelloError('notFound', 'Trello refused access to that');
     }
     if (response.status === 429) {
       this.pause(response.headers.get('retry-after'));
@@ -100,7 +101,7 @@ export class TrelloApi {
     const now = this.now();
     const seconds = Number(retryAfter);
     let ms: number;
-    if (retryAfter !== null && Number.isFinite(seconds) && seconds >= 0) {
+    if (retryAfter?.trim() && Number.isFinite(seconds) && seconds >= 0) {
       ms = seconds * 1000;
     } else if (now < this.pausedUntil) {
       return; // another request already set this pause

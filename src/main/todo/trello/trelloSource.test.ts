@@ -49,7 +49,8 @@ describe('readList', () => {
     expect(api.calls).toEqual([
       {
         path: '/1/lists/l1/cards',
-        query: { fields: 'id,idShort,name,desc,labels,pos,shortUrl', checklists: 'all', checklist_fields: 'name,pos' },
+        // No checklist_fields: the full checklist objects carry their checkItems.
+        query: { fields: 'id,idShort,name,desc,labels,pos,shortUrl', checklists: 'all' },
       },
     ]);
     expect(result).toEqual({
@@ -188,6 +189,15 @@ describe('listBoards', () => {
     expect(await listBoards(api)).toEqual([{ id: 'b1', name: 'One', url: 'https://trello.com/b/b1' }]);
     expect(api.calls).toEqual([{ path: '/1/members/me/boards', query: { filter: 'open', fields: 'name,url' } }]);
   });
+
+  it.each([
+    ['an answer that is not a list', { boards: [] }],
+    ['a board without a name', [{ id: 'b1', url: 'u' }]],
+  ])("refuses %s as a shape it can't read", async (_what, answer) => {
+    const err = await listBoards(fakeApi({ '/1/members/me/boards': answer })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TrelloError);
+    expect(err).toMatchObject({ kind: 'http', message: "Trello's answer had a shape Mainframe can't read" });
+  });
 });
 
 describe('boardChoices', () => {
@@ -214,5 +224,16 @@ describe('boardChoices', () => {
     });
     expect(api.calls).toContainEqual({ path: '/1/boards/b%201/lists', query: { fields: 'name,pos', filter: 'open' } });
     expect(api.calls).toContainEqual({ path: '/1/boards/b%201/labels', query: { fields: 'name,color', limit: '1000' } });
+  });
+
+  it.each([
+    ['lists that are not a list', { lists: [] }, []],
+    ['a list without a pos', [{ id: 'l1', name: 'One' }], []],
+    ['a label without a colour field', [], [{ id: 'x', name: 'UI' }]],
+  ])("refuses %s as a shape it can't read", async (_what, lists, labels) => {
+    const api = fakeApi({ '/1/boards/b/lists': lists, '/1/boards/b/labels': labels });
+    const err = await boardChoices(api, 'b').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TrelloError);
+    expect(err).toMatchObject({ kind: 'http', message: "Trello's answer had a shape Mainframe can't read" });
   });
 });

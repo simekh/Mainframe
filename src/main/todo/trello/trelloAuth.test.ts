@@ -206,7 +206,8 @@ describe('TrelloAuth connect', () => {
   it('consent refused, a wrong state and a timeout each say why and free the port', async () => {
     const cases: { answer?: (state: string) => string; timeoutMs?: number; error: RegExp; page?: string }[] = [
       { answer: (s) => `error=access_denied&state=${s}`, error: /^Trello access was not allowed\.$/, page: "Mainframe didn't connect to Trello:" },
-      { answer: () => 'code=c1&state=wrong', error: /^The sign-in answer didn't match; Connect again\.$/ },
+      // The loopback ignores an answer with another state and waits on until the timeout.
+      { answer: () => 'code=c1&state=wrong', timeoutMs: 300, error: /^No answer from the browser within \d+ minutes; Connect again\.$/ },
       { timeoutMs: 50, error: /^No answer from the browser within \d+ minutes; Connect again\.$/ },
     ];
     for (const c of cases) {
@@ -562,6 +563,44 @@ describe('TrelloAuth load', () => {
     give(fakeCrypt());
     await loading;
     expect(await token).toBe('access-0');
+  });
+
+  it('a re-seal that fails warns that it could not re-save, and keeps the sign-in', async () => {
+    seed();
+    const warn = vi.fn();
+    const crypt: TokenCrypt = {
+      ...fakeCrypt({ stale: true }),
+      encrypt: async () => {
+        throw new Error('keychain locked');
+      },
+    };
+    const { auth } = make({ warn, crypt });
+    await auth.load();
+    expect(auth.view().connected).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Could not re-save the Trello sign-in'));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('could not be decrypted'));
+  });
+
+  it("a username that comes back after a reconnect is not shown for the new sign-in", async () => {
+    seed();
+    let answerOld!: (r: Response) => void;
+    const f = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://auth.test/oauth/token') return json(200, pair(1));
+      const auth = new Headers(init?.headers).get('authorization');
+      if (auth === 'Bearer access-0') return new Promise<Response>((r) => (answerOld = r));
+      return json(200, { username: 'bob' });
+    }) as unknown as typeof fetch;
+    const b = browser();
+    const { auth } = make({ fetch: f, openExternal: b.openExternal });
+    await auth.load();
+    await vi.waitFor(() => expect(answerOld).toBeDefined());
+    await auth.disconnect();
+    await auth.connect();
+    expect(auth.view().username).toBe('bob');
+    answerOld(json(200, { username: 'ada' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(auth.view().username).toBe('bob');
   });
 
   it('a load does not wait for the username', async () => {

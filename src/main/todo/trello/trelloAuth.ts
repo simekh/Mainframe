@@ -34,12 +34,13 @@ interface AuthFile {
 /** A Connect failure whose message is shown to the user as is. */
 class ConnectError extends Error {}
 
-/** Why the browser's answer is no good: a short reason for the tab, and the sentence for the panel. */
-function callbackProblem(p: URLSearchParams, state: string): { reason: string; error: string } | null {
+/**
+ * Why the browser's answer is no good: a short reason for the tab, and the sentence for the panel. The loopback
+ * passes on only an answer with this sign-in's state and a code or an error.
+ */
+function callbackProblem(p: URLSearchParams): { reason: string; error: string } | null {
   if (p.get('error') === 'access_denied') return { reason: 'access was not allowed', error: 'Trello access was not allowed.' };
   if (p.get('error')) return { reason: 'Trello sent an error', error: "Trello didn't sign you in; Connect again." };
-  if (p.get('state') !== state) return { reason: "the sign-in answer didn't match", error: "The sign-in answer didn't match; Connect again." };
-  if (!p.get('code')) return { reason: 'no code came back', error: "Trello's answer had no code; Connect again." };
   return null;
 }
 
@@ -140,17 +141,22 @@ export class TrelloAuth implements TrelloTokens {
     }
     this.ownClientId = typeof data.ownClientId === 'string' && data.ownClientId.trim() ? data.ownClientId.trim() : null;
     const crypt = typeof data.sealed === 'string' ? await this.cryptOf() : null;
+    let stale = false;
     if (crypt) {
       try {
-        const { text, stale } = await crypt.decrypt(Buffer.from(data.sealed!, 'base64'));
-        const t = JSON.parse(text) as Tokens;
+        const opened = await crypt.decrypt(Buffer.from(data.sealed!, 'base64'));
+        const t = JSON.parse(opened.text) as Tokens;
         if (t.clientId === this.clientId() && typeof t.accessToken === 'string' && typeof t.refreshToken === 'string' && typeof t.expiresAt === 'number') {
           this.tokens = t;
-          if (stale) await this.save();
+          stale = opened.stale;
         }
       } catch {
         this.warn('Trello sign-in could not be decrypted; starting clean');
       }
+    }
+    if (stale) {
+      // The sign-in still works from memory; the next save tries again.
+      await this.save().catch((e: unknown) => this.warn(`Could not re-save the Trello sign-in: ${e instanceof Error ? e.message : String(e)}`));
     }
     void this.fetchUsername();
   }
@@ -303,8 +309,9 @@ export class TrelloAuth implements TrelloTokens {
       loopback = await openLoopback({
         ports: this.d.ports,
         timeoutMs: this.timeoutMs,
+        state,
         page: (p) => {
-          const problem = callbackProblem(p, state);
+          const problem = callbackProblem(p);
           return problem
             ? `<p>Mainframe didn't connect to Trello: ${problem.reason}. You can close this tab.</p>`
             : '<p>Mainframe is connected to Trello. You can close this tab.</p>';
@@ -340,7 +347,7 @@ export class TrelloAuth implements TrelloTokens {
         if (epoch !== this.epoch) return null;
         throw new ConnectError(`No answer from the browser within ${Math.round(this.timeoutMs / 60_000)} minutes; Connect again.`);
       }
-      const problem = callbackProblem(params, state);
+      const problem = callbackProblem(params);
       if (problem) throw new ConnectError(problem.error);
 
       let res: Response;
@@ -384,12 +391,14 @@ export class TrelloAuth implements TrelloTokens {
   private async fetchUsername(): Promise<void> {
     try {
       const token = await this.accessToken();
+      // A disconnect or a new Connect while this runs makes its answer another sign-in's.
+      const asked = this.tokens;
       const res = await this.doFetch(`${this.d.apiBase}/1/members/me?fields=username`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(this.requestTimeoutMs),
       });
       const body = res.ok ? ((await res.json()) as { username?: unknown }) : null;
-      if (typeof body?.username !== 'string' || !this.tokens) return;
+      if (typeof body?.username !== 'string' || this.tokens !== asked) return;
       this.username = body.username;
       this.emit();
     } catch {

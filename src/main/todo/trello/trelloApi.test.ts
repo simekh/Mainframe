@@ -41,9 +41,9 @@ describe('TrelloApi', () => {
     expect(calls[1].init?.headers).toEqual({ Authorization: 'Bearer tok2' });
   });
 
-  it('a second 401 is an auth error', async () => {
+  it('a 401 that survives a successful refresh is notFound: this token cannot reach that resource', async () => {
     const { api, fetch } = setup([status(401), status(401)]);
-    expect(await kindOf(api.get('/x'))).toBe('auth');
+    expect(await kindOf(api.get('/x'))).toBe('notFound');
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -94,6 +94,21 @@ describe('TrelloApi', () => {
     advance(1);
     await api.get('/x');
     expect(fetch).toHaveBeenCalledTimes(9);
+  });
+
+  it('a blank Retry-After counts as missing (10 s), while 0 stays a 0 s pause', async () => {
+    const a = setup([status(429, { 'retry-after': '  ' }), json({})]);
+    expect(await kindOf(a.api.get('/x'))).toBe('busy');
+    a.advance(9_999);
+    expect(await kindOf(a.api.get('/x'))).toBe('busy');
+    a.advance(1);
+    await a.api.get('/x');
+    expect(a.fetch).toHaveBeenCalledTimes(2);
+
+    const b = setup([status(429, { 'retry-after': '0' }), json({})]);
+    expect(await kindOf(b.api.get('/x'))).toBe('busy');
+    await b.api.get('/x');
+    expect(b.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('429s that arrive together make one pause, and a shorter Retry-After never shortens it', async () => {

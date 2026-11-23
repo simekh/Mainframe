@@ -25,7 +25,7 @@ async function hold(port = 0): Promise<number> {
 const portOf = (l: Loopback): number => Number(new URL(l.redirectUri).port);
 
 async function start(ports: number[], timeoutMs = 5000): Promise<Loopback> {
-  const l = await openLoopback({ ports, timeoutMs, page });
+  const l = await openLoopback({ ports, timeoutMs, state: 'xyz', page });
   open.push(l);
   return l;
 }
@@ -51,7 +51,7 @@ describe('openLoopback', () => {
   it('rejects with PortsBusyError when every port is taken', async () => {
     const a = await hold();
     const b = await hold();
-    await expect(openLoopback({ ports: [a, b], timeoutMs: 1000, page })).rejects.toBeInstanceOf(PortsBusyError);
+    await expect(openLoopback({ ports: [a, b], timeoutMs: 1000, state: 'xyz', page })).rejects.toBeInstanceOf(PortsBusyError);
   });
 
   it('ignores /favicon.ico and resolves with the callback query', async () => {
@@ -89,12 +89,23 @@ describe('openLoopback', () => {
       req.end();
     });
     expect(status).toBe(400);
-    await fetch(`http://127.0.0.1:${port}/callback?code=abc`);
+    await fetch(`http://127.0.0.1:${port}/callback?code=abc&state=xyz`);
     expect((await l.params).get('code')).toBe('abc');
   });
 
+  it('answers a callback without the state, with a wrong one, or with neither code nor error with 400, and keeps waiting', async () => {
+    const l = await start([0]);
+    const base = `http://127.0.0.1:${portOf(l)}/callback`;
+    for (const query of ['code=abc', 'code=abc&state=wrong', 'error=access_denied&state=wrong', 'state=xyz']) {
+      expect((await fetch(`${base}?${query}`)).status).toBe(400);
+    }
+    const res = await fetch(`${base}?error=access_denied&state=xyz`);
+    expect(res.status).toBe(200);
+    expect((await l.params).get('error')).toBe('access_denied');
+  });
+
   it('rejects a listen error other than a busy or refused port', async () => {
-    await expect(openLoopback({ ports: [70000], timeoutMs: 1000, page })).rejects.toMatchObject({ code: 'ERR_SOCKET_BAD_PORT' });
+    await expect(openLoopback({ ports: [70000], timeoutMs: 1000, state: 'xyz', page })).rejects.toMatchObject({ code: 'ERR_SOCKET_BAD_PORT' });
   });
 
   it('close() before the callback rejects params and frees the port', async () => {
