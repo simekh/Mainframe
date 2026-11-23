@@ -41,7 +41,7 @@ function fakeFetch(token: (body: Record<string, string>) => Response | Promise<R
     const auth = new Headers(init?.headers).get('authorization');
     calls.push({ url, body, auth });
     if (url === 'https://auth.test/oauth/token') return token(body!);
-    if (url === 'https://api.test/1/members/me?fields=username,fullName') return json(200, { username: 'ada', fullName: 'Ada' });
+    if (url === 'https://api.test/1/members/me?fields=username') return json(200, { username: 'ada' });
     return json(404, {});
   });
   return { fn: fn as unknown as typeof fetch, calls, tokenCalls: () => calls.filter((c) => c.url.endsWith('/oauth/token')) };
@@ -87,6 +87,7 @@ function make(o: {
   warn?: (msg: string) => void;
   now?: () => number;
   ports?: number[];
+  plainTextOnly?: () => boolean;
 }) {
   const views: TrelloConnection[] = [];
   const crypt = o.crypt === undefined ? fakeCrypt() : o.crypt;
@@ -103,6 +104,7 @@ function make(o: {
     now: o.now ?? (() => NOW),
     timeoutMs: o.timeoutMs,
     warn: o.warn ?? (() => undefined),
+    plainTextOnly: o.plainTextOnly,
   });
   return { auth, views };
 }
@@ -167,6 +169,7 @@ describe('TrelloAuth connect', () => {
     const me = f.calls.find((c) => c.url.includes('/1/members/me'))!;
     expect(me.auth).toBe('Bearer access-1');
     expect(auth.view()).toEqual({
+      loaded: false,
       connected: true,
       username: 'ada',
       needsReconnect: false,
@@ -373,12 +376,16 @@ describe('TrelloAuth tokens', () => {
     await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'auth' });
   });
 
-  it('a refresh answered 5xx rejects http and keeps the tokens', async () => {
+  it.each([
+    [503, 'http'],
+    [408, 'http'],
+    [429, 'busy'],
+  ])('a refresh answered %i rejects %s and keeps the tokens', async (status, kind) => {
     seed();
-    const f = fakeFetch(() => json(503, {}));
+    const f = fakeFetch(() => json(status, {}));
     const { auth } = make({ fetch: f.fn });
     await auth.load();
-    await expect(auth.refreshed()).rejects.toMatchObject({ kind: 'http' });
+    await expect(auth.refreshed()).rejects.toMatchObject({ kind });
     expect(auth.view()).toMatchObject({ connected: true, needsReconnect: false });
     expect(readStored().tokens).toMatchObject({ refreshToken: 'refresh-0' });
   });
@@ -497,6 +504,52 @@ describe('TrelloAuth load', () => {
     await auth.load();
     expect(auth.view()).toMatchObject({ connected: false, remembers: false });
     expect(views.at(-1)).toMatchObject({ remembers: false });
+  });
+
+  it('loaded turns true once the load is done, with or without a file', async () => {
+    const { auth, views } = make({});
+    expect(auth.view().loaded).toBe(false);
+    await auth.load();
+    expect(views.at(-1)).toMatchObject({ loaded: true, connected: false });
+    seed();
+    const { auth: sealed, views: sealedViews } = make({});
+    await sealed.load();
+    expect(sealedViews.at(-1)).toMatchObject({ loaded: true, connected: true });
+  });
+
+  it('a system that could keep the sign-in only as plain text shows remembers false at load, asking no crypt', async () => {
+    const crypt = vi.fn(async () => null);
+    const { auth, views } = make({ crypt, plainTextOnly: () => true });
+    await auth.load();
+    expect(views.at(-1)).toMatchObject({ loaded: true, remembers: false });
+    expect(crypt).not.toHaveBeenCalled();
+  });
+
+  it('a crypt that fails to come warns and counts as none', async () => {
+    seed();
+    const warn = vi.fn();
+    const { auth } = make({ warn, crypt: () => Promise.reject(new Error('keychain check failed')) });
+    await auth.load();
+    expect(auth.view()).toMatchObject({ connected: false, remembers: false });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('keychain check failed'));
+  });
+
+  it('a Connect during a slow load that finds a sign-in opens no browser', async () => {
+    seed();
+    let give!: (c: TokenCrypt) => void;
+    const openExternal = vi.fn(async () => undefined);
+    const { auth } = make({ openExternal, crypt: () => new Promise<TokenCrypt>((r) => (give = r)) });
+    const loading = auth.load();
+    const connecting = auth.connect();
+    await vi.waitFor(() => expect(give).toBeDefined());
+    give(fakeCrypt());
+    await loading;
+    await connecting;
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(auth.view()).toMatchObject({ connected: true, connecting: false });
+    // A later Connect is a new one, not the one skipped.
+    expect(auth.connect()).not.toBe(connecting);
+    await auth.disconnect();
   });
 
   it('accessToken during a slow load waits for it, then answers with the token', async () => {

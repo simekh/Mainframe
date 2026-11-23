@@ -169,4 +169,19 @@ describe('TrelloApi', () => {
   it('a 2xx body that is not JSON is http', async () => {
     expect(await kindOf(setup([new Response('<html>')]).api.get('/x'))).toBe('http');
   });
+
+  it('a request that gets no answer in time is offline', async () => {
+    // Answers only by honouring the abort signal.
+    const hang = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_r, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason))),
+    );
+    const api = new TrelloApi({
+      tokens: { accessToken: async () => 'tok1', refreshed: async () => 'tok2' },
+      base: 'https://api.test',
+      fetch: hang as unknown as typeof fetch,
+      timeoutMs: 20,
+    });
+    expect(await kindOf(api.get('/x'))).toBe('offline');
+  });
 });

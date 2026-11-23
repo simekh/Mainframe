@@ -7,7 +7,6 @@ import { TrelloError, type TrelloTokens } from './trelloApi';
 
 /** Mainframe's public OAuth client: it has no secret, so the id is not one either. */
 export const TRELLO_CLIENT_ID = 'cjmiq05mPFq8nq2NbdTU5En5PgRfxFAv';
-export const TRELLO_PORTS = [33333, 33334, 33335];
 
 const SCOPES = 'read:member:trello read:board:trello write:board:trello offline_access';
 const REFRESH_MARGIN_MS = 60_000;
@@ -59,6 +58,8 @@ export class TrelloAuth implements TrelloTokens {
     ports: number[];
     openExternal(url: string): Promise<void>;
     onChange(view: TrelloConnection): void;
+    /** Whether this system could keep the sign-in only as readable text: known without asking the Keychain. */
+    plainTextOnly?(): boolean;
   };
   private readonly doFetch: typeof fetch;
   private readonly now: () => number;
@@ -66,9 +67,10 @@ export class TrelloAuth implements TrelloTokens {
   private readonly requestTimeoutMs: number;
   private readonly warn: (msg: string) => void;
   private crypt: Promise<TokenCrypt | null> | null = null;
-  /** Whether the tokens are kept across restarts: true until the crypt has been asked for and there is none. */
+  /** Whether the tokens are kept across restarts: true until the load finds plain text only, or the crypt is known to be none. */
   private remembers = true;
   private loading: Promise<void> | null = null;
+  private isLoaded = false;
 
   private tokens: Tokens | null = null;
   private username: string | null = null;
@@ -97,7 +99,10 @@ export class TrelloAuth implements TrelloTokens {
 
   /** Reads the file and decrypts, then starts fetching the username without waiting for it (failure: it stays null). */
   load(): Promise<void> {
-    this.loading = this.runLoad();
+    this.loading = this.runLoad().finally(() => {
+      this.isLoaded = true;
+      this.emit();
+    });
     return this.loading;
   }
 
@@ -108,17 +113,24 @@ export class TrelloAuth implements TrelloTokens {
 
   /** The crypt, asked for once; one that fails to come counts as none. */
   private cryptOf(): Promise<TokenCrypt | null> {
-    this.crypt ??= this.d.crypt().catch(() => null).then((crypt) => {
-      if (!crypt) {
-        this.remembers = false;
-        this.emit();
-      }
-      return crypt;
-    });
+    this.crypt ??= this.d
+      .crypt()
+      .catch((err: unknown) => {
+        this.warn(`Couldn't ask for the Keychain, so the Trello sign-in is not kept: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      })
+      .then((crypt) => {
+        if (!crypt) {
+          this.remembers = false;
+          this.emit();
+        }
+        return crypt;
+      });
     return this.crypt;
   }
 
   private async runLoad(): Promise<void> {
+    if (this.d.plainTextOnly?.()) this.remembers = false;
     let data: Partial<AuthFile>;
     try {
       data = JSON.parse(readFileSync(this.d.file, 'utf8')) as Partial<AuthFile>;
@@ -141,12 +153,12 @@ export class TrelloAuth implements TrelloTokens {
         this.warn('Trello sign-in could not be decrypted; starting clean');
       }
     }
-    this.emit();
     void this.fetchUsername();
   }
 
   view(): TrelloConnection {
     return {
+      loaded: this.isLoaded,
       connected: this.tokens !== null,
       username: this.username,
       needsReconnect: this.needsReconnect,
@@ -165,9 +177,16 @@ export class TrelloAuth implements TrelloTokens {
 
   private async connectAfterLoad(): Promise<void> {
     const epoch = this.epoch;
+    const duringLoad = this.loading !== null && !this.isLoaded;
     await this.loaded();
     // A disconnect while the load ran has cancelled this Connect.
-    if (epoch === this.epoch) await this.runConnect();
+    if (epoch !== this.epoch) return;
+    // The load found a sign-in: pressed before it showed, this Connect has nothing to do.
+    if (duringLoad && this.tokens) {
+      this.pendingConnect = null;
+      return;
+    }
+    await this.runConnect();
   }
 
   /** Drops the tokens in memory and on disk, and cancels a pending Connect; keeps ownClientId. */
@@ -231,8 +250,9 @@ export class TrelloAuth implements TrelloTokens {
       throw new TrelloError('offline', "Can't reach Trello");
     }
     if (this.tokens !== held) return this.current();
-    if (res.status >= 400 && res.status < 500) {
-      // Any 4xx: Atlassian answers a dead or rotated refresh token with 400, 401 or 403 invalid_grant.
+    if (res.status === 429) throw new TrelloError('busy', 'Trello is busy; retrying');
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      // Atlassian answers a dead or rotated refresh token with 400, 401 or 403 invalid_grant.
       this.tokens = null;
       this.username = null;
       this.needsReconnect = true;
@@ -365,7 +385,7 @@ export class TrelloAuth implements TrelloTokens {
   private async fetchUsername(): Promise<void> {
     try {
       const token = await this.accessToken();
-      const res = await this.doFetch(`${this.d.apiBase}/1/members/me?fields=username,fullName`, {
+      const res = await this.doFetch(`${this.d.apiBase}/1/members/me?fields=username`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(this.requestTimeoutMs),
       });

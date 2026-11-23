@@ -1,7 +1,7 @@
 import { createSignal, createUniqueId, For, onMount, Show } from 'solid-js';
 import type { TrelloBoardChoices, TrelloBoardRef, TrelloPick } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
-import { connectTrello, trelloConnection, trelloSignedIn } from '../settings/trelloStore';
+import { connectTrello, disconnectTrello, trelloConnection, trelloSignedIn } from '../settings/trelloStore';
 
 // As the panel's own buttons: a press leaves the focus where it was.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -41,6 +41,11 @@ export default function TrelloSetup(props: { onUse(pick: TrelloPick): void; onCa
           <button class="btn primary" data-testid="todo-connect-trello" disabled={trelloConnection()?.connecting} onMouseDown={keepFocus} onClick={connectTrello}>
             {trelloConnection()?.connecting ? 'Waiting for your browser…' : trelloConnection()?.needsReconnect ? 'Reconnect Trello' : 'Connect Trello'}
           </button>
+          <Show when={trelloConnection()?.connecting}>
+            <button class="todo-reset" data-testid="todo-connect-cancel" onMouseDown={keepFocus} onClick={disconnectTrello}>
+              Cancel the sign-in
+            </button>
+          </Show>
           <Show when={trelloConnection()?.error}>
             {(message) => (
               <p class="trello-setup-error" role="alert">

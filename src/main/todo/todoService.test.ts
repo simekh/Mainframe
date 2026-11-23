@@ -874,6 +874,15 @@ it('startItem continues the finished task whose card id is the ARI form', async 
   expect(t.taskCalls).toEqual([['continueTask', 'task-7']]);
 });
 
+it('startItem finds a bare-id card by the ARI id the manager still names', async () => {
+  const t = setup();
+  await synced(t, { kind: 'cards', source: SOURCE, cards: [card('6b03f0975d81', { number: '#6' })] });
+
+  await t.service.startItem({ kind: 'card', id: 'ari:cloud:trello::card/workspace/60c1/6b03f0975d81' }, { noQuestions: false });
+
+  expect(t.starts.map((s) => s.card?.id)).toEqual(['6b03f0975d81']);
+});
+
 it("a card also starts by its number as the list shows it, with or without the #, as by its id", async () => {
   const t = setup();
   const cards = [card('x9f', { number: '#131' }), card('x1a', { number: '7' }), card('x2b', { number: null })];
@@ -1510,6 +1519,17 @@ it('a read that finds the same list writes no file, but the view shows when it w
   t.lastRead().resolve([card('c2')]);
   await changed;
   expect(t.todo()).toMatchObject({ syncedAt: NOW + 60_000, cards: [card('c2')] });
+});
+
+it('a quiet sync (a poll) on a project without a Trello pick runs nothing', async () => {
+  const t = setup();
+  t.changes.length = 0;
+
+  await t.service.sync({ quiet: true });
+
+  expect(t.calls).toEqual([]);
+  expect(t.reads).toEqual([]);
+  expect(t.changes).toEqual([]);
 });
 
 it('a quiet sync shows no syncing; a forced one does', async () => {

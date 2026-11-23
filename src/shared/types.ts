@@ -356,8 +356,12 @@ export interface TodoView {
   notice: string | null;
 }
 
+/** The loopback ports Trello's sign-in may call back on, first free one used: each is a callback URL on the Trello app. */
+export const TRELLO_PORTS = [33333, 33334, 33335];
+
 /** The state of the Trello connection, shared by every Trello project. */
 export interface TrelloConnection {
+  loaded: boolean; // the saved sign-in has been read: until then, not connected says nothing
   connected: boolean; // tokens held (in memory or on disk)
   username: string | null; // null until /members/me answered
   needsReconnect: boolean; // a refresh failed: every Trello project shows Reconnect

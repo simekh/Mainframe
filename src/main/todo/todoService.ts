@@ -116,7 +116,7 @@ export class TodoService {
 
   /**
    * Reads the list: a picked Trello list directly, else with a background run. A call while one runs gets that run's
-   * outcome. A quiet one (a poll) shows no syncing. Tools confirmed on another agent are not this one's names, so the
+   * outcome. A quiet one (a poll) shows no syncing, and reads only a Trello list. Tools confirmed on another agent are not this one's names, so the
    * run finds the connector again.
    */
   sync(opts: { quiet?: boolean } = {}): Promise<SyncOutcome> {
@@ -124,6 +124,8 @@ export class TodoService {
     if (this.running) return this.running.outcome;
     if (this.newer) return Promise.reject(new Error(this.newer));
     if (this.record.trello) return this.readTrello(this.record.trello, opts.quiet ?? false);
+    // Only a Trello list is polled: an agent's run costs the owner, so only their Sync starts one.
+    if (opts.quiet) return Promise.resolve({ error: 'Only a Trello list is polled' });
     const agent = this.deps.agent();
     const { readTools, pickedList } = this.record;
     const confirmed = readTools !== undefined && (readTools.agent ?? 'claude') === agent.adapter.name;
@@ -291,7 +293,8 @@ export class TodoService {
     if (item.kind === 'card') {
       const { source, cards } = this.record;
       const bare = (s: string) => s.replace(/^#/, '');
-      let position = cards.findIndex((c) => c.id === item.id);
+      // An agent sync's ARI id, which the manager may still name, finds the bare-id card the direct read gives.
+      let position = cards.findIndex((c) => sameCard(c.id, item.id));
       if (position < 0) position = cards.findIndex((c) => c.number !== null && bare(c.number) === bare(item.id));
       if (position < 0 || !source) throw new Error(`No card ${item.id} in the synced list; sync it again`);
       const card = cards[position];

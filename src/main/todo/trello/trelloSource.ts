@@ -1,5 +1,7 @@
+import * as z from 'zod/v4';
 import type { TodoCard, TodoSource, TrelloBoardChoices, TrelloBoardRef, TrelloPick } from '../../../shared/types';
-import type { TrelloApi } from './trelloApi';
+import { TODO_CARD } from '../todoSchema';
+import { TrelloError, type TrelloApi } from './trelloApi';
 
 type Api = Pick<TrelloApi, 'get'>;
 
@@ -45,17 +47,25 @@ function toCard(raw: RawCard, pick: TrelloPick): TodoCard {
   };
 }
 
-/** The picked list's cards, in list order, with where they were read from. */
+const CARDS = z.array(TODO_CARD);
+
+/**
+ * The picked list's cards, in list order, with where they were read from. An answer that doesn't map to valid cards
+ * is refused whole: saved, it would get todo.json set aside at the next start, notes and all.
+ */
 export async function readList(api: Api, pick: TrelloPick): Promise<{ source: TodoSource; cards: TodoCard[] }> {
   const raw = await api.get<RawCard[]>(`/1/lists/${encodeURIComponent(pick.listId)}/cards`, {
     fields: 'id,idShort,name,desc,labels,pos,shortUrl',
     checklists: 'all',
     checklist_fields: 'name,pos',
   });
-  return {
-    source: { kind: 'Trello', board: pick.boardName, list: pick.listName, url: pick.boardUrl },
-    cards: raw.sort(byPos).map((c) => toCard(c, pick)),
-  };
+  let cards: TodoCard[];
+  try {
+    cards = CARDS.parse(raw.sort(byPos).map((c) => toCard(c, pick)));
+  } catch {
+    throw new TrelloError('http', "Trello's answer had a shape Mainframe can't read");
+  }
+  return { source: { kind: 'Trello', board: pick.boardName, list: pick.listName, url: pick.boardUrl }, cards };
 }
 
 /** The signed-in member's open boards. */

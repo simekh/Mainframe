@@ -76,6 +76,27 @@ describe('openLoopback', () => {
     await expectFree(portOf(l));
   });
 
+  it('answers a target it cannot read with 400, and the callback still resolves afterwards', async () => {
+    const l = await start([0]);
+    const port = portOf(l);
+    // fetch would tidy the path; `//` reaches the server as is and makes `new URL` throw.
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '//' }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(status).toBe(400);
+    await fetch(`http://127.0.0.1:${port}/callback?code=abc`);
+    expect((await l.params).get('code')).toBe('abc');
+  });
+
+  it('rejects a listen error other than a busy or refused port', async () => {
+    await expect(openLoopback({ ports: [70000], timeoutMs: 1000, page })).rejects.toMatchObject({ code: 'ERR_SOCKET_BAD_PORT' });
+  });
+
   it('close() before the callback rejects params and frees the port', async () => {
     const l = await start([0]);
     l.close();

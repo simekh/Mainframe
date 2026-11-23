@@ -1144,6 +1144,14 @@ html[data-platform='darwin'] .setup-titlebar {
   flex: none;
 }
 
+/* Why the last Connect failed, on its own line under what the row says. */
+.todo-reconnect-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--error);
+  user-select: text;
+}
+
 /* A one-line offer under the header, as quiet as Set up again. */
 .todo-trello-hint {
   flex: none;

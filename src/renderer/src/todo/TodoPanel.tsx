@@ -10,7 +10,7 @@ import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
-import { connectTrello, trelloConnection, trelloSignedIn } from '../settings/trelloStore';
+import { connectTrello, disconnectTrello, trelloConnection, trelloSignedIn } from '../settings/trelloStore';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
 import FinishedList from './FinishedList';
@@ -497,19 +497,32 @@ export default function TodoPanel(props: {
                 </Show>
               </div>
 
-              <Show when={trello() && trelloConnection()?.needsReconnect}>
-                <div class="todo-reconnect-row">
-                  <p>Trello asked to sign in again. The list shows the last copy.</p>
-                  <button
-                    class="btn"
-                    data-testid="todo-reconnect"
-                    disabled={trelloConnection()?.connecting}
-                    onMouseDown={keepFocus}
-                    onClick={connectTrello}
-                  >
-                    {trelloConnection()?.connecting ? 'Waiting for your browser…' : 'Reconnect Trello'}
-                  </button>
-                </div>
+              {/* Not signed in, once the saved sign-in has been read: a Trello list can't be read until it is. Set up
+                  again's own Connect stands in for it meanwhile. */}
+              <Show when={trello() && setup() !== 'trello' && trelloConnection()?.loaded && !trelloSignedIn() && trelloConnection()}>
+                {(t) => (
+                  <div class="todo-reconnect-row">
+                    <p>
+                      {t().needsReconnect ? 'Trello asked to sign in again.' : 'Not connected to Trello.'}
+                      {v().source ? ' The list shows the last copy.' : ''}
+                      <Show when={t().error}>
+                        {(message) => (
+                          <span class="todo-reconnect-error" role="alert">
+                            {message()}
+                          </span>
+                        )}
+                      </Show>
+                    </p>
+                    <button class="btn" data-testid="todo-reconnect" disabled={t().connecting} onMouseDown={keepFocus} onClick={connectTrello}>
+                      {t().connecting ? 'Waiting for your browser…' : t().needsReconnect ? 'Reconnect Trello' : 'Connect Trello'}
+                    </button>
+                    <Show when={t().connecting}>
+                      <button class="btn" data-testid="todo-connect-cancel" onMouseDown={keepFocus} onClick={disconnectTrello}>
+                        Cancel
+                      </button>
+                    </Show>
+                  </div>
+                )}
               </Show>
 
               <Show when={!trello() && !choosing() && setup() !== 'trello' && v().source?.kind.toLowerCase() === 'trello'}>
@@ -623,8 +636,8 @@ export default function TodoPanel(props: {
                 )}
               </Show>
 
-              {/* Until there is a list or a note; an ask, or the choice of where the list lives, says more. */}
-              <Show when={!v().source && v().notes.length === 0 && !v().ask && !choosing() && setup() !== 'trello'}>
+              {/* Until there is a list or a note, on the agent's side only; an ask, or the choice of where the list lives, says more. */}
+              <Show when={!v().source && v().notes.length === 0 && !v().ask && !choosing() && setup() !== 'trello' && !trello()}>
                 <p class="todo-empty">
                   Sync reads your to-do list through the connector you use for it. Todos you add stay in Mainframe.
                 </p>

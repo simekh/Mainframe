@@ -17,7 +17,7 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { IPC } from '../shared/ipc';
-import { AGENT_NAMES, type AgentName, type ImageEntry, type ProgramCheck, type TrelloPick } from '../shared/types';
+import { AGENT_NAMES, TRELLO_PORTS, type AgentName, type ImageEntry, type ProgramCheck, type TrelloPick } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { copyMenuItems, editMenuItems } from './contextMenu';
@@ -42,7 +42,7 @@ import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
 import { TrelloApi } from './todo/trello/trelloApi';
-import { TRELLO_PORTS, TrelloAuth, type TokenCrypt } from './todo/trello/trelloAuth';
+import { TrelloAuth, type TokenCrypt } from './todo/trello/trelloAuth';
 import { readList } from './todo/trello/trelloSource';
 import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
@@ -208,14 +208,20 @@ function findPrograms(): { env: Record<string, string>; nodeBin: string | null }
   return { env, nodeBin: findExecutable('node', lookupIn(env)) };
 }
 
+/** Linux without a password store, where an encrypted text would be stored readable. Asks no Keychain. */
+const plainTextOnly = (): boolean => process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text';
+
 /**
  * How the Trello sign-in is kept between launches; null keeps it in memory only. None in e2e, so a hidden test window
- * never asks for the Keychain, nor on Linux without a password store, where the text would be stored readable.
+ * never asks for the Keychain, nor where only plain text could be stored.
  */
 async function trelloCrypt(e2e: boolean): Promise<TokenCrypt | null> {
-  if (e2e) return null;
-  if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return null;
-  if (!(await safeStorage.isAsyncEncryptionAvailable().catch(() => false))) return null;
+  if (e2e || plainTextOnly()) return null;
+  const available = await safeStorage.isAsyncEncryptionAvailable().catch((err: unknown) => {
+    console.warn('[trello] could not check for the Keychain; the sign-in is kept in memory only', err);
+    return false;
+  });
+  if (!available) return null;
   return {
     encrypt: (text) => safeStorage.encryptStringAsync(text),
     decrypt: async (data) => {
@@ -344,6 +350,7 @@ async function start(
     // Looked up at each call, so an e2e run can stand in for the browser.
     openExternal: (url) => shell.openExternal(url),
     onChange: (view) => toWindow(IPC.trelloChanged, view),
+    plainTextOnly,
   });
   const trelloApi = new TrelloApi({ tokens: trelloAuth, base: apiBase });
   const trelloReader = { read: (pick: TrelloPick) => readList(trelloApi, pick), pollMs: () => trelloApi.pollMs() };

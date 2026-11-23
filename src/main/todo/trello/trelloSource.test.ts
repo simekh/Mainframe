@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TrelloPick } from '../../../shared/types';
+import { TrelloError } from './trelloApi';
 import { boardChoices, listBoards, readList } from './trelloSource';
 
 type Call = { path: string; query: Record<string, string> };
@@ -167,6 +168,17 @@ describe('readList', () => {
     expect(cards[0].labels).toEqual([]);
     expect(cards[0].checklists).toEqual([{ name: 'L', items: [] }]);
     expect(cards[1].checklists).toEqual([]);
+  });
+
+  it.each([
+    ['a card without a name', [card({ name: undefined })]],
+    ['labels that are not a list', [card({ labels: 'x' })]],
+    ['an answer that is not a list', { cards: [] }],
+  ])("refuses %s as a shape it can't read, so nothing invalid is saved", async (_what, answer) => {
+    const api = fakeApi({ '/1/lists/l1/cards': answer });
+    const err = await readList(api, pick).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TrelloError);
+    expect(err).toMatchObject({ kind: 'http', message: "Trello's answer had a shape Mainframe can't read" });
   });
 });
 

@@ -64,7 +64,7 @@ async function signIn(app: ElectronApplication, fake: FakeTrello): Promise<URL> 
   const answer = await fetch(link);
   // The tab's text; the loopback may close the connection as it answers.
   await answer.text().catch(() => '');
-  await expect.poll(() => fake.requests).toContain('GET /1/members/me?fields=username,fullName');
+  await expect.poll(() => fake.requests).toContain('GET /1/members/me?fields=username');
   return new URL(link);
 }
 
@@ -294,10 +294,11 @@ test('Disconnect shows Connect again, and the list stays on screen', async () =>
   await expect(page.getByTestId('trello-user')).toHaveCount(0);
   await closeSettings(page);
 
-  // The last copy stays, from where it was read, and nothing asks to reconnect: the owner signed out.
+  // The last copy stays, from where it was read, and the panel offers Connect: the list can't be read until then.
   await expect(page.getByTestId('todo-item')).toHaveCount(3);
   await expect(page.getByTestId('todo-source')).toHaveText('Trello ↗ · Shop · To do');
-  await expect(page.getByTestId('todo-reconnect')).toHaveCount(0);
+  await expect(page.getByTestId('todo-reconnect')).toHaveText('Connect Trello');
+  await expect(page.getByText('Not connected to Trello. The list shows the last copy.')).toBeVisible();
   await expect(page.getByTestId('todo-error')).toHaveCount(0);
   await app.close();
 });

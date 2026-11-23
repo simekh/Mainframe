@@ -22,6 +22,7 @@ const MAX_POLL_MS = 600_000;
 const LOW_BUDGET = 0.3;
 const FIRST_PAUSE_MS = 10_000;
 const MAX_PAUSE_MS = 120_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Reads Trello's REST API. One instance serves every open project, so the pause
@@ -32,15 +33,17 @@ export class TrelloApi {
   private readonly base: string;
   private readonly doFetch: typeof fetch;
   private readonly now: () => number;
+  private readonly timeoutMs: number;
   private pausedUntil = 0;
   private nextPauseMs = FIRST_PAUSE_MS;
   private pollInterval = BASE_POLL_MS;
 
-  constructor(deps: { tokens: TrelloTokens; base: string; fetch?: typeof fetch; now?: () => number }) {
+  constructor(deps: { tokens: TrelloTokens; base: string; fetch?: typeof fetch; now?: () => number; timeoutMs?: number }) {
     this.tokens = deps.tokens;
     this.base = deps.base;
     this.doFetch = deps.fetch ?? fetch;
     this.now = deps.now ?? Date.now;
+    this.timeoutMs = deps.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
   /** 60_000, doubled per response under 30% client-id budget, at most 600_000; 60_000 again once a response is over it. */
@@ -84,7 +87,8 @@ export class TrelloApi {
   private async send(url: string, token: string): Promise<Response> {
     let response: Response;
     try {
-      response = await this.doFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      // A timeout rejects as a fetch that can't reach Trello does.
+      response = await this.doFetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch {
       throw new TrelloError('offline', "Can't reach Trello");
     }
