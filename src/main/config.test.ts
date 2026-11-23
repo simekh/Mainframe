@@ -40,6 +40,13 @@ describe('loadConfig', () => {
     expect(loadConfig({ MAINFRAME_UPDATE_FILE: '', MAINFRAME_UPDATE_FAILED: '' }, '/data')).toMatchObject({ launcherFile: undefined, updateFailure: undefined });
   });
 
+  it('MAINFRAME_E2E_TRELLO_URL is read only in e2e', () => {
+    const env = { MAINFRAME_E2E_TRELLO_URL: 'http://127.0.0.1:9999' };
+    expect(loadConfig(env, '/data').trelloUrl).toBeUndefined();
+    expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').trelloUrl).toBe('http://127.0.0.1:9999');
+    expect(loadConfig({ MAINFRAME_E2E_TRELLO_URL: '', MAINFRAME_E2E: '1' }, '/data').trelloUrl).toBeUndefined();
+  });
+
   it('checks for updates by itself except in dev, and in e2e only with a clone named', () => {
     expect(loadConfig({}, '/data').autoCheck).toBe(true);
     expect(loadConfig({ ELECTRON_RENDERER_URL: 'http://localhost:5173' }, '/data').autoCheck).toBe(false);

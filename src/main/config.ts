@@ -14,6 +14,8 @@ export interface AppConfig {
   e2e: boolean;
   /** MAINFRAME_E2E_UPDATE_DIR, read only in e2e: the clone a test checks for updates in place of the app's own. */
   updateDir?: string;
+  /** MAINFRAME_E2E_TRELLO_URL, read only in e2e: a stand-in for Trello's sign-in and API, both at this address. */
+  trelloUrl?: string;
   /** MAINFRAME_UPDATE_FILE, set only by start.mjs: where to leave the tag to update to. Without it one click can't work. */
   launcherFile?: string;
   /** MAINFRAME_UPDATE_FAILED: start.mjs says why the update it was asked for did not happen. */
@@ -65,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppC
     logOsc: env.MAINFRAME_LOG_OSC === '1',
     e2e,
     updateDir: e2e ? env.MAINFRAME_E2E_UPDATE_DIR : undefined,
+    trelloUrl: (e2e && env.MAINFRAME_E2E_TRELLO_URL) || undefined,
     // Empty counts as unset: an empty failure would open the dialog with nothing to say.
     launcherFile: env.MAINFRAME_UPDATE_FILE || undefined,
     updateFailure: env.MAINFRAME_UPDATE_FAILED || undefined,

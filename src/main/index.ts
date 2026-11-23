@@ -9,6 +9,7 @@ import {
   clipboard,
   dialog,
   Menu,
+  safeStorage,
   session,
   shell,
   type ContextMenuParams,
@@ -16,14 +17,14 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { IPC } from '../shared/ipc';
-import { AGENT_NAMES, type AgentName, type ImageEntry, type ProgramCheck } from '../shared/types';
+import { AGENT_NAMES, type AgentName, type ImageEntry, type ProgramCheck, type TrelloPick } from '../shared/types';
 import { clearPasteFolder } from './clipboard';
 import { loadConfig, type AppConfig } from './config';
 import { copyMenuItems, editMenuItems } from './contextMenu';
 import { DiffWindow } from './diff/diffWindow';
 import { gitQueries } from './git';
 import { registerImageProtocol } from './images/imageProtocol';
-import { imagesOf, registerIpc, registerSettingsIpc, registerSetupIpc, registerUpdateIpc, type Project } from './ipc';
+import { imagesOf, registerIpc, registerSettingsIpc, registerSetupIpc, registerTrelloIpc, registerUpdateIpc, type Project } from './ipc';
 import { ManagerService } from './manager/managerService';
 import { registerManagerTools } from './mcp/managerTools';
 import { startMcpServer } from './mcp/mcpServer';
@@ -40,7 +41,9 @@ import { SetupFlow } from './setup/setupFlow';
 import { FINISH_CHECK_MS, TaskService } from './tasks/taskService';
 import { TaskRecords } from './tasks/taskStore';
 import { TodoService } from './todo/todoService';
-import { TrelloError } from './todo/trello/trelloApi';
+import { TrelloApi } from './todo/trello/trelloApi';
+import { TRELLO_PORTS, TrelloAuth, type TokenCrypt } from './todo/trello/trelloAuth';
+import { readList } from './todo/trello/trelloSource';
 import { UPDATE_EXIT_CODE, UpdateService } from './updates/updateService';
 import { isDevToolsKey, isSettingsKey, zoomKey } from './windowKeys';
 import { APP_BACKGROUND, webPreferences } from './windowOptions';
@@ -205,6 +208,23 @@ function findPrograms(): { env: Record<string, string>; nodeBin: string | null }
   return { env, nodeBin: findExecutable('node', lookupIn(env)) };
 }
 
+/**
+ * How the Trello sign-in is kept between launches; null keeps it in memory only. None in e2e, so a hidden test window
+ * never asks for the Keychain, nor on Linux without a password store, where the text would be stored readable.
+ */
+async function trelloCrypt(e2e: boolean): Promise<TokenCrypt | null> {
+  if (e2e) return null;
+  if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return null;
+  if (!(await safeStorage.isAsyncEncryptionAvailable().catch(() => false))) return null;
+  return {
+    encrypt: (text) => safeStorage.encryptStringAsync(text),
+    decrypt: async (data) => {
+      const r = await safeStorage.decryptStringAsync(data);
+      return { text: r.result, stale: r.shouldReEncrypt };
+    },
+  };
+}
+
 /** Sends to the window, unless it has gone: exits and setup answers keep arriving while the app quits. */
 function sendTo(win: BrowserWindow, channel: string, payload: unknown): void {
   if (!win.isDestroyed()) win.webContents.send(channel, payload);
@@ -312,6 +332,21 @@ async function start(
     );
   });
 
+  // One Trello sign-in and one API for the app: every project reads its list through them. Made once a quit is
+  // handled, as the Keychain may take a moment. An e2e run names a stand-in for both, on any free port.
+  const trelloAuth = new TrelloAuth({
+    file: join(config.dataDir, 'trello-auth.json'),
+    crypt: await trelloCrypt(config.e2e),
+    authBase: config.trelloUrl ?? 'https://auth.atlassian.com',
+    apiBase: config.trelloUrl ?? 'https://api.trello.com',
+    ports: config.trelloUrl ? [0] : TRELLO_PORTS,
+    // Looked up at each call, so an e2e run can stand in for the browser.
+    openExternal: (url) => shell.openExternal(url),
+    onChange: (view) => toWindow(IPC.trelloChanged, view),
+  });
+  const trelloApi = new TrelloApi({ tokens: trelloAuth, base: config.trelloUrl ?? 'https://api.trello.com' });
+  const trelloReader = { read: (pick: TrelloPick) => readList(trelloApi, pick), pollMs: () => trelloApi.pollMs() };
+
   async function makeProject(dir: string): Promise<Project> {
     // Only while it is the project open on its folder: a closed one's last exits change nothing on screen.
     const send = (channel: string, payload: unknown) => {
@@ -344,8 +379,7 @@ async function start(
       saveAgentSetting: (name, patch) => agents.saveAgentSetting(name, patch),
       tasks: service,
       onChange: (view) => send(IPC.todoChanged, { dir, view }),
-      // A placeholder: the app-wide Trello reader replaces it in the wiring task.
-      trello: { read: () => Promise.reject(new TrelloError('auth', 'Trello is not connected')), pollMs: () => 60_000 },
+      trello: trelloReader,
     });
     // The manager's tools, on this project's tasks and to-do list. Each launch carries this run's port and token to it.
     const mcp = await startMcpServer((server) => registerManagerTools(server, service, todo, (id) => manager.noteToolCall(id)));
@@ -409,6 +443,7 @@ async function start(
   }
   registerSettingsIpc(agents, (name) => pickAgent(win, name));
   registerUpdateIpc(updates);
+  registerTrelloIpc(trelloAuth, trelloApi);
   const diffWindow = new DiffWindow({
     parent: win,
     dataDir: config.dataDir,
@@ -432,6 +467,8 @@ async function start(
   );
   // The page's <img> loads a conversation's images by session and index; only listed ones are served.
   imageLookup = (sessionId) => imagesOf(projects, sessionId);
+  // Before the projects open, so their first sync finds the sign-in. Without it Mainframe runs on, not connected.
+  await trelloAuth.load().catch((err: unknown) => console.error('[trello] could not load the sign-in', err));
   for (const dir of projectDirs) {
     await projects.open(dir).catch((err: unknown) => dialog.showErrorBox(`Mainframe could not open ${basename(dir)}`, messageOf(err)));
   }

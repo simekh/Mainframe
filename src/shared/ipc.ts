@@ -24,6 +24,10 @@ import type {
   TodoNote,
   TodoNoteDraft,
   TodoView,
+  TrelloBoardChoices,
+  TrelloBoardRef,
+  TrelloConnection,
+  TrelloPick,
   UpdateView,
 } from './types';
 
@@ -72,6 +76,15 @@ export const IPC = {
   deleteTodoNote: 'todo:delete-note',
   startTodoItem: 'todo:start-item',
   putBackTask: 'todo:put-back',
+  useTrello: 'todo:use-trello',
+  pollTodo: 'todo:poll',
+  getTrello: 'trello:get',
+  trelloChanged: 'trello:changed',
+  connectTrello: 'trello:connect',
+  disconnectTrello: 'trello:disconnect',
+  setTrelloClientId: 'trello:set-client-id',
+  trelloBoards: 'trello:boards',
+  trelloBoardChoices: 'trello:board-choices',
   spawn: 'pty:spawn',
   write: 'pty:write',
   resize: 'pty:resize',
@@ -198,6 +211,23 @@ export interface MainframeApi {
    * once that session has ended; rejects with why it couldn't.
    */
   putBackTask(dir: string, taskId: string): Promise<void>;
+  /** Reads this Trello list from now on, in place of the agent sync, and syncs; a pick that isn't one is refused. */
+  useTrello(dir: string, pick: TrelloPick): Promise<void>;
+  /** The panel's timed read: a quiet sync, which shows no syncing. */
+  pollTodo(dir: string): Promise<void>;
+  /** The Trello calls are the whole app's, like Settings: one sign-in for every project. */
+  getTrello(): Promise<TrelloConnection>;
+  /** Every change to the Trello sign-in, with the whole view. */
+  onTrello(cb: (view: TrelloConnection) => void): () => void;
+  /** Signs in through the browser; how it went shows in the view. */
+  connectTrello(): Promise<void>;
+  disconnectTrello(): Promise<void>;
+  /** Signs in with the user's own OAuth app from now on, or Mainframe's with null; a change disconnects. */
+  setTrelloClientId(id: string | null): Promise<void>;
+  /** The open boards of the signed-in user. */
+  trelloBoards(): Promise<TrelloBoardRef[]>;
+  /** The board's lists and labels, to pick from. */
+  trelloBoardChoices(boardId: string): Promise<TrelloBoardChoices>;
   /** The PTY calls and events below take a task's or the manager's `session.id`. */
   spawn(req: { sessionId: string; cols: number; rows: number }): Promise<void>;
   write(sessionId: string, data: string): void;

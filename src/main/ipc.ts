@@ -13,7 +13,11 @@ import type { SessionHost } from './pty/sessionHost';
 import type { AgentSettingPatch, AgentsInUse } from './setup/agentsInUse';
 import type { SetupFlow } from './setup/setupFlow';
 import type { TaskService } from './tasks/taskService';
+import { TRELLO_PICK } from './todo/todoSchema';
 import type { TodoService } from './todo/todoService';
+import type { TrelloApi } from './todo/trello/trelloApi';
+import type { TrelloAuth } from './todo/trello/trelloAuth';
+import { boardChoices, listBoards } from './todo/trello/trelloSource';
 import type { UpdateService } from './updates/updateService';
 
 /** The page's choice of agents, with only names in AGENT_ORDER; anything else is refused. */
@@ -156,6 +160,22 @@ export function registerUpdateIpc(updates: UpdateService): void {
   ipcMain.handle(IPC.installUpdate, () => updates.install());
 }
 
+/** The Trello calls: the whole app's, naming no project. A change to the sign-in reaches the page through `auth`'s onChange. */
+export function registerTrelloIpc(auth: TrelloAuth, api: TrelloApi): void {
+  ipcMain.handle(IPC.getTrello, () => auth.view());
+  ipcMain.handle(IPC.connectTrello, () => auth.connect());
+  ipcMain.handle(IPC.disconnectTrello, () => auth.disconnect());
+  ipcMain.handle(IPC.setTrelloClientId, (_e, id: unknown) => {
+    if (id !== null && typeof id !== 'string') throw new Error("That client id can't be used");
+    return auth.setOwnClientId(id);
+  });
+  ipcMain.handle(IPC.trelloBoards, () => listBoards(api));
+  ipcMain.handle(IPC.trelloBoardChoices, (_e, boardId: unknown) => {
+    if (typeof boardId !== 'string' || !boardId) throw new Error("That Trello board can't be used");
+    return boardChoices(api, boardId);
+  });
+}
+
 export function registerIpc(
   /** Sends to the window, unless it has gone. */
   send: (channel: string, payload: unknown) => void,
@@ -246,6 +266,14 @@ export function registerIpc(
       todoOf(dir).startItem(item, { noQuestions, ownersCard }),
   );
   ipcMain.handle(IPC.putBackTask, (_e, dir: string, taskId: string) => todoOf(dir).putBack(taskId));
+  ipcMain.handle(IPC.useTrello, async (_e, dir: string, raw: unknown) => {
+    const pick = TRELLO_PICK.safeParse(raw);
+    if (!pick.success) throw new Error("That Trello list can't be used");
+    await todoOf(dir).useTrello(pick.data);
+  });
+  ipcMain.handle(IPC.pollTodo, async (_e, dir: string) => {
+    await todoOf(dir).sync({ quiet: true });
+  });
 
   // Logged, never thrown: it must not escape the PTY's exit callback or replace a spawn error.
   const sessionEnded = (

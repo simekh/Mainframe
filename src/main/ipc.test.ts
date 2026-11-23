@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../shared/ipc';
 import type { AgentsInUse } from './setup/agentsInUse';
 
@@ -82,4 +82,37 @@ it("recordImages takes only well-formed entries from the page, records them in t
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe('the Trello todo calls', () => {
+  const pick = {
+    boardId: 'b1', boardName: 'Board', boardUrl: 'https://trello.com/b/b1', listId: 'l1', listName: 'TODO',
+    inProgressListId: null, mineLabelIds: [], urgentLabelIds: ['u1'],
+  };
+  const setup = () => {
+    const todo = { useTrello: vi.fn(async () => ({ cards: 1 })), sync: vi.fn(async () => ({ cards: 1 })) };
+    const projects = { get: (dir: string) => (dir === '/p' ? { todo } : undefined) };
+    registerIpc(() => {}, projects as never, async () => {}, {} as never, {} as never, {} as never);
+    return todo;
+  };
+
+  it('useTrello refuses a malformed pick', async () => {
+    const todo = setup();
+    for (const bad of [null, 'x', { ...pick, listId: 1 }, { ...pick, mineLabelIds: undefined }]) {
+      await expect(async () => handlers.get(IPC.useTrello)!({}, '/p', bad)).rejects.toThrow("That Trello list can't be used");
+    }
+    expect(todo.useTrello).not.toHaveBeenCalled();
+  });
+
+  it("passes a valid pick to the project's todo", async () => {
+    const todo = setup();
+    await expect(handlers.get(IPC.useTrello)!({}, '/p', { ...pick, extra: 'dropped' })).resolves.toBeUndefined();
+    expect(todo.useTrello.mock.calls).toEqual([[pick]]);
+  });
+
+  it('pollTodo syncs quietly', async () => {
+    const todo = setup();
+    await expect(handlers.get(IPC.pollTodo)!({}, '/p')).resolves.toBeUndefined();
+    expect(todo.sync.mock.calls).toEqual([[{ quiet: true }]]);
+  });
 });
