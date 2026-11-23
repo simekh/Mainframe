@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentName, TaskView, TodoAsk, TodoCard, TodoItemRef, TodoNote, TodoNoteDraft, TodoSource, TodoView, TrelloPick } from '../../shared/types';
-import { cardKey } from '../../shared/cardKey';
+import { cardKey, sameCard } from '../../shared/cardKey';
 import { cheapestKnown, type AgentAdapter, type AgentInUse, type AgentSetting, type SyncAdapter, type SyncRunSpec } from '../agents/agent';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
@@ -272,7 +272,7 @@ export class TodoService {
       const underWay = this.running?.outcome ?? this.reading?.outcome;
       if (underWay) await underWay;
       const outcome = await this.sync();
-      listed = 'cards' in outcome && this.record.cards.some((c) => cardKey(c.id) === cardKey(card.id));
+      listed = 'cards' in outcome && this.record.cards.some((c) => sameCard(c.id, card.id));
     } catch {
       // Not listed: the project is closing, or the file is a newer Mainframe's.
     }
@@ -299,7 +299,7 @@ export class TodoService {
         throw new Error(`${card.number ?? card.title} is marked as the owner's; the owner starts it from its ticket with Start anyway`);
       }
       // A card has one task for good, discarded ones aside.
-      const own = this.deps.tasks.list().find((t) => t.card && cardKey(t.card.id) === cardKey(card.id) && t.place !== 'discarded');
+      const own = this.deps.tasks.list().find((t) => t.card && sameCard(t.card.id, card.id) && t.place !== 'discarded');
       if (own?.place === 'putBack' || own?.place === 'finished') return this.deps.tasks.continueTask(own.id);
       return this.deps.tasks.start({
         title: card.title,
@@ -376,7 +376,13 @@ export class TodoService {
     const outcome = this.deps.trello.read(pick).then(
       ({ source, cards }) =>
         finish(() => {
-          this.save({ ...this.record, source, cards, syncedAt: this.now() });
+          const syncedAt = this.now();
+          // An unchanged list rewrites nothing: only the time it was read moves, in memory.
+          if (JSON.stringify({ source, cards }) === JSON.stringify({ source: this.record.source, cards: this.record.cards })) {
+            this.record = { ...this.record, syncedAt };
+          } else {
+            this.save({ ...this.record, source, cards, syncedAt });
+          }
           this.returnPutBacksOffList(new Set(cards.map((c) => cardKey(c.id))));
           this.error = this.notice = null;
           return { cards: cards.length };

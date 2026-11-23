@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -112,6 +112,7 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
     return { done, cancel: () => (call.cancelled = true) };
   };
 
+  const clock = { now: NOW };
   const reads: Read[] = [];
   const trello: TodoServiceDeps['trello'] = {
     read: (pick) =>
@@ -199,13 +200,14 @@ function setup(todoFile?: string, agent: AgentInUse = CLAUDE) {
       run,
       trello,
       newId: () => `id-${++counter}`,
-      now: () => NOW,
+      now: () => clock.now,
       warn: (msg) => warnings.push(msg),
       setTimer,
     });
 
   const service = make();
   return {
+    clock,
     service,
     make,
     projectDir,
@@ -1488,6 +1490,26 @@ it('with a Trello pick, sync reads Trello and runs no agent', async () => {
   expect(await again).toEqual({ cards: 1 });
   expect(t.reads).toHaveLength(2);
   expect(t.calls).toEqual([]);
+});
+
+it('a read that finds the same list writes no file, but the view shows when it was read', async () => {
+  const t = setup();
+  await trelloSynced(t);
+  utimesSync(t.file, 1, 1);
+
+  t.clock.now = NOW + 60_000;
+  const again = t.service.sync();
+  t.lastRead().resolve(CARDS);
+  await again;
+
+  expect(statSync(t.file).mtimeMs).toBe(1000);
+  expect(t.todo().syncedAt).toBe(NOW);
+  expect(t.service.view().syncedAt).toBe(NOW + 60_000);
+
+  const changed = t.service.sync();
+  t.lastRead().resolve([card('c2')]);
+  await changed;
+  expect(t.todo()).toMatchObject({ syncedAt: NOW + 60_000, cards: [card('c2')] });
 });
 
 it('a quiet sync shows no syncing; a forced one does', async () => {

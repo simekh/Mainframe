@@ -7,3 +7,8 @@ const TRELLO_ARI = 'ari:cloud:trello::card/';
 export function cardKey(id: string): string {
   return id.startsWith(TRELLO_ARI) ? id.slice(id.lastIndexOf('/') + 1) : id;
 }
+
+/** Whether two ids name the same card, by `cardKey`. */
+export function sameCard(a: string, b: string): boolean {
+  return cardKey(a) === cardKey(b);
+}

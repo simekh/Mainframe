@@ -66,8 +66,8 @@ export class TrelloAuth implements TrelloTokens {
   private readonly requestTimeoutMs: number;
   private readonly warn: (msg: string) => void;
   private crypt: Promise<TokenCrypt | null> | null = null;
-  /** Known once the crypt has been asked for and there is none. */
-  private noCrypt = false;
+  /** Whether the tokens are kept across restarts: true until the crypt has been asked for and there is none. */
+  private remembers = true;
   private loading: Promise<void> | null = null;
 
   private tokens: Tokens | null = null;
@@ -110,7 +110,7 @@ export class TrelloAuth implements TrelloTokens {
   private cryptOf(): Promise<TokenCrypt | null> {
     this.crypt ??= this.d.crypt().catch(() => null).then((crypt) => {
       if (!crypt) {
-        this.noCrypt = true;
+        this.remembers = false;
         this.emit();
       }
       return crypt;
@@ -151,7 +151,7 @@ export class TrelloAuth implements TrelloTokens {
       username: this.username,
       needsReconnect: this.needsReconnect,
       connecting: this.connecting,
-      remembers: !this.noCrypt,
+      remembers: this.remembers,
       ownClientId: this.ownClientId,
       error: this.error,
     };

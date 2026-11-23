@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { AGENT_NAMES, isEnded, MIN_AGENT_VERSION, type AgentName, type ChangedFile, type DiffResult, type ModelChoice, type DiscardPreview, type ProgramState, type ProgramStatus, type StartCheck, type TaskCardRef, type TaskGitState, type TaskPlace, type TaskView } from '../../shared/types';
-import { cardKey } from '../../shared/cardKey';
+import { sameCard } from '../../shared/cardKey';
 import { ADAPTERS } from '../agents/adapters';
 import type { LaunchArgs, ModelPick } from '../agents/agent';
 import { FolderLeftError, type GitQueries } from '../git';
@@ -455,7 +455,7 @@ export class TaskService {
 
   /** The project's task for the card: a card has at most one that isn't discarded. */
   private taskOfCard(cardId: string): TaskRecord | undefined {
-    return this.mine().find((t) => t.card && cardKey(t.card.id) === cardKey(cardId) && t.place !== 'discarded');
+    return this.mine().find((t) => t.card && sameCard(t.card.id, cardId) && t.place !== 'discarded');
   }
 
   /** Its conversation began, as its agent knows it. */

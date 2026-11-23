@@ -9,7 +9,9 @@ import { TODO_CARD, TODO_LIST_REF, TODO_NOTE, TODO_SOURCE, TRELLO_PICK } from '.
 const VERSION = 2;
 
 /** What `todo.json` holds for one project: the list as the last sync found it, and what the owner confirmed for it. */
-const RECORD_FIELDS = {
+const RECORD = z.object({
+  /** A version 1 file is the agent source as it was; only its number changes, on the next save. */
+  version: z.union([z.literal(1), z.literal(VERSION)]),
   /** The tools the owner confirmed the sync may read with, as the agent they were confirmed on names them (no agent: Claude Code). */
   readTools: z
     .object({ connector: z.string(), tools: z.array(z.string()), agent: z.enum(AGENT_ORDER).optional() })
@@ -20,11 +22,6 @@ const RECORD_FIELDS = {
   syncedAt: z.number().optional(),
   cards: z.array(TODO_CARD),
   notes: z.array(TODO_NOTE),
-};
-const RECORD_V1 = z.object({ version: z.literal(1), ...RECORD_FIELDS });
-const RECORD = z.object({
-  version: z.literal(VERSION),
-  ...RECORD_FIELDS,
   /** The Trello board and list the owner picked, read directly; without it the project reads through its agent. */
   trello: TRELLO_PICK.optional(),
 });
@@ -66,15 +63,9 @@ export function loadTodo(file: string, now: number, warn: (msg: string) => void)
 
   const { version } = (parsed ?? {}) as { version?: unknown };
   if (typeof version === 'number' && version > VERSION) throw new NewerTodoError(file, version);
-  if (version === 1) {
-    // A version 1 file is the agent source as it was; only its number changes, on the next save.
-    const v1 = RECORD_V1.safeParse(parsed);
-    if (!v1.success) return keepAside(file, now, warn, 'does not hold a version 1 Todo record');
-    return { ...v1.data, version: VERSION };
-  }
   const record = RECORD.safeParse(parsed);
-  if (!record.success) return keepAside(file, now, warn, `does not hold a version ${VERSION} Todo record`);
-  return record.data;
+  if (!record.success) return keepAside(file, now, warn, `does not hold a version ${version === 1 ? 1 : VERSION} Todo record`);
+  return { ...record.data, version: VERSION };
 }
 
 /** Writes `todo.json` whole or not at all, in a folder it makes if need be. */

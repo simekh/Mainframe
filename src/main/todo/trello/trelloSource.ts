@@ -35,9 +35,9 @@ function toCard(raw: RawCard, pick: TrelloPick): TodoCard {
     title: raw.name,
     description: raw.desc,
     labels: labels.flatMap((l) => l.name || l.color || []),
-    checklists: [...(raw.checklists ?? [])].sort(byPos).map((list) => ({
+    checklists: (raw.checklists ?? []).sort(byPos).map((list) => ({
       name: list.name,
-      items: [...(list.checkItems ?? [])].sort(byPos).map((i) => ({ text: i.name, done: i.state === 'complete' })),
+      items: (list.checkItems ?? []).sort(byPos).map((i) => ({ text: i.name, done: i.state === 'complete' })),
     })),
     url: raw.shortUrl,
     forOwner: hasAny(pick.mineLabelIds),
@@ -54,7 +54,7 @@ export async function readList(api: Api, pick: TrelloPick): Promise<{ source: To
   });
   return {
     source: { kind: 'Trello', board: pick.boardName, list: pick.listName, url: pick.boardUrl },
-    cards: [...raw].sort(byPos).map((c) => toCard(c, pick)),
+    cards: raw.sort(byPos).map((c) => toCard(c, pick)),
   };
 }
 
@@ -71,7 +71,7 @@ export async function boardChoices(api: Api, boardId: string): Promise<TrelloBoa
     api.get<RawLabel[]>(`${board}/labels`, { fields: 'name,color', limit: '1000' }),
   ]);
   return {
-    lists: [...lists].sort(byPos).map(({ id, name }) => ({ id, name })),
+    lists: lists.sort(byPos).map(({ id, name }) => ({ id, name })),
     labels: labels.map(({ id, name, color }) => ({ id, name, color })),
   };
 }

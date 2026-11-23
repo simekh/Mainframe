@@ -58,7 +58,7 @@ export default function TrelloSection() {
               class="settings-row"
               onSubmit={(e) => {
                 e.preventDefault();
-                setTrelloClientId(clientId.value.trim() || null);
+                setTrelloClientId(clientId.value);
               }}
             >
               <label class="settings-key" for="settings-trello-client-id">
