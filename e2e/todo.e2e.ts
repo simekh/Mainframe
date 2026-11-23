@@ -128,6 +128,7 @@ test('Sync finds the connector and asks to allow its read tools; allowed, it sho
   await page.getByTestId('todo-toggle').click();
   await expect(panel).toBeVisible();
   await expect(panel.getByText('Not synced yet')).toBeVisible();
+  await panel.getByTestId('todo-source-choice-agent').click();
   await expect(panel.getByText('Sync reads your to-do list through the connector you use for it.', { exact: false })).toBeVisible();
   await page.getByTestId('todo-sync').click();
 
@@ -195,6 +196,7 @@ test('a sync that fails says why and keeps the list', async () => {
 
   // Set up again forgets the allowed tools, so the next sync asks again; the list stays meanwhile.
   await page.getByTestId('todo-reset').click();
+  await page.getByTestId('todo-source-choice-agent').click();
   await expect(page.getByTestId('todo-reset')).toHaveCount(0);
   await expect(page.getByTestId('todo-error')).toHaveCount(0);
   await expect(page.getByTestId('todo-item')).toHaveCount(2);

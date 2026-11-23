@@ -10,6 +10,7 @@ import PanelStrip, { createFoldHandOff, FoldButton } from '../panel/PanelStrip';
 import PinIcon from '../panel/PinIcon';
 import ResizeEdge from '../panel/ResizeEdge';
 import { useProject } from '../projects/projectContext';
+import { connectTrello, trelloConnection, trelloSignedIn } from '../settings/trelloStore';
 import { reopenTask, startTask, startTodoItem, tasksOf } from '../tasksStore';
 import { plainText } from './markdown';
 import FinishedList from './FinishedList';
@@ -19,8 +20,11 @@ import {
 } from './todoItems';
 import { loadHideMine, loadTodoTab, saveHideMine, saveTodoTab, TODO_WIDTH, type TodoTab } from './todoPrefs';
 import {
-  cancelTodoSync, confirmTodoTools, keepNoteDraft, keepTodoSync, pickTodoList, pickTodoModel, resetTodoSource, syncTodo, todoOf,
+  cancelTodoSync, confirmTodoTools, keepNoteDraft, keepTodoSync, pickTodoList, pickTodoModel, pollTodo, resetTodoSource, syncTodo, todoOf,
+  useTrello,
 } from './todoStore';
+import { startPolling } from './poller';
+import TrelloSetup, { SourceChoice } from './TrelloSetup';
 
 // Its buttons don't take the focus on click: typing stays where it was. Most of them go, or wait, once pressed.
 const keepFocus = (e: MouseEvent) => e.preventDefault();
@@ -296,6 +300,39 @@ export default function TodoPanel(props: {
     const ask = view()?.ask;
     return ask?.kind === 'model' ? ask : undefined;
   };
+  // Choosing where the list lives is the panel's own: 'auto' asks only while the project has no source and nothing set
+  // up, and no sync is under way or asking; Set up again asks in any case; 'agent' is the owner's answer for today's
+  // sync, which then shows as it always has.
+  const [setup, setSetup] = createSignal<'auto' | 'choice' | 'trello' | 'agent'>('auto');
+  const choosing = () => {
+    const v = view();
+    if (setup() === 'choice') return true;
+    return setup() === 'auto' && v !== undefined && !v.setUp && !v.source && !v.syncing && !v.ask;
+  };
+  const chooseAgent = () => {
+    resetTodoSource(project.dir);
+    setSetup('agent');
+  };
+  const trello = () => view()?.sourceKind === 'trello';
+  // A Trello list stays fresh while it shows: at once, then on its interval and at each return to the window. A memo,
+  // so a change elsewhere in the sign-in (its name coming in) doesn't start it again; a reconnect does, and so reads.
+  const polls = createMemo(() => props.state === 'open' && trello() && trelloSignedIn());
+  createEffect(() => {
+    if (!polls()) return;
+    const dir = project.dir;
+    const stop = startPolling({
+      every: () => view()?.pollMs ?? 60_000,
+      active: () => document.visibilityState === 'visible' && document.hasFocus(),
+      poll: () => pollTodo(dir),
+    });
+    const onFocus = () => pollTodo(dir);
+    window.addEventListener('focus', onFocus);
+    onCleanup(() => {
+      stop();
+      window.removeEventListener('focus', onFocus);
+    });
+  });
+
   const handOff = createFoldHandOff('Fold the Todo panel', () => props.state === 'open' && !props.behind, (open) =>
     props.onOpenChange(open),
   );
@@ -387,18 +424,36 @@ export default function TodoPanel(props: {
                   <PlusIcon />
                   <span>Quick Add</span>
                 </button>
-                {/* Its word goes where the header is narrow, as Quick Add's does; its name stays. */}
-                <button
-                  class="btn todo-sync"
-                  data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
-                  aria-label={v().syncing ? 'Stop the sync' : 'Sync'}
-                  title={v().syncing ? 'Stop the sync' : 'Sync'}
-                  onMouseDown={keepFocus}
-                  onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
+                {/* Its word goes where the header is narrow, as Quick Add's does; its name stays. A Trello list reads
+                    in a moment, so it is a Refresh with nothing to stop. */}
+                <Show
+                  when={!trello()}
+                  fallback={
+                    <button
+                      class="btn todo-sync"
+                      data-testid="todo-refresh"
+                      aria-label="Refresh"
+                      title="Refresh"
+                      onMouseDown={keepFocus}
+                      onClick={() => syncTodo(project.dir)}
+                    >
+                      <SyncIcon />
+                      <span>Refresh</span>
+                    </button>
+                  }
                 >
-                  {v().syncing ? <StopIcon /> : <SyncIcon />}
-                  <span>{v().syncing ? 'Stop' : 'Sync'}</span>
-                </button>
+                  <button
+                    class="btn todo-sync"
+                    data-testid={v().syncing ? 'todo-stop-sync' : 'todo-sync'}
+                    aria-label={v().syncing ? 'Stop the sync' : 'Sync'}
+                    title={v().syncing ? 'Stop the sync' : 'Sync'}
+                    onMouseDown={keepFocus}
+                    onClick={() => (v().syncing ? cancelTodoSync(project.dir) : syncTodo(project.dir))}
+                  >
+                    {v().syncing ? <StopIcon /> : <SyncIcon />}
+                    <span>{v().syncing ? 'Stop' : 'Sync'}</span>
+                  </button>
+                </Show>
               </>
             )}
           </Show>
@@ -439,10 +494,58 @@ export default function TodoPanel(props: {
                 <span class="todo-synced">
                   <Show when={v().syncing} fallback={syncedLine(v(), now())}>
                     <SyncIcon />
-                    Syncing…
+                    {trello() ? 'Refreshing…' : 'Syncing…'}
                   </Show>
                 </span>
+                {/* Quiet, beside when it was read: the list under it is the last copy. */}
+                <Show when={v().notice}>
+                  {(notice) => (
+                    <span class="todo-notice" data-testid="todo-notice" role="status" title={notice()}>
+                      {notice()}
+                    </span>
+                  )}
+                </Show>
               </div>
+
+              <Show when={trello() && trelloConnection()?.needsReconnect}>
+                <div class="todo-reconnect-row">
+                  <p>Trello asked to sign in again. The list shows the last copy.</p>
+                  <button
+                    class="btn"
+                    data-testid="todo-reconnect"
+                    disabled={trelloConnection()?.connecting}
+                    onMouseDown={keepFocus}
+                    onClick={connectTrello}
+                  >
+                    {trelloConnection()?.connecting ? 'Waiting for your browser…' : 'Reconnect Trello'}
+                  </button>
+                </div>
+              </Show>
+
+              <Show when={!trello() && !choosing() && setup() !== 'trello' && v().source?.kind.toLowerCase() === 'trello'}>
+                <button class="todo-reset todo-trello-hint" data-testid="todo-trello-hint" onMouseDown={keepFocus} onClick={() => setSetup('trello')}>
+                  Connect Trello for instant sync
+                </button>
+              </Show>
+
+              <Switch>
+                <Match when={setup() === 'trello'}>
+                  <TrelloSetup
+                    onUse={(pick) => {
+                      useTrello(project.dir, pick);
+                      setSetup('auto');
+                    }}
+                    onCancel={() => setSetup('auto')}
+                  />
+                </Match>
+                <Match when={choosing()}>
+                  <SourceChoice
+                    onTrello={() => setSetup('trello')}
+                    onAgent={chooseAgent}
+                    onCancel={setup() === 'choice' ? () => setSetup('auto') : undefined}
+                  />
+                </Match>
+              </Switch>
 
               {/* A run past two minutes: said in words, with the choice, as a sync that may cost the owner real money. */}
               <Show when={v().longSync}>
@@ -530,8 +633,8 @@ export default function TodoPanel(props: {
                 )}
               </Show>
 
-              {/* Until there is a list or a note; an ask says the same more precisely. */}
-              <Show when={!v().source && v().notes.length === 0 && !v().ask}>
+              {/* Until there is a list or a note; an ask, or the choice of where the list lives, says more. */}
+              <Show when={!v().source && v().notes.length === 0 && !v().ask && !choosing() && setup() !== 'trello'}>
                 <p class="todo-empty">
                   Sync reads your to-do list through the connector you use for it. Todos you add stay in Mainframe.
                 </p>
@@ -647,7 +750,7 @@ export default function TodoPanel(props: {
                     class="todo-reset"
                     data-testid="todo-reset"
                     onMouseDown={keepFocus}
-                    onClick={() => resetTodoSource(project.dir)}
+                    onClick={() => setSetup('choice')}
                   >
                     Set up again
                   </button>

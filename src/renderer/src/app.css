@@ -1021,6 +1021,136 @@ html[data-platform='darwin'] .setup-titlebar {
   font-weight: 400;
 }
 
+/* Where the list lives: each choice with a line on what it does under its name. */
+.todo-source-pick {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* --- Picking a Trello list: in the ask's tinted box, as it is the owner's say before anything is read --- */
+
+/* Names in one column, the picks beside them, so the form reads down like the board it describes. */
+.trello-fields {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.trello-fields > label,
+.trello-key {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+/* The label sets sit on their first row of chips, not centred on a wrapped block. */
+.trello-key {
+  align-self: start;
+  padding-top: 3px;
+}
+
+.trello-select {
+  height: 30px;
+  font-size: 13px;
+}
+
+.trello-select:disabled {
+  color: var(--fg-subtle);
+}
+
+/* A label as the cards show it, so the choice looks like what it marks: outlined until it's picked, then filled. */
+.trello-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trello-chip {
+  padding: 1px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.trello-chip:hover {
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.trello-chip[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--fg);
+}
+
+.trello-none,
+.trello-hint {
+  color: var(--fg-subtle);
+  font-size: 12px;
+}
+
+.trello-none {
+  line-height: 20px;
+}
+
+.todo-ask .trello-setup-error {
+  color: var(--error);
+  user-select: text;
+}
+
+.trello-actions {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Offline or Trello busy: beside when the list was read, in the row's own quiet voice; a long one gives way. */
+.todo-notice {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-subtle);
+  font-style: italic;
+}
+
+/* The sign-in ran out: tinted as a warning, as the list under it is no longer kept fresh. */
+.todo-reconnect-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 8px 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--fg-muted);
+}
+
+.todo-reconnect-row p {
+  flex: 1;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.todo-reconnect-row .btn {
+  flex: none;
+}
+
+/* A one-line offer under the header, as quiet as Set up again. */
+.todo-trello-hint {
+  flex: none;
+  align-self: flex-start;
+  margin: 8px 16px 0;
+}
+
 /* The models, cheapest first: a choice of one, so a row is picked rather than pressed, and only the button runs. */
 /* A user's OpenCode can list hundreds of models: the ask shrinks to the panel and its list scrolls, so the button under
    it stays in view. */
@@ -4129,6 +4259,7 @@ kbd {
   .todo-pick,
   .todo-item,
   .todo-hide-mine,
+  .trello-chip,
   .ticket-close {
     transition:
       background-color var(--motion-fast) var(--ease-out),

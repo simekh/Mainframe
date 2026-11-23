@@ -8,6 +8,12 @@ export const trelloConnection = view;
 
 window.mainframe.onTrello(setView);
 
+/** Whether Trello can be read now: signed in, with no reconnect asked. */
+export const trelloSignedIn = () => {
+  const t = view();
+  return t?.connected === true && !t.needsReconnect;
+};
+
 // How a connect goes shows in the view; a call main refuses is only logged.
 const logged = (what: string) => (err: unknown) => console.error(`[trello] could not ${what}: ${errorMessage(err)}`);
 

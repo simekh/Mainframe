@@ -1,5 +1,5 @@
 import { createStore, produce, reconcile } from 'solid-js/store';
-import type { TodoView } from '../../../shared/types';
+import type { TodoView, TrelloPick } from '../../../shared/types';
 import { errorMessage } from '../bridgeError';
 
 /** By project folder; a project is missing until its first view comes in. */
@@ -89,4 +89,13 @@ export function pickTodoModel(dir: string, id: string): void {
 
 export function resetTodoSource(dir: string): void {
   window.mainframe.resetTodoSource(dir).catch(logged('set up the sync again', dir));
+}
+
+export function useTrello(dir: string, pick: TrelloPick): void {
+  window.mainframe.useTrello(dir, pick).catch(logged('use the Trello list', dir));
+}
+
+/** The panel's timed read of a Trello list: a quiet sync, which shows no syncing. */
+export function pollTodo(dir: string): void {
+  window.mainframe.pollTodo(dir).catch(logged('check the Trello list', dir));
 }
