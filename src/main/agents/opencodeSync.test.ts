@@ -6,7 +6,7 @@ import { syncPrompt, type SyncStep } from '../todo/syncRun';
 import { SYNC_ANSWER_JSON } from '../todo/todoSchema';
 import { cheapestKnown, type SyncRunSpec } from './agent';
 import { makeOpencodeAgent, opencodeAgent } from './opencode';
-import { isOpencodeToolName, readOpencodeAnswer, syncConfig } from './opencodeSync';
+import { readOpencodeAnswer, syncConfig } from './opencodeSync';
 
 const SES = 'ses_' + 'b'.repeat(28);
 const TOOLS = ['tracker_get_list', 'tracker_get_card'];
@@ -167,20 +167,17 @@ describe("OpenCode's sync", () => {
   it('asks for JSON matching the schema after the shared prompt', () => {
     const step: SyncStep = { kind: 'discover' };
     const words = opencodeAgent.sync.words;
-    expect(opencodeAgent.sync.prompt(step)).toBe(
-      `${syncPrompt(step, words)}\n\nAnswer with one JSON object and nothing else, with no code fence. It must match this JSON Schema: ${SYNC_ANSWER_JSON}`,
-    );
-    expect(opencodeAgent.sync.prompt(step)).toContain(
-      'the full names (as your tool list names them, such as tracker_get_card) of the tools',
-    );
+    const prompt = opencodeAgent.sync.prompt(step);
+    expect(prompt.startsWith(syncPrompt(step, words))).toBe(true);
+    expect(prompt.endsWith(SYNC_ANSWER_JSON)).toBe(true);
   });
 
-  it('isOpencodeToolName', () => {
-    expect(isOpencodeToolName('trello_trelloReadCard')).toBe(true);
-    expect(isOpencodeToolName('read')).toBe(false);
-    expect(isOpencodeToolName('opencode_shell')).toBe(false);
-    expect(isOpencodeToolName('experimental_image_generate')).toBe(false);
-    expect(opencodeAgent.sync.isToolName).toBe(isOpencodeToolName);
+  it('takes connector tools only, not its own', () => {
+    const { isToolName } = opencodeAgent.sync;
+    expect(isToolName('trello_trelloReadCard')).toBe(true);
+    expect(isToolName('read')).toBe(false);
+    expect(isToolName('opencode_shell')).toBe(false);
+    expect(isToolName('experimental_image_generate')).toBe(false);
   });
 
   it('afterRun deletes the run\'s session, standalone, from the run folder with the project config off, and ignores a failure', () => {

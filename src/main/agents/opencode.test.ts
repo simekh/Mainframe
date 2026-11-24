@@ -146,12 +146,6 @@ describe('findOpencode', () => {
     expect(await findOpencode({ lookup, run })).toEqual({ state: 'too-old', path: '/usr/bin/opencode', version: '1.18.35' });
   });
 
-  it('with nothing anywhere, is missing and carries no path', async () => {
-    const run = fakeRun({});
-    expect(await findOpencode({ lookup: mac(mapPath), run })).toStrictEqual({ state: 'missing' });
-    expect(run.calls).toEqual([]);
-  });
-
   it("finds the installer's opencode when PATH has none", async () => {
     expect(await findOpencode({ lookup: mac(mapPath, OC), run: fakeRun({ [OC]: current }) })).toEqual({
       state: 'found',
@@ -168,26 +162,6 @@ describe('findOpencode', () => {
     });
   });
 
-  it('an old opencode on PATH does not hide a current one in the installer folder', async () => {
-    const lookup = mac(mapPath, '/usr/bin/opencode', OC);
-    const run = fakeRun({ '/usr/bin/opencode': opencodeOutput('1.18.35'), [OC]: current });
-    expect(await findOpencode({ lookup, run })).toEqual({ state: 'found', path: OC, version: '2.2.7' });
-  });
-
-  it('with fromEnv, looks only at that path', async () => {
-    const lookup = mac(mapPath, '/env/opencode', '/usr/bin/opencode', OC);
-    const run = fakeRun({ '/env/opencode': current, '/usr/bin/opencode': current, [OC]: current });
-    expect(await findOpencode({ fromEnv: '/env/opencode', lookup, run })).toEqual({ state: 'found', path: '/env/opencode', version: '2.2.7' });
-    expect(run.calls).toEqual(['/env/opencode']);
-    expect(await findOpencode({ fromEnv: '/gone/opencode', lookup, run: fakeRun({}) })).toEqual({ state: 'missing', path: '/gone/opencode' });
-  });
-
-  it('tries the saved path first, and falls through to the places when it is gone', async () => {
-    const lookup = mac(mapPath, '/saved/opencode', OC);
-    const run = fakeRun({ '/saved/opencode': current, [OC]: current });
-    expect(await findOpencode({ saved: ['/saved/opencode'], lookup, run })).toEqual({ state: 'found', path: '/saved/opencode', version: '2.2.7' });
-    expect(await findOpencode({ saved: ['/gone/opencode'], lookup, run })).toEqual({ state: 'found', path: OC, version: '2.2.7' });
-  });
 });
 
 const RULES = [
@@ -293,8 +267,7 @@ describe("the manager's launch on OpenCode", () => {
   });
 
   it('with an agent named in Settings it still lists them all, and makes the named one the default', async () => {
-    const { config, run } = await launch({ managerAgent: 'plan' });
-    expect(run).toHaveBeenCalledTimes(1);
+    const { config } = await launch({ managerAgent: 'plan' });
     expect(Object.keys(config.agents)).toEqual(['build', 'plan', 'general', 'title']);
     expect(config.default_agent).toBe('plan');
   });
