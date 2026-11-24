@@ -578,9 +578,14 @@ async function launch(config: AppConfig): Promise<void> {
 
 const config = readConfig();
 
-// One Mainframe per data folder: a second one would run every open task's session again, and two
-// would write one state.json. Electron keeps the lock in userData, which readConfig has just set.
-if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
+if (config instanceof Error && process.env.MAINFRAME_E2E === '1') {
+  // A test app ends at once: before ready Chromium hasn't opened the default (the user's) data folder,
+  // and the reason goes to the test's output, not to a dialog no test clicks.
+  console.error(`Mainframe could not start: ${config.message}`);
+  app.exit(1);
+} else if (!(config instanceof Error) && !app.requestSingleInstanceLock()) {
+  // One Mainframe per data folder: a second one would run every open task's session again, and two
+  // would write one state.json. Electron keeps the lock in userData, which readConfig has just set.
   // The one that holds it has been told, and shows its window.
   app.quit();
 } else {

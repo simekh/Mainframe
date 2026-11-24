@@ -20,7 +20,7 @@ async function clickOpenProject(app: ElectronApplication, page: Page): Promise<v
 test('a test app that names no data folder still runs in a temp one, never the real one', async () => {
   const { app, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: undefined });
   // Real paths: on the Mac the temp folder is behind a symlink, on Windows it may be a short 8.3 name.
-  expect(realpathSync(await app.evaluate(({ app }) => app.getPath('userData')))).toBe(realpathSync(dataDir));
+  expect(realpathSync.native(await app.evaluate(({ app }) => app.getPath('userData')))).toBe(realpathSync.native(dataDir));
   await app.close();
 });
 
