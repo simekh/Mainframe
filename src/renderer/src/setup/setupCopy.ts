@@ -283,6 +283,6 @@ export function agentStep(view: SetupView, choice: AgentChoice): { rows: AgentRo
     showDefault: several,
     hint: several
       ? 'You can still pick another ticked agent for a single task in the New task box. All of this can be changed in Settings later.'
-      : `${AGENT_NAMES[choice.ticked[0]]} runs everything: the manager, the Todo sync and your tasks. Settings can change this later.`,
+      : `${AGENT_NAMES[choice.ticked[0]]} runs everything: the manager, your tasks and the Todo sync, except for a Trello list Mainframe reads itself. Settings can change this later.`,
   };
 }

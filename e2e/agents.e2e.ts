@@ -61,7 +61,7 @@ test('a first start with only OpenCode chooses it and opens a project', async ()
   await expect(page.getByTestId('setup-tick-claude')).toBeDisabled();
   await expect(page.getByTestId('setup-default-opencode')).toHaveCount(0);
   await expect(
-    page.getByText('OpenCode runs everything: the manager, the Todo sync and your tasks. Settings can change this later.', { exact: true }),
+    page.getByText('OpenCode runs everything: the manager, your tasks and the Todo sync, except for a Trello list Mainframe reads itself. Settings can change this later.', { exact: true }),
   ).toBeVisible();
 
   await answerDialogs(app, project);

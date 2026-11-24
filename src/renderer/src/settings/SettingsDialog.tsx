@@ -338,7 +338,7 @@ export default function SettingsDialog() {
                     </Index>
                   </div>
                 </div>
-                <p class="settings-hint">Runs the manager, the Todo sync and new tasks. Tasks that are already running keep their own agent.</p>
+                <p class="settings-hint">Runs the manager, new tasks and the Todo sync, except for a Trello list Mainframe reads itself. Tasks that are already running keep their own agent.</p>
               </Show>
               <Show when={error()}>
                 {(message) => (

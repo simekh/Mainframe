@@ -4,7 +4,7 @@ Mainframe is a desktop app that runs several [Claude Code](https://code.claude.c
 
 - **A board of tasks.** Each task is a Claude Code, OpenCode or Codex session in its own git worktree (Claude Code's in `.claude/worktrees/<name>`, OpenCode's and Codex's in `.mainframe/worktrees/<name>`, in your project; Mainframe puts a `.gitignore` in the latter so it stays out of `git status`). The board's lanes, **Needs you**, **Working** and **Paused**, show which sessions need you, which are working, and which tasks have no session running. A fourth lane, **Done**, shows while there are running tasks whose work Mainframe found merged.
 - **A manager.** Each project has one agent session you can talk to. It can list the tasks, start new ones, and sync your to-do list.
-- **A Todo panel.** It reads your to-do list from your task tracker through a connector set up in your agent, so it works with any tracker you have one for: Trello, Linear, GitHub Issues and others. You start a task from a card.
+- **A Todo panel.** It reads a Trello list directly, once you connect Trello in Settings. For any other tracker (Linear, GitHub Issues and others) it reads your to-do list through a connector set up in your agent. You start a task from a card.
 - **Several projects at once.** Show them one at a time, side by side, or in a grid. Quit ends every session, and the next start brings them back.
 
 Every session is a real `claude`, `opencode` or `codex` process. It runs with your own login, settings and permissions.
@@ -22,7 +22,7 @@ Mainframe runs on macOS, Windows 11 and Linux. It is built for current versions:
 
 Each project you open must be a git repository.
 
-The manager, the Todo sync and new tasks run on the default agent. The New task box starts on it and offers the other ticked agents as a choice for that task. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
+The manager, new tasks and the Todo sync run on the default agent (a Trello list that Mainframe reads itself needs no agent). The New task box starts on it and offers the other ticked agents as a choice for that task. An OpenCode task runs in the same kind of worktree and follows the repo's `AGENTS.md` (or `CLAUDE.md`). To use a particular `opencode`, set `MAINFRAME_OPENCODE_BIN` to its path.
 
 A Codex task runs in the same kind of worktree too. On a project's first Codex task, Codex asks once whether you trust the folder. Codex follows the repo's `AGENTS.md`. To have it read `CLAUDE.md` when there is no `AGENTS.md`, add this line at the top of Codex's config, `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`):
 
@@ -133,6 +133,10 @@ The Todo panel has two tabs, **To do** and **Finished**. Finished lists the proj
 
 ## Set up the Todo panel
 
+**Trello.** In Settings, press **Connect Trello** and allow Mainframe in your browser. Then, in the project's Todo panel, choose **Trello** (on a project that already has a to-do list, press **Set up again** first), and pick the board and the to-do list. You can also pick the list for cards in progress, the labels that mark your own cards (**Mine**) and the ones that go first (**Comes first**). Mainframe reads the list itself, about once a minute while the panel is open and the window is in front, and **Refresh** reads it at once. No agent runs for this, and a card's text goes into its task's opening prompt, so the task needs no Trello connector.
+
+**Another tracker** (or Trello through your agent's own connector): choose **Another tracker (AI connector)** in the Todo panel, then:
+
 1. In your agent (Claude Code, OpenCode or Codex), add a connector (an MCP server) for your tracker, and check that a normal session of it in your project can read your board. For OpenCode, set the connector up in OpenCode's own config. For Codex, set it up with `codex mcp add`.
 2. In your project's instructions file (`CLAUDE.md` for Claude Code; `AGENTS.md` for OpenCode, which reads `CLAUDE.md` when there is no `AGENTS.md`; `AGENTS.md` for Codex, or `CLAUDE.md` with the config line above), say which list is the to-do list. You can also say which cards are yours rather than an agent's, and which come first, for example: "Cards labelled *You* are mine; cards labelled *Urgent* come first."
 3. Press **Sync** in the Todo panel. The first sync names the connector's tools it wants to read with. Allow them only if none of them can change your board.
@@ -141,7 +145,7 @@ Each sync is a short background run of the default agent. It may use only the re
 
 ## Settings
 
-Settings opens from the cog at the top right, with ⌘, on a Mac and Ctrl+, on Windows and Linux. There you tick the agents, pick the default, and for OpenCode choose the manager's agent and the sync's model.
+Settings opens from the cog at the top right, with ⌘, on a Mac and Ctrl+, on Windows and Linux. There you tick the agents, pick the default, connect Trello, and for OpenCode choose the manager's agent and the sync's model.
 
 ## Environment variables
 

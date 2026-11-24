@@ -445,7 +445,7 @@ describe('agentStep', () => {
     expect(two.hint).toBe('You can still pick another ticked agent for a single task in the New task box. All of this can be changed in Settings later.');
     const one = step(both, { ticked: ['opencode'], defaultAgent: 'opencode' });
     expect(one.showDefault).toBe(false);
-    expect(one.hint).toBe('OpenCode runs everything: the manager, the Todo sync and your tasks. Settings can change this later.');
+    expect(one.hint).toBe('OpenCode runs everything: the manager, your tasks and the Todo sync, except for a Trello list Mainframe reads itself. Settings can change this later.');
   });
 
   it("offers How to install and Find on a row that doesn't work, and Find only while no env var names it", () => {
