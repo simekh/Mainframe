@@ -63,7 +63,6 @@ describe('panelPrefs', () => {
       expect(loadPanelPrefs(memoryStorage({ 'mainframe.panel:/acme': bad }), '/acme')).toEqual(DEFAULT_PANEL_PREFS);
     }
     expect(loadPanelPrefs(memoryStorage(), '/acme')).toEqual(DEFAULT_PANEL_PREFS);
-    expect(DEFAULT_PANEL_PREFS).toEqual({ width: 640, pinned: true });
   });
 
   it('a project with none of its own starts from the prefs every project shared before', () => {

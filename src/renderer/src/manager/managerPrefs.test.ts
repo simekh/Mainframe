@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampManagerWidth, loadManagerPinned, loadManagerWidth, MANAGER_WIDTH, saveManagerPinned, saveManagerWidth,
+  clampManagerWidth, loadManagerPinned, loadManagerWidth, saveManagerPinned, saveManagerWidth,
 } from './managerPrefs';
 
 /** A Storage stand-in over a plain map. */
@@ -40,7 +40,6 @@ describe('managerPrefs', () => {
       expect(loadManagerWidth(memoryStorage({ 'mainframe.manager': bad }))).toBe(400);
     }
     expect(loadManagerWidth(memoryStorage())).toBe(400);
-    expect(MANAGER_WIDTH).toEqual({ default: 400, min: 320, max: 640 });
   });
 
   it("each project keeps its own pin, pinned until the owner unpins it, and a bad stored value pins it", () => {

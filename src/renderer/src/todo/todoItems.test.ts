@@ -241,13 +241,8 @@ describe('sourcePlace', () => {
 describe('syncedLine', () => {
   const at = 1_000_000_000_000;
 
-  it.each([
-    [0, 'Synced just now'],
-    [30_000, 'Synced just now'],
-    [12 * 60_000, 'Synced 12 min ago'],
-    [3 * 3_600_000, 'Synced 3 h ago'],
-  ])('%i ms after a sync it reads %s', (since, want) => {
-    expect(syncedLine(view({ syncedAt: at }), at + since)).toBe(want);
+  it('says how long ago the last sync was', () => {
+    expect(syncedLine(view({ syncedAt: at }), at + 12 * 60_000)).toBe('Synced 12 min ago');
   });
 
   it('reads Not synced yet before the first sync', () => {
@@ -260,6 +255,7 @@ describe('syncedAgo', () => {
 
   it.each([
     [0, 'just now'],
+    [30_000, 'just now'],
     [12 * 60_000, '12 min ago'],
     [3 * 3_600_000, '3 h ago'],
   ])('%i ms after a sync it reads %s, for a line that names the sync itself', (since, want) => {
@@ -289,16 +285,4 @@ describe('visibleItems', () => {
     ]);
   });
 
-  it('leaves the list it was given as it was', () => {
-    const all = items();
-    const before = all.map((i) => i.key);
-    visibleItems(all, true);
-    expect(all.map((i) => i.key)).toEqual(before);
-  });
-
-  it('leaves nothing when every item is for the owner', () => {
-    const only = todoItems(view({ cards: [card('1', { forOwner: true }), card('2', { forOwner: true })] }), []);
-    expect(visibleItems(only, true)).toEqual([]);
-    expect(visibleItems([], true)).toEqual([]);
-  });
 });

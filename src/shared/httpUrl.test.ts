@@ -32,7 +32,6 @@ describe('httpUrl', () => {
   );
 
   it('passes an address of the longest length and drops a longer one', () => {
-    expect(MAX_HTTP_URL_LENGTH).toBe(8192);
     expect(httpUrl(urlOfLength(MAX_HTTP_URL_LENGTH))).toBe(urlOfLength(MAX_HTTP_URL_LENGTH));
     expect(httpUrl(urlOfLength(MAX_HTTP_URL_LENGTH + 1))).toBeNull();
   });

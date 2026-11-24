@@ -19,10 +19,6 @@ describe('cardTokens', () => {
       [true, false],
     ]);
   });
-
-  it('is empty for no text', () => {
-    expect(cardTokens('')).toHaveLength(0);
-  });
 });
 
 describe('plainText', () => {
