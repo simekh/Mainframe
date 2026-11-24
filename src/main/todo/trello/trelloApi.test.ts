@@ -166,23 +166,14 @@ describe('TrelloApi', () => {
     expect(api.pollMs()).toBe(120_000);
   });
 
-  it('a network failure is offline', async () => {
-    const { api } = setup([new TypeError('fetch failed')]);
-    expect(await kindOf(api.get('/x'))).toBe('offline');
-  });
-
-  it('a 404 is notFound', async () => {
-    expect(await kindOf(setup([status(404)]).api.get('/x'))).toBe('notFound');
-  });
-
-  it('a 500 is http with the status in the message', async () => {
-    const err = (await setup([status(500)]).api.get('/x').catch((e) => e)) as TrelloError;
-    expect(err.kind).toBe('http');
-    expect(err.message).toContain('500');
-  });
-
-  it('a 2xx body that is not JSON is http', async () => {
-    expect(await kindOf(setup([new Response('<html>')]).api.get('/x'))).toBe('http');
+  it.each([
+    ['a network failure', 'offline', () => new TypeError('fetch failed'), "Can't reach Trello"],
+    ['a 404', 'notFound', () => status(404), 'Trello could not find that'],
+    ['a 500', 'http', () => status(500), 'Trello answered 500'],
+    ['a 2xx body that is not JSON', 'http', () => new Response('<html>'), 'Trello sent something that is not JSON'],
+  ])('%s is %s', async (_what, kind, answer, message) => {
+    const err = (await setup([answer()]).api.get('/x').catch((e) => e)) as TrelloError;
+    expect(err).toMatchObject({ kind, message });
   });
 
   it('a request that gets no answer in time is offline', async () => {

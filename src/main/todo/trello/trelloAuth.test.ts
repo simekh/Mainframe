@@ -320,7 +320,6 @@ describe('TrelloAuth connect', () => {
     const { raw, tokens } = readStored();
     expect(raw).not.toContain('ada');
     expect(raw).not.toContain('access-1');
-    expect(JSON.stringify(tokens)).not.toContain('ada');
     expect(tokens).toEqual({ clientId: TRELLO_CLIENT_ID, accessToken: 'access-1', refreshToken: 'refresh-1', expiresAt: NOW + 3_600_000 });
   });
 });

@@ -22,7 +22,18 @@ it('a missing file is an empty list with no notes', () => {
   expect(warnings).toEqual([]);
 });
 
-it('round-trips a record with a source, cards, notes, confirmed tools and a picked list', () => {
+const PICK = {
+  boardId: 'b1',
+  boardName: 'Sprint',
+  boardUrl: 'https://trello.example/b/b1',
+  listId: 'l1',
+  listName: 'TODO',
+  inProgressListId: null,
+  mineLabelIds: ['m1'],
+  urgentLabelIds: ['u1', 'u2'],
+};
+
+it('round-trips a record with a source, cards, notes, confirmed tools, a picked list and a Trello pick', () => {
   const dir = folder();
   // Under a folder that is not there yet: saving makes it.
   const file = join(dir, 'todos', 'acme-1a2b3c4d', 'todo.json');
@@ -47,6 +58,7 @@ it('round-trips a record with a source, cards, notes, confirmed tools and a pick
       { id: 'c2', number: null, title: 'Call the bank', description: '', labels: [], checklists: [], url: null, forOwner: true, urgent: false },
     ],
     notes: [{ id: 'n1', title: 'Reminder', text: 'Ask about the budget' }],
+    trello: PICK,
   };
 
   saveTodo(file, record);
@@ -56,7 +68,13 @@ it('round-trips a record with a source, cards, notes, confirmed tools and a pick
   expect(readdirSync(join(dir, 'todos', 'acme-1a2b3c4d'))).toEqual(['todo.json']);
 });
 
-it.each(['{', 'null', '{"version":2,"cards":"x","notes":[]}', '{"version":2,"cards":[{"id":1}],"notes":[]}'])(
+it.each([
+  '{',
+  'null',
+  '{"version":2,"cards":"x","notes":[]}',
+  '{"version":2,"cards":[{"id":1}],"notes":[]}',
+  JSON.stringify({ version: 2, trello: { ...PICK, mineLabelIds: 'x' }, cards: [], notes: [] }),
+])(
   'a file it cannot use (%s) is kept aside as .bad-<now>, said, and the list starts empty',
   (text) => {
     const file = join(folder(), 'todo.json');
@@ -107,17 +125,6 @@ it('a file from a newer Mainframe throws NewerTodoError and is left as it is', (
   expect(warnings).toEqual([]);
 });
 
-const PICK = {
-  boardId: 'b1',
-  boardName: 'Sprint',
-  boardUrl: 'https://trello.example/b/b1',
-  listId: 'l1',
-  listName: 'TODO',
-  inProgressListId: null,
-  mineLabelIds: ['m1'],
-  urgentLabelIds: ['u1', 'u2'],
-};
-
 it('reads a version 1 file as the agent source, notes and cards intact', () => {
   const dir = folder();
   const file = join(dir, 'todo.json');
@@ -134,27 +141,6 @@ it('reads a version 1 file as the agent source, notes and cards intact', () => {
   const record = loadTodo(file, 1000, (m) => warnings.push(m));
 
   expect(record).toEqual({ ...v1, version: 2 });
-  expect(record.trello).toBeUndefined();
   expect(readdirSync(dir)).toEqual(['todo.json']);
   expect(warnings).toEqual([]);
-});
-
-it('keeps a Trello pick across a save and a load', () => {
-  const file = join(folder(), 'todo.json');
-  const record: TodoRecord = { version: 2, trello: PICK, cards: [], notes: [] };
-
-  saveTodo(file, record);
-
-  expect(loadTodo(file, 1000, () => {})).toEqual(record);
-});
-
-it('a version 2 file with a malformed pick is set aside', () => {
-  const file = join(folder(), 'todo.json');
-  const text = JSON.stringify({ version: 2, trello: { ...PICK, mineLabelIds: 'x' }, cards: [], notes: [] });
-  writeFileSync(file, text);
-
-  expect(loadTodo(file, 1000, () => {})).toEqual(emptyTodo());
-
-  expect(existsSync(file)).toBe(false);
-  expect(readFileSync(`${file}.bad-1000`, 'utf8')).toBe(text);
 });

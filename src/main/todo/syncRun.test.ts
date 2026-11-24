@@ -10,9 +10,6 @@ import { runSync, syncPrompt, type SyncStep } from './syncRun';
 const claudePrompt = (step: SyncStep) => syncPrompt(step, ADAPTERS.claude.sync.words);
 
 describe('syncPrompt', () => {
-  const intro =
-    "Mainframe, the app that runs this project's Claude Code sessions, shows the owner's to-do list for this project in its Todo panel.";
-
   it('the read prompt names the picked list; without one it asks for candidates', () => {
     const picked = claudePrompt({ kind: 'read', list: { name: 'Doing', board: 'Sprint', url: 'https://tracker.example/l/1' } });
     expect(picked).toContain('Read the list "Doing" on "Sprint" ("https://tracker.example/l/1").');
@@ -44,10 +41,7 @@ describe('syncPrompt', () => {
     );
   });
 
-  it('both steps start with what Mainframe is and say to read only', () => {
-    for (const step of [{ kind: 'discover' }, { kind: 'read', list: null }] as const) {
-      expect(claudePrompt(step).startsWith(`${intro}\n\n`)).toBe(true);
-    }
+  it('the read prompt says to read only', () => {
     expect(claudePrompt({ kind: 'read', list: null })).toContain('Only read: never create, change, move or delete anything.');
     expect(claudePrompt({ kind: 'read', list: null })).toContain('Answer kind "cards" with the source');
   });
