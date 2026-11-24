@@ -70,6 +70,9 @@ test("the New task box's hint names the system's key, and that key with Enter st
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Keep the old form');
   expect(launches(dataDir)[0].args.slice(0, 2)).toEqual(['-w', 'fix-login']);
+  // No model or effort was picked, so Default passes neither.
+  expect(launches(dataDir)[0].args).not.toContain('--model');
+  expect(launches(dataDir)[0].args).not.toContain('--effort');
   await expect(page.getByTestId('new-task-title')).toHaveCount(0);
   await app.close();
 });

@@ -127,6 +127,13 @@ describe('first start (no projects.json, no welcomeSeen)', () => {
     expect(existsSync(settingsFile())).toBe(false);
   });
 
+  it('shows what is missing when git is not found', async () => {
+    const h = harness({ programs: { [NATIVE]: CURRENT } });
+    await h.flow.begin();
+    expect(h.flow.view()).toEqual(expectedView({ git: { state: 'missing' }, ask: null }));
+    expect(h.start).not.toHaveBeenCalled();
+  });
+
   it('chooseProject writes the settings, starts the project, and only then clears the view', async () => {
     const h = harness();
     await h.flow.begin();
@@ -219,14 +226,11 @@ describe('a later start', () => {
     expect(h.start).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['a first start shows the welcome', false, 'welcome'],
-    ['a later start says something moved', true, 'moved'],
-  ] as const)('with git missing, %s, and starts nothing', async (_case, later, intro) => {
-    if (later) existingInstall();
+  it('with git missing, says something moved', async () => {
+    existingInstall();
     const h = harness({ programs: { [NATIVE]: CURRENT } });
     await h.flow.begin();
-    expect(h.flow.view()).toEqual(expectedView({ intro, git: { state: 'missing' } }));
+    expect(h.flow.view()).toEqual(expectedView({ intro: 'moved', git: { state: 'missing' } }));
     expect(h.start).not.toHaveBeenCalled();
   });
 
