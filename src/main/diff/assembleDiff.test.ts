@@ -58,18 +58,13 @@ describe('assembleDiff', () => {
   });
 
   it('shows untracked text files as added, and notes the rest', () => {
-    const listed = [
-      file('t', '?', null, null),
-      file('e', '?', null, null),
-      file('b', '?', null, null),
-      file('l', '?', null, null),
-      file('x', '?', null, null),
-    ];
+    const listed = ['t', 'e', 'b', 'l', 'x', 'nested/', 'n'].map((path) => file(path, '?', null, null));
     const untracked = new Map<string, UntrackedContent>([
       ['t', { kind: 'text', lines: ['u1', 'u2'] }],
       ['e', { kind: 'text', lines: [] }],
       ['b', { kind: 'binary' }],
       ['l', { kind: 'tooLarge' }],
+      ['n', { kind: 'notRead' }],
     ]);
     const files = assembleDiff(listed, new Map(), untracked, 't');
     expect(files[0]).toMatchObject({ added: 2, removed: 0, hunks: [[add('u1', 1), add('u2', 2)]], note: null });
@@ -77,16 +72,9 @@ describe('assembleDiff', () => {
     expect(files[2]).toMatchObject({ hunks: [], note: 'binary' });
     expect(files[3]).toMatchObject({ added: null, hunks: [], note: 'tooLarge' });
     expect(files[4]).toMatchObject({ hunks: [], note: 'noLines' });
-  });
-
-  it('notes an untracked nested repository, which git lists with a trailing slash', () => {
-    const files = assembleDiff([file('nested/', '?', null, null)], new Map(), none, '');
-    expect(files[0]).toMatchObject({ added: null, hunks: [], note: 'repository' });
-  });
-
-  it('shows an untracked file that was not read as not shown', () => {
-    const files = assembleDiff([file('n', '?', null, null)], new Map(), new Map([['n', { kind: 'notRead' }]]), 'n');
-    expect(files[0]).toMatchObject({ added: null, hunks: [], note: 'notShown' });
+    // git lists a nested repository with a trailing slash.
+    expect(files[5]).toMatchObject({ added: null, hunks: [], note: 'repository' });
+    expect(files[6]).toMatchObject({ added: null, hunks: [], note: 'notShown' });
   });
 
   it('marks a file over the per-file limit too large, keeping its counts', () => {

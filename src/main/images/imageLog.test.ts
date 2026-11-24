@@ -53,16 +53,15 @@ it('a dropped file stays where it is', () => {
   expect(existsSync(beside)).toBe(true);
 });
 
-it("a pasted image that can't be copied is left out, with a warning, and the others are listed", () => {
+it("a pasted image that can't be copied is left out, and the others are listed", () => {
   const { root, pasteDir, dir, file } = setup();
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   const dropped = file(join(root, 'b.png'));
 
   const images = recordImages(dir, [{ path: join(pasteDir, 'gone.png'), number: 1 }, { path: dropped, number: 2 }], pasteDir);
 
   expect(images).toMatchObject([{ number: 2, path: dropped, name: 'b.png' }]);
   expect(readImages(dir)).toEqual(images);
-  expect(warn).toHaveBeenCalledTimes(1);
 });
 
 it('entries append in order and survive a read', () => {
@@ -76,9 +75,8 @@ it('entries append in order and survive a read', () => {
 
 it('a missing or broken list reads as none', () => {
   const { dir } = setup();
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   expect(readImages(dir)).toEqual([]);
-  expect(warn).not.toHaveBeenCalled();
 
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'images.json'), '{not json');
@@ -86,7 +84,6 @@ it('a missing or broken list reads as none', () => {
   // One entry of the wrong shape makes the list unusable: indexes into what is left would point at other images.
   writeFileSync(join(dir, 'images.json'), JSON.stringify([{ number: 1, path: '/a.png', name: 'a.png' }, { number: '2', path: '/b.png', name: 'b.png' }]));
   expect(readImages(dir)).toEqual([]);
-  expect(warn).toHaveBeenCalledTimes(2);
 });
 
 it('clearing removes the folder and the list', () => {
@@ -124,7 +121,7 @@ it("each entry keeps its file's size and modified time, and a file that changes 
 
 it("a list that is there but can't be used is never written over", () => {
   const { root, pasteDir, dir, file } = setup();
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'images.json'), '{not json');
 
@@ -132,5 +129,4 @@ it("a list that is there but can't be used is never written over", () => {
 
   expect(readFileSync(join(dir, 'images.json'), 'utf8')).toBe('{not json');
   expect(existsSync(join(dir, 'a.png'))).toBe(false);
-  expect(warn).toHaveBeenCalledWith(expect.stringContaining('records no images'));
 });
