@@ -57,6 +57,8 @@ function readBatchMs(env: NodeJS.ProcessEnv, key: string, fallback: number): num
 /** The data folder comes back absolute: the session hooks and `--settings` need it so. */
 export function loadConfig(env: NodeJS.ProcessEnv, defaultDataDir: string): AppConfig {
   const e2e = env.MAINFRAME_E2E === '1';
+  // A test app on the user's own data folder would run their projects with the stand-ins and rewrite their tasks.
+  if (e2e && !env.MAINFRAME_DATA_DIR) throw new Error('MAINFRAME_E2E needs MAINFRAME_DATA_DIR: a test app never runs on the real data folder');
   return {
     claudeBin: readClaudeBin(env),
     opencodeBin: readOpencodeBin(env),

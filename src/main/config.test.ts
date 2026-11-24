@@ -30,22 +30,27 @@ describe('loadConfig', () => {
   it('reads the update settings, and the update folder only in e2e', () => {
     const env = { MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_UPDATE_FILE: '/x/update', MAINFRAME_UPDATE_FAILED: 'it failed' };
     expect(loadConfig(env, '/data')).toMatchObject({ updateDir: undefined, launcherFile: '/x/update', updateFailure: 'it failed' });
-    expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').updateDir).toBe('/x/clone');
+    expect(loadConfig({ ...env, MAINFRAME_E2E: '1', MAINFRAME_DATA_DIR: '/d' }, '/data').updateDir).toBe('/x/clone');
     expect(loadConfig({ MAINFRAME_UPDATE_FILE: '', MAINFRAME_UPDATE_FAILED: '' }, '/data')).toMatchObject({ launcherFile: undefined, updateFailure: undefined });
   });
 
   it('MAINFRAME_E2E_TRELLO_URL is read only in e2e', () => {
     const env = { MAINFRAME_E2E_TRELLO_URL: 'http://127.0.0.1:9999' };
     expect(loadConfig(env, '/data').trelloUrl).toBeUndefined();
-    expect(loadConfig({ ...env, MAINFRAME_E2E: '1' }, '/data').trelloUrl).toBe('http://127.0.0.1:9999');
-    expect(loadConfig({ MAINFRAME_E2E_TRELLO_URL: '', MAINFRAME_E2E: '1' }, '/data').trelloUrl).toBeUndefined();
+    expect(loadConfig({ ...env, MAINFRAME_E2E: '1', MAINFRAME_DATA_DIR: '/d' }, '/data').trelloUrl).toBe('http://127.0.0.1:9999');
+    expect(loadConfig({ MAINFRAME_E2E_TRELLO_URL: '', MAINFRAME_E2E: '1', MAINFRAME_DATA_DIR: '/d' }, '/data').trelloUrl).toBeUndefined();
   });
 
   it('checks for updates by itself except in dev, and in e2e only with a clone named', () => {
     expect(loadConfig({}, '/data').autoCheck).toBe(true);
     expect(loadConfig({ ELECTRON_RENDERER_URL: 'http://localhost:5173' }, '/data').autoCheck).toBe(false);
-    expect(loadConfig({ MAINFRAME_E2E: '1' }, '/data').autoCheck).toBe(false);
-    expect(loadConfig({ MAINFRAME_E2E: '1', MAINFRAME_E2E_UPDATE_DIR: '/x/clone' }, '/data').autoCheck).toBe(true);
+    expect(loadConfig({ MAINFRAME_E2E: '1', MAINFRAME_DATA_DIR: '/d' }, '/data').autoCheck).toBe(false);
+    expect(loadConfig({ MAINFRAME_E2E: '1', MAINFRAME_E2E_UPDATE_DIR: '/x/clone', MAINFRAME_DATA_DIR: '/d' }, '/data').autoCheck).toBe(true);
+  });
+
+  // A test app on the real data folder once rewrote the owner's tasks (2026-11-20).
+  it('in e2e, refuses to start without a data folder of its own', () => {
+    expect(() => loadConfig({ MAINFRAME_E2E: '1' }, '/data')).toThrow('MAINFRAME_E2E needs MAINFRAME_DATA_DIR');
   });
 
   it('makes a relative data dir absolute', () => {

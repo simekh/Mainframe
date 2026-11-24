@@ -54,7 +54,7 @@ export const launchWithCodex = (projects: string | string[], env: Record<string,
 /**
  * The app's environment in a test: the stand-in as `claude`, logging to the data folder, and an `opencode`
  * and a `codex` that aren't there, so no OpenCode or Codex on the machine shows in the New task box unless a test names one. A variable
- * `env` gives as `undefined` is left out, even one set here.
+ * `env` gives as `undefined` is left out, even one set here, except the data folder: `env` can't take that away.
  */
 function appEnv(dataDir: string, env: Record<string, string | undefined>): Record<string, string> {
   const fakeClaudeLogDir = join(dataDir, 'fake-claude');
@@ -65,7 +65,6 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     MAINFRAME_CLAUDE_BIN: fakeClaude,
     MAINFRAME_OPENCODE_BIN: join(dataDir, 'no-opencode'),
     MAINFRAME_CODEX_BIN: join(dataDir, 'no-codex'),
-    MAINFRAME_DATA_DIR: dataDir,
     FAKE_CLAUDE_LOG_DIR: fakeClaudeLogDir,
     PS1: '$ ',
     BASH_SILENCE_DEPRECATION_WARNING: '1',
@@ -73,6 +72,7 @@ function appEnv(dataDir: string, env: Record<string, string | undefined>): Recor
     MAINFRAME_UPDATE_FILE: undefined,
     MAINFRAME_UPDATE_FAILED: undefined,
     ...env,
+    MAINFRAME_DATA_DIR: dataDir,
   };
   return Object.fromEntries(Object.entries(vars).filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
