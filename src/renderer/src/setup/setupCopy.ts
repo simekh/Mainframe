@@ -270,6 +270,9 @@ export interface AgentRow {
   buttons: SetupButton[];
 }
 
+/** The line under the agents step on where a Trello list is connected (Settings has no cog until a project is open). */
+export const TRELLO_HINT = "Use Trello? Once a project is open, connect it in Settings or in the project's Todo panel.";
+
 /** The agents step at a first start, for the choice made so far. */
 export function agentStep(view: SetupView, choice: AgentChoice): { rows: AgentRow[]; showDefault: boolean; hint: string } {
   const rows = AGENT_ORDER.map((name): AgentRow => {

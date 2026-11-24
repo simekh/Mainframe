@@ -133,7 +133,7 @@ The Todo panel has two tabs, **To do** and **Finished**. Finished lists the proj
 
 ## Set up the Todo panel
 
-**Trello.** In Settings, press **Connect Trello** and allow Mainframe in your browser. Then, in the project's Todo panel, choose **Trello** (on a project that already has a to-do list, press **Set up again** first), and pick the board and the to-do list. You can also pick the list for cards in progress, the labels that mark your own cards (**Mine**) and the ones that go first (**Comes first**). Mainframe reads the list itself, about once a minute while the panel is open and the window is in front, and **Refresh** reads it at once. No agent runs for this, and a card's text goes into its task's opening prompt, so the task needs no Trello connector.
+**Trello.** In Settings, press **Connect Trello** and allow Mainframe in your browser. Then, in the project's Todo panel, choose **Trello** (on a project that already has a to-do list, press **Set up again** first), and pick the board and the to-do list. You can also pick the list for cards in progress (a coming update moves cards there), the labels that mark your own cards (**Mine**) and the ones that go first (**Comes first**). Mainframe reads the list itself, about once a minute while the panel is open and the window is in front, and **Refresh** reads it at once. No agent runs for this, and a card's text goes into its task's opening prompt, so the task needs no Trello connector.
 
 **Another tracker** (or Trello through your agent's own connector): choose **Another tracker (AI connector)** in the Todo panel, then:
 

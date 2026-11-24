@@ -2,7 +2,7 @@ import { createComputed, createEffect, createSignal, For, onCleanup, onMount, Sh
 import { createStore, reconcile } from 'solid-js/store';
 import { AGENT_NAMES, AGENT_ORDER, type AgentChoice, type AgentName, type ProgramCheck, type SetupView } from '../../../shared/types';
 import { openLinkLogged } from '../openLink';
-import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type AgentRow, type SetupButton } from './setupCopy';
+import { agentStep, TRELLO_HINT, buttonLabel, checkLine, explanations, intro, someAgentWorks, type AgentRow, type SetupButton } from './setupCopy';
 import { agentChoice, chooseProject, findAgent, isLooking, lookAgain, setDefaultAgent, toggleAgent, useAgent } from './setupStore';
 
 /** How long each line waits for the one before it. */
@@ -48,7 +48,7 @@ function agentUnits(view: SetupView, choice: AgentChoice): Unit[] {
     );
   }
   units.push({ key: 'agents-hint', kind: 'line', text: step.hint, tone: 'hint' });
-  units.push({ key: 'trello-hint', kind: 'line', text: "Use Trello? Connect it in Settings or from a project's Todo panel.", tone: 'hint' });
+  units.push({ key: 'trello-hint', kind: 'line', text: TRELLO_HINT, tone: 'hint' });
   return units;
 }
 
