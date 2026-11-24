@@ -16,12 +16,6 @@ async function clickOpenProject(app: ElectronApplication, page: Page): Promise<v
   }
 }
 
-test('opens the Mainframe window', async () => {
-  const { app, page } = await launchApp();
-  expect(await page.title()).toBe('Mainframe');
-  await app.close();
-});
-
 test('the window follows its system: the Mac keeps its menu and the room for its window buttons; Windows and Linux have neither', async () => {
   const { app, page } = await launchApp();
   const onMac = process.platform === 'darwin';

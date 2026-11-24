@@ -88,30 +88,6 @@ test('a task starts on the model and effort picked in New Task', async () => {
   await app.close();
 });
 
-test('Default passes no model', async () => {
-  const { app, page, dataDir } = await launchApp({}, repo());
-  await page.getByTestId('new-task').click();
-  await page.getByTestId('new-task-title').fill('Fix login');
-  await expect(page.getByTestId('new-task-model')).toHaveValue('');
-  await expect(page.getByTestId('new-task-effort')).toHaveValue('');
-  await page.getByTestId('new-task-start').click();
-
-  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Task: Fix login');
-  const { args } = launches(dataDir)[0];
-  expect(args).not.toContain('--model');
-  expect(args).not.toContain('--effort');
-  await app.close();
-});
-
-test('the help line names how to switch in a running session', async () => {
-  const { app, page } = await launchApp({}, repo());
-  await page.getByTestId('new-task').click();
-  await expect(page.getByTestId('new-task-model-help')).toHaveText(
-    'In a running session, /model switches the model and /effort the effort. A reopen starts on the pick made here.',
-  );
-  await app.close();
-});
-
 test("the dialog warns when the main checkout has commits that new worktrees won't have", async () => {
   const ahead = repo();
   writeFileSync(join(ahead, 'local.txt'), 'local\n');

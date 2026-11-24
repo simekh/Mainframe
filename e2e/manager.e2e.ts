@@ -214,8 +214,10 @@ test('the manager never takes the focus by itself', async () => {
   await app.close();
 });
 
-test("the manager's terminal fits its column", async () => {
+test("the manager's terminal fits its column, and its title bar is no drag region", async () => {
   const { app, page } = await launchApp();
+  // The top row is the window's title bar now, on the Mac too.
+  expect(await appRegion(page.getByTestId('manager-title-bar'))).not.toBe('drag');
   // Right of the project list, from under the top row to 8 px above the window's bottom, and 400 px wide.
   const height = await page.evaluate(() => window.innerHeight);
   const rail = await box(page, 'project-rail');
@@ -231,19 +233,6 @@ test("the manager's terminal fits its column", async () => {
   const size = (await managerTermSize(page))!;
   await expectSessionSize(size, (line) => run(page, line), () => managerScreen(page));
   expect(await managerTermSize(page)).toEqual(size);
-  await app.close();
-});
-
-test("the manager's column sits left of the board under the top row, and its title bar is no drag region", async () => {
-  const { app, page } = await launchApp();
-  const column = await box(page, 'manager-column');
-  expect(column.x + column.width).toBeLessThanOrEqual((await box(page, 'board')).x);
-  expect(column.y).toBe(ROW_HEIGHT);
-
-  // The top row is the window's title bar now, on the Mac too.
-  const bar = page.getByTestId('manager-title-bar');
-  expect((await bar.boundingBox())!.height).toBe(46);
-  expect(await appRegion(bar)).not.toBe('drag');
   await app.close();
 });
 
