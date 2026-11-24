@@ -577,11 +577,13 @@ it('removeWorktree and deleteBranch remove a merged task\'s worktree and branch,
   await expect(deleteBranch(main, branch)).resolves.toBeUndefined();
 });
 
-it('removeWorktree refuses a worktree with untracked files unless forced', async () => {
+it('removeWorktree refuses a worktree with untracked files unless forced, with an ordinary error, not a folder left behind', async () => {
   const { main } = repo();
   const { wt } = taskBranch(main);
   writeFileSync(join(wt, 'u.txt'), 'u\n');
-  await expect(removeWorktree(main, wt, { force: false })).rejects.toThrow();
+  const failed = removeWorktree(main, wt, { force: false });
+  await expect(failed).rejects.toThrow(/untracked/);
+  await expect(failed).rejects.not.toBeInstanceOf(FolderLeftError);
   expect(existsSync(wt)).toBe(true);
   await removeWorktree(main, wt, { force: true });
   expect(existsSync(wt)).toBe(false);
@@ -639,15 +641,6 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     expect(await branchExists(main, branch)).toBe(false);
   },
 );
-
-it('a removal git refuses with the worktree intact rejects with an ordinary error, not a folder left behind', async () => {
-  const { main } = repo();
-  const { wt } = taskBranch(main);
-  writeFileSync(join(wt, 'u.txt'), 'u\n');
-  const failed = removeWorktree(main, wt, { force: false });
-  await expect(failed).rejects.toThrow(/untracked/);
-  await expect(failed).rejects.not.toBeInstanceOf(FolderLeftError);
-});
 
 it('a plain folder git never owned, at the worktree\'s path, rejects with git\'s reason, not as a folder left behind', async () => {
   const { main } = repo();

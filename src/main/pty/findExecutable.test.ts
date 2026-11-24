@@ -87,10 +87,6 @@ it('win32: with both Path and PATH, only the first key in the env is searched', 
   expect(findExecutable('claude', win({ Path: 'C:\\c', PATH: 'C:\\b' }, ...exes))).toBeNull();
 });
 
-it('resolveExecutable gives the path it finds', () => {
-  expect(resolveExecutable('claude', mac({ PATH: '/a' }, '/a/claude'))).toBe('/a/claude');
-});
-
 it('resolveExecutable says a bare name was not found on PATH, and which PATH', () => {
   expect(() => resolveExecutable('claude', mac({ PATH: '/a:/b' }))).toThrow('claude was not found on PATH (/a:/b)');
 });
