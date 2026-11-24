@@ -1780,21 +1780,29 @@ it('an OpenCode task stays off the list and the reports until its worktree is th
   expect(service.reports().map((r) => r.taskId)).toContain(view.id);
 });
 
-// A folder deleted by hand is added back on its branch, or on a fresh one when that is gone too.
-it.each([
-  ['there', true, null],
-  ['gone, its branch there', true, { create: false }],
-  ['gone, and its branch', false, { create: true }],
-] as const)('an OpenCode reopen whose worktree folder is %s runs in it, adding it as %j', async (_what, branch, add) => {
+it('an OpenCode reopen whose worktree folder is there runs in it and adds nothing', async () => {
   const { added, addWorktree } = recordingAdds();
-  const { service, projectDir } = setup({ addWorktree, branchExists: async () => branch });
+  const { service } = setup({ addWorktree, branchExists: async () => true });
   const view = await service.start(OPENCODE_TASK);
-  if (add === null) mkdirSync(view.worktreePath, { recursive: true });
+  mkdirSync(view.worktreePath, { recursive: true });
   added.length = 0;
   service.onSessionExit(view.session!.id);
 
   const reopened = await service.reopen(view.id);
-  expect(added).toEqual(add === null ? [] : [[projectDir, view.worktreePath, view.branch, add]]);
+  expect(added).toEqual([]);
+  expect(service.launchSpec(reopened.session!.id).cwd).toBe(view.worktreePath);
+});
+
+// A folder deleted by hand is added back on its branch, or on a fresh one when that is gone too.
+it.each([true, false])('an OpenCode reopen whose worktree folder is gone (branch there: %s) adds it back and runs in it', async (branch) => {
+  const { added, addWorktree } = recordingAdds();
+  const { service, projectDir } = setup({ addWorktree, branchExists: async () => branch });
+  const view = await service.start(OPENCODE_TASK);
+  added.length = 0;
+  service.onSessionExit(view.session!.id);
+
+  const reopened = await service.reopen(view.id);
+  expect(added).toEqual([[projectDir, view.worktreePath, view.branch, { create: !branch }]]);
   expect(service.launchSpec(reopened.session!.id).cwd).toBe(view.worktreePath);
 });
 
