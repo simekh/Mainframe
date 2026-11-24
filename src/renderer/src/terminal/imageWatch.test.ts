@@ -18,20 +18,13 @@ describe('screenText', () => {
   });
 });
 
-it('takes the new label above the ones seen before', () => {
-  expect(newLabelNumbers([2], [1, 2, 3], 1)).toEqual([3]);
-});
-
-it('gives nothing while no new label shows: the paste went into a question', () => {
-  expect(newLabelNumbers([2], [2], 1)).toBeNull();
-});
-
-it('takes as many labels as images were pasted, in order, with none seen before', () => {
-  expect(newLabelNumbers([], [4, 5], 2)).toEqual([4, 5]);
-});
-
-it('gives nothing until every pasted image has its label', () => {
-  expect(newLabelNumbers([3], [3, 4], 2)).toBeNull();
+it.each([
+  ['takes the new label above the ones seen before', [2], [1, 2, 3], 1, [3]],
+  ['gives nothing while no new label shows: the paste went into a question', [2], [2], 1, null],
+  ['takes as many labels as images were pasted, in order, with none seen before', [], [4, 5], 2, [4, 5]],
+  ['gives nothing until every pasted image has its label', [3], [3, 4], 2, null],
+])('newLabelNumbers %s', (_name, before, now, count, expected) => {
+  expect(newLabelNumbers(before, now, count)).toEqual(expected);
 });
 
 describe('the watch', () => {

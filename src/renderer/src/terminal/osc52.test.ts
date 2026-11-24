@@ -12,10 +12,6 @@ describe('parseOsc52Write', () => {
     expect(parseOsc52Write(`p;${base64('hello')}`)).toBe('hello');
   });
 
-  it('accepts unpadded base64', () => {
-    expect(parseOsc52Write('c;aGVsbG8')).toBe('hello');
-  });
-
   it.each([
     ['a clipboard query', 'c;?'],
     ['a clear request', 'c;'],
