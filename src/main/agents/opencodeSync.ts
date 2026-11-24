@@ -38,7 +38,7 @@ export function instructionsFileOf(projectDir: string): string | null {
 }
 
 /** A connector's tool, `<server>_<tool>`: OpenCode's own are unprefixed, `opencode_…` or `experimental_…`. */
-export const isOpencodeToolName = (name: string): boolean => /^(?!opencode_|experimental_)[A-Za-z0-9-]+_[A-Za-z0-9_-]+$/.test(name);
+const isOpencodeToolName = (name: string): boolean => /^(?!opencode_|experimental_)[A-Za-z0-9-]+_[A-Za-z0-9_-]+$/.test(name);
 
 type Event = { type?: string; sessionID?: string; error?: { message?: string; type?: string }; part?: Record<string, unknown> };
 

@@ -12,12 +12,10 @@ export function stripTrailingWhitespacePerLine(text: string): string {
   return text.replace(/[ \t]+(?=\n|$)/g, '');
 }
 
-interface ReflowOptions {
-  /** A paragraph reflows only if every interior line is at least this long. */
-  minInteriorLength?: number;
-  /** Interior line lengths must vary by at most this many characters. */
-  varianceTolerance?: number;
-}
+/** A paragraph reflows only if every interior line is at least this long. */
+const MIN_INTERIOR_LENGTH = 40;
+/** Interior line lengths must vary by at most this many characters. */
+const VARIANCE_TOLERANCE = 8;
 
 /**
  * Join wrapped-paragraph lines that the source program already broke at
@@ -27,17 +25,14 @@ interface ReflowOptions {
  *   A "paragraph" is a run of consecutive non-blank lines. It is treated as
  *   a single wrapped paragraph (lines joined with one space, leading
  *   whitespace on continuations stripped) iff every line except the last —
- *   the "interior" lines — is at least `minInteriorLength` long AND the
+ *   the "interior" lines — is at least `MIN_INTERIOR_LENGTH` long AND the
  *   spread (max − min) of those interior lengths is within
- *   `varianceTolerance`. Otherwise the paragraph is left untouched.
+ *   `VARIANCE_TOLERANCE`. Otherwise the paragraph is left untouched.
  *
  * Single-line paragraphs are always left untouched. Blank lines between
  * paragraphs are preserved exactly as separators.
  */
-export function reflowWrappedParagraphs(text: string, opts: ReflowOptions = {}): string {
-  const minLong = opts.minInteriorLength ?? 40;
-  const variance = opts.varianceTolerance ?? 8;
-
+export function reflowWrappedParagraphs(text: string): string {
   const lines = text.split('\n');
   const out: string[] = [];
 
@@ -52,7 +47,7 @@ export function reflowWrappedParagraphs(text: string, opts: ReflowOptions = {}):
     while (j < lines.length && lines[j] !== '') j++;
     const para = lines.slice(i, j);
 
-    if (shouldReflow(para, minLong, variance)) {
+    if (shouldReflow(para, MIN_INTERIOR_LENGTH, VARIANCE_TOLERANCE)) {
       // Array+join avoids O(n²) concat on pathologically long paragraphs.
       const parts: string[] = [para[0]];
       for (let k = 1; k < para.length; k++) {
