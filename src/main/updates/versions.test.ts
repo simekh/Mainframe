@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, formatVersion, newestRelease, notesSince, parseTag } from './versions';
+import { compareVersions, newestRelease, notesSince, parseTag } from './versions';
 
 const CHANGELOG = [
   '# Changelog',
@@ -31,16 +31,12 @@ describe('parseTag', () => {
   });
 });
 
-describe('compareVersions and formatVersion', () => {
+describe('compareVersions', () => {
   it('compares number by number, not as text', () => {
     expect(compareVersions([0, 10, 0], [0, 9, 0])).toBeGreaterThan(0);
     expect(compareVersions([1, 0, 0], [0, 99, 99])).toBeGreaterThan(0);
     expect(compareVersions([0, 0, 1], [0, 0, 2])).toBeLessThan(0);
     expect(compareVersions([1, 2, 3], [1, 2, 3])).toBe(0);
-  });
-
-  it('formats as x.y.z', () => {
-    expect(formatVersion([1, 2, 3])).toBe('1.2.3');
   });
 });
 

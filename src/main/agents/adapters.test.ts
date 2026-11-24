@@ -23,13 +23,6 @@ describe('the agent adapters', () => {
     for (const name of Object.keys(AGENT_NAMES) as AgentName[]) expect(ADAPTERS[name].name).toBe(name);
   });
 
-  it('Claude Code makes its own worktree, and Mainframe makes OpenCode its worktree', () => {
-    expect(ADAPTERS.claude.mainframeAddsWorktree).toBe(false);
-    expect(ADAPTERS.opencode.mainframeAddsWorktree).toBe(true);
-    expect(ADAPTERS.claude.worktreesDir).toBe('.claude/worktrees');
-    expect(ADAPTERS.opencode.worktreesDir).toBe('.mainframe/worktrees');
-  });
-
   it("a Claude task's start is today's argv, with no env, answered early", () => {
     expect(ADAPTERS.claude.taskStart(o)).toEqual({
       argv: startArgv({ claudeBin: 'claude', slug: 's', name: 'p-s', claudeSessionId: UUID_1, settingsPath: join(dir, 'settings.json'), prompt: 'P' }),

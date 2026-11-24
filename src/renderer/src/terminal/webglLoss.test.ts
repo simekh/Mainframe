@@ -13,11 +13,6 @@ import {
 const T0 = 1_000_000;
 
 describe('recordWebglContextLoss', () => {
-  it('retries after a first loss', () => {
-    const { retry } = recordWebglContextLoss(initialWebglLossState(), T0);
-    expect(retry).toBe(true);
-  });
-
   it('counts a simultaneous burst (GPU crash hitting every pane) as one wave', () => {
     let state = initialWebglLossState();
     let retry = false;

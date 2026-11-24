@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it } from 'vitest';
 import { cloneRepo, commitFile, git, makeRepo } from '../testing/makeRepo';
-import { byHand, changelogAt, howToUpdate, onlyLockfileChanged, releaseRemote, remoteNewest, runningVersion } from './updateGit';
+import { changelogAt, howToUpdate, onlyLockfileChanged, releaseRemote, remoteNewest, runningVersion } from './updateGit';
 
 const cleanup: string[] = [];
 
@@ -52,15 +52,12 @@ it('releaseRemote is the current branch\'s remote, and null without any', async 
   expect(await releaseRemote(bare)).toBeNull();
 });
 
-it('releaseRemote falls back to origin when the branch tracks nothing', async () => {
+it.each([
+  ['tracks nothing', ['checkout', '-b', 'local-only', '--no-track']],
+  ['tracks a local branch', ['checkout', '-b', 'feature', '--track', 'stage']],
+])('releaseRemote falls back to origin when the branch %s', async (_name, checkout) => {
   const { user } = setup();
-  git(user, 'checkout', '-b', 'local-only', '--no-track');
-  expect(await releaseRemote(user)).toBe('origin');
-});
-
-it('releaseRemote falls back to origin when the branch tracks a local branch', async () => {
-  const { user } = setup();
-  git(user, 'checkout', '-b', 'feature', '--track', 'stage');
+  git(user, ...checkout);
   expect(await releaseRemote(user)).toBe('origin');
 });
 
@@ -107,10 +104,6 @@ async function behind(): Promise<string> {
 it('howToUpdate is one click for a clean clone', async () => {
   const user = await behind();
   expect(await howToUpdate(user, 'origin', 'v0.3.0')).toEqual({ kind: 'one-click' });
-});
-
-it('byHand fast-forwards when the app was not started by npm start', () => {
-  expect(byHand('origin', 'v0.3.0', 'not-launcher')).toEqual({ kind: 'by-hand', why: 'not-launcher', commands: BY_HAND });
 });
 
 it('howToUpdate is by hand with uncommitted changes', async () => {

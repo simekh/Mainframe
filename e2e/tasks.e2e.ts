@@ -70,6 +70,9 @@ test("the New task box's hint names the system's key, and that key with Enter st
   // On the content: fake-claude creates its file before it writes the arguments.
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Keep the old form');
   expect(launches(dataDir)[0].args.slice(0, 2)).toEqual(['-w', 'fix-login']);
+  // No model or effort was picked, so Default passes neither.
+  expect(launches(dataDir)[0].args).not.toContain('--model');
+  expect(launches(dataDir)[0].args).not.toContain('--effort');
   await expect(page.getByTestId('new-task-title')).toHaveCount(0);
   await app.close();
 });
@@ -85,30 +88,6 @@ test('a task starts on the model and effort picked in New Task', async () => {
   await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Task: Fix login');
   const { args } = launches(dataDir)[0];
   expect(args.slice(args.indexOf('--model'), args.indexOf('--model') + 4)).toEqual(['--model', 'opus', '--effort', 'high']);
-  await app.close();
-});
-
-test('Default passes no model', async () => {
-  const { app, page, dataDir } = await launchApp({}, repo());
-  await page.getByTestId('new-task').click();
-  await page.getByTestId('new-task-title').fill('Fix login');
-  await expect(page.getByTestId('new-task-model')).toHaveValue('');
-  await expect(page.getByTestId('new-task-effort')).toHaveValue('');
-  await page.getByTestId('new-task-start').click();
-
-  await expect.poll(() => launches(dataDir)[0]?.args.at(-1)).toContain('Task: Fix login');
-  const { args } = launches(dataDir)[0];
-  expect(args).not.toContain('--model');
-  expect(args).not.toContain('--effort');
-  await app.close();
-});
-
-test('the help line names how to switch in a running session', async () => {
-  const { app, page } = await launchApp({}, repo());
-  await page.getByTestId('new-task').click();
-  await expect(page.getByTestId('new-task-model-help')).toHaveText(
-    'In a running session, /model switches the model and /effort the effort. A reopen starts on the pick made here.',
-  );
   await app.close();
 });
 

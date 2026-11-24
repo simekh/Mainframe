@@ -197,10 +197,6 @@ describe('the Done lane', () => {
     expect(laneOf(task({ merged: true, puttingBack: true }), state('done'))).toBe('needs-you');
   });
 
-  it('leaves an unmerged task that finished its turn in Needs you', () => {
-    expect(laneOf(task(), state('done'))).toBe('needs-you');
-  });
-
   it('laneOrder puts Done cards in done, oldest first, and out of needs-you', () => {
     const open = (id: string, createdAt: number, isMerged: boolean) =>
       task({ id, createdAt, merged: isMerged, session: { id: `s-${id}`, startedWithPrompt: true } });

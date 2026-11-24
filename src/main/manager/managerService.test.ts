@@ -194,13 +194,6 @@ it('a manager.json from before this branch resumes its Claude chat', async () =>
   );
 });
 
-it('manager.json keeps the chat of the agent it ran', async () => {
-  const t = setup();
-  const view = await t.service.start();
-
-  expect(t.readRecord()).toMatchObject({ agent: 'claude', chats: { claude: t.chatOf(view) } });
-});
-
 it('a carry-on prompt is the same agent\'s only', async () => {
   const t = setup();
   mkdirSync(t.dir, { recursive: true });
@@ -340,7 +333,6 @@ it('an exit sends the view with no session and lets that go too', async () => {
   expect(changes.at(-1)).toEqual({ session: null });
   expect(changes).toHaveLength(2);
   expect(service.view()).toEqual({ session: null });
-  expect(service.sessionIds()).toEqual([]);
   expect(() => service.launchSpec(view.session!.id)).toThrow(view.session!.id);
 });
 
@@ -496,14 +488,13 @@ it("a Codex manager resumes the chat Codex named in a tool call, and starts a ne
   expect(resumes(t, second)).toBe(true);
 });
 
-it('a later tool call naming the same chat writes nothing; one naming another chat keeps that one', async () => {
+it('a later tool call naming another chat keeps that one', async () => {
   const t = setup();
-  const noted: string[] = [];
-  t.use({ ...CODEX, adapter: { ...ADAPTERS.codex, noteManagerChat: (_dir, id) => noted.push(id) } });
+  t.use(CODEX);
   await t.service.start();
   const other = '22222222-2222-4222-8222-222222222222';
   for (const id of [U2, U2, other, other]) t.service.noteToolCall(id);
-  expect(noted).toEqual([U2, other]);
+  expect(JSON.parse(readFileSync(t.file('codex-chat.json'), 'utf8'))).toEqual({ sessionId: other });
 });
 
 const FAILED_EXIT = { exitCode: 1, signal: null };

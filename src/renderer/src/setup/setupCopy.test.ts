@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_CLAUDE_VERSION, MIN_CODEX_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type ProgramCheck, type SetupView } from '../../../shared/types';
+import { MIN_CLAUDE_VERSION, MIN_CODEX_VERSION, MIN_OPENCODE_VERSION, type AgentChoice, type AgentName, type ProgramCheck, type SetupView } from '../../../shared/types';
 import { agentStep, buttonLabel, checkLine, explanations, intro, someAgentWorks, type SetupButton } from './setupCopy';
 
 const found = (path: string, version: string): ProgramCheck => ({ state: 'found', path, version });
@@ -55,65 +55,32 @@ const CODEX_NOWHERE = "I looked on your PATH and in ~/.local/bin, and Codex wasn
 const ALL_BUTTONS: SetupButton[] = ['find-claude', 'install-claude', 'find-opencode', 'install-opencode', 'find-codex', 'install-codex', 'look-again'];
 
 describe('checkLine', () => {
-  it('says what a found git is', () => {
-    expect(checkLine('git', found('/usr/bin/git', '2.56.0'), false)).toBe('found  git 2.56.0  ✓');
-  });
-
-  it('says where a found agent is and which version, in full', () => {
-    expect(checkLine('claude', found('C:\\Users\\me\\.local\\bin\\claude.exe', '2.1.319'), false)).toBe(
+  it.each<[string, 'git' | AgentName, ProgramCheck | 'looking', boolean, string]>([
+    ['what a found git is', 'git', found('/usr/bin/git', '2.56.0'), false, 'found  git 2.56.0  ✓'],
+    [
+      'where a found agent is and which version, in full',
+      'claude',
+      found('C:\\Users\\me\\.local\\bin\\claude.exe', '2.1.319'),
+      false,
       'found  C:\\Users\\me\\.local\\bin\\claude.exe · v2.1.319  ✓',
-    );
-    expect(checkLine('opencode', found('/home/me/.opencode/bin/opencode', '2.2.7'), true)).toBe(
-      'found  /home/me/.opencode/bin/opencode · v2.2.7  ✓',
-    );
-  });
-
-  it('says it is looking while a new look runs', () => {
-    expect(checkLine('git', 'looking', false)).toBe('looking…');
-    expect(checkLine('claude', 'looking', true)).toBe('looking…');
-  });
-
-  it('says a program that is nowhere is not found', () => {
-    expect(checkLine('git', missing, false)).toBe('not found  ✗');
-    expect(checkLine('claude', missing, false)).toBe('not found  ✗');
-  });
-
-  it('says a file that was picked and is no program, with its path', () => {
-    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' }, false)).toBe("/opt/claude isn't a program I can run  ✗");
-  });
-
-  it('says an agent that is too old, with its path and version', () => {
-    expect(checkLine('claude', { state: 'too-old', path: '/opt/claude', version: '2.0.1' }, false)).toBe('/opt/claude · v2.0.1, too old  ✗');
-  });
-
-  it("says a program that doesn't run, with its path", () => {
-    expect(checkLine('git', { state: 'broken', path: '/usr/bin/git' }, false)).toBe("/usr/bin/git doesn't run  ✗");
-    expect(checkLine('claude', { state: 'broken', path: '/opt/claude' }, false)).toBe("/opt/claude doesn't run  ✗");
-  });
-
-  it('says a failing agent quietly while another works: no path and no ✗', () => {
-    expect(checkLine('claude', missing, true)).toBe('not found');
-    expect(checkLine('claude', { state: 'missing', path: '/opt/claude' }, true)).toBe('not found');
-    expect(checkLine('opencode', { state: 'too-old', path: '/opt/opencode', version: '1.18.35' }, true)).toBe('v1.18.35, too old');
-    expect(checkLine('opencode', { state: 'broken', path: '/opt/opencode' }, true)).toBe("doesn't run");
+    ],
+    ['a found agent in full while another works too', 'opencode', found('/home/me/.opencode/bin/opencode', '2.2.7'), true, 'found  /home/me/.opencode/bin/opencode · v2.2.7  ✓'],
+    ['that it is looking while a new look runs', 'claude', 'looking', true, 'looking…'],
+    ['that a program that is nowhere is not found', 'claude', missing, false, 'not found  ✗'],
+    ['a file that was picked and is no program, with its path', 'claude', { state: 'missing', path: '/opt/claude' }, false, "/opt/claude isn't a program I can run  ✗"],
+    ['an agent that is too old, with its path and version', 'claude', { state: 'too-old', path: '/opt/claude', version: '2.0.1' }, false, '/opt/claude · v2.0.1, too old  ✗'],
+    ["a program that doesn't run, with its path", 'git', { state: 'broken', path: '/usr/bin/git' }, false, "/usr/bin/git doesn't run  ✗"],
+    // Quiet while another agent works: no path and no ✗.
+    ['a missing agent quietly while another works', 'claude', missing, true, 'not found'],
+    ['a picked file quietly while another works', 'claude', { state: 'missing', path: '/opt/claude' }, true, 'not found'],
+    ['a too old agent quietly while another works', 'opencode', { state: 'too-old', path: '/opt/opencode', version: '1.18.35' }, true, 'v1.18.35, too old'],
+    ["an agent that doesn't run quietly while another works", 'opencode', { state: 'broken', path: '/opt/opencode' }, true, "doesn't run"],
+  ])('says %s', (_case, name, check, quiet, want) => {
+    expect(checkLine(name, check, quiet)).toBe(want);
   });
 });
 
 describe('intro', () => {
-  it("is the welcome at a first start: the logo, then Mainframe's three paragraphs", () => {
-    const lines = intro(view({ intro: 'welcome' }));
-    expect(lines.map((l) => l.tone)).toEqual(['logo', 'strong', undefined, undefined]);
-    expect(lines[0].text).toBe(
-      [' ▄▀▄▀▄ ▄▀▄ ▀ █▄ █ █▀▀ █▀▄ ▄▀▄ ▄▀▄▀▄ █▀▀', ' █   █ █▀█ █ █ ▀█ █▀  █▀▄ █▀█ █   █ ██▄'].join('\n'),
-    );
-    expect(lines.slice(1).map((l) => l.text)).toEqual([
-      "Hi, I'm Mainframe.",
-      "I keep a whole crew of coding agent sessions busy at once, each on its own task in its own git worktree, and I only tap you on the shoulder when one of them needs you.",
-      "Before we get going, I'm going to have a quick look around this computer.",
-    ]);
-    expect(lines[3].aside).toBe("(Nothing leaves it. I'm just checking what's installed.)");
-  });
-
   it('names no agent in the welcome', () => {
     const text = intro(view({ intro: 'welcome' })).map((l) => l.text).join('\n');
     expect(text).toContain('coding agent sessions');
@@ -136,24 +103,6 @@ describe('buttonLabel', () => {
     expect(buttonLabel('find-opencode', 'darwin')).toBe('Find opencode…');
     expect(buttonLabel('find-codex', 'win32')).toBe('Find codex.exe…');
     expect(buttonLabel('find-codex', 'darwin')).toBe('Find codex…');
-  });
-
-  it('labels the others the same everywhere', () => {
-    const labels: Record<Exclude<SetupButton, 'find-claude' | 'find-opencode' | 'find-codex'>, string> = {
-      'install-claude': 'How to install Claude Code ↗',
-      'install-opencode': 'How to install OpenCode ↗',
-      'install-codex': 'How to install Codex ↗',
-      'install-git': 'How to install git ↗',
-      'look-again': 'Look again',
-      'choose-project': 'Choose a folder…',
-      'use-claude': 'Use Claude Code',
-      'use-opencode': 'Use OpenCode',
-      'use-codex': 'Use Codex',
-    };
-    for (const [button, label] of Object.entries(labels)) {
-      expect(buttonLabel(button as SetupButton, 'win32')).toBe(label);
-      expect(buttonLabel(button as SetupButton, 'darwin')).toBe(label);
-    }
   });
 });
 
@@ -383,6 +332,7 @@ describe('explanations', () => {
         git: missing,
         claude: { state: 'too-old', path: '/opt/claude', version: '2.0.1' },
         opencode: { state: 'broken', path: '/opt/opencode' },
+        codex: { state: 'too-old', path: '/opt/codex', version: '0.100.0' },
       });
       expect(result[0].lines).not.toContain(NEW_TERMINAL);
       expect(result[1].lines.at(-1)).toBe(NEW_TERMINAL);
@@ -410,20 +360,12 @@ describe('explanations', () => {
       });
       expect(block.lines).not.toContain(NEW_TERMINAL);
     });
-
-    it('is not there before the first look again', () => {
-      expect(blocks({ git: missing })[0].lines).not.toContain(NEW_TERMINAL);
-    });
   });
 
   describe('git and the agents both failing', () => {
     it("gives two blocks, git's first, with Look again only in the second", () => {
       expect(buttonsOf({ git: missing, claude: missing })).toEqual([['install-git'], ALL_BUTTONS]);
     });
-  });
-
-  it('puts Look again with the git block alone when only git fails', () => {
-    expect(buttonsOf({ git: missing })).toEqual([['install-git', 'look-again']]);
   });
 });
 

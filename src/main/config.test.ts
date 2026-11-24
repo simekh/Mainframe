@@ -19,18 +19,12 @@ describe('loadConfig', () => {
     });
   });
 
-  it('reads MAINFRAME_OPENCODE_BIN, and rejects an empty one with its own message', () => {
-    expect(loadConfig({ MAINFRAME_OPENCODE_BIN: '/x/opencode' }, '/data').opencodeBin).toBe('/x/opencode');
-    expect(() => loadConfig({ MAINFRAME_OPENCODE_BIN: '' }, '/d')).toThrow(
-      'MAINFRAME_OPENCODE_BIN must name the opencode binary, got an empty value',
-    );
-  });
-
-  it('reads MAINFRAME_CODEX_BIN, and rejects an empty one with its own message', () => {
-    expect(loadConfig({ MAINFRAME_CODEX_BIN: '/x/codex' }, '/data').codexBin).toBe('/x/codex');
-    expect(() => loadConfig({ MAINFRAME_CODEX_BIN: '' }, '/d')).toThrow(
-      'MAINFRAME_CODEX_BIN must name the codex binary, got an empty value',
-    );
+  it.each([
+    ['MAINFRAME_OPENCODE_BIN', 'opencodeBin', 'opencode'],
+    ['MAINFRAME_CODEX_BIN', 'codexBin', 'codex'],
+  ] as const)('reads %s, and rejects an empty one with its own message', (key, field, agent) => {
+    expect(loadConfig({ [key]: `/x/${agent}` }, '/data')[field]).toBe(`/x/${agent}`);
+    expect(() => loadConfig({ [key]: '' }, '/d')).toThrow(`${key} must name the ${agent} binary, got an empty value`);
   });
 
   it('reads the update settings, and the update folder only in e2e', () => {

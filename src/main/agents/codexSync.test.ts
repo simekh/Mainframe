@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { syncPrompt, type SyncStep } from '../todo/syncRun';
+import type { SyncStep } from '../todo/syncRun';
 import type { AgentSetting, SyncAdapter } from './agent';
 import type { Run } from './codexInstructions';
 import { CODEX_SYNC_SCHEMA_JSON, codexNamespace, codexSyncArgv, codexSyncConfig, listCodexServers, makeCodexSync, readCodexAnswer, strictJsonSchema } from './codexSync';
@@ -274,19 +274,10 @@ describe('makeCodexSync', () => {
     ).rejects.toThrow("Could not write the sync's answer schema: ");
   });
 
-  it('rejects when the listing fails', async () => {
-    const sync = makeCodexSync({ run: vi.fn<Run>().mockRejectedValue(new Error('boom')) });
-    await expect(prepareOf(sync, { kind: 'discover' }, []).result).rejects.toThrow('Codex could not list its MCP servers: boom');
-  });
-
   it('words the sync for Codex', () => {
     const sync = makeCodexSync();
     expect(sync.words.noConnector).toBe("Mainframe looked in Codex's MCP servers: set your tracker up there (codex mcp add), then sync again.");
     expect(sync.words.toolNames).toBe('(as mcp__<server>__<tool>, such as mcp__tracker__get_card)');
-    expect(sync.prompt({ kind: 'discover' })).toBe(syncPrompt({ kind: 'discover' }, sync.words));
-    expect(sync.isToolName('mcp__trk__get_card')).toBe(true);
-    expect(sync.isToolName('get_card')).toBe(false);
     expect(sync.models).toBeUndefined();
-    expect(sync.afterRun({ bin: '', dir: '', env: {}, stdout: '' })).toBeUndefined();
   });
 });

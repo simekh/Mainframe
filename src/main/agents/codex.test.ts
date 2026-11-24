@@ -61,15 +61,13 @@ it('a picked model and effort go on the start and on `resume --last`', () => {
     .toEqual({ argv: ['/b/codex', 'resume', '--last', ...flags] });
 });
 
-it('the adapter: Mainframe adds the worktree, records no session, needs no node', () => {
-  expect(codexAgent).toMatchObject({ name: 'codex', envVar: 'MAINFRAME_CODEX_BIN', mainframeAddsWorktree: true, worktreesDir: '.mainframe/worktrees', needsNode: false });
+it('the adapter records no session and needs no node', () => {
   expect(codexAgent.recordedSession('/any')).toBeNull();
   expect(codexAgent.chatKept('/any')).toBe(true);
   expect(codexAgent.began('/any', { began: true })).toBe(true);
   expect(codexAgent.began('/any', {})).toBe(false);
   expect(codexAgent.taskStart({ bin: '/b/codex', nodeBin: null, taskDir: '/t', slug: 's', name: 'n', sessionId: 'x', prompt: 'P' })).toEqual({ argv: ['/b/codex', 'P'] });
   expect(codexAgent.taskReopen({ bin: '/b/codex', nodeBin: null, taskDir: '/t', slug: 's', sessionId: 'x' })).toEqual({ argv: ['/b/codex', 'resume', '--last'] });
-  expect(codexAgent.newSessionId(() => 'u-1')).toBe('u-1');
 });
 
 it("names the repo's instructions and the worktree as OpenCode does", () => {

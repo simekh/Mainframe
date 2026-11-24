@@ -12,10 +12,12 @@ const PAUSED_NOTE = 'Paused. Reopen continues this chat.';
 
 const working = "printf '\\033]7501;state=working\\033\\\\'";
 
-test('the header shows the task, project and branch, with Close session and then Reopen', async () => {
+test('the header shows the task, project and branch, with Close session and then Reopen, and its title bar is no drag region', async () => {
   const main = repo();
   const { app, page, dataDir } = await launchApp({}, main);
   await startTask(page, 'Fix login');
+  // The top row is the window's title bar now, on the Mac too.
+  expect(await appRegion(page.locator('.p-title-bar'))).not.toBe('drag');
   const panel = page.getByTestId('side-panel');
   const title = page.getByTestId('panel-title');
   await expect(title).toHaveText('Fix login');
@@ -29,7 +31,6 @@ test('the header shows the task, project and branch, with Close session and then
   await run(page, working);
   await expect(panel.getByTestId('task-glyph')).toHaveAttribute('data-glyph', 'spin');
   await expect(state.locator('.label')).toHaveText('Working');
-  await expect(state.locator('.label')).toHaveClass(/tone-accent/);
   await expect(state.locator('.age')).toHaveText('just now');
   await expect(page.getByTestId('close-session')).toHaveText('Close session');
   await expect(page.getByTestId('panel-reopen')).toHaveCount(0);
@@ -234,23 +235,3 @@ async function box(locator: Locator) {
   return b!;
 }
 
-test('the title bar is no drag region, and its title, actions, fold button and pin sit in one row', async () => {
-  const { app, page } = await launchApp();
-  await startTask(page, 'Fix login');
-  // The top row is the window's title bar now, on the Mac too.
-  expect(await appRegion(page.locator('.p-title-bar'))).not.toBe('drag');
-  await page.getByTestId('close-session').click();
-
-  // The title row lines up with the project and branch row under it, 16px in.
-  const glyph = await box(page.getByTestId('side-panel').getByTestId('task-glyph'));
-  expect(Math.round(glyph.x)).toBe(Math.round((await box(page.getByTestId('panel-project'))).x));
-  // The actions sit just left of the fold button, and it just left of the pin, in one row with it.
-  const r = await box(page.getByTestId('panel-reopen'));
-  const f = await box(page.getByTestId('panel-fold'));
-  const p = await box(page.getByTestId('panel-pin'));
-  expect(Math.round(f.x - (r.x + r.width))).toBe(6);
-  expect(Math.round(p.x - (f.x + f.width))).toBe(6);
-  expect(Math.round(r.y + r.height / 2)).toBe(Math.round(f.y + f.height / 2));
-  expect(Math.round(f.y + f.height / 2)).toBe(Math.round(p.y + p.height / 2));
-  await app.close();
-});

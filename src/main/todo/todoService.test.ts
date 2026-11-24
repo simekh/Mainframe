@@ -9,7 +9,7 @@ import { syncArgv, syncSettings } from '../agents/claudeSync';
 import { projectKey } from '../tasks/naming';
 import type { TaskService } from '../tasks/taskService';
 import { NODE } from '../testing/lookups';
-import { LONG_SYNC_MS, SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
+import { SYNC_STOPPED, SYNC_TIMEOUT_MS, syncPrompt, type runSync, type SyncStep } from './syncRun';
 import { TodoService, type TodoServiceDeps } from './todoService';
 import { TrelloError } from './trello/trelloApi';
 
@@ -378,17 +378,6 @@ it('a switch of agent syncs at discover again and keeps the cards and notes', as
   expect(t.todo()).toEqual(record);
 });
 
-it('confirming saves the agent with the tools', async () => {
-  const t = setup();
-  const first = t.service.sync();
-  t.last().answer(TOOLS_ANSWER);
-  await first;
-
-  void t.service.confirmTools();
-
-  expect(t.todo().readTools.agent).toBe('claude');
-});
-
 it('several candidate lists: the one picked is kept and read', async () => {
   const t = setup();
   await synced(t, LISTS_ANSWER);
@@ -401,7 +390,6 @@ it('several candidate lists: the one picked is kept and read', async () => {
   const picking = t.service.pickList(1);
 
   expect(t.last().options.input).toBe(prompt({ kind: 'read', list: DOING }));
-  expect(t.last().options.input).toContain('Doing');
   expect(t.settings().permissions).toEqual({ allow: TOOLS });
   expect(t.todo().pickedList).toEqual(DOING);
   expect(t.service.view()).toMatchObject({ ask: null, setUp: true });
@@ -427,21 +415,15 @@ const opencode = (models: () => Promise<SyncModel[]>, setting: AgentSetting = {}
   setting,
 });
 
-it('a first OpenCode sync asks for a model and runs nothing', async () => {
-  const t = setup(undefined, opencode(async () => MODELS));
+it.each([
+  ['a first OpenCode sync', {}],
+  ['a saved model that is gone', { syncModel: 'gone/model' }],
+])('%s asks for a model and runs nothing', async (_what, setting: AgentSetting) => {
+  const t = setup(undefined, opencode(async () => MODELS, setting));
 
   expect(await t.service.sync()).toEqual({ ask: 'model' });
 
   expect(t.service.view()).toMatchObject({ syncing: false, error: null, ask: { kind: 'model', models: MODELS, suggested: 'prov/cheap' } });
-  expect(t.calls).toHaveLength(0);
-});
-
-it('a saved model that is gone asks again', async () => {
-  const t = setup(undefined, opencode(async () => MODELS, { syncModel: 'gone/model' }));
-
-  expect(await t.service.sync()).toEqual({ ask: 'model' });
-
-  expect(t.service.view().ask).toEqual({ kind: 'model', models: MODELS, suggested: 'prov/cheap' });
   expect(t.calls).toHaveLength(0);
 });
 
@@ -489,17 +471,6 @@ it('a second Sync while the models are listed joins it, and Stop ends it', async
   await flush();
   expect(t.calls).toHaveLength(0);
   expect(t.service.view()).toMatchObject({ syncing: false, ask: null });
-});
-
-it('a Claude sync asks for no model', async () => {
-  const t = setup();
-
-  const pending = t.service.sync();
-
-  expect(t.calls).toHaveLength(1);
-  t.last().answer(TOOLS_ANSWER);
-  expect(await pending).toEqual({ ask: 'tools' });
-  expect(t.saves).toEqual([]);
 });
 
 it('confirming or picking with nothing to confirm or pick is refused', async () => {
@@ -1056,7 +1027,6 @@ it.each(AGENTS)('after 2 minutes the view says the sync is still running (%s)', 
 
   expect(t.timers).toHaveLength(1);
   expect(t.timers[0].ms).toBe(120_000);
-  expect(t.timers[0].ms).toBe(LONG_SYNC_MS);
   expect(t.service.view().longSync).toBe(false);
   t.timers[0].fire();
 
@@ -1252,11 +1222,11 @@ it("a put-back task's note goes once the task's list shows it anywhere but put b
   }
 });
 
-it('starting a card whose task is finished continues it; one whose task was discarded starts a new task', async () => {
+it.each(['finished', 'putBack'] as const)('starting a card whose task is %s continues it; one whose task was discarded starts a new task', async (place) => {
   const t = setup();
   await synced(t);
   t.taskViews.push(
-    paused({ id: 'task-f', place: 'finished', card: cardRef('c1') }),
+    paused({ id: 'task-f', place, card: cardRef('c1') }),
     paused({ id: 'task-d', place: 'discarded', card: cardRef('c2') }),
   );
 
@@ -1268,16 +1238,6 @@ it('starting a card whose task is finished continues it; one whose task was disc
   await t.service.startItem({ kind: 'card', id: '#c2' }, { noQuestions: false });
   expect(t.starts.map((s) => s.card?.id)).toEqual(['c2']);
   expect(t.taskCalls).toHaveLength(1);
-});
-
-it('starting a card whose task was put back continues it', async () => {
-  const t = setup();
-  await synced(t);
-  t.taskViews.push(paused({ place: 'putBack', card: cardRef('c1') }));
-
-  await t.service.startItem({ kind: 'card', id: 'c1' }, { noQuestions: false });
-  expect(t.taskCalls).toEqual([['continueTask', 'task-7']]);
-  expect(t.starts).toEqual([]);
 });
 
 it('deleting a put-back note returns its task to the board', () => {

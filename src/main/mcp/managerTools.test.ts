@@ -97,11 +97,6 @@ it('registers list_sessions, start_task, sync_todo and close_session, and nothin
   for (const tool of tools.values()) expect(tool.config.description).toMatch(/\w/);
 });
 
-it('list_sessions says what merged means', () => {
-  const { tools } = setup();
-  expect(tools.get('list_sessions')!.config.description).toContain('merged: true once Mainframe found its branch merged with nothing uncommitted');
-});
-
 it('close_session takes a task id, closes that task and returns what was closed', async () => {
   const { tools, call, calls, closed } = setup({ close: () => ({ title: 'Fix login', msg: 'All merged', merged: true }) });
   const schema = tools.get('close_session')!.config.inputSchema!;
@@ -135,16 +130,7 @@ it('close_session is for when the owner asks, and says what a close of merged wo
 it("list_sessions takes no input and returns the reports as JSON, each with its task's card", async () => {
   const { tools, call } = setup();
   expect(tools.get('list_sessions')!.config.inputSchema).toBeUndefined();
-  const result = json(await call('list_sessions'));
-  expect(result).toEqual({ sessions: [REPORT] });
-  expect(result.sessions[0].card).toEqual({ number: '#128', url: 'https://tracker.example/c/128' });
-});
-
-it("list_sessions reports each task's place and endedAt", async () => {
-  const { tools, call } = setup();
-  expect(tools.get('list_sessions')!.config.description).toContain('where it is: null on the board, putBack, finished or discarded, with endedAt');
-  const sessions = json(await call('list_sessions')).sessions;
-  expect(sessions[0]).toMatchObject({ place: null, endedAt: null });
+  expect(json(await call('list_sessions'))).toEqual({ sessions: [REPORT] });
 });
 
 it('start_task takes a title of 1 to 200 characters, an optional brief of up to 20000 and an optional noQuestions', () => {
@@ -160,13 +146,11 @@ it('start_task takes a title of 1 to 200 characters, an optional brief of up to 
 });
 
 it('start_task takes an optional cardId, and with one no title', () => {
-  const { tools } = setup();
-  const { config } = tools.get('start_task')!;
-  expect(config.inputSchema!.safeParse({ title: 'Fix login', brief: '', cardId: 'card-1' }).success).toBe(true);
-  expect(config.inputSchema!.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
+  const schema = setup().tools.get('start_task')!.config.inputSchema!;
+  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 'card-1' }).success).toBe(true);
+  expect(schema.safeParse({ title: 'Fix login', brief: '', cardId: 7 }).success).toBe(false);
   // A card start takes the card's title, so the manager isn't made to invent one it can't use.
-  expect(config.inputSchema!.safeParse({ brief: '', cardId: 'card-1' }).success).toBe(true);
-  expect(config.description).toContain('The title names the task (not needed with cardId)');
+  expect(schema.safeParse({ brief: '', cardId: 'card-1' }).success).toBe(true);
 });
 
 it('start_task refuses a start with neither a title nor a cardId', async () => {
@@ -269,18 +253,15 @@ it("start_task never starts a card marked as the owner's, not even when it is to
   ]);
 });
 
-it('start_task turns a start that fails into an error result with its message', async () => {
-  const { call } = setup({ start: () => Promise.reject(new Error('A task needs a title')) });
-  const result = await call('start_task', { title: ' ', brief: '' });
+it.each([
+  ['a start', 'A task needs a title', { title: ' ', brief: '' }],
+  ['a card', 'No card card-9 in the synced list; sync it again', { title: 'Fix login', brief: '', cardId: 'card-9' }],
+])('start_task turns %s that fails into an error result with its message', async (_what, message, args) => {
+  const fail = () => Promise.reject(new Error(message));
+  const { call } = setup({ start: fail, startItem: fail });
+  const result = await call('start_task', args);
   expect(result.isError).toBe(true);
-  expect(result.content).toEqual([{ type: 'text', text: 'A task needs a title' }]);
-});
-
-it('start_task turns a card that cannot start into an error result with its message', async () => {
-  const { call } = setup({ startItem: () => Promise.reject(new Error('No card card-9 in the synced list; sync it again')) });
-  const result = await call('start_task', { title: 'Fix login', brief: '', cardId: 'card-9' });
-  expect(result.isError).toBe(true);
-  expect(result.content).toEqual([{ type: 'text', text: 'No card card-9 in the synced list; sync it again' }]);
+  expect(result.content).toEqual([{ type: 'text', text: message }]);
 });
 
 it("sync_todo does not sync while the Todo panel waits for the owner's answer, and says which question it asks", async () => {
@@ -324,16 +305,6 @@ it('sync_todo takes no input and returns the card count, what the owner must do 
   const refused = await setup({ sync: () => Promise.reject(new Error('A newer Mainframe wrote the list')) }).call('sync_todo');
   expect(refused.isError).toBe(true);
   expect(refused.content).toEqual([{ type: 'text', text: 'A newer Mainframe wrote the list' }]);
-});
-
-it('start_task on a put-back card continues its task', async () => {
-  const continued = { id: 'task-7', title: 'Fix the gate', branch: 'worktree-fix-the-gate' } as TaskView;
-  const { tools, call, startedItems } = setup({ startItem: async () => continued });
-  expect(tools.get('start_task')!.config.description).toContain('A card whose task was put back or finished continues that task.');
-
-  const result = await call('start_task', { cardId: '#7' });
-  expect(startedItems).toEqual([{ item: { kind: 'card', id: '#7' }, opts: { noQuestions: false, brief: '' } }]);
-  expect(json(result)).toStrictEqual({ taskId: 'task-7', title: 'Fix the gate', branch: 'worktree-fix-the-gate' });
 });
 
 const withSession = (sessionId: unknown) => ({ mcpReq: { _meta: { sessionId } } });

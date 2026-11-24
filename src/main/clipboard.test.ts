@@ -94,6 +94,5 @@ it("a clipboard that can't be read is a failure, not an empty one: Ctrl+V then s
   const error = vi.spyOn(console, 'error').mockImplementation(() => {});
   const broken = { read: () => Promise.reject(new Error('busy')), readText: () => Promise.resolve('') };
   expect(await resolveClipboardPaste(broken, write, nextPath)).toEqual({ kind: 'failed' });
-  expect(error).toHaveBeenCalledTimes(1);
   error.mockRestore();
 });

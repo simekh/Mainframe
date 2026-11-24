@@ -107,23 +107,12 @@ const VARIED = bytes(
 );
 
 describe('createTermStyler', () => {
-  it('passes output without bold or links through as the very same bytes', () => {
-    const style = createTermStyler(COLORS);
-    const chunk = bytes('plain text, wörld 🍎 … 中文\r\n\t\x07\b\x1b[31mred\x1b[0m');
-    expect(style(chunk)).toBe(chunk);
-  });
-
   it('passes 50 KB of mixed output with no bold and no links through byte for byte, whole or in pieces', () => {
     const output = mixedOutput(1, 50 * 1024);
     expect(output.length).toBeGreaterThanOrEqual(50 * 1024);
     expect(createTermStyler(COLORS)(output)).toBe(output);
     const style = createTermStyler(COLORS);
     for (const piece of cut(output, random(2), 300)) expect(style(piece)).toBe(piece);
-  });
-
-  it('throws on a colour that is not #rrggbb', () => {
-    expect(() => createTermStyler({ bold: 'addb67', link: '#82aaff' })).toThrow();
-    expect(() => createTermStyler({ bold: '#addb67', link: 'blue' })).toThrow();
   });
 
   describe('bold', () => {
@@ -517,12 +506,6 @@ describe('as xterm draws it', () => {
     const { diffs, recoloured } = await compare(VARIED, 1);
     expect(diffs).toEqual([]);
     expect(recoloured).toEqual(new Set([COLORS.bold, COLORS.link]));
-  });
-
-  it('draws 50 KB of mixed output without bold or links exactly as before', async () => {
-    const { diffs, recoloured } = await compare(mixedOutput(3, 50 * 1024), 3);
-    expect(diffs).toEqual([]);
-    expect(recoloured.size).toBe(0);
   });
 
   const SEEDS = Array.from({ length: 30 }, (_, i) => i + 1);

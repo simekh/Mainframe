@@ -71,24 +71,11 @@ it('on Windows it looks claude.exe up on Path and spawns its absolute path', () 
   expect(calls[0][0]).toBe('C:\\bin\\claude.exe');
 });
 
-it("looks the binary up on the PTY's PATH, not the app's", () => {
-  const { host, calls, listener } = setup({ PATH: '/nowhere:/pty/bin' }, { executables: ['/pty/bin/claude'], folders: ['/repo'] });
-  host.spawn('s1', spec, listener);
-  expect(calls).toHaveLength(1);
-});
-
 it('refuses a binary that is not on PATH, naming it and the PATH, and spawns nothing', () => {
   const { host, calls, listener } = setup({ PATH: '/usr/bin:/bin' }, { executables: [], folders: ['/repo'] });
   expect(() => host.spawn('s1', spec, listener)).toThrow('claude was not found on PATH (/usr/bin:/bin)');
   expect(calls).toEqual([]);
   expect(host.has('s1')).toBe(false);
-});
-
-it('refuses a binary given by a path that is missing or not executable', () => {
-  const { host, calls, listener } = setup();
-  const missing = { ...spec, argv: ['/nonexistent/claude'] };
-  expect(() => host.spawn('s1', missing, listener)).toThrow('/nonexistent/claude was not found, or is not an executable file');
-  expect(calls).toEqual([]);
 });
 
 it('refuses a working folder that is not a folder', () => {

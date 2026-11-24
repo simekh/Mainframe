@@ -21,18 +21,11 @@ describe('isAtLeast', () => {
 });
 
 describe('checkGit', () => {
-  it('is found with its path and version', async () => {
-    const run = fakeRun({ '/usr/bin/git': 'git version 2.56.0\n' });
-    expect(await checkGit(mac(mapPath, '/usr/bin/git'), run)).toEqual({ state: 'found', path: '/usr/bin/git', version: '2.56.0' });
-  });
-
-  it("keeps Windows' whole version token", async () => {
-    const run = fakeRun({ 'C:\\bin\\git.exe': 'git version 2.56.0.windows.1\n' });
-    expect(await checkGit(win(winEnv, 'C:\\bin\\git.exe'), run)).toEqual({
-      state: 'found',
-      path: 'C:\\bin\\git.exe',
-      version: '2.56.0.windows.1',
-    });
+  it.each([
+    ['macOS', mac(mapPath, '/usr/bin/git'), '/usr/bin/git', 'git version 2.56.0\n', '2.56.0'],
+    ["Windows, keeping its whole version token", win(winEnv, 'C:\\bin\\git.exe'), 'C:\\bin\\git.exe', 'git version 2.56.0.windows.1\n', '2.56.0.windows.1'],
+  ])('is found with its path and version on %s', async (_os, lookup, path, stdout, version) => {
+    expect(await checkGit(lookup, fakeRun({ [path]: stdout }))).toEqual({ state: 'found', path, version });
   });
 
   it('is missing when PATH has no git, and runs nothing', async () => {

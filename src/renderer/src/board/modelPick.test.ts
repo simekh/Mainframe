@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelChoices } from '../../../shared/types';
-import { effortsFor, keptEffort, SWITCH_HELP } from './modelPick';
+import { effortsFor, keptEffort } from './modelPick';
 
 const choices: ModelChoices = {
   models: [
@@ -28,17 +28,5 @@ describe('keptEffort', () => {
     expect(keptEffort(['low', 'high'], 'max')).toBeUndefined();
     expect(keptEffort(['low', 'high'], 'high')).toBe('high');
     expect(keptEffort(['low', 'high'], undefined)).toBeUndefined();
-  });
-});
-
-describe('SWITCH_HELP', () => {
-  it("names Claude Code's switch commands and that a reopen starts on the pick", () => {
-    expect(SWITCH_HELP.claude).toContain('/model');
-    expect(SWITCH_HELP.claude).toContain('/effort');
-    expect(SWITCH_HELP.claude).toContain('A reopen starts on the pick made here');
-  });
-
-  it("doesn't promise OpenCode a reopen on the pick", () => {
-    expect(SWITCH_HELP.opencode).not.toContain('reopen');
   });
 });

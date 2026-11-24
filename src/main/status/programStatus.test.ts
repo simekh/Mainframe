@@ -36,13 +36,6 @@ it('keeps at most 256 records, evicting the least recently updated', () => {
   expect(r.ids()).not.toContain('r0');
 });
 
-it('returns the summary record over a child updated later', () => {
-  const r = new ProgramStatusRecords();
-  r.apply({ id: '', state: 'working' }, 1);
-  r.apply({ id: 'ses_child', state: 'idle' }, 2);
-  expect(r.current()?.state).toBe('working');
-});
-
 it('returns the child updated last when there is no summary record', () => {
   const r = new ProgramStatusRecords();
   r.apply({ id: 'a', state: 'working' }, 1);

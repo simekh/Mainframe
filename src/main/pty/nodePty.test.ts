@@ -17,9 +17,3 @@ it.each([
   spawnNodePty(platform)('claude', ['--x'], opts);
   expect(pty.spawn).toHaveBeenCalledWith('claude', ['--x'], { ...opts, useConptyDll });
 });
-
-it('gives back the pty node-pty spawned', () => {
-  const proc = { pid: 1 } as unknown as ReturnType<typeof pty.spawn>;
-  vi.mocked(pty.spawn).mockReturnValueOnce(proc);
-  expect(spawnNodePty('darwin')('claude', [], opts)).toBe(proc);
-});

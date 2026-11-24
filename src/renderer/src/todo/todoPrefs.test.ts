@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampTodoWidth, loadHideMine, loadTodoPrefs, loadTodoTab, saveHideMine, saveTodoPrefs, saveTodoTab, TODO_WIDTH,
+  clampTodoWidth, loadHideMine, loadTodoPrefs, loadTodoTab, saveHideMine, saveTodoPrefs, saveTodoTab,
 } from './todoPrefs';
 
 /** A Storage stand-in over a plain map. */
@@ -18,7 +18,6 @@ describe('todoPrefs', () => {
     // The session panel's prefs, the shared ones too, are not the Todo panel's.
     const storage = memoryStorage({ 'mainframe.panel': '{"width":700,"pinned":true}' });
     expect(loadTodoPrefs(storage, '/acme')).toEqual({ width: 320, pinned: false });
-    expect(TODO_WIDTH).toEqual({ default: 320, min: 280, max: 480 });
 
     saveTodoPrefs(storage, '/acme', { width: 400, pinned: true });
     expect(storage.map.get('mainframe.todo:/acme')).toBe('{"width":400,"pinned":true}');

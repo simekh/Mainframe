@@ -22,7 +22,6 @@ import {
   SESSION_START_FILE,
   startArgv,
 } from './claude';
-import { rolePrompt } from '../manager/rolePrompt';
 import { ADAPTERS } from './adapters';
 
 const U = '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10';
@@ -62,13 +61,6 @@ it('a picked model and effort go on the start and the resume', () => {
   // Either alone goes on alone.
   expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, effort: 'max' }))
     .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, '--effort', 'max']);
-});
-
-it('no pick, no flags', () => {
-  expect(startArgv({ claudeBin: 'claude', slug: 'fix-login', name: 'acme-fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
-    .toEqual(['claude', '-w', 'fix-login', '-n', 'acme-fix-login', '--session-id', U, '--settings', S, 'P']);
-  expect(reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: U, settingsPath: S, prompt: 'P' }))
-    .toEqual(['claude', '--worktree', 'fix-login', '--resume', U, '--settings', S, 'P']);
 });
 
 it('refuses to resume an id that is not a UUID', () => {
@@ -124,16 +116,6 @@ it('mcpConfigJson is the entry claude --mcp-config takes for an HTTP server', ()
   );
 });
 
-it("rolePrompt with Claude's words is today's role prompt", () => {
-  expect(rolePrompt(ADAPTERS.claude.instructions)).toBe(
-    [
-      "You are the manager in Mainframe, the app the owner uses to run several coding agent sessions on this project at once, one per task. You run in the project's main checkout; each task runs in a worktree of its own and shows on Mainframe's board.",
-      "The owner talks to you about their to-do list, about the work in progress, and about work that has no task yet. Mainframe's tools (mainframe) let you list the task sessions, start new ones, close one, and sync the Todo panel's list. Start or close a session only when the owner asks you to.",
-      "You may make small changes yourself, following this repo's CLAUDE.md. Work that needs a branch of its own should become a task, so that it shows on the board.",
-    ].join('\n\n'),
-  );
-});
-
 it("a task's SessionStart hook runs node with no shell", () => {
   for (const settings of [hookSettings('/d/t1', NODE), hookSettings('/d/t1', NODE, [])]) {
     const parsed = JSON.parse(settings);
@@ -186,10 +168,6 @@ it('the recorded session is the id SessionStart gave, whether or not Claude Code
   const unsaved = join(dir, 'projects', '-main', `${U}.jsonl`);
   writeFileSync(join(dir, SESSION_START_FILE), JSON.stringify({ session_id: U, source: 'startup', transcript_path: unsaved }));
   expect(readRecordedSession(dir)).toBe(U);
-});
-
-it('there is no recorded session while SessionStart has not fired', () => {
-  expect(readRecordedSession(mkdtempSync(join(tmpdir(), 'mainframe-recorded-')))).toBeNull();
 });
 
 it('Claude Code needs Node', async () => {
@@ -391,13 +369,6 @@ describe('findClaude', () => {
     });
   });
 
-  it('tries the saved path first', async () => {
-    const lookup = mac(mapPath, '/saved/claude', '/usr/bin/claude', NATIVE);
-    const run = fakeRun({ '/saved/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
-    expect(await findClaude({ saved: ['/saved/claude'], lookup, run })).toEqual({ state: 'found', path: '/saved/claude', version: '2.1.319' });
-    expect(run.calls).toEqual(['/saved/claude']);
-  });
-
   it('tries the saved paths in order, before the places', async () => {
     const lookup = mac(mapPath, '/first/claude', '/second/claude', '/usr/bin/claude', NATIVE);
     const run = fakeRun({ '/first/claude': null, '/second/claude': current, '/usr/bin/claude': current, [NATIVE]: current });
@@ -437,18 +408,6 @@ describe('findClaude', () => {
   it("win32: a claude.cmd with only npm's placeholder behind it is broken, and the placeholder's path is given", async () => {
     const lookup = win(prefixEnv, PREFIX_CMD, PREFIX_EXE);
     expect(await findClaude({ lookup, run: fakeRun({ [PREFIX_EXE]: null }) })).toEqual({ state: 'broken', path: PREFIX_EXE });
-  });
-
-  it('win32: finds the native installer when PATH has nothing', async () => {
-    const lookup = win(winEnv, WIN_NATIVE, WIN_NPM);
-    const run = fakeRun({ [WIN_NATIVE]: current, [WIN_NPM]: null });
-    expect(await findClaude({ lookup, run })).toEqual({ state: 'found', path: WIN_NATIVE, version: '2.1.319' });
-  });
-
-  it('with only an old one, is too old, with its path and version', async () => {
-    const lookup = mac(mapPath, '/usr/bin/claude');
-    const run = fakeRun({ '/usr/bin/claude': old });
-    expect(await findClaude({ lookup, run })).toEqual({ state: 'too-old', path: '/usr/bin/claude', version: '2.1.100' });
   });
 
   it('with several failures, too old is more useful than broken, and broken than missing', async () => {

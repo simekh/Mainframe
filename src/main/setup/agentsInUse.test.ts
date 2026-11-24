@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,16 +50,6 @@ function onDisk(
 }
 
 describe('AgentsInUse', () => {
-  it('runs on the saved default while it works', () => {
-    const a = agents({ defaultAgent: 'opencode' }, { claude: found(C), opencode: found(O), codex: missing });
-    expect(a.defaultAgent()).toBe('opencode');
-  });
-
-  it('falls back to another ticked agent when the saved default does not work', () => {
-    const a = agents({ defaultAgent: 'claude', agents: { claude: { enabled: true } } }, { claude: missing, opencode: found(O), codex: missing });
-    expect(a.defaultAgent()).toBe('opencode');
-  });
-
   it("without node Claude Code doesn't work this run: it drops out of ticked(), and the default falls back", () => {
     const ticked = { defaultAgent: 'claude' as const, agents: { claude: { enabled: true }, opencode: { enabled: true } } };
     const { a } = onDisk(ticked, both, { nodeBin: null });
@@ -126,25 +116,11 @@ describe('AgentsInUse', () => {
   });
 
   it('saveAgentSetting writes settings.json and inUse() sees it', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'mainframe-agents-'));
-    try {
-      const settings: AppSettings = { defaultAgent: 'opencode', agents: { opencode: { enabled: true, syncModel: 'p/old' } }, welcomeSeen: true };
-      const a = new AgentsInUse({ dataDir, settings, checks: { claude: found(C), opencode: found(O), codex: missing }, envBins: {}, ...deps, onChange: () => {} });
-
-      a.saveAgentSetting('opencode', { syncModel: 'p/new' });
-
-      const setting = { enabled: true, syncModel: 'p/new' };
-      expect(a.inUse().setting).toEqual(setting);
-      expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({
-        version: 2,
-        defaultAgent: 'opencode',
-        agents: { opencode: setting },
-        welcomeSeen: true,
-      });
-      expect(readSettings(dataDir, () => {})).toEqual({ defaultAgent: 'opencode', agents: { opencode: setting }, welcomeSeen: true });
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-    }
+    const h = onDisk({ defaultAgent: 'opencode', agents: { opencode: { enabled: true, syncModel: 'p/old' } }, welcomeSeen: true }, both);
+    h.a.saveAgentSetting('opencode', { syncModel: 'p/new' });
+    const setting = { enabled: true, syncModel: 'p/new' };
+    expect(h.a.inUse().setting).toEqual(setting);
+    expect(h.saved()).toEqual({ defaultAgent: 'opencode', agents: { opencode: setting }, welcomeSeen: true });
   });
 
   it("setTicked refuses an agent that doesn't work, the saved default and the last tick, and Claude Code without Node", () => {

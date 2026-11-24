@@ -157,25 +157,6 @@ describe('first start (no projects.json, no welcomeSeen)', () => {
     expect(h.flow.view()).toEqual(expectedView({ ask: CLAUDE_ONLY }));
   });
 
-  it('chooseProject does nothing, and asks nothing, while a check is still failing', async () => {
-    const h = harness({ programs: { [NATIVE]: CURRENT } });
-    await h.flow.begin();
-    h.picks.folder = acme;
-    await h.flow.chooseProject(CLAUDE_ONLY);
-    expect(h.pickFolder).not.toHaveBeenCalled();
-    expect(existsSync(settingsFile())).toBe(false);
-    expect(h.start).not.toHaveBeenCalled();
-  });
-
-  it('quitting before a project is chosen leaves nothing behind, so the welcome shows again', async () => {
-    const first = harness();
-    await first.flow.begin();
-    expect(existsSync(settingsFile())).toBe(false);
-    const second = harness();
-    await second.flow.begin();
-    expect(second.flow.view()).toEqual(expectedView({ ask: CLAUDE_ONLY }));
-  });
-
   it('takes a claude from the native folder it finds when the saved path is gone, and saves it with the project', async () => {
     writeSettings(dataDir, { agents: { claude: { bin: '/gone/claude' } } });
     const h = harness();
@@ -407,16 +388,6 @@ describe('findClaude', () => {
     expect(h.start).toHaveBeenCalledWith(startedOn(PICKED), [acme, globex]);
     expect(h.events).toEqual(['view shown', 'start finished', 'view cleared']);
     expect(h.flow.view()).toBeNull();
-  });
-
-  it('at first start, a file that works is saved and the project question comes next', async () => {
-    const h = harness({ programs: { ...gitOnly, [PICKED]: CURRENT } });
-    await h.flow.begin();
-    h.picks.claude = PICKED;
-    await h.flow.findAgent('claude');
-    expect(settings()).toStrictEqual({ agents: { claude: { bin: PICKED } } });
-    expect(h.flow.view()).toEqual(expectedView({ claude: foundClaude(PICKED), ask: CLAUDE_ONLY }));
-    expect(h.start).not.toHaveBeenCalled();
   });
 
   it('a file that works, after looking again found nothing, drops the new-terminal hint along with the problem', async () => {

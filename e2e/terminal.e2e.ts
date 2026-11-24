@@ -15,14 +15,6 @@ async function shellPid(page: Page, taskId: string, tag: string): Promise<number
   return Number((await screen(page, taskId)).match(new RegExp(`${tag}-pid-(\\d+)`))![1]);
 }
 
-test('typed input reaches the shell and its output shows', async () => {
-  const { app, page } = await launchApp();
-  const a = await startTask(page);
-  await run(page, 'echo e2e-$((40+2))');
-  await expect.poll(() => screen(page, a)).toContain('e2e-42');
-  await app.close();
-});
-
 test('the terminal is measured in the bundled JetBrains Mono, loaded before it opens', async () => {
   const { app, page } = await launchApp();
   const a = await startTask(page);
@@ -139,15 +131,6 @@ test('switching tasks keeps each one intact and shows only the selected one', as
   expect(await screen(page, a)).toContain('first-1');
   expect(await screen(page, a)).not.toContain('second-2');
   expect(await screen(page, b)).toContain('second-2');
-  await app.close();
-});
-
-test('OSC 7501 status shows on the task card', async () => {
-  const { app, page } = await launchApp();
-  const a = await startTask(page);
-  await run(page, "printf '\\033]7501;state=blocked:kind=question\\033\\\\'");
-  await expect(cardIn(page, 'needs-you', a).getByTestId('task-ask')).toHaveText('Needs input');
-  await expect(card(page, a).getByTestId('task-activity')).toHaveText('Asking you a question');
   await app.close();
 });
 

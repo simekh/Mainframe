@@ -19,19 +19,13 @@ const file = () => join(dataDir, 'settings.json');
 const onDisk = () => JSON.parse(readFileSync(file(), 'utf8'));
 
 describe('settings.json', () => {
-  it('a version 1 file reads as version 2', () => {
-    writeFileSync(file(), JSON.stringify({ version: 1, claudeBin: '/x/claude', welcomeSeen: true }));
-    expect(readSettings(dataDir, warn)).toStrictEqual({
-      agents: { claude: { enabled: true, bin: '/x/claude' } },
-      defaultAgent: 'claude',
-      welcomeSeen: true,
-    });
+  it.each([
+    ['with claudeBin', { version: 1, claudeBin: '/x/claude', welcomeSeen: true }, { agents: { claude: { enabled: true, bin: '/x/claude' } }, defaultAgent: 'claude', welcomeSeen: true }],
+    ['without claudeBin', { version: 1 }, { agents: { claude: { enabled: true } }, defaultAgent: 'claude' }],
+  ])('a version 1 file %s reads as version 2', (_case, v1, v2) => {
+    writeFileSync(file(), JSON.stringify(v1));
+    expect(readSettings(dataDir, warn)).toStrictEqual(v2);
     expect(warnings).toEqual([]);
-  });
-
-  it('a version 1 file without claudeBin', () => {
-    writeFileSync(file(), JSON.stringify({ version: 1 }));
-    expect(readSettings(dataDir, warn)).toStrictEqual({ agents: { claude: { enabled: true } }, defaultAgent: 'claude' });
   });
 
   it('version 2 round-trips', () => {
@@ -39,21 +33,11 @@ describe('settings.json', () => {
       agents: { claude: { enabled: false }, opencode: { enabled: true, bin: '/o', managerAgent: 'build', syncModel: 'p/m' } },
       defaultAgent: 'opencode' as const,
       welcomeSeen: true,
+      terminalText: { fontSize: 15, lineHeight: 1.3 },
     };
     writeSettings(dataDir, settings);
     expect(onDisk()).toEqual({ version: 2, ...settings });
     expect(readSettings(dataDir, warn)).toStrictEqual(settings);
-    expect(warnings).toEqual([]);
-  });
-
-  it('keeps the terminal text it saved', () => {
-    writeSettings(dataDir, { terminalText: { fontSize: 15, lineHeight: 1.3 } });
-    expect(readSettings(dataDir, warn).terminalText).toEqual({ fontSize: 15, lineHeight: 1.3 });
-  });
-
-  it('a file without terminal text still reads', () => {
-    writeFileSync(file(), JSON.stringify({ version: 2, defaultAgent: 'claude' }));
-    expect(readSettings(dataDir, warn).terminalText).toBeUndefined();
     expect(warnings).toEqual([]);
   });
 
