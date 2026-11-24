@@ -114,7 +114,7 @@ export async function launchApp(
 
 /**
  * Makes the window `width` px wide, as the owner dragging its edge does; resolves once the page has
- * that width and has laid itself out at it. For a test that needs room for the manager's column, the
+ * that width and the app's resize observers have reported it. For a test that needs room for the manager's column, the
  * board and the panel at their own widths beside the project list.
  */
 export async function setWindowWidth(app: ElectronApplication, page: Page, width: number): Promise<void> {
@@ -126,7 +126,8 @@ export async function setWindowWidth(app: ElectronApplication, page: Page, width
   }, width);
   // `innerWidth` changes as the resize arrives, but the panes take their widths from ResizeObservers, which report
   // only in the next frame the page renders: until then it is laid out for the old width. An observer made here
-  // reports after the app's, in the same frame.
+  // reports after the app's on the same element depth, in the same frame. Observers on elements that resize only
+  // because of those reports (a terminal inside a pane) may report later in that frame, after this has resolved.
   await page.evaluate(
     (w) =>
       new Promise<void>((done) => {
