@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
@@ -15,6 +15,14 @@ async function clickOpenProject(app: ElectronApplication, page: Page): Promise<v
     await page.getByTestId('open-project').click();
   }
 }
+
+// On 2026-11-20 a test passing this ran on the owner's real data folder and rewrote their tasks.
+test('a test app that names no data folder still runs in a temp one, never the real one', async () => {
+  const { app, dataDir } = await launchApp({ MAINFRAME_DATA_DIR: undefined });
+  // Real paths: on the Mac the temp folder is behind a symlink, on Windows it may be a short 8.3 name.
+  expect(realpathSync.native(await app.evaluate(({ app }) => app.getPath('userData')))).toBe(realpathSync.native(dataDir));
+  await app.close();
+});
 
 test('the window follows its system: the Mac keeps its menu and the room for its window buttons; Windows and Linux have neither', async () => {
   const { app, page } = await launchApp();
