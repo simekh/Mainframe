@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 · 24 Nov 2026
+
 New: The Todo panel reads a Trello list directly, in about a second and without an AI run: connect Trello once in Settings and pick the board and list.
 
 ## 0.2.1 · 20 Nov 2026
