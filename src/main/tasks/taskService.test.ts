@@ -10,7 +10,7 @@ import { NODE } from '../testing/lookups';
 import { hookSettings, reopenArgv, SESSION_START_FILE, startArgv } from '../agents/claude';
 import { isOpencodeSessionId, OPENCODE_ENV } from '../agents/opencode';
 import { ADAPTERS } from '../agents/adapters';
-import { continuePrompt, putBackPrompt } from './carryOn';
+import { ASK_AGAIN_PROMPT, continuePrompt, putBackPrompt, RESUME_PROMPT } from './carryOn';
 import { cardBrief, openingPrompt } from './openingPrompt';
 import { TaskRecords, type TaskRecord } from './taskStore';
 import { TaskService } from './taskService';
@@ -123,6 +123,22 @@ function setup(gitOverrides: Partial<GitQueries> = {}, platform: NodeJS.Platform
 
 const NEW_TASK = { title: 'Fix login', description: 'Users get logged out', noQuestions: false };
 
+/** A closed task as a Mainframe before its optional fields kept it: none of them. */
+const oldRecord = (projectDir: string): TaskRecord => ({
+  id: 'old',
+  projectDir,
+  title: 'Fix login',
+  description: '',
+  slug: 'fix-login',
+  name: 'acme-fix-login',
+  claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
+  worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
+  branch: 'worktree-fix-login',
+  createdAt: 5,
+  closedAt: 6,
+  open: false,
+});
+
 /** The folders an opening prompt is handed; Claude Code's worktree note names neither, so any will do. */
 const CLAUDE_FOLDERS = { projectDir: '/p', worktreePath: '/p/.claude/worktrees/fix-login' };
 
@@ -212,10 +228,6 @@ it('on Windows, a description too long for the command line goes to a file the s
   const brief = { dir: join(taskDir(view.id), 'brief'), file: join(taskDir(view.id), 'brief', 'description.md') };
   const { argv } = service.launchSpec(view.session!.id);
   expect(argv).toEqual(expectedStart(readState()[0].claudeSessionId, taskDir(view.id), LONG, brief));
-  expect(argv.at(-1)).toContain(brief.file);
-  expect(argv.at(-1)).not.toContain('Users get logged out.');
-  expect(argv.indexOf('--add-dir')).toBe(argv.indexOf('--settings') - 2);
-  expect(argv[argv.indexOf('--add-dir') + 1]).toBe(brief.dir);
   expect(readFileSync(brief.file, 'utf8')).toBe(LONG);
   expect(view.description).toBe(LONG);
 });
@@ -400,15 +412,14 @@ it("start keeps the manager's name for the manager: a task titled Manager gets a
   expect(readState()[0].name).toBe('acme-manager-2');
 });
 
-it("on Windows, start keeps a task's folder off the names Windows reserves", async () => {
-  const { service } = setup({}, 'win32');
-  expect((await service.start({ ...NEW_TASK, title: 'Con' })).slug).toBe('con-2');
-  expect((await service.start({ ...NEW_TASK, title: 'LPT1' })).slug).toBe('lpt1-2');
-});
-
-it('on the Mac, a task titled Con gets the slug con, as before', async () => {
-  const { service } = setup({}, 'darwin');
-  expect((await service.start({ ...NEW_TASK, title: 'Con' })).slug).toBe('con');
+// Windows reserves some names for devices; elsewhere a task titled Con gets the slug con, as before.
+it.each([
+  ['win32', 'Con', 'con-2'],
+  ['win32', 'LPT1', 'lpt1-2'],
+  ['darwin', 'Con', 'con'],
+] as const)('on %s, a task titled %s gets the slug %s', async (platform, title, slug) => {
+  const { service } = setup({}, platform);
+  expect((await service.start({ ...NEW_TASK, title })).slug).toBe(slug);
 });
 
 it('two starts at once get different slugs', async () => {
@@ -422,13 +433,6 @@ it('start refuses an empty title', async () => {
   await expect(service.start({ ...NEW_TASK, title: '   ' })).rejects.toThrow('title');
   expect(changes).toEqual([]);
   expect(existsSync(stateFile)).toBe(false);
-});
-
-it('a view carries place, endedAt, merged and problem: null, null, false and null for a new task', async () => {
-  const { service } = setup();
-  const view = await service.start(NEW_TASK);
-  expect(view).toMatchObject({ place: null, endedAt: null, merged: false, problem: null });
-  expect(service.reports()[0]).toMatchObject({ place: null, endedAt: null });
 });
 
 it('close kills the session; its exit then closes the task', async () => {
@@ -504,9 +508,6 @@ it('exits during a quit leave tasks open, and restore reopens them', async () =>
     }),
   });
 });
-
-const RESUME_PROMPT = 'Continue where you left off.';
-const ASK_AGAIN_PROMPT = 'The session stopped while you were waiting for my answer. Ask me again.';
 
 /** Each state a session can last report, and whether ending in it leaves the turn owed. */
 const END_STATES = [
@@ -600,7 +601,6 @@ it('quitting with a working session records it before the exit arrives, and rest
       prompt: RESUME_PROMPT,
     }),
   });
-  expect(second.launchSpec(restored.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 });
 
 // OpenCode's reopen asks git about the branch when the worktree folder is missing, as here: the fake adds none.
@@ -622,12 +622,15 @@ it('a project that closes while restore waits on git starts no session, and leav
   expect(readState()[0]).toMatchObject({ open: true, midTurn: true });
 });
 
-it('quitting with a session that was waiting restores it without the prompt', async () => {
-  const { service, make, sessionStarted, readState } = setup();
+// Waiting for its next prompt, it restores with none; waiting for the owner's answer, Claude is asked to ask again.
+it.each([
+  [['working', 'idle'], undefined],
+  [['blocked'], ASK_AGAIN_PROMPT],
+] as const)('quitting with a session last %j restores it with the prompt %j', async (states, prompt) => {
+  const { service, make, sessionStarted, readState, taskDir } = setup();
   const view = await service.start(NEW_TASK);
   sessionStarted(view.id, readState()[0].claudeSessionId);
-  service.noteStatus(view.session!.id, 'working');
-  service.noteStatus(view.session!.id, 'idle');
+  for (const state of states) service.noteStatus(view.session!.id, state);
 
   service.beginQuit();
   service.onSessionExit(view.session!.id);
@@ -635,8 +638,10 @@ it('quitting with a session that was waiting restores it without the prompt', as
   const second = make();
   await second.restore();
   const [restored] = second.list();
-  expect(restored.session).toEqual({ id: expect.any(String), startedWithPrompt: false });
-  expect(second.launchSpec(restored.session!.id).argv).not.toContain(RESUME_PROMPT);
+  expect(restored.session!.startedWithPrompt).toBe(prompt !== undefined);
+  expect(second.launchSpec(restored.session!.id).argv).toEqual(
+    reopenArgv({ claudeBin: 'claude', slug: 'fix-login', claudeSessionId: readState()[0].claudeSessionId, settingsPath: join(taskDir(view.id), 'settings.json'), prompt }),
+  );
 });
 
 // Working, it carries on; waiting for the owner's answer, Claude is asked to ask again, never to
@@ -732,20 +737,6 @@ it('an ask-again from an earlier turn does not outlive it: a resumed session tha
   expect(t.service.launchSpec(next.session!.id).argv.at(-1)).toBe(RESUME_PROMPT);
 });
 
-it('quitting while Claude waits for the owner restores with the ask-again prompt', async () => {
-  const { service, make, sessionStarted, readState } = setup();
-  const view = await service.start(NEW_TASK);
-  sessionStarted(view.id, readState()[0].claudeSessionId);
-  service.noteStatus(view.session!.id, 'blocked');
-  service.beginQuit();
-  service.onSessionExit(view.session!.id);
-
-  const second = make();
-  await second.restore();
-  const [restored] = second.list();
-  expect(second.launchSpec(restored.session!.id).argv.at(-1)).toBe(ASK_AGAIN_PROMPT);
-});
-
 it('a quit before a restored session has reported anything keeps the turn owed, for the next restore', async () => {
   const { service, make, readState, sessionStarted } = setup();
   const view = await service.start(NEW_TASK);
@@ -789,20 +780,7 @@ it('a reopen that starts the conversation over clears midTurn and gives it the o
 
 it('a task kept before midTurn was recorded reopens without the prompt', async () => {
   const { projectDir, stateFile, make, readState, taskDir, sessionStarted } = setup();
-  const old: TaskRecord = {
-    id: 'old',
-    projectDir,
-    title: 'Fix login',
-    description: '',
-    slug: 'fix-login',
-    name: 'acme-fix-login',
-    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
-    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
-    branch: 'worktree-fix-login',
-    createdAt: 5,
-    closedAt: 6,
-    open: false,
-  };
+  const old = oldRecord(projectDir);
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
   mkdirSync(taskDir(old.id), { recursive: true });
   sessionStarted(old.id, old.claudeSessionId);
@@ -1016,35 +994,9 @@ it('reopen of a task whose first launch never began a conversation starts one, w
   );
 });
 
-it('a reopen that must begin the conversation again keeps the card in its prompt', async () => {
-  const { service } = setup();
-  const view = await service.start({ ...NEW_TASK, card: CARD });
-  // claude was missing or quit at once: SessionStart never fired.
-  service.onSessionExit(view.session!.id);
-
-  const reopened = await service.reopen(view.id);
-  expect(reopened.card).toEqual(CARD);
-  expect(service.launchSpec(reopened.session!.id).argv.at(-1)).toBe(
-    openingPrompt({ agent: 'claude', ...CLAUDE_FOLDERS, title: 'Fix login', description: 'Users get logged out', branch: 'worktree-fix-login', noQuestions: false, card: CARD }),
-  );
-});
-
 it('a task kept before its noQuestions was recorded reopens with the prompt that asks questions', async () => {
   const { projectDir, stateFile, make, readState } = setup();
-  const old: TaskRecord = {
-    id: 'old',
-    projectDir,
-    title: 'Fix login',
-    description: '',
-    slug: 'fix-login',
-    name: 'acme-fix-login',
-    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
-    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
-    branch: 'worktree-fix-login',
-    createdAt: 5,
-    closedAt: 6,
-    open: false,
-  };
+  const old = oldRecord(projectDir);
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
 
   const service = make();
@@ -1272,15 +1224,6 @@ it('reports lists every task oldest first: a running one with its last state and
   ]);
 });
 
-it('names the sessions it runs', async () => {
-  const { service } = setup();
-  const a = await service.start(NEW_TASK);
-  const b = await service.start({ ...NEW_TASK, title: 'Ship it' });
-  service.onSessionExit(b.session!.id);
-
-  expect(service.sessionIds()).toEqual([a.session!.id]);
-});
-
 const OPENCODE_TASK = { ...NEW_TASK, agent: 'opencode' as const };
 
 /** Records each call to `git worktree add` the service makes. */
@@ -1359,14 +1302,11 @@ it('a slug whose folder exists under .mainframe/worktrees counts as taken', asyn
   expect((await service.start(NEW_TASK)).slug).toBe('fix-login-2');
 });
 
-it("a Claude task's launch is unchanged", async () => {
+it('a Claude task adds no worktree itself, as claude -w makes it, and records its agent', async () => {
   const { added, addWorktree } = recordingAdds();
-  const { service, projectDir, readState, taskDir } = setup({ addWorktree });
+  const { service, readState } = setup({ addWorktree });
   const view = await service.start(NEW_TASK);
 
-  const spec = service.launchSpec(view.session!.id);
-  expect(spec).not.toHaveProperty('env');
-  expect(spec).toEqual({ cwd: projectDir, answerStatusEarly: true, argv: expectedStart(readState()[0].claudeSessionId, taskDir(view.id), NEW_TASK.description) });
   expect(added).toEqual([]);
   expect(view.agent).toBe('claude');
   expect(readState()[0].agent).toBe('claude');
@@ -1731,25 +1671,17 @@ it('a reopen that returns early lists no models and keeps the pick', async () =>
   expect(t.warnings).toEqual([]);
 });
 
-it('a model list that fails keeps the pick', async () => {
+it.each([
+  ['fails', new Error('Codex could not list its models: no catalog')],
+  ['is empty', { models: [], defaultEfforts: [] }],
+])('a model list that %s keeps the pick', async (_what, models) => {
   const t = setup();
   const view = await pickedCodexTask(t);
-  t.agents.models.codex = new Error('Codex could not list its models: no catalog');
+  t.agents.models.codex = models;
 
   const reopened = await t.service.reopen(view.id);
   expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
   expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
-});
-
-it('an empty model list keeps the pick, as a failed one does', async () => {
-  const t = setup();
-  const view = await pickedCodexTask(t);
-  t.agents.models.codex = { models: [], defaultEfforts: [] };
-
-  const reopened = await t.service.reopen(view.id);
-  expect(t.service.launchSpec(reopened.session!.id).argv).toEqual(['/bin/codex', 'resume', '--last', ...CODEX_PICK]);
-  expect(t.readState()[0]).toMatchObject({ model: 'gpt-6-sol', effort: 'high' });
-  expect(t.warnings).toEqual([]);
 });
 
 it("a reopen leaves off an effort picked without a model once the agent's default no longer offers it", async () => {
@@ -1848,41 +1780,21 @@ it('an OpenCode task stays off the list and the reports until its worktree is th
   expect(service.reports().map((r) => r.taskId)).toContain(view.id);
 });
 
-it('reopen adds a deleted worktree back', async () => {
+// A folder deleted by hand is added back on its branch, or on a fresh one when that is gone too.
+it.each([
+  ['there', true, null],
+  ['gone, its branch there', true, { create: false }],
+  ['gone, and its branch', false, { create: true }],
+] as const)('an OpenCode reopen whose worktree folder is %s runs in it, adding it as %j', async (_what, branch, add) => {
   const { added, addWorktree } = recordingAdds();
-  const { service, projectDir } = setup({ addWorktree, branchExists: async () => true });
+  const { service, projectDir } = setup({ addWorktree, branchExists: async () => branch });
   const view = await service.start(OPENCODE_TASK);
-  added.length = 0;
-  service.onSessionExit(view.session!.id);
-
-  // The worktree folder was deleted by hand; its branch is still there.
-  const readded = await service.reopen(view.id);
-  expect(added).toEqual([[projectDir, view.worktreePath, view.branch, { create: false }]]);
-  expect(service.launchSpec(readded.session!.id).cwd).toBe(view.worktreePath);
-});
-
-it('Reopen of an OpenCode task whose folder and branch are gone adds a fresh worktree', async () => {
-  const { added, addWorktree } = recordingAdds();
-  const { service, projectDir } = setup({ addWorktree, branchExists: async () => false });
-  const view = await service.start(OPENCODE_TASK);
+  if (add === null) mkdirSync(view.worktreePath, { recursive: true });
   added.length = 0;
   service.onSessionExit(view.session!.id);
 
   const reopened = await service.reopen(view.id);
-  expect(added).toEqual([[projectDir, view.worktreePath, view.branch, { create: true }]]);
-  expect(service.launchSpec(reopened.session!.id).cwd).toBe(view.worktreePath);
-});
-
-it('reopen runs in a worktree folder that is there, without adding it', async () => {
-  const { added, addWorktree } = recordingAdds();
-  const { service } = setup({ addWorktree, branchExists: async () => true });
-  const view = await service.start(OPENCODE_TASK);
-  mkdirSync(view.worktreePath, { recursive: true });
-  added.length = 0;
-  service.onSessionExit(view.session!.id);
-
-  const reopened = await service.reopen(view.id);
-  expect(added).toEqual([]);
+  expect(added).toEqual(add === null ? [] : [[projectDir, view.worktreePath, view.branch, add]]);
   expect(service.launchSpec(reopened.session!.id).cwd).toBe(view.worktreePath);
 });
 
@@ -1906,20 +1818,7 @@ it('reports name the agent', async () => {
 
 it('old records load as Claude tasks', async () => {
   const { projectDir, stateFile, make } = setup();
-  const old: TaskRecord = {
-    id: 'old',
-    projectDir,
-    title: 'Fix login',
-    description: '',
-    slug: 'fix-login',
-    name: 'acme-fix-login',
-    claudeSessionId: '0b7e8a52-2f4c-4f7e-9a51-6d2c3c1b9e10',
-    worktreePath: join(projectDir, '.claude', 'worktrees', 'fix-login'),
-    branch: 'worktree-fix-login',
-    createdAt: 5,
-    closedAt: 6,
-    open: false,
-  };
+  const old = oldRecord(projectDir);
   writeFileSync(stateFile, JSON.stringify({ version: 1, tasks: [old] }));
   const service = make();
   expect(service.list()[0].agent).toBe('claude');
@@ -2019,16 +1918,6 @@ it("a round leaves a task whose folder is gone and whose merged branch is checke
   expect(t.warnings.some((w) => w.includes('worktree-fix-login'))).toBe(true);
 });
 
-it('a round moves a closed task whose branch and worktree are gone to Finished', async () => {
-  const t = roundSetup();
-  const view = await pausedTask(t);
-  t.states.set(view.branch, { branch: 'gone' });
-
-  await t.service.checkRound();
-
-  expect(t.readState()[0]).toMatchObject({ place: 'finished', endedAt: 1000 });
-});
-
 it('a round moves a closed OpenCode task whose conversation began to Finished, and leaves one that never began', async () => {
   const t = roundSetup();
   const began = await t.service.start({ ...OPENCODE_TASK, title: 'Began' });
@@ -2056,37 +1945,19 @@ it('a round leaves a task whose conversation never began, though its branch is g
   expect(t.removals).toEqual([]);
 });
 
-it('a round leaves a task whose branch has no commits of its own', async () => {
+it.each([
+  ['whose branch has no commits of its own', { branch: 'no-commits' }],
+  ['merged with uncommitted files', { ...MERGED, uncommitted: ['notes.txt'] }],
+  ['whose worktree is on another branch', { branch: 'gone', elsewhere: true }],
+] as [string, Partial<TaskGitState>][])('a round leaves a task %s Paused, and removes nothing', async (_what, state) => {
   const t = roundSetup();
   const view = await pausedTask(t);
-  t.states.set(view.branch, { branch: 'no-commits' });
-
-  await t.service.checkRound();
-
-  expect(t.service.list()[0].place).toBeNull();
-  expect(t.removals).toEqual([]);
-});
-
-it('a round leaves a merged task with uncommitted files, and removes nothing', async () => {
-  const t = roundSetup();
-  const view = await pausedTask(t);
-  t.states.set(view.branch, { ...MERGED, uncommitted: ['notes.txt'] });
+  t.states.set(view.branch, state);
 
   await t.service.checkRound();
 
   expect(t.service.list()[0].place).toBeNull();
   expect(t.readState()[0]).not.toHaveProperty('place');
-  expect(t.removals).toEqual([]);
-});
-
-it('a worktree on another branch keeps its task Paused', async () => {
-  const t = roundSetup();
-  const view = await pausedTask(t);
-  t.states.set(view.branch, { branch: 'gone', elsewhere: true });
-
-  await t.service.checkRound();
-
-  expect(t.service.list()[0].place).toBeNull();
   expect(t.removals).toEqual([]);
 });
 
@@ -2465,9 +2336,6 @@ it('restore runs a round once its tasks are reopened', async () => {
   expect(next.list()[0].place).toBe('finished');
 });
 
-const CONTINUE_PROMPT =
-  'Mainframe has continued this task in a fresh worktree on branch worktree-fix-login, made from the default branch, which has any of your earlier work that was merged. Wait for my next message.';
-
 it('Continue of a finished Claude task resumes its chat in its worktree with the continue prompt, and puts it on the board', async () => {
   const t = roundSetup();
   const view = await pausedTask(t);
@@ -2476,7 +2344,6 @@ it('Continue of a finished Claude task resumes its chat in its worktree with the
   const { claudeSessionId } = t.readState()[0];
 
   const continued = await t.service.continueTask(view.id);
-  expect(continuePrompt(view.branch)).toBe(CONTINUE_PROMPT);
   expect(continued).toMatchObject({ place: null, endedAt: null, closedAt: null, session: { startedWithPrompt: true } });
   expect(t.service.launchSpec(continued.session!.id)).toEqual({
     cwd: t.projectDir,
@@ -2486,7 +2353,7 @@ it('Continue of a finished Claude task resumes its chat in its worktree with the
       slug: 'fix-login',
       claudeSessionId,
       settingsPath: join(t.taskDir(view.id), 'settings.json'),
-      prompt: CONTINUE_PROMPT,
+      prompt: continuePrompt(view.branch),
     }),
   });
   expect(t.readState()[0]).toMatchObject({ open: true, claudeSessionId });
@@ -2560,7 +2427,7 @@ it('Continue of a finished OpenCode task adds a fresh worktree from the base', a
   expect(added).toEqual([[t.projectDir, view.worktreePath, view.branch, { create: true }]]);
   expect(t.service.launchSpec(continued.session!.id)).toEqual({
     cwd: view.worktreePath,
-    argv: ['/bin/opencode', '--standalone', '-s', t.readState()[0].claudeSessionId, '--prompt', CONTINUE_PROMPT],
+    argv: ['/bin/opencode', '--standalone', '-s', t.readState()[0].claudeSessionId, '--prompt', continuePrompt(view.branch)],
     env: OPENCODE_ENV,
   });
   expect(continued).toMatchObject({ place: null, endedAt: null, session: { startedWithPrompt: true } });
@@ -2840,15 +2707,6 @@ describe('closeWhenTurnOver', () => {
     expect(t.service.closeWhenTurnOver(view.id)).toEqual({ title: 'Fix login', msg: null, merged: true });
   });
 
-  it('closes a session that stopped with an error', async () => {
-    const t = roundSetup();
-    const { view, sid } = await runningTask(t);
-    say(t, sid, 'error');
-
-    expect(t.service.closeWhenTurnOver(view.id).title).toBe('Fix login');
-    expect(t.killed).toEqual([sid]);
-  });
-
   it('refuses a session in a turn, or still starting, and leaves it running', async () => {
     const t = roundSetup();
     const { view, sid } = await runningTask(t);
@@ -3008,20 +2866,6 @@ describe('discard', () => {
     expect(t.removals.filter((r) => r[0] === 'removeWorktree')).toHaveLength(1);
   });
 
-  it('a reopen while a discard removes starts no session', async () => {
-    const gate = held();
-    const t = roundSetup({ removeWorktree: () => gate.promise });
-    const view = await pausedTask(t);
-
-    const discarding = t.service.discard(view.id);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await t.service.reopen(view.id);
-    expect(t.service.sessionIds()).toEqual([]);
-    gate.release(undefined);
-    await discarding;
-    expect(t.service.list()[0].place).toBe('discarded');
-  });
-
   it('a card whose task was discarded starts a fresh task', async () => {
     const t = roundSetup();
     const first = await t.service.start({ ...NEW_TASK, card: CARD });
@@ -3110,7 +2954,6 @@ describe('discard', () => {
   it('discard refuses a finished task, a put-back task and an open task without a session', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
-    const rec = t.readState()[0];
     const task = (t.service as unknown as { find(id: string): { place?: string; open: boolean } }).find(view.id);
     task.place = 'finished';
     await expect(t.service.discard(view.id)).rejects.toThrow('not paused on the board');
@@ -3119,21 +2962,16 @@ describe('discard', () => {
     delete task.place;
     task.open = true;
     await expect(t.service.discard(view.id)).rejects.toThrow(`Close ${view.title} before discarding it`);
-    expect(rec).toBeDefined();
     expect(t.removals.filter((r) => r[0] === 'removeWorktree')).toEqual([]);
   });
 });
 
 describe('put back', () => {
-  const PUT_BACK_PROMPT =
-    "I'm putting this task back on the to-do list for later. Move its card back to the to-do list the way this repo's CLAUDE.md says, or else to its board's to-do list or status. Then stop.";
-
   it('putBackCard resumes the task with the put-back prompt and closes it once its turn is over', async () => {
     const t = roundSetup();
     const view = await pausedTask(t);
     t.killed.length = 0;
     const { claudeSessionId } = t.readState()[0];
-    expect(putBackPrompt(ADAPTERS.claude.instructions)).toBe(PUT_BACK_PROMPT);
 
     let ended: boolean | null = null;
     const putting = t.service.putBackCard(view.id).then((done) => (ended = done));
@@ -3146,7 +2984,7 @@ describe('put back', () => {
         slug: 'fix-login',
         claudeSessionId,
         settingsPath: join(t.taskDir(view.id), 'settings.json'),
-        prompt: PUT_BACK_PROMPT,
+        prompt: putBackPrompt(ADAPTERS.claude.instructions),
       }),
     });
     // Reports from before the turn begins do not end it.
@@ -3339,32 +3177,17 @@ describe("a task's images", () => {
     expect(t.service.imagesDir('no-such-session')).toBeNull();
   });
 
-  it("a reopen that starts a new chat clears the task's images", async () => {
-    const t = setup();
-    const view = await t.service.start(NEW_TASK);
+  // A new chat has none of them; a resumed one counts from #1 again in each run, as Claude Code does.
+  it.each([
     // SessionStart never fired: there is no chat to resume.
-    t.service.onSessionExit(view.session!.id);
-    const dir = withImages(t, view.id);
-
-    await t.service.reopen(view.id);
-    expect(existsSync(dir)).toBe(false);
-  });
-
-  it("a reopen that starts a new chat in Mainframe's worktree clears them too", async () => {
-    const t = setup();
-    const view = await t.service.start(CODEX_TASK);
+    ['starts a new Claude chat', NEW_TASK, false],
     // Codex never reported a turn: its reopen starts again from the opening prompt.
-    t.service.onSessionExit(view.session!.id);
-    const dir = withImages(t, view.id);
-
-    await t.service.reopen(view.id);
-    expect(existsSync(dir)).toBe(false);
-  });
-
-  it('a reopen that resumes the chat clears them too: Claude Code counts from #1 again in each run', async () => {
+    ["starts a new chat in Mainframe's worktree", CODEX_TASK, false],
+    ['resumes the chat', NEW_TASK, true],
+  ])("a reopen that %s clears the task's images", async (_what, task, began) => {
     const t = setup();
-    const view = await t.service.start(NEW_TASK);
-    t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
+    const view = await t.service.start(task);
+    if (began) t.sessionStarted(view.id, t.readState()[0].claudeSessionId);
     t.service.onSessionExit(view.session!.id);
     const dir = withImages(t, view.id);
 

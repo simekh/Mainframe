@@ -62,28 +62,18 @@ it.each(['EPERM', 'EACCES', 'EBUSY'])('on Windows renameWithRetry waits while an
   expect(wait.mock.calls).toEqual([[100], [100]]);
 });
 
-it.each(['darwin', 'linux'] as const)('on %s renameWithRetry throws a held file at once, as the rename always did there', (platform) => {
-  const rename = vi.fn(() => { throw failure('EBUSY'); });
+// Off Windows nothing holds a file; on Windows only a held file is tried again, ten times.
+it.each([
+  ['darwin', 'EBUSY', 1],
+  ['linux', 'EBUSY', 1],
+  ['win32', 'ENOENT', 1],
+  ['win32', 'EBUSY', 11],
+] as const)('on %s renameWithRetry throws %s after %i tries', (platform, code, tries) => {
+  const rename = vi.fn(() => { throw failure(code); });
   const wait = vi.fn();
-  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, platform)).toThrow(expect.objectContaining({ code: 'EBUSY' }));
-  expect(rename).toHaveBeenCalledTimes(1);
-  expect(wait).not.toHaveBeenCalled();
-});
-
-it('on Windows renameWithRetry gives up after 10 retries and throws what the rename threw', () => {
-  const rename = vi.fn(() => { throw failure('EBUSY'); });
-  const wait = vi.fn();
-  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, 'win32')).toThrow(expect.objectContaining({ code: 'EBUSY' }));
-  expect(rename).toHaveBeenCalledTimes(11);
-  expect(wait).toHaveBeenCalledTimes(10);
-});
-
-it('on Windows renameWithRetry throws any other error at once', () => {
-  const rename = vi.fn(() => { throw failure('ENOENT'); });
-  const wait = vi.fn();
-  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, 'win32')).toThrow(expect.objectContaining({ code: 'ENOENT' }));
-  expect(rename).toHaveBeenCalledTimes(1);
-  expect(wait).not.toHaveBeenCalled();
+  expect(() => renameWithRetry('state.json.tmp', 'state.json', rename, wait, platform)).toThrow(expect.objectContaining({ code }));
+  expect(rename).toHaveBeenCalledTimes(tries);
+  expect(wait).toHaveBeenCalledTimes(tries - 1);
 });
 
 it('a missing file loads as no tasks', () => {
@@ -120,62 +110,32 @@ it('a file from a newer Mainframe is left as it is, and loading says so', () => 
   expect(warnings).toEqual([]);
 });
 
-it('a task kept before noQuestions was recorded loads without it', () => {
-  const file = join(folder(), 'state.json');
-  saveTasks(file, [TASK, { ...TASK, id: 't2', noQuestions: true }]);
-  expect(loadTasks(file, 1000, () => {})).toEqual([TASK, { ...TASK, id: 't2', noQuestions: true }]);
-});
+const STORED_CARD = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
 
-it('midTurn and askAgain load as saved, and a task kept before them loads without them', () => {
+// Each optional field loads as saved, beside a task kept before it existed.
+it.each([
+  ['noQuestions', [{ ...TASK, id: 't2', noQuestions: true }]],
+  ['midTurn and askAgain', [{ ...TASK, id: 't2', midTurn: true }, { ...TASK, id: 't3', midTurn: false }, { ...TASK, id: 't4', midTurn: true, askAgain: true }]],
+  ['place and endedAt', [{ ...TASK, id: 't2', place: 'finished' as const, endedAt: 5 }, { ...TASK, id: 't3', place: 'putBack' as const }]],
+  ['a card', [
+    { ...TASK, id: 't2', card: STORED_CARD },
+    { ...TASK, id: 't3', card: { ...STORED_CARD, number: null, url: null, labels: [], urgent: false } },
+    // Read by Mainframe itself, so it keeps its text.
+    { ...TASK, id: 't4', card: { ...STORED_CARD, sourceKind: 'Trello', text: 'Show the list.' } },
+  ]],
+  ['an agent', [{ ...TASK, id: 't2', agent: 'claude' as const }, { ...TASK, id: 't3', agent: 'opencode' as const, began: true }]],
+  ['a model and effort', [{ ...TASK, id: 't2', model: 'opus', effort: 'high' }, { ...TASK, id: 't3', effort: 'low' }]],
+] as [string, TaskRecord[]][])('a task with %s loads as saved', (_what, saved) => {
   const file = join(folder(), 'state.json');
-  const tasks = [TASK, { ...TASK, id: 't2', midTurn: true }, { ...TASK, id: 't3', midTurn: false }, { ...TASK, id: 't4', midTurn: true, askAgain: true }];
-  saveTasks(file, tasks);
-  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
-});
-
-it('loadTasks keeps place and endedAt, and loads records without them', () => {
-  const file = join(folder(), 'state.json');
-  const tasks = [TASK, { ...TASK, id: 't2', place: 'finished' as const, endedAt: 5 }, { ...TASK, id: 't3', place: 'putBack' as const }];
+  const tasks = [TASK, ...saved];
   saveTasks(file, tasks);
   const warnings: string[] = [];
   expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual(tasks);
   expect(warnings).toEqual([]);
-  // A place that is none of the three is a bad file, set aside as the others are.
-  writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ ...TASK, place: 'gone' }] }));
-  expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual([]);
-  expect(warnings).toHaveLength(1);
 });
 
-it("keeps a task's card", () => {
+it('a model or effort that is not a string loads without it, and the file is kept', () => {
   const file = join(folder(), 'state.json');
-  const card = { sourceKind: 'Tracker', id: 'c128', number: '#128', url: 'https://tracker.example/c/128', labels: ['UI'], position: 2, urgent: true };
-  // t4's card was read by Mainframe itself, so it keeps its text; the others, as older records, have none.
-  const tasks = [
-    TASK,
-    { ...TASK, id: 't2', card },
-    { ...TASK, id: 't3', card: { ...card, number: null, url: null, labels: [], urgent: false } },
-    { ...TASK, id: 't4', card: { ...card, sourceKind: 'Trello', text: 'Show the list.' } },
-  ];
-  saveTasks(file, tasks);
-  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
-});
-
-it('old records load as Claude tasks, and an agent loads as saved', () => {
-  const file = join(folder(), 'state.json');
-  // A version 1 file from before tasks named their agent.
-  writeFileSync(file, JSON.stringify({ version: 1, tasks: [TASK] }));
-  const tasks = [TASK, { ...TASK, id: 't2', agent: 'claude' as const }, { ...TASK, id: 't3', agent: 'opencode' as const, began: true }];
-  expect(loadTasks(file, 1000, () => {})).toEqual([TASK]);
-  saveTasks(file, tasks);
-  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
-});
-
-it("keeps a task's model and effort; a model or effort that is not a string loads without it", () => {
-  const file = join(folder(), 'state.json');
-  const tasks = [TASK, { ...TASK, id: 't2', model: 'opus', effort: 'high' }, { ...TASK, id: 't3', effort: 'low' }];
-  saveTasks(file, tasks);
-  expect(loadTasks(file, 1000, () => {})).toEqual(tasks);
-
   const warnings: string[] = [];
   writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ ...TASK, model: 42, effort: 'high' }, { ...TASK, id: 't2', model: 'opus', effort: null }] }));
   expect(loadTasks(file, 1000, (m) => warnings.push(m))).toEqual([{ ...TASK, effort: 'high' }, { ...TASK, id: 't2', model: 'opus' }]);
@@ -196,6 +156,7 @@ it.each([
   ['a task whose midTurn is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: 'yes' }] })],
   ['a task whose askAgain is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, midTurn: true, askAgain: 1 }] })],
   ['an unknown agent', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'gemini' }] })],
+  ['a task whose place is none of the three', JSON.stringify({ version: 1, tasks: [{ ...TASK, place: 'gone' }] })],
   ['a task whose began is not a boolean', JSON.stringify({ version: 1, tasks: [{ ...TASK, agent: 'opencode', began: 'yes' }] })],
   ['a task whose card is null', JSON.stringify({ version: 1, tasks: [{ ...TASK, card: null }] })],
   ["a task whose card's text is not a string", JSON.stringify({ version: 1, tasks: [{ ...TASK, card: { ...CARD, text: 7 } }] })],
