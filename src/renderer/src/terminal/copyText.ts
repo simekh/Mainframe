@@ -47,7 +47,7 @@ export function reflowWrappedParagraphs(text: string): string {
     while (j < lines.length && lines[j] !== '') j++;
     const para = lines.slice(i, j);
 
-    if (shouldReflow(para, MIN_INTERIOR_LENGTH, VARIANCE_TOLERANCE)) {
+    if (shouldReflow(para)) {
       // Array+join avoids O(n²) concat on pathologically long paragraphs.
       const parts: string[] = [para[0]];
       for (let k = 1; k < para.length; k++) {
@@ -63,7 +63,7 @@ export function reflowWrappedParagraphs(text: string): string {
   return out.join('\n');
 }
 
-function shouldReflow(para: string[], minLong: number, variance: number): boolean {
+function shouldReflow(para: string[]): boolean {
   if (para.length < 2) return false;
   const interior = para.slice(0, -1);
   let min = Infinity;
@@ -73,8 +73,8 @@ function shouldReflow(para: string[], minLong: number, variance: number): boolea
     if (len < min) min = len;
     if (len > max) max = len;
   }
-  if (min < minLong) return false;
-  if (max - min > variance) return false;
+  if (min < MIN_INTERIOR_LENGTH) return false;
+  if (max - min > VARIANCE_TOLERANCE) return false;
   return true;
 }
 
