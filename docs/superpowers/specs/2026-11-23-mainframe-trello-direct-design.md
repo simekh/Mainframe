@@ -67,6 +67,8 @@ The owner asked (2026-11-23): "maybe it's time to implement a real Trello API? D
 
 The owner accepted the developer terms; a non-Power-Up app "Mainframe (test)" was created in their workspace (trello.com/power-ups/admin, app id `6b042fb88cde9b867e07d1b4`) with a **public** OAuth 2.0 client, client id `cjmiq05mPFq8nq2NbdTU5En5PgRfxFAv`, scopes Read boards, Write boards, Read members, and callback `http://127.0.0.1:33333/callback`. A throwaway Node script ran the flow from this Mac.
 
+**Update 2026-11-24 (#32):** renaming the test app did not change the name on the consent page, so a new app "Mainframe" (app id `6b057db398a40418f05186cc`, public client id `0o0bnFVq8ZOZ7mywBIx6P6GBwgbNmQDz`) replaced it, with all three callbacks, the same three scopes and the privacy settings. The test app is no longer used.
+
 - The admin page **accepts** `http://127.0.0.1:<port>/…` callbacks and **rejects** custom schemes ("Callback URL must use https or localhost").
 - Authorize → Atlassian login → consent → redirect to the loopback with `code` and the right `state`: **works**.
 - Code exchange at `https://auth.atlassian.com/oauth/token` with PKCE and **no client secret**: HTTP 200, access token (3600 s), refresh token, scopes as asked.
@@ -211,7 +213,7 @@ No tool deletes, and no tool touches another board. Tool results put card text i
 
 ## 10. Owner steps (labelled You)
 
-- Rename the app "Mainframe (test)" to "Mainframe" and fill its basic information; add callbacks `http://127.0.0.1:33334/callback` and `…:33335/callback` (OAuth 2.0 tab).
+- Rename the app "Mainframe (test)" to "Mainframe" and fill its basic information; add callbacks `http://127.0.0.1:33334/callback` and `…:33335/callback` (OAuth 2.0 tab). Done 2026-11-24 as a new app instead (see the update in section 5).
 - Optionally revoke the test grant in the Atlassian account's connected apps after part 1 is built and tried.
 
 ## 11. Left to the builder
