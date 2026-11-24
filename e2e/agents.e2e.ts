@@ -63,6 +63,7 @@ test('a first start with only OpenCode chooses it and opens a project', async ()
   await expect(
     page.getByText('OpenCode runs everything: the manager, your tasks and the Todo sync, except for a Trello list Mainframe reads itself. Settings can change this later.', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("Use Trello? Connect it in Settings or from a project's Todo panel.", { exact: true })).toBeVisible();
 
   await answerDialogs(app, project);
   await page.getByTestId('setup-choose-project').click();

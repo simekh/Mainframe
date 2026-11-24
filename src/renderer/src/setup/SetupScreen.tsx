@@ -48,6 +48,7 @@ function agentUnits(view: SetupView, choice: AgentChoice): Unit[] {
     );
   }
   units.push({ key: 'agents-hint', kind: 'line', text: step.hint, tone: 'hint' });
+  units.push({ key: 'trello-hint', kind: 'line', text: "Use Trello? Connect it in Settings or from a project's Todo panel.", tone: 'hint' });
   return units;
 }
 
